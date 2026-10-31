@@ -13,7 +13,7 @@ The initial published HTML is 2,882,280 bytes. Its SHA-256 is `f0a840836f4721331
 
 ## Git build settings
 
-Connect the existing Worker to `Two-Weeks-Team/musely`, production branch `main`, root directory `preview`, Node `24.22.2`. Run `npm ci && npm run check`, then `npx wrangler deploy`. Watch `preview/**`; keep non-production branch deployments disabled.
+The Worker is connected to `Two-Weeks-Team/musely`, production branch `main`, root directory `preview`, Node `24.22.2`. It runs `npm ci && npm run check`, then `npx wrangler deploy`. The watch path is `preview/**`; non-production branch deployments are disabled.
 
 A configured Git connection alone does not prove automatic deployment. Confirm the triggering commit in Cloudflare Builds, a successful build and deploy outcome, and the resulting production artifact hash.
 
@@ -22,3 +22,7 @@ A configured Git connection alone does not prove automatic deployment. Confirm t
 `musely.net` and `www.musely.net` remain reserved for the main product. No Worker routes or redirects target either name. R2 and D1 are not provisioned because this static visual preview has no persistent application data.
 
 To roll back, select a known successful deployment in the Worker dashboard or use `npx wrangler rollback` from this directory. Keep the Git source in sync with the selected release before the next push.
+
+## Build credential
+
+The dedicated user token expires on 2027-10-31. It grants Workers Scripts edit, Workers Builds Configuration edit, and Account Settings read within the selected account; Workers Routes edit within `musely.net`; and user/membership read. It has no R2, D1, or KV access. Renew or replace it in Cloudflare Builds before expiration. Never put token values in this repository.
