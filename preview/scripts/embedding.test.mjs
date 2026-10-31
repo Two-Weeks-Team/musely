@@ -1,0 +1,2 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {renderTemplate} from './embedding.mjs';
+test('embedding preserves dollar replacement sequences and escapes closing script tags',()=>{const js='const a="$& $` $\'"; const b="</script>";';const h=renderTemplate('<style>/*WORLD_STYLE*/</style><script>/*WORLD_SCRIPT*/</script>','a{content:"$&"}',js);assert.equal(h,'<style>a{content:"$&"}</style><script>'+js.replace('</script>','<\\/script>')+'</script>');});
