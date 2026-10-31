@@ -1,6 +1,6 @@
 # Muse Character Kit — Base + Nine
 
-Status: proposed release design, 2026-10-31. This document is a plan; no new character, rig, animation, public package, or viewer has been produced by writing it.
+Status: design, 2026-10-31; implemented on 2026-11-01 for the demo (see [MUSE_NINE_RESULT.md](MUSE_NINE_RESULT.md)). Sections about portable downloads and a public kit are superseded by the release decision below.
 
 ## Purpose and release scope
 
@@ -152,7 +152,7 @@ Prop-local animation such as a book page hinge lives inside that attachment GLB 
 
 A manifest maps character IDs to LOD paths, rig digest, material palette, socket bindings, body/prop action records, bounds, hashes and provenance. The catalog viewer and packaging code live under preview/; generated evidence/build output stays ignored except curated release documentation and approved distributable files.
 
-Proposed first release is a free developer/community asset kit; pricing is not a committed product decision. A candidate separate public release repository is `Two-Weeks-Team/muse-3d-kit` (name availability not checked), populated only with reviewed distributable files. Keep the current Musely repository private. Exact destination, visibility and terms are confirmed at release; no new repository is created as part of this plan. The v1 compatibility claim covers Blender reimport and the pinned Three.js sample; Unity/Unreal convenience packages and engine-specific guarantees are later work.
+Release decision (2026-10-31): Muse and Jolly are Meta's characters, so these fan-made recreations are attributed to Meta, excluded from the repository license, and not published as a downloadable or reusable kit (`character-kit/NOTICE.md`). They ship only inside the hackathon demo: the world and the in-demo viewer at `/characters/`. No separate public kit repository is planned. Any later public kit would use only original, non-Meta characters. The v1 compatibility claim covers Blender reimport and the pinned Three.js runtime.
 
 Preserve private source/reference files separately from public downloads. Publish only files whose redistribution basis has been verified and recorded. Do not attach an unrestricted model license to the Meta-derived character without a verified basis; license our code separately from model/brand/reference materials. This is a release readiness check, not a claim about current permission. Public package visibility, redistribution terms and final publication destination are not settled by this plan.
 

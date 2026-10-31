@@ -148,5 +148,5 @@ Do not promise a calendar deadline from model count alone. After the pilot, repo
 - [x] Inspect existing GLB/runtime source and current official glTF/loader guidance.
 - [x] Separate observed facts from proposed creative/technical decisions.
 - [x] Builder check performed; runtime GLB/prop binding, LOD state ownership, independently runnable material proof and exact frontal-reference identity were clarified. The reviewer reread the corrections and reported all four gaps resolved with no remaining substantive blocker. Publication/build allowlists were additionally clarified in self-review.
-- [ ] Full design review before modeling/runtime implementation.
+- [x] Base (Tasks 1–3) implemented by Codex; Tasks 4–6 and the in-demo part of Task 7 implemented 2026-11-01. Results, deviations and open items: [MUSE_NINE_RESULT.md](MUSE_NINE_RESULT.md).
 - [x] Redistribution basis settled: Jolly-derived assets are attributed to Meta and not redistributed as a kit (2026-10-31).
