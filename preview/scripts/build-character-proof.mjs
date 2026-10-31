@@ -13,5 +13,6 @@ const html=renderTemplate(await readFile('src/character-kit/materialProof.html',
 const worldCss=await readFile('node_modules/maplibre-gl/dist/maplibre-gl.css','utf8')+'\n'+await readFile('src/style.css','utf8');
 await writeFile(dir+'/index.html',html);
 await writeFile(dir+'/world/index.html',renderTemplate(await readFile('src/index.html','utf8'),worldCss,world.outputFiles[0].text));
-await copyFile('character-kit/runtime/base/lod0.glb',dir+'/character-kit/runtime/base/lod0.glb');
+const kit=JSON.parse(await readFile('character-kit/manifest.json','utf8'));
+for(const path of Object.keys(kit.files)){const out=dir+'/character-kit/runtime/'+path;await mkdir(out.slice(0,out.lastIndexOf('/')),{recursive:true});await copyFile('character-kit/runtime/'+path,out);}
 const asset=await readFile(dir+'/character-kit/runtime/base/lod0.glb');console.log(JSON.stringify({htmlBytes:Buffer.byteLength(html),assetBytes:asset.length,assetSha256:createHash('sha256').update(asset).digest('hex')}));

@@ -2,8 +2,8 @@ import * as T from 'three';
 import {GLTFLoader,type GLTF} from 'three/addons/loaders/GLTFLoader.js';
 import {clone} from 'three/addons/utils/SkeletonUtils.js';
 import {applyFaceControls} from './FaceControls.ts';
+import {SINGLE_PLAY as singlePlay} from './catalog.ts';
 export type RoutePose={x:number;y:number;z:number;yaw:number};
-const singlePlay=new Set(['wave','sit_down','stand_up','celebrate','offer_item']);
 /** Shared source resources, independent pose/expression state, no root motion. */
 export class BaseMuseActor{
  readonly root:T.Group;

@@ -1,10 +1,12 @@
 import * as T from 'three';
-import {applyFaceControls} from './FaceControls';
-import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-import clipManifest from '../../character-kit/runtime/animations/manifest.json';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
+import {MaterialLibrary,loadMuse} from './MaterialLibrary';
+import type {MuseActor,Lod} from './MuseActor';
+import {MUSE_VARIANTS,SHARED_CLIPS,EXPRESSIONS,SINGLE_PLAY,variantById,type MuseVariantId} from './catalog';
 declare global {interface Window {__jolly:any}}
+
+// In-demo viewer for the ten-character Muse family, using the same runtime files as the world.
 const stage=document.querySelector('#stage') as HTMLElement;
 const renderer=new T.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.outputColorSpace=T.SRGBColorSpace;
@@ -19,31 +21,57 @@ const key=new T.DirectionalLight('#fff1db',1.8);key.position.set(-1.5,2.8,2);key
 const fill=new T.DirectionalLight('#bdcee7',.5);fill.position.set(2,1,1);scene.add(fill);
 const rim=new T.DirectionalLight('#fff4db',1.0);rim.position.set(.5,1.4,-2);scene.add(rim);
 const ground=new T.Mesh(new T.CircleGeometry(20,96),new T.ShadowMaterial({color:'#675c49',opacity:.17}));ground.rotation.x=-Math.PI/2;ground.position.y=-.003;ground.receiveShadow=true;scene.add(ground);
-const errors:string[]=[];let root:T.Group,mixer:T.AnimationMixer,actions:Record<string,T.AnimationAction>={},active='idle_breathe',expression='Neutral',time=0,paused=false,lighting='studio';
-const meshes:T.Mesh[]=[];const expressions=['Neutral','Smile','Curious','Thinking','Focused','Listening','Concerned','Delight'];
-function setExpression(name:string){expression=name;applyFaceControls(meshes,name,0,0,0);}
-function setAction(name:string){const next=actions[name];if(!next)return;const old=actions[active];if(old!==next){old?.fadeOut(.25);next.reset().fadeIn(.25).play();}else next.play();active=name;}
+
+const library=new MaterialLibrary('/character-kit/runtime/');
+const errors:string[]=[];
+let actor:MuseActor|null=null,variant:MuseVariantId='00-jolly',active='idle_breathe',expression='Neutral',time=0,actionStart=0,paused=false,lighting='studio',lod:Lod=0,loading=0;
+const $=<E extends HTMLElement>(s:string)=>document.querySelector(s) as E;
+const actionSelect=$<HTMLSelectElement>('#action'),expressionSelect=$<HTMLSelectElement>('#expression');
+
+function clipsFor(id:MuseVariantId){const sig=variantById(id).signature;return [...SHARED_CLIPS,...(sig?[sig]:[])];}
+function setExpression(name:string){expression=name;actor?.setExpression(name);}
+function setAction(name:string){if(!clipsFor(variant).includes(name as never))return;active=name;actionStart=time;actor?.setAction(name);actionSelect.value=name;}
+function setLod(l:Lod){lod=l;actor?.setLod(l);($('#lod') as HTMLSelectElement).value=String(l);}
 function setLighting(name:string){lighting=name;const night=name==='night',day=name==='daylight';scene.background=new T.Color(night?'#1b2436':day?'#dce5df':'#e9e7de');scene.environmentIntensity=night?.14:.35;hemi.intensity=night?.75:.7;key.color.set(night?'#ffb869':'#fff1db');key.intensity=night?1.6:day?2.5:1.8;fill.intensity=night?.65:.5;rim.intensity=night?.8:1;renderer.toneMappingExposure=night?1.3:.95;}
+async function setVariant(id:MuseVariantId){
+ const ticket=++loading;variant=id;const v=variantById(id);
+ $('#name').textContent=v.name;$('#role').textContent=v.role.toUpperCase()+' · '+id.slice(0,2);$('#personality').textContent=v.personality;
+ document.querySelectorAll<HTMLButtonElement>('.roster button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.id===id)));
+ actionSelect.innerHTML='';for(const name of clipsFor(id)){const o=document.createElement('option');o.value=name;o.textContent=name.replaceAll('_',' ')+(name===v.signature?' ★':'');actionSelect.add(o);}
+ try{
+  const next=await loadMuse(id,library);if(ticket!==loading){next.dispose();return;}
+  actor?.dispose();actor=next;scene.add(actor.root);actor.root.traverse(o=>{if(o instanceof T.Mesh){o.castShadow=true;o.receiveShadow=true;}});
+  setLod(lod);setExpression(expression);setAction(v.signature??'idle_breathe');
+  const m=actor.getMetrics();$('#status').textContent=`${(m.bounds.max.y-m.bounds.min.y).toFixed(3)} m · ${actor.visibleTriangles().toLocaleString()} triangles · ${clipsFor(id).length} actions · LOD${lod}`;
+  $('#loading')?.remove();
+ }catch(e){errors.push(String(e));$('#status').textContent='This Muse could not load.';console.error(e);}
+}
 function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();}new ResizeObserver(resize).observe(stage);resize();
-document.querySelector('#lighting')!.addEventListener('change',e=>setLighting((e.target as HTMLSelectElement).value));
-document.querySelector('#action')!.addEventListener('change',e=>setAction((e.target as HTMLSelectElement).value));
-document.querySelector('#expression')!.addEventListener('change',e=>setExpression((e.target as HTMLSelectElement).value));
-document.querySelector('#orbit')!.addEventListener('click',e=>{controls.autoRotate=!controls.autoRotate;(e.target as HTMLElement).setAttribute('aria-pressed',String(controls.autoRotate));});
-document.querySelector('#pause')!.addEventListener('click',e=>{paused=!paused;(e.target as HTMLElement).textContent=paused?'Resume motion':'Pause motion';});
-document.querySelector('#face')!.addEventListener('click',()=>{camera.position.set(0,.72,.76);controls.target.set(0,.68,0);});
-document.querySelector('#whole')!.addEventListener('click',()=>{camera.position.set(.8,.68,1.9);controls.target.set(0,.45,0);});
+
+const roster=$('.roster');
+for(const v of MUSE_VARIANTS){const b=document.createElement('button');b.type='button';b.dataset.id=v.id;b.style.setProperty('--muse',v.body);b.style.setProperty('--accent',v.accent);b.innerHTML=`<i></i><span>${v.name}</span>`;b.title=`${v.name} · ${v.role}`;b.onclick=()=>setVariant(v.id);roster.append(b);}
+for(const name of EXPRESSIONS){const o=document.createElement('option');o.value=name;o.textContent=name;expressionSelect.add(o);}
+$('#lighting').addEventListener('change',e=>setLighting((e.target as HTMLSelectElement).value));
+actionSelect.addEventListener('change',e=>setAction((e.target as HTMLSelectElement).value));
+expressionSelect.addEventListener('change',e=>setExpression((e.target as HTMLSelectElement).value));
+$('#lod').addEventListener('change',e=>setLod(Number((e.target as HTMLSelectElement).value) as Lod));
+$('#orbit').addEventListener('click',e=>{controls.autoRotate=!controls.autoRotate;(e.target as HTMLElement).setAttribute('aria-pressed',String(controls.autoRotate));});
+$('#pause').addEventListener('click',e=>{paused=!paused;(e.target as HTMLElement).textContent=paused?'Resume motion':'Pause motion';});
+$('#face').addEventListener('click',()=>{camera.position.set(0,.72,.76);controls.target.set(0,.68,0);});
+$('#whole').addEventListener('click',()=>{camera.position.set(.8,.68,1.9);controls.target.set(0,.45,0);});
+($('#world-link') as HTMLAnchorElement).href=location.pathname.includes('/characters')?'../':'./world/';
+
 let last=performance.now();
-renderer.setAnimationLoop(()=>{const now=performance.now(),dt=Math.min((now-last)/1000,.1);last=now;if(!paused){time+=dt;mixer?.update(dt);}const blink=Math.max(0,1-Math.abs((time%4.6)-4.35)/.11);applyFaceControls(meshes,expression,blink,blink,active==='talk'?Math.max(0,Math.sin(time*13))*.65:0);controls.update();renderer.render(scene,camera);});
-try{
- const gltf=await new GLTFLoader().loadAsync('./character-kit/runtime/base/lod0.glb');root=gltf.scene;scene.add(root);mixer=new T.AnimationMixer(root);
- root.traverse(o=>{if(o instanceof T.Mesh){o.castShadow=true;o.receiveShadow=true;o.frustumCulled=false;meshes.push(o);}});
- for(const clip of gltf.animations){const a=mixer.clipAction(clip);if(clipManifest.clips.find(c=>c.name===clip.name)?.loop===false){a.setLoop(T.LoopOnce,1);a.clampWhenFinished=true;}actions[clip.name]=a;}
- setExpression('Neutral');
- if(actions.idle_breathe)actions.idle_breathe.play();
- const actionSelect=document.querySelector('#action') as HTMLSelectElement;actionSelect.innerHTML='';for(const name of Object.keys(actions)){const o=document.createElement('option');o.value=name;o.textContent=name.replaceAll('_',' ');actionSelect.add(o);}actionSelect.value='idle_breathe';
- const expressionSelect=document.querySelector('#expression') as HTMLSelectElement;for(const name of expressions){const o=document.createElement('option');o.value=name;o.textContent=name;expressionSelect.add(o);}
- const stats={height:new T.Box3().setFromObject(root).getSize(new T.Vector3()).y,triangles:meshes.reduce((n,m)=>n+(m.geometry.index?.count??m.geometry.attributes.position.count)/3,0),skins:meshes.filter(m=>m instanceof T.SkinnedMesh).length};
- document.querySelector('#status')!.textContent=`${stats.height.toFixed(3)} m · ${stats.triangles.toLocaleString()} triangles · ${Object.keys(actions).length} actions`;
- window.__jolly={root,scene,camera,controls,mixer,actions,setAction,setExpression,setLighting,getMetrics:()=>({ready:true,...stats,active,expression,lighting,time,paused,drawCalls:renderer.info.render.calls,errors,clips:Object.keys(actions),materials:meshes.flatMap(m=>(Array.isArray(m.material)?m.material:[m.material]).map(a=>{const s=a as T.MeshStandardMaterial;return{name:s.name,normal:!!s.normalMap,colorMap:!!s.map,roughnessMap:!!s.roughnessMap,emission:s.emissive?.toArray()};})),morphs:[...new Set(meshes.flatMap(m=>Object.keys(m.morphTargetDictionary??{})))]})};
- document.querySelector('#loading')!.remove();
-}catch(e){errors.push(String(e));document.querySelector('#loading')!.textContent='The character could not load.';console.error(e);}
+renderer.setAnimationLoop(()=>{const now=performance.now(),dt=Math.min((now-last)/1000,.1);last=now;if(!paused)time+=dt;
+ if(actor)actor.update(time,{x:0,y:0,z:0,yaw:0},SINGLE_PLAY.has(active)?time-actionStart:time*variantById(variant).tempo);
+ controls.update();renderer.render(scene,camera);});
+
+window.__jolly={scene,camera,controls,setVariant,setAction,setExpression,setLighting,setLod,get root(){return actor?.root;},
+ getMetrics:()=>{const mats=actor?actor.visibleMaterials():[];return {ready:!!actor&&loading>0,variant,lod,active,expression,lighting,time,paused,errors,
+  height:actor?(()=>{const b=actor!.getBounds();return b.max.y-b.min.y;})():0,triangles:actor?.visibleTriangles()??0,skins:actor?actor.meshes.filter(m=>m.visible&&m.parent?.visible!==false).length:0,
+  drawCalls:renderer.info.render.calls,clips:clipsFor(variant),
+  materials:mats.map(m=>({name:m.material,normal:m.normal,colorMap:m.map,color:m.color})),
+  morphs:actor?[...new Set(actor.meshes.flatMap(m=>Object.keys(m.morphTargetDictionary??{})))]:[]};}};
+const requested=new URLSearchParams(location.search).get('muse');
+setLighting('studio');
+await setVariant(MUSE_VARIANTS.some(v=>v.id===requested)?requested as MuseVariantId:'00-jolly');

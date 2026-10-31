@@ -5,7 +5,7 @@ test('character proof builds its current world source independently of absent or
   await Promise.all([mkdir(join(temp,'scripts')),mkdir(join(temp,'character-kit/runtime/base'),{recursive:true}),cp('src',join(temp,'src'),{recursive:true}),cp('assets',join(temp,'assets'),{recursive:true}),symlink(resolve('node_modules'),join(temp,'node_modules'),'dir')]);
   for(const file of['build-character-proof.mjs','prepare-assets.mjs','embedding.mjs'])await copyFile('scripts/'+file,join(temp,'scripts',file));
   await mkdir(join(temp,'character-kit/runtime/animations'),{recursive:true});await copyFile('character-kit/runtime/animations/manifest.json',join(temp,'character-kit/runtime/animations/manifest.json'));
-  await copyFile('character-kit/runtime/base/lod0.glb',join(temp,'character-kit/runtime/base/lod0.glb'));
+  await cp('character-kit/runtime',join(temp,'character-kit/runtime'),{recursive:true});await copyFile('character-kit/manifest.json',join(temp,'character-kit/manifest.json'));
   const build=()=>{const r=spawnSync(process.execPath,['scripts/build-character-proof.mjs'],{cwd:temp,encoding:'utf8'});assert.equal(r.status,0,r.stderr+r.stdout);};
   build();await assert.rejects(access(join(temp,'dist')));const first=await readFile(join(temp,'dist-character-proof/world/index.html'),'utf8');assert.ok(first.includes('Musely'));
   await mkdir(join(temp,'dist'));await writeFile(join(temp,'dist/index.html'),'STALE_PRODUCTION_DOCUMENT');const template=join(temp,'src/index.html');await writeFile(template,(await readFile(template,'utf8')).replace('<title>','<title>FRESH_PROOF_SOURCE '));

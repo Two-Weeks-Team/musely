@@ -7,20 +7,24 @@ import {conversationAt} from './story';
 import {surfaceHeightAt} from './surfaces';
 import {instanceMovingMeshes} from './instances';
 import {mapMeshMaterials,paintMuseMaterial} from './materials';
-import {loadMuseBase} from './character-kit/BaseMuseActor';
+import {MaterialLibrary,loadMuse} from './character-kit/MaterialLibrary';
+import type {MuseActor,Lod} from './character-kit/MuseActor';
+import {MUSE_VARIANTS,RESIDENT_VARIANTS,variantById} from './character-kit/catalog';
+import {residentBehavior,ResidentClock,chooseLods} from './character-kit/residents';
 export const PEOPLE=[
- {name:"Jimin's Muse",color:'#eab45c',accent:'#8b658f',role:'Your Muse',activity:'Finding a moment to meet'},
- {name:"Sora's Muse",color:'#ad9fd0',accent:'#f4d8a6',role:'A familiar face',activity:'A hello at the cafe'},
- {name:"Mina's Muse",color:'#85bfb1',accent:'#e79581',role:'Music & company',activity:'Listening by the fire'},
- {name:"Noa's Muse",color:'#db8d83',accent:'#f2db9c',role:'Garden friend',activity:'Tending the little garden'},
- {name:"Yuri's Muse",color:'#96b5d4',accent:'#eee4c9',role:'A quiet afternoon',activity:'Reading in the shade'},
- {name:"Ren's Muse",color:'#adbe7c',accent:'#ba826c',role:'A good neighbor',activity:'Sharing a slow morning'},
- {name:"Ari's Muse",color:'#d9b6ca',accent:'#7d9fa1',role:'Music & company',activity:'Keeping a seat for a friend'},
- {name:"Sol's Muse",color:'#caa486',accent:'#adc5b5',role:'A little adventure',activity:'Taking the long way home'},
+ {name:"Jimin's Muse",color:'#e8ddc7',accent:'#d9a38d',variant:'00-jolly',role:'Your Muse',activity:'Finding a moment to meet'},
+ {name:"Sora's Muse",color:'#e7b75b',accent:'#d9886c',variant:'01-sunny',role:'A familiar face',activity:'A hello at the cafe'},
+ {name:"Mina's Muse",color:'#ae9ccb',accent:'#e5cf90',variant:'07-tempo',role:'Music & company',activity:'Listening by the fire'},
+ {name:"Noa's Muse",color:'#9cad82',accent:'#ba8068',variant:'02-moss',role:'Garden friend',activity:'Tending the little garden'},
+ {name:"Yuri's Muse",color:'#91abc8',accent:'#826d9b',variant:'06-ink',role:'A quiet afternoon',activity:'Reading in the shade'},
+ {name:"Ren's Muse",color:'#8d96b8',accent:'#dcc589',variant:'08-orbit',role:'A good neighbor',activity:'Sharing a slow morning'},
+ {name:"Ari's Muse",color:'#d5a0b1',accent:'#9aae91',variant:'05-bloom',role:'Music & company',activity:'Keeping a seat for a friend'},
+ {name:"Sol's Muse",color:'#83b8ae',accent:'#dbc5a1',variant:'03-ripple',role:'A little adventure',activity:'Taking the long way home'},
 ];
 const ENV={background:'#101623',ground:'#1B2436',path:'#2A3550',building:'#232E47',fire:'#FF9E45',core:'#FFD98A',cream:'#F2E9D8'};
 const mat=(c:string)=>new T.MeshStandardMaterial({color:c,roughness:.96,metalness:0});
-export async function makeWorld(glb:string,sigils:string[],baseUrl?:string){
+/** kitBase: shared rigged character kit URL; null keeps the earlier rigid preview characters. */
+export async function makeWorld(glb:string,sigils:string[],kitBase:string|null='/character-kit/runtime/'){
  const scene=new T.Scene(), staticRoot=new T.Group();staticRoot.name='HQCommons';scene.add(staticRoot);
  const mats=new Map<string,T.MeshBasicMaterial>(),batches=new Map<T.Material,T.BufferGeometry[]>();
  function material(c:string){if(!mats.has(c))mats.set(c,new T.MeshBasicMaterial({color:c,vertexColors:true}));return mats.get(c)!;}
@@ -81,13 +85,17 @@ export async function makeWorld(glb:string,sigils:string[],baseUrl?:string){
  const source=(await new GLTFLoader().loadAsync(glb)).scene;
  const textures=await Promise.all(sigils.map(u=>new T.TextureLoader().loadAsync(u)));textures.forEach(t=>{t.colorSpace=T.SRGBColorSpace;t.flipY=false;});
  const muses:T.Group[]=[];
- const baseActor=baseUrl?await loadMuseBase(baseUrl):null;let actorTime=0,actorPosition:{x:number;z:number}|null=null,walkDistance=0;
+ const library=kitBase?new MaterialLibrary(kitBase):null;
+ // A resident whose variant file cannot load still appears as the plain base Muse; the scene continues.
+ const actors:MuseActor[]|null=library?await Promise.all(RESIDENT_VARIANTS.map(id=>loadMuse(id,library).catch(e=>{console.warn('Muse variant unavailable, using base:',id,e);return loadMuse('00-jolly',library);}))):null;
+ const clocks=PEOPLE.map(()=>new ResidentClock());let lods:Lod[]=PEOPLE.map(()=>2 as Lod);actors?.forEach(a=>a.setLod(2));
  const shadowCanvas=document.createElement('canvas');shadowCanvas.width=shadowCanvas.height=64;const sc=shadowCanvas.getContext('2d')!,grad=sc.createRadialGradient(32,32,0,32,32,32);grad.addColorStop(0,'rgba(50,65,42,.22)');grad.addColorStop(.5,'rgba(50,65,42,.12)');grad.addColorStop(1,'rgba(50,65,42,0)');sc.fillStyle=grad;sc.fillRect(0,0,64,64);const shadowTexture=new T.CanvasTexture(shadowCanvas);
  const shadows:T.Mesh[]=[];
  const selection=new T.Mesh(new T.RingGeometry(.37,.41,48),new T.MeshBasicMaterial({color:'#fdf4d9',side:T.DoubleSide,transparent:true,opacity:.92,depthWrite:false}));selection.rotation.x=-Math.PI/2;selection.position.y=.069;scene.add(selection);
  for(let i=0;i<PEOPLE.length;i++){
-  const root=i===0&&baseActor?baseActor.root:source.clone(true);root.name='Muse_'+i;root.userData.person=i;
-  if(!(i===0&&baseActor)){
+  const actor=actors?.[i];const root=actor?actor.root:source.clone(true);root.name='Muse_'+i;root.userData.person=i;
+  if(actor)root.traverse(o=>{o.userData.person=i;});
+  if(!actor){
   root.traverse(o=>{if(o instanceof T.Mesh){o.userData.person=i;mapMeshMaterials(o,m=>paintMuseMaterial(m,PEOPLE[i].color,textures[i%2]));}});
   // Original small accessories: short scarves, a shoulder pouch, a stitched collar.
   const accent=mat(PEOPLE[i].accent);
@@ -107,18 +115,25 @@ export async function makeWorld(glb:string,sigils:string[],baseUrl?:string){
  const glowCanvas=document.createElement('canvas');glowCanvas.width=glowCanvas.height=128;const gc=glowCanvas.getContext('2d')!,gg=gc.createRadialGradient(64,64,0,64,64,64);gg.addColorStop(0,'rgba(255,158,69,.26)');gg.addColorStop(.3,'rgba(255,158,69,.12)');gg.addColorStop(1,'rgba(255,158,69,0)');gc.fillStyle=gg;gc.fillRect(0,0,128,128);const pool=new T.Mesh(new T.PlaneGeometry(11,11),new T.MeshBasicMaterial({map:new T.CanvasTexture(glowCanvas),transparent:true,depthWrite:false}));pool.rotation.x=-Math.PI/2;pool.position.set(0,.047,2);scene.add(pool);
  const fire=new T.Group();fire.name='Fire';scene.add(fire);fire.position.set(0,.28,2);
  for(let i=0;i<3;i++){const f=new T.Mesh(new T.SphereGeometry(1,8,6),new T.MeshBasicMaterial({color:['#ef9c55','#ffd27d','#ffe6ac'][i]}));f.position.set((i-1)*.12,.18+i*.04,0);f.scale.set(.15-i*.025,.37-i*.05,.13);fire.add(f);}
- scene.add(new T.HemisphereLight('#7E93B8','#101623',1.7));const fireLight=new T.PointLight('#FF9E45',5,10,1.7);fireLight.position.set(0,.7,2);scene.add(fireLight);
- const updateInstances=instanceMovingMeshes(scene,[...muses,...shadows,...treeShadows]);
+ // The rigged kit uses physical maps; without tone mapping, the earlier 1.7 sky fill would clip its palettes to white.
+ scene.add(new T.HemisphereLight('#7E93B8','#101623',actors?.95:1.7));const fireLight=new T.PointLight('#FF9E45',5,10,1.7);fireLight.position.set(0,.7,2);scene.add(fireLight);
+ // The commons is mostly unlit; a soft moonlight key keeps rigged Muse palettes readable at night
+ // without lighting the bodies from inside (cloth/face emission stays zero).
+ if(actors){const moon=new T.DirectionalLight('#dfe6ff',.7);moon.position.set(-4,7,6);scene.add(moon,moon.target);const rim=new T.DirectionalLight('#ffd9b0',.35);rim.position.set(3,3,-5);scene.add(rim,rim.target);}
+ // Rigged residents (skins, bone-parented props, LOD sets) stay out of rigid instancing.
+ const updateInstances=instanceMovingMeshes(scene,[...muses.filter((_,i)=>!actors?.[i]),...shadows,...treeShadows]);
  let selected=0;
  function update(t:number,index:number){selected=index;for(let i=0;i<muses.length;i++){const p=positionAt(i,t),root=muses[i];root.position.set(p.x,surfaceHeightAt(p.x,p.z)+.006+(p.moving?Math.abs(Math.sin(t*5+i))*.018:Math.sin(t*1.8+i)*.005),p.z);const turn=conversationAt(t),partner=turn?.person===i?turn.listener:turn?.listener===i?turn.person:undefined;const q=partner===undefined?null:positionAt(partner,t);const target=p.moving?p.yaw:q?Math.atan2(q.x-p.x,q.z-p.z):i===3?Math.PI/2:Math.sin(i*2)*.45;root.rotation.y=target;root.rotation.z=p.moving?Math.sin(t*5+i)*.035:0;
- if(i===0&&baseActor){
-  if(t<actorTime||t-actorTime>.25)walkDistance=0;else if(p.moving&&actorPosition)walkDistance+=Math.hypot(p.x-actorPosition.x,p.z-actorPosition.z);
-  const wave=turn?.id===0&&t-turn.start<2.5,action=p.moving?'walk':wave?'wave':turn?.person===i?'talk':turn?.listener===i?'listen':'idle_breathe';
-  baseActor.setAction(action);baseActor.setExpression(turn?.person===i?'Smile':turn?.listener===i?'Listening':t<14?'Curious':'Neutral');
-  baseActor.update(t,{x:p.x,y:surfaceHeightAt(p.x,p.z)+.006,z:p.z,yaw:target},action==='walk'?walkDistance/.27*(32/24):action==='wave'?t-turn!.start:t);
-  root.rotation.z=0;actorPosition={x:p.x,z:p.z};actorTime=t;
+ const actor=actors?.[i];
+ if(actor){
+  const b=residentBehavior(i,t,p.moving,turn);actor.setAction(b.action);actor.setExpression(b.expression);
+  actor.update(t,{x:p.x,y:surfaceHeightAt(p.x,p.z)+.006,z:p.z,yaw:target},clocks[i].time(b,t,p.x,p.z,variantById(RESIDENT_VARIANTS[i]).tempo));
+  root.rotation.z=0;
  }
  if(i===3){const drops=root.getObjectByName('GardenDrops');if(drops){const tending=!p.moving&&partner===undefined;drops.scale.setScalar(tending?1:0);drops.position.y=-((t*.08)%.04);}}shadows[i].position.x=p.x;shadows[i].position.z=p.z;shadows[i].position.y=surfaceHeightAt(p.x,p.z)+.002;}const p=positionAt(selected,t);selection.position.x=p.x;selection.position.z=p.z;selection.position.y=surfaceHeightAt(p.x,p.z)+.004;updateInstances();fire.children.forEach((f,i)=>{f.scale.y=(.37-i*.05)*(1+Math.sin(t*8+i*3)*.12);});}
  update(0,0);
- return {scene,muses,selection,update,baseActor,sourceHeight:new T.Box3().setFromObject(source).getSize(new T.Vector3()).y};
+ /** Apply the single LOD selector from projected screen heights (px). */
+ function setLods(heights:number[],priority:number[]){if(!actors)return;lods=chooseLods(heights,lods,priority);actors.forEach((a,i)=>{if(a.lod!==lods[i])a.setLod(lods[i]);});}
+ function actorBounds(i:number){const a=actors?.[i];if(!a)return null;const p=a.root.position;return new T.Box3(new T.Vector3(p.x-.45,p.y,p.z-.45),new T.Vector3(p.x+.45,p.y+.95,p.z+.45));}
+ return {scene,muses,selection,update,actors,setLods,actorBounds,library,catalog:MUSE_VARIANTS,sourceHeight:new T.Box3().setFromObject(source).getSize(new T.Vector3()).y};
 }
