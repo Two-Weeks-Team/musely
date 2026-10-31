@@ -7,6 +7,7 @@ import {conversationAt} from './story';
 import {surfaceHeightAt} from './surfaces';
 import {instanceMovingMeshes} from './instances';
 import {mapMeshMaterials,paintMuseMaterial} from './materials';
+import {loadMuseBase} from './character-kit/BaseMuseActor';
 export const PEOPLE=[
  {name:"Jimin's Muse",color:'#eab45c',accent:'#8b658f',role:'Your Muse',activity:'Finding a moment to meet'},
  {name:"Sora's Muse",color:'#ad9fd0',accent:'#f4d8a6',role:'A familiar face',activity:'A hello at the cafe'},
@@ -19,7 +20,7 @@ export const PEOPLE=[
 ];
 const ENV={background:'#101623',ground:'#1B2436',path:'#2A3550',building:'#232E47',fire:'#FF9E45',core:'#FFD98A',cream:'#F2E9D8'};
 const mat=(c:string)=>new T.MeshStandardMaterial({color:c,roughness:.96,metalness:0});
-export async function makeWorld(glb:string,sigils:string[]){
+export async function makeWorld(glb:string,sigils:string[],baseUrl?:string){
  const scene=new T.Scene(), staticRoot=new T.Group();staticRoot.name='HQCommons';scene.add(staticRoot);
  const mats=new Map<string,T.MeshBasicMaterial>(),batches=new Map<T.Material,T.BufferGeometry[]>();
  function material(c:string){if(!mats.has(c))mats.set(c,new T.MeshBasicMaterial({color:c,vertexColors:true}));return mats.get(c)!;}
@@ -80,11 +81,13 @@ export async function makeWorld(glb:string,sigils:string[]){
  const source=(await new GLTFLoader().loadAsync(glb)).scene;
  const textures=await Promise.all(sigils.map(u=>new T.TextureLoader().loadAsync(u)));textures.forEach(t=>{t.colorSpace=T.SRGBColorSpace;t.flipY=false;});
  const muses:T.Group[]=[];
+ const baseActor=baseUrl?await loadMuseBase(baseUrl):null;let actorTime=0,actorPosition:{x:number;z:number}|null=null,walkDistance=0;
  const shadowCanvas=document.createElement('canvas');shadowCanvas.width=shadowCanvas.height=64;const sc=shadowCanvas.getContext('2d')!,grad=sc.createRadialGradient(32,32,0,32,32,32);grad.addColorStop(0,'rgba(50,65,42,.22)');grad.addColorStop(.5,'rgba(50,65,42,.12)');grad.addColorStop(1,'rgba(50,65,42,0)');sc.fillStyle=grad;sc.fillRect(0,0,64,64);const shadowTexture=new T.CanvasTexture(shadowCanvas);
  const shadows:T.Mesh[]=[];
  const selection=new T.Mesh(new T.RingGeometry(.37,.41,48),new T.MeshBasicMaterial({color:'#fdf4d9',side:T.DoubleSide,transparent:true,opacity:.92,depthWrite:false}));selection.rotation.x=-Math.PI/2;selection.position.y=.069;scene.add(selection);
  for(let i=0;i<PEOPLE.length;i++){
-  const root=source.clone(true);root.name='Muse_'+i;root.userData.person=i;
+  const root=i===0&&baseActor?baseActor.root:source.clone(true);root.name='Muse_'+i;root.userData.person=i;
+  if(!(i===0&&baseActor)){
   root.traverse(o=>{if(o instanceof T.Mesh){o.userData.person=i;mapMeshMaterials(o,m=>paintMuseMaterial(m,PEOPLE[i].color,textures[i%2]));}});
   // Original small accessories: short scarves, a shoulder pouch, a stitched collar.
   const accent=mat(PEOPLE[i].accent);
@@ -95,7 +98,8 @@ export async function makeWorld(glb:string,sigils:string[]){
   if(i%3===2){const patch=new T.Mesh(new T.CircleGeometry(.035,6),accent);patch.position.set(-.12,.34,.27);accessory.add(patch);}
   if(i===4){const book=new T.Group();book.name='ReadingBook';book.position.set(-.10,.34,.24);book.rotation.x=-.55;book.add(new T.Mesh(new RoundedBoxGeometry(.19,.04,.22,2,.012),mat('#2A3550')));const pages=new T.Mesh(new T.BoxGeometry(.17,.018,.19),mat('#F2E9D8'));pages.position.y=.022;book.add(pages);accessory.add(book);}
   if(i===3){const can=new T.Group();can.name='GardenCan';can.position.set(.26,.31,.14);const waterMat=mat('#85bfb1');can.add(new T.Mesh(new T.CylinderGeometry(.05,.055,.10,12),waterMat));const spout=new T.Mesh(new T.CylinderGeometry(.012,.014,.11,8),waterMat);spout.rotation.x=1.0;spout.position.set(0,.015,.065);can.add(spout);const handle=new T.Mesh(new T.TorusGeometry(.04,.009,5,12),waterMat);handle.position.set(0,.02,-.04);can.add(handle);const drops=new T.Group();drops.name='GardenDrops';for(let d=0;d<3;d++){const drop=new T.Mesh(new T.SphereGeometry(.008,6,4),new T.MeshBasicMaterial({color:'#6FA8C9'}));drop.position.set(0,-.05-d*.04,.13+d*.015);drops.add(drop);}can.add(drops);accessory.add(can);}
-  root.add(accessory);scene.add(root);muses.push(root);
+  root.add(accessory);}
+  scene.add(root);muses.push(root);
   const shadow=new T.Mesh(new T.PlaneGeometry(1.0,.8),new T.MeshBasicMaterial({map:shadowTexture,transparent:true,depthWrite:false}));shadow.rotation.x=-Math.PI/2;shadow.position.y=.065;scene.add(shadow);shadows.push(shadow);
  }
  const treeShadows:T.Mesh[]=[];
@@ -106,7 +110,15 @@ export async function makeWorld(glb:string,sigils:string[]){
  scene.add(new T.HemisphereLight('#7E93B8','#101623',1.7));const fireLight=new T.PointLight('#FF9E45',5,10,1.7);fireLight.position.set(0,.7,2);scene.add(fireLight);
  const updateInstances=instanceMovingMeshes(scene,[...muses,...shadows,...treeShadows]);
  let selected=0;
- function update(t:number,index:number){selected=index;for(let i=0;i<muses.length;i++){const p=positionAt(i,t),root=muses[i];root.position.set(p.x,surfaceHeightAt(p.x,p.z)+.006+(p.moving?Math.abs(Math.sin(t*5+i))*.018:Math.sin(t*1.8+i)*.005),p.z);const turn=conversationAt(t),partner=turn?.person===i?turn.listener:turn?.listener===i?turn.person:undefined;const q=partner===undefined?null:positionAt(partner,t);const target=p.moving?p.yaw:q?Math.atan2(q.x-p.x,q.z-p.z):i===3?Math.PI/2:Math.sin(i*2)*.45;root.rotation.y=target;root.rotation.z=p.moving?Math.sin(t*5+i)*.035:0;if(i===3){const drops=root.getObjectByName('GardenDrops');if(drops){const tending=!p.moving&&partner===undefined;drops.scale.setScalar(tending?1:0);drops.position.y=-((t*.08)%.04);}}shadows[i].position.x=p.x;shadows[i].position.z=p.z;shadows[i].position.y=surfaceHeightAt(p.x,p.z)+.002;}const p=positionAt(selected,t);selection.position.x=p.x;selection.position.z=p.z;selection.position.y=surfaceHeightAt(p.x,p.z)+.004;updateInstances();fire.children.forEach((f,i)=>{f.scale.y=(.37-i*.05)*(1+Math.sin(t*8+i*3)*.12);});}
+ function update(t:number,index:number){selected=index;for(let i=0;i<muses.length;i++){const p=positionAt(i,t),root=muses[i];root.position.set(p.x,surfaceHeightAt(p.x,p.z)+.006+(p.moving?Math.abs(Math.sin(t*5+i))*.018:Math.sin(t*1.8+i)*.005),p.z);const turn=conversationAt(t),partner=turn?.person===i?turn.listener:turn?.listener===i?turn.person:undefined;const q=partner===undefined?null:positionAt(partner,t);const target=p.moving?p.yaw:q?Math.atan2(q.x-p.x,q.z-p.z):i===3?Math.PI/2:Math.sin(i*2)*.45;root.rotation.y=target;root.rotation.z=p.moving?Math.sin(t*5+i)*.035:0;
+ if(i===0&&baseActor){
+  if(t<actorTime||t-actorTime>.25)walkDistance=0;else if(p.moving&&actorPosition)walkDistance+=Math.hypot(p.x-actorPosition.x,p.z-actorPosition.z);
+  const wave=turn?.id===0&&t-turn.start<2.5,action=p.moving?'walk':wave?'wave':turn?.person===i?'talk':turn?.listener===i?'listen':'idle_breathe';
+  baseActor.setAction(action);baseActor.setExpression(turn?.person===i?'Smile':turn?.listener===i?'Listening':t<14?'Curious':'Neutral');
+  baseActor.update(t,{x:p.x,y:surfaceHeightAt(p.x,p.z)+.006,z:p.z,yaw:target},action==='walk'?walkDistance/.27*(32/24):action==='wave'?t-turn!.start:t);
+  root.rotation.z=0;actorPosition={x:p.x,z:p.z};actorTime=t;
+ }
+ if(i===3){const drops=root.getObjectByName('GardenDrops');if(drops){const tending=!p.moving&&partner===undefined;drops.scale.setScalar(tending?1:0);drops.position.y=-((t*.08)%.04);}}shadows[i].position.x=p.x;shadows[i].position.z=p.z;shadows[i].position.y=surfaceHeightAt(p.x,p.z)+.002;}const p=positionAt(selected,t);selection.position.x=p.x;selection.position.z=p.z;selection.position.y=surfaceHeightAt(p.x,p.z)+.004;updateInstances();fire.children.forEach((f,i)=>{f.scale.y=(.37-i*.05)*(1+Math.sin(t*8+i*3)*.12);});}
  update(0,0);
- return {scene,muses,selection,update,sourceHeight:new T.Box3().setFromObject(source).getSize(new T.Vector3()).y};
+ return {scene,muses,selection,update,baseActor,sourceHeight:new T.Box3().setFromObject(source).getSize(new T.Vector3()).y};
 }

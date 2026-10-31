@@ -13,7 +13,9 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "check": "npm test && npm run typecheck && npm run build",
-    "pretypecheck": "node scripts/prepare-assets.mjs"
+    "pretypecheck": "node scripts/prepare-assets.mjs",
+    "proof:build": "node scripts/build-character-proof.mjs",
+    "proof:dev": "python3 -m http.server 8788 --bind 127.0.0.1 --directory dist-character-proof"
   },
   "dependencies": {
     "maplibre-gl": "6.16.0",

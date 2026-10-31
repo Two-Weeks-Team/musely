@@ -1,0 +1,65 @@
+{
+  "schema": "musely.base-reference.v1",
+  "frontalMaster": {
+    "id": "ref-jolly-front-card-20261031",
+    "originalBasename": "orca-paste-1793448185478-1fff2d2e-ffde-44b9-a567-e64ebe516ebc.png",
+    "sha256": "1a64e197c004ab7710e8f13fe2fbc75fafbb5f9b700a8f7b3456a1b99f165840",
+    "imageSize": [
+      480,
+      640
+    ],
+    "analysisCrop": [
+      132,
+      304,
+      368,
+      568
+    ],
+    "localReferenceOnly": true
+  },
+  "measuredLandmarksPixels": {
+    "top": [
+      249,
+      315
+    ],
+    "feetBottomY": 559,
+    "faceLeft": [
+      199,
+      374
+    ],
+    "faceRight": [
+      300,
+      374
+    ],
+    "eyeLeft": [
+      223.5,
+      374.5
+    ],
+    "eyeRight": [
+      275.3,
+      374.5
+    ],
+    "faceTopY": 340,
+    "faceBottomY": 407,
+    "hoodAtEyeLevel": [
+      178,
+      322
+    ],
+    "outerArmExtents": [
+      140,
+      360
+    ]
+  },
+  "ratios": {
+    "eyeSeparationToFaceWidth": 0.5128712871287129,
+    "faceWidthToHoodWidth": 0.7013888888888888,
+    "faceHeightToTotalHeight": 0.27459016393442626,
+    "overallWidthToTotalHeight": 0.9016393442622951
+  },
+  "interpretation": "Pixel landmarks are manual observations of this perspective poster, excluding the white cutout border. Side/back depth is authored interpretation; no orthographic or official 3D fidelity claim.",
+  "productionScaleM": 0.9,
+  "sourceAssetsPreserved": {
+    "muse_base.glb": "a1f2db9a615537fed51c96fb4fd576938bf752b8405009648e9133863803709b",
+    "variant_a.png": "28a1b032cb2b49bccb276b37ae498061e52ec67e48b70e546fa6d96ca9649115",
+    "variant_b.png": "2ff250470479735cd77585926e0b3cd6f41d4d9bfd367ff96642a0304b348af7"
+  }
+}

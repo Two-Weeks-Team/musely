@@ -7,3 +7,7 @@ assets/embedded.json
 *.log
 .DS_Store
 output/
+dist-character-proof/
+character-kit/source/*.blend1
+.playwright-cli/
+character-kit/source/muse_material.blend
