@@ -1,5 +1,5 @@
 {
-  "schema": "musely.base-clips.v1",
+  "schema": "musely.muse-clips.v2",
   "fps": 24,
   "rootMotion": "in-place; world routes own translation/yaw",
   "walkStrideMeters": 0.27,
@@ -64,6 +64,60 @@
       "name": "offer_item",
       "seconds": 2.5,
       "loop": false
+    },
+    {
+      "name": "welcome_neighbors",
+      "seconds": 2.5,
+      "loop": false,
+      "signature": true
+    },
+    {
+      "name": "water_plants",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "inspect_map",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "tell_story",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "reassure",
+      "seconds": 3.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "read_book",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "music_bounce",
+      "seconds": 2.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "observe_sky",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "inspect_gadget",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
     }
   ],
   "sockets": {

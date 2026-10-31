@@ -1,0 +1,385 @@
+{
+  "schema": "musely.muse-character-kit.v1",
+  "note": "Muse and Jolly are characters of Meta. These fan-made recreations are excluded from the repository license; see NOTICE.md.",
+  "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
+  "lodBudgets": {
+    "lod0": 28000,
+    "lod1": 8000,
+    "lod2": 3000
+  },
+  "residents": [
+    "00-jolly",
+    "01-sunny",
+    "07-tempo",
+    "02-moss",
+    "06-ink",
+    "08-orbit",
+    "05-bloom",
+    "03-ripple"
+  ],
+  "variants": [
+    {
+      "id": "00-jolly",
+      "name": "Jolly",
+      "role": "Base",
+      "personality": "Warm, attentive companion; the reference standard",
+      "body": "#E8DDC7",
+      "accent": "#D9A38D",
+      "signature": null,
+      "tempo": 1.0,
+      "lods": [
+        "base/lod0.glb",
+        "base/lod1.glb",
+        "base/lod2.glb"
+      ],
+      "attachment": null,
+      "actions": {
+        "bodyClips": 12,
+        "signature": null,
+        "propClip": null
+      }
+    },
+    {
+      "id": "01-sunny",
+      "name": "Sunny",
+      "role": "Host",
+      "personality": "Outgoing, welcomes neighbors",
+      "body": "#E7B75B",
+      "accent": "#D9886C",
+      "signature": "welcome_neighbors",
+      "tempo": 1.12,
+      "lods": [
+        "base/lod0.glb",
+        "base/lod1.glb",
+        "base/lod2.glb"
+      ],
+      "attachment": "attachments/01-sunny.glb",
+      "actions": {
+        "bodyClips": 13,
+        "signature": "welcome_neighbors",
+        "propClip": null
+      }
+    },
+    {
+      "id": "02-moss",
+      "name": "Moss",
+      "role": "Gardener",
+      "personality": "Patient, notices and cares for small things",
+      "body": "#9CAD82",
+      "accent": "#BA8068",
+      "signature": "water_plants",
+      "tempo": 0.9,
+      "lods": [
+        "base/lod0.glb",
+        "base/lod1.glb",
+        "base/lod2.glb"
+      ],
+      "attachment": "attachments/02-moss.glb",
+      "actions": {
+        "bodyClips": 13,
+        "signature": "water_plants",
+        "propClip": null
+      }
+    },
+    {
+      "id": "03-ripple",
+      "name": "Ripple",
+      "role": "Explorer",
+      "personality": "Curious, observant, enjoys the long way home",
+      "body": "#83B8AE",
+      "accent": "#DBC5A1",
+      "signature": "inspect_map",
+      "tempo": 1.0,
+      "lods": [
+        "base/lod0.glb",
+        "base/lod1.glb",
+        "base/lod2.glb"
+      ],
+      "attachment": "attachments/03-ripple.glb",
+      "actions": {
+        "bodyClips": 13,
+        "signature": "inspect_map",
+        "propClip": null
+      }
+    },
+    {
+      "id": "04-ember",
+      "name": "Ember",
+      "role": "Storykeeper",
+      "personality": "Calm, invites others to stay and listen",
+      "body": "#CC8F73",
+      "accent": "#E6BE77",
+      "signature": "tell_story",
+      "tempo": 0.85,
+      "lods": [
+        "base/lod0.glb",
+        "base/lod1.glb",
+        "base/lod2.glb"
+      ],
+      "attachment": "attachments/04-ember.glb",
+      "actions": {
+        "bodyClips": 13,
+        "signature": "tell_story",
+        "propClip": null
+      }
+    },
+    {
+      "id": "05-bloom",
+      "name": "Bloom",
+      "role": "Listener",
+      "personality": "Empathetic, gives people space",
+      "body": "#D5A0B1",
+      "accent": "#9AAE91",
+      "signature": "reassure",
+      "tempo": 0.9,
+      "lods": [
+        "base/lod0.glb",
+        "base/lod1.glb",
+        "base/lod2.glb"
+      ],
+      "attachment": "attachments/05-bloom.glb",
+      "actions": {
+        "bodyClips": 13,
+        "signature": "reassure",
+        "propClip": null
+      }
+    },
+    {
+      "id": "06-ink",
+      "name": "Ink",
+      "role": "Reader",
+      "personality": "Thoughtful, focused, quietly playful",
+      "body": "#91ABC8",
+      "accent": "#826D9B",
+      "signature": "read_book",
+      "tempo": 0.95,
+      "lods": [
+        "base/lod0.glb",
+        "base/lod1.glb",
+        "base/lod2.glb"
+      ],
+      "attachment": "attachments/06-ink.glb",
+      "actions": {
+        "bodyClips": 13,
+        "signature": "read_book",
+        "propClip": null
+      }
+    },
+    {
+      "id": "07-tempo",
+      "name": "Tempo",
+      "role": "Music Friend",
+      "personality": "Playful rhythm and shared company",
+      "body": "#AE9CCB",
+      "accent": "#E5CF90",
+      "signature": "music_bounce",
+      "tempo": 1.1,
+      "lods": [
+        "base/lod0.glb",
+        "base/lod1.glb",
+        "base/lod2.glb"
+      ],
+      "attachment": "attachments/07-tempo.glb",
+      "actions": {
+        "bodyClips": 13,
+        "signature": "music_bounce",
+        "propClip": null
+      }
+    },
+    {
+      "id": "08-orbit",
+      "name": "Orbit",
+      "role": "Stargazer",
+      "personality": "Dreamy, reflective, attentive to the sky",
+      "body": "#8D96B8",
+      "accent": "#DCC589",
+      "signature": "observe_sky",
+      "tempo": 0.85,
+      "lods": [
+        "base/lod0.glb",
+        "base/lod1.glb",
+        "base/lod2.glb"
+      ],
+      "attachment": "attachments/08-orbit.glb",
+      "actions": {
+        "bodyClips": 13,
+        "signature": "observe_sky",
+        "propClip": null
+      }
+    },
+    {
+      "id": "09-copper",
+      "name": "Copper",
+      "role": "Maker",
+      "personality": "Practical, inventive, enjoys fixing things",
+      "body": "#AD8E79",
+      "accent": "#7EA6A2",
+      "signature": "inspect_gadget",
+      "tempo": 1.0,
+      "lods": [
+        "base/lod0.glb",
+        "base/lod1.glb",
+        "base/lod2.glb"
+      ],
+      "attachment": "attachments/09-copper.glb",
+      "actions": {
+        "bodyClips": 13,
+        "signature": "inspect_gadget",
+        "propClip": null
+      }
+    }
+  ],
+  "files": {
+    "base/lod0.glb": {
+      "bytes": 6030464,
+      "sha256": "78211b7da70bddeaae08ff8e88144c27c9f7e816af75f989cb64c31f978709bb",
+      "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
+      "clips": [
+        "celebrate",
+        "idle_breathe",
+        "inspect_gadget",
+        "inspect_map",
+        "listen",
+        "look_around",
+        "music_bounce",
+        "observe_sky",
+        "offer_item",
+        "read_book",
+        "reassure",
+        "sit_down",
+        "sit_idle",
+        "stand_up",
+        "talk",
+        "tell_story",
+        "think",
+        "walk",
+        "water_plants",
+        "wave",
+        "welcome_neighbors"
+      ]
+    },
+    "base/lod1.glb": {
+      "bytes": 1635856,
+      "sha256": "566332121851924a28ab1bdd40b4e9d37c91b99ca4c9ed3f203d701e05087c1e",
+      "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
+      "clips": []
+    },
+    "base/lod2.glb": {
+      "bytes": 446828,
+      "sha256": "3526d368d9fd02a578f8815f394b8aa38d1ea2f5b47ff71f5e3f039277b399f8",
+      "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
+      "clips": []
+    },
+    "attachments/01-sunny.glb": {
+      "bytes": 834896,
+      "sha256": "ae65023ad8956adc72460ccc925b11c987e9061a92262a18f68a685eb72ecf70",
+      "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
+      "parts": [
+        "01-sunny__badge",
+        "01-sunny__scarf",
+        "01-sunny__scarf_tail"
+      ],
+      "propSockets": {
+        "01-sunny__badge": "Socket_Chest"
+      }
+    },
+    "attachments/02-moss.glb": {
+      "bytes": 864128,
+      "sha256": "a6d016f0de452604e9f012a355b836f16e930a884098270758f15fa8cadff715",
+      "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
+      "parts": [
+        "02-moss__apron",
+        "02-moss__watering_can"
+      ],
+      "propSockets": {
+        "02-moss__watering_can": "Socket_Hand_R"
+      }
+    },
+    "attachments/03-ripple.glb": {
+      "bytes": 891772,
+      "sha256": "4b213dbc792e3d813e5f11f881373527fb2423de45afe679e02e7c157f861890",
+      "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
+      "parts": [
+        "03-ripple__bag",
+        "03-ripple__map",
+        "03-ripple__sole_L",
+        "03-ripple__sole_R"
+      ],
+      "propSockets": {
+        "03-ripple__map": "Socket_Hand_L"
+      }
+    },
+    "attachments/04-ember.glb": {
+      "bytes": 618204,
+      "sha256": "7ea55cd94ace3752017033b6ee417da46a063564a1a4da3270cb8eafe78a08b3",
+      "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
+      "parts": [
+        "04-ember__lantern",
+        "04-ember__shawl"
+      ],
+      "propSockets": {
+        "04-ember__lantern": "Socket_Hand_L"
+      }
+    },
+    "attachments/05-bloom.glb": {
+      "bytes": 572400,
+      "sha256": "8d7b1cd0a7bb494bef22dd92ab7662a8af60b635602d2d0412248a2477a34fb0",
+      "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
+      "parts": [
+        "05-bloom__cardigan"
+      ],
+      "propSockets": {}
+    },
+    "attachments/06-ink.glb": {
+      "bytes": 836724,
+      "sha256": "990e5f4dedaede3a961e1f782135c1b1c316fb646e7ee9d435a6be9ff36336f7",
+      "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
+      "parts": [
+        "06-ink__book",
+        "06-ink__glasses",
+        "06-ink__pouch"
+      ],
+      "propSockets": {
+        "06-ink__glasses": "Socket_Head",
+        "06-ink__book": "Socket_Hand_L"
+      }
+    },
+    "attachments/07-tempo.glb": {
+      "bytes": 839224,
+      "sha256": "1c2195df2fb19258cfc4c4237ab85f172f92c34f422656668c5a2567013637fb",
+      "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
+      "parts": [
+        "07-tempo__headphones"
+      ],
+      "propSockets": {
+        "07-tempo__headphones": "Socket_Head"
+      }
+    },
+    "attachments/08-orbit.glb": {
+      "bytes": 584716,
+      "sha256": "43c5883aa97f7c44f4a54ac7507fe58baeb6478df3559a01d30b9b7d27dcf18a",
+      "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
+      "parts": [
+        "08-orbit__cape",
+        "08-orbit__star_pin"
+      ],
+      "propSockets": {
+        "08-orbit__star_pin": "Socket_Chest"
+      }
+    },
+    "attachments/09-copper.glb": {
+      "bytes": 980692,
+      "sha256": "9812d32f0c3dff904c0529314915cda1693257d42fa3da03dc36331660781f12",
+      "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
+      "parts": [
+        "09-copper__gadget",
+        "09-copper__tool",
+        "09-copper__work_apron"
+      ],
+      "propSockets": {
+        "09-copper__tool": "Socket_Hand_L",
+        "09-copper__gadget": "Socket_Hand_R"
+      }
+    }
+  }
+}

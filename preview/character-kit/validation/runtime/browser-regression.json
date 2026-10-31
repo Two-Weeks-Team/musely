@@ -1,0 +1,562 @@
+{
+ "date": "2026-11-01",
+ "script": "scripts/muse.browser.js",
+ "server": "static dist (python http.server)",
+ "note": "Desktop Chromium via Playwright; 390x844 is touch emulation, not a physical device.",
+ "results": [
+  {
+   "viewport": "1440x1000",
+   "viewer": [
+    {
+     "id": "00-jolly",
+     "signature": null,
+     "triangles": [
+      22886,
+      5069,
+      1982
+     ]
+    },
+    {
+     "id": "01-sunny",
+     "signature": "welcome_neighbors",
+     "triangles": [
+      24782,
+      5635,
+      2200
+     ]
+    },
+    {
+     "id": "02-moss",
+     "signature": "water_plants",
+     "triangles": [
+      25030,
+      5711,
+      2238
+     ]
+    },
+    {
+     "id": "03-ripple",
+     "signature": "inspect_map",
+     "triangles": [
+      24202,
+      5458,
+      2134
+     ]
+    },
+    {
+     "id": "04-ember",
+     "signature": "tell_story",
+     "triangles": [
+      24786,
+      5637,
+      2203
+     ]
+    },
+    {
+     "id": "05-bloom",
+     "signature": "reassure",
+     "triangles": [
+      25486,
+      5849,
+      2291
+     ]
+    },
+    {
+     "id": "06-ink",
+     "signature": "read_book",
+     "triangles": [
+      24450,
+      5537,
+      2166
+     ]
+    },
+    {
+     "id": "07-tempo",
+     "signature": "music_bounce",
+     "triangles": [
+      25174,
+      5755,
+      2255
+     ]
+    },
+    {
+     "id": "08-orbit",
+     "signature": "observe_sky",
+     "triangles": [
+      24870,
+      5663,
+      2218
+     ]
+    },
+    {
+     "id": "09-copper",
+     "signature": "inspect_gadget",
+     "triangles": [
+      24966,
+      5689,
+      2228
+     ]
+    }
+   ],
+   "scenes": [
+    {
+     "time": 10,
+     "actions": [
+      "look_around",
+      "idle_breathe",
+      "music_bounce",
+      "water_plants",
+      "read_book",
+      "observe_sky",
+      "listen",
+      "inspect_map"
+     ],
+     "lods": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "drawCalls": 71
+    },
+    {
+     "time": 16,
+     "actions": [
+      "wave",
+      "walk",
+      "music_bounce",
+      "water_plants",
+      "read_book",
+      "observe_sky",
+      "reassure",
+      "inspect_map"
+     ],
+     "lods": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "drawCalls": 71
+    },
+    {
+     "time": 30,
+     "actions": [
+      "listen",
+      "welcome_neighbors",
+      "music_bounce",
+      "water_plants",
+      "read_book",
+      "walk",
+      "listen",
+      "walk"
+     ],
+     "lods": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "drawCalls": 71
+    },
+    {
+     "time": 55,
+     "actions": [
+      "talk",
+      "walk",
+      "music_bounce",
+      "walk",
+      "read_book",
+      "observe_sky",
+      "listen",
+      "look_around"
+     ],
+     "lods": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "drawCalls": 71
+    },
+    {
+     "time": 100,
+     "actions": [
+      "talk",
+      "listen",
+      "walk",
+      "walk",
+      "read_book",
+      "observe_sky",
+      "reassure",
+      "inspect_map"
+     ],
+     "lods": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0
+     ],
+     "drawCalls": 71
+    },
+    {
+     "time": 150,
+     "actions": [
+      "listen",
+      "talk",
+      "music_bounce",
+      "water_plants",
+      "read_book",
+      "observe_sky",
+      "reassure",
+      "walk"
+     ],
+     "lods": [
+      1,
+      1,
+      0,
+      1,
+      1,
+      1,
+      0,
+      1
+     ],
+     "drawCalls": 71
+    },
+    {
+     "time": 185,
+     "actions": [
+      "talk",
+      "listen",
+      "music_bounce",
+      "water_plants",
+      "read_book",
+      "observe_sky",
+      "listen",
+      "look_around"
+     ],
+     "lods": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "drawCalls": 71
+    }
+   ],
+   "closeLods": [
+    0,
+    1,
+    1,
+    0,
+    1,
+    1,
+    1,
+    1
+   ],
+   "fps": 60,
+   "errors": []
+  },
+  {
+   "viewport": "390x844 touch emulation",
+   "viewer": [
+    {
+     "id": "00-jolly",
+     "signature": null,
+     "triangles": [
+      22886,
+      5069,
+      1982
+     ]
+    },
+    {
+     "id": "01-sunny",
+     "signature": "welcome_neighbors",
+     "triangles": [
+      24782,
+      5635,
+      2200
+     ]
+    },
+    {
+     "id": "02-moss",
+     "signature": "water_plants",
+     "triangles": [
+      25030,
+      5711,
+      2238
+     ]
+    },
+    {
+     "id": "03-ripple",
+     "signature": "inspect_map",
+     "triangles": [
+      24202,
+      5458,
+      2134
+     ]
+    },
+    {
+     "id": "04-ember",
+     "signature": "tell_story",
+     "triangles": [
+      24786,
+      5637,
+      2203
+     ]
+    },
+    {
+     "id": "05-bloom",
+     "signature": "reassure",
+     "triangles": [
+      25486,
+      5849,
+      2291
+     ]
+    },
+    {
+     "id": "06-ink",
+     "signature": "read_book",
+     "triangles": [
+      24450,
+      5537,
+      2166
+     ]
+    },
+    {
+     "id": "07-tempo",
+     "signature": "music_bounce",
+     "triangles": [
+      25174,
+      5755,
+      2255
+     ]
+    },
+    {
+     "id": "08-orbit",
+     "signature": "observe_sky",
+     "triangles": [
+      24870,
+      5663,
+      2218
+     ]
+    },
+    {
+     "id": "09-copper",
+     "signature": "inspect_gadget",
+     "triangles": [
+      24966,
+      5689,
+      2228
+     ]
+    }
+   ],
+   "scenes": [
+    {
+     "time": 10,
+     "actions": [
+      "look_around",
+      "idle_breathe",
+      "music_bounce",
+      "water_plants",
+      "read_book",
+      "observe_sky",
+      "listen",
+      "inspect_map"
+     ],
+     "lods": [
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+     ],
+     "drawCalls": 71
+    },
+    {
+     "time": 16,
+     "actions": [
+      "wave",
+      "walk",
+      "music_bounce",
+      "water_plants",
+      "read_book",
+      "observe_sky",
+      "reassure",
+      "inspect_map"
+     ],
+     "lods": [
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+     ],
+     "drawCalls": 71
+    },
+    {
+     "time": 30,
+     "actions": [
+      "listen",
+      "welcome_neighbors",
+      "music_bounce",
+      "water_plants",
+      "read_book",
+      "walk",
+      "listen",
+      "walk"
+     ],
+     "lods": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "drawCalls": 71
+    },
+    {
+     "time": 55,
+     "actions": [
+      "talk",
+      "walk",
+      "music_bounce",
+      "walk",
+      "read_book",
+      "observe_sky",
+      "listen",
+      "look_around"
+     ],
+     "lods": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "drawCalls": 66
+    },
+    {
+     "time": 100,
+     "actions": [
+      "talk",
+      "listen",
+      "walk",
+      "walk",
+      "read_book",
+      "observe_sky",
+      "reassure",
+      "inspect_map"
+     ],
+     "lods": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "drawCalls": 71
+    },
+    {
+     "time": 150,
+     "actions": [
+      "listen",
+      "talk",
+      "music_bounce",
+      "water_plants",
+      "read_book",
+      "observe_sky",
+      "reassure",
+      "walk"
+     ],
+     "lods": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "drawCalls": 71
+    },
+    {
+     "time": 185,
+     "actions": [
+      "talk",
+      "listen",
+      "music_bounce",
+      "water_plants",
+      "read_book",
+      "observe_sky",
+      "listen",
+      "look_around"
+     ],
+     "lods": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+     ],
+     "drawCalls": 71
+    }
+   ],
+   "closeLods": [
+    0,
+    1,
+    1,
+    0,
+    1,
+    1,
+    1,
+    1
+   ],
+   "fps": 60,
+   "errors": []
+  }
+ ]
+}
