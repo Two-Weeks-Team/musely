@@ -82,7 +82,7 @@ Equipped maxima, measured in the browser: LOD0 25,486, LOD1 5,849 and LOD2 2,292
 - `scripts/muse.browser.js` passed at desktop 1440×1000 and in 390×844 touch emulation:
   - Viewer: all ten load with fleece and accessory PBR maps; heights are 0.85–1.05 m; signature clips animate; LOD triangles stay within budget; expressions do not leak into each other; three lighting presets work; pause works; whole-character framing fits the sampled signature poses at both aspect ratios, with no horizontal page overflow.
   - World: the eight residents are the rigged kit; the scene and actor roots stay the same across seeks; speech framing works; there is a single canvas; LOD0 count is ≤2; the selected close Muse is at LOD0.
-  - Draw calls ≤72 (target ≤90). 60 fps in these desktop samples. No page errors.
+  - Draw calls ≤72 (target ≤90). 47–60 fps across independent desktop reruns (the final browser regression sampled 47 fps); this does not establish the continuous desktop performance target. No page errors.
 - Khronos glTF Validator 2.0.0-dev.3.10 reports **0 errors and 0 warnings** on all 12 runtime files (`character-kit/validation/export/gltf-validator.json`). The first run found three problems, all fixed:
   - zero-length tangents left by decimation: repaired by `fix_tangents.py`
   - n-gon caps without tangents: now triangulated
