@@ -38,4 +38,18 @@ See [the entry review](docs/ENTRY_REVIEW.md) for before/after conditions and mea
 
 After `npm run build`, a static server can also serve `dist/` for asset-only browser QA when the installed local Workers runtime does not support the configured compatibility date.
 
+## Attribution
+
+**Owned by Meta (not ours):** the Muse product and its default character, Jolly, including the original character design. `assets/muse_base.glb` and everything under `character-kit/` recreate that character. These assets fall outside the repository license, and no reuse rights are granted. See [`character-kit/NOTICE.md`](character-kit/NOTICE.md).
+
+**Made by Two Weeks Team during the hackathon (from 2026-10-26):**
+
+- 3D recreation of the Muse character: modeling, materials, rig, actions and facial expressions
+- In-demo Muse customization (colors, outfits and props)
+- Sigil identity textures (`assets/variant_*.png`)
+- Real-map world, camera, movement, dialogue and interface code (`src/`)
+- The scenario (`docs/SCENARIO.md`), tests, build and deployment scripts
+
+The map data below keeps its own license.
+
 The embedded geographic data in `assets/arrival-map.json` is derived from OpenFreeMap / OpenMapTiles / © OpenStreetMap contributors and is provided under the [Open Database License (ODbL)](https://www.openstreetmap.org/copyright). Its metadata records capture bounds, date and simplification; this data license does not change the license of the application or character assets.
