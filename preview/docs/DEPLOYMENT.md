@@ -11,6 +11,8 @@
 
 The initial published HTML is 2,882,280 bytes. Its SHA-256 is `f0a840836f4721331e76761ae854be7ef398e85198f464aefd690605132b0496`, matching the accepted visual preview. All 16 regression tests and TypeScript checks pass. The production URL returns HTTPS 200, with noindex headers. The actual browser renders the map, Muse characters, speech, and faint activity bubbles.
 
+The entry-review patch and its separate measurements are documented in [ENTRY_REVIEW.md](ENTRY_REVIEW.md).
+
 ## Git build settings
 
 The Worker is connected to `Two-Weeks-Team/musely`, production branch `main`, root directory `preview`, Node `24.22.2`. It runs `npm ci && npm run check`, then `npx wrangler deploy`. The watch path is `preview/**`; non-production branch deployments are disabled.

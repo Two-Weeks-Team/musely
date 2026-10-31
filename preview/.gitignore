@@ -6,3 +6,4 @@ assets/embedded.json
 .env*
 *.log
 .DS_Store
+output/

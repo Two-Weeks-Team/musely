@@ -12,7 +12,7 @@ npm run check
 npm run dev
 ```
 
-`npm run build` generates `dist/index.html`. The application and character assets are bundled into the HTML; the map needs an internet connection for OpenFreeMap tiles and fonts.
+`npm run build` generates `dist/index.html`. The application, character assets and a Bay geographic overview are bundled into the HTML. Online OpenFreeMap tiles add detailed geography, labels and fonts; their download does not block the local scene. The same overview remains underneath the online map when returning to the Bay.
 
 ## Deploy
 
@@ -25,9 +25,17 @@ The apex and `www` are reserved for the main product. No routes or redirects tar
 ## Contents
 
 - `src/`: map, characters, movement, camera, dialogue, and interface.
-- `assets/`: character GLB, Sigil textures, map style, geographic context, and SHA-256 manifest.
+- `assets/`: character GLB, Sigil textures, map style, embedded Bay overview, geographic context, and SHA-256 manifest.
 - `scripts/`: build, embedding helper, and regression tests.
 - `fixtures/`: public meetup proposal transcript used by tests.
 - `docs/SCENARIO.md`: complete English story and timing.
 
 The conversations and activity are scripted. The commons is an authored fictional space aligned to mapped ground; it does not imply public access to the physical location. This preview does not run personal agents, send invitations, or persist user data.
+
+## Opening and playback verification
+
+See [the entry review](docs/ENTRY_REVIEW.md) for before/after conditions and measured limits. `scripts/entry.browser.js` is an additional browser regression, separate from the Node unit tests. Pass its contents to the Playwright CLI `run-code` command after opening the desired local or production URL. It checks delayed map requests, desktop and 390×844 touch emulation, eight-second arrival, dialogue identity, disclosure, and returning to Bay with failed online requests.
+
+After `npm run build`, a static server can also serve `dist/` for asset-only browser QA when the installed local Workers runtime does not support the configured compatibility date.
+
+The embedded geographic data in `assets/arrival-map.json` is derived from OpenFreeMap / OpenMapTiles / © OpenStreetMap contributors and is provided under the [Open Database License (ODbL)](https://www.openstreetmap.org/copyright). Its metadata records capture bounds, date and simplification; this data license does not change the license of the application or character assets.
