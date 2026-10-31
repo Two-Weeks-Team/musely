@@ -18,6 +18,8 @@ export class MuseActor extends BaseMuseActor{
  readonly skeleton:T.Skeleton;
  private tagged:Tagged[]=[];
  private bones=new Map<string,T.Bone>();
+ private propMixer:T.AnimationMixer|null=null;
+ private propActions=new Map<string,T.AnimationAction>();
  constructor(lods:readonly [GLTF,GLTF?,GLTF?],attachment:GLTF|null,variant:MuseVariantId,library?:MaterialLibrary){
   super(lods[0]);
   this.variant=variant;this.root.name=`Muse_${variant}`;
@@ -40,6 +42,7 @@ export class MuseActor extends BaseMuseActor{
     }
    }
   }
+  if(attachment?.animations.length){this.propMixer=new T.AnimationMixer(this.root);for(const clip of attachment.animations)this.propActions.set(clip.name,this.propMixer.clipAction(clip));}
   if(library&&variant!=='00-jolly')for(const m of this.meshes){const mat=m.material as T.MeshStandardMaterial;if(mat.name.startsWith('Fleece'))m.material=library.fleece(variant,mat);}
   this.setLod(0);
  }
@@ -58,6 +61,11 @@ export class MuseActor extends BaseMuseActor{
  private tag(o:T.Object3D,lod:Lod){(o as Tagged).userData.museLod=lod;this.tagged.push(o as Tagged);}
  /** Swap rendered meshes only; root, skeleton, action time and expression continue. */
  setLod(lod:Lod){this.lod=lod;for(const o of this.tagged)o.visible=o.userData.museLod===lod;}
+ update(time:number,pose:import('./BaseMuseActor.ts').RoutePose,actionTime=time){
+  super.update(time,pose,actionTime);
+  if(this.propMixer){const a=this.propActions.get(this.current);if(a){a.reset().play();this.propMixer.setTime(Math.max(0,actionTime)%a.getClip().duration);}else this.propMixer.stopAllAction();this.root.updateMatrixWorld(true);}
+ }
+ dispose(){this.propMixer?.stopAllAction();this.propMixer?.uncacheRoot(this.root);super.dispose();}
  /** Materials of currently rendered meshes (diagnostics for material/tint checks). */
  visibleMaterials(){const out:{mesh:string;material:string;color:string;map:boolean;normal:boolean}[]=[];this.root.traverseVisible(o=>{if(o instanceof T.Mesh)for(const m of [o.material].flat() as T.MeshStandardMaterial[])out.push({mesh:o.name,material:m.name,color:'#'+m.color.getHexString(T.LinearSRGBColorSpace),map:!!m.map,normal:!!m.normalMap});});return out;}
  visibleTriangles(){let n=0;this.root.traverseVisible(o=>{if(o instanceof T.Mesh){const g=o.geometry;n+=(g.index?g.index.count:g.attributes.position.count)/3;}});return n;}

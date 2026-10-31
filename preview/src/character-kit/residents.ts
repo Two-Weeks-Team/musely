@@ -30,10 +30,11 @@ export function residentBehavior(i:number,t:number,moving:boolean,turn:Turn):Beh
 export class ResidentClock{
  private distance=0;private last:{x:number;z:number;t:number}|null=null;private action='';private started=0;
  time(b:Behavior,t:number,x:number,z:number,tempo=1){
-  if(this.last&&(t<this.last.t||t-this.last.t>.25))this.distance=0;
+  const seek=!!this.last&&(t<this.last.t||t-this.last.t>.25);
+  if(seek)this.distance=0;
   else if(b.action==='walk'&&this.last)this.distance+=Math.hypot(x-this.last.x,z-this.last.z);
   this.last={x,z,t};
-  if(b.action!==this.action){this.action=b.action;this.started=t;}
+  if(seek||b.action!==this.action){this.action=b.action;this.started=t;}
   if(b.action==='walk')return this.distance/STRIDE_M*WALK_SECONDS;
   return b.timed?t-this.started:t*tempo;
  }

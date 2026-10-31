@@ -7,7 +7,7 @@ Branch `feature/muse-nine`, built on Codex's rigged base (`83cf24d`, `feature/jo
 From `preview/`, using Node 24:
 
 ```sh
-npm ci && npm run check          # 41 Node tests, TypeScript, production build
+npm ci && npm run check          # 44 Node tests, TypeScript, production build
 python3 -m http.server 8789 --bind 127.0.0.1 --directory dist
 ```
 
@@ -41,7 +41,7 @@ All ten share one body, rig, face morphs and fleece maps. Fleece is tinted per v
 | `base/lod0.glb` | rig, body, face (10 morphs), 6 sockets, **21 clips** | 22,886 | 6,030,464 |
 | `base/lod1.glb` | same rig/sockets/morph names, 512 px maps | 5,069 | 1,635,856 |
 | `base/lod2.glb` | same rig/sockets/morph names, 256 px maps | 1,982 | 446,828 |
-| `attachments/<id>.glb` ×9 | skinned garments + bone-parented props, each with `__lod1`/`__lod2` copies | 1,316–2,600 at LOD0 | 0.54–0.97 MB |
+| `attachments/<id>.glb` ×9 | skinned garments + bone-parented props, each with `__lod1`/`__lod2` copies; Ink also carries a 4 s page-only `read_book` clip | 1,316–2,600 at LOD0 | 0.54–0.97 MB |
 
 Equipped maxima, measured in the browser: LOD0 25,486, LOD1 5,849 and LOD2 2,292. The budgets are 28,000, 8,000 and 3,000. All 12 files share one rig digest (joint names and order, parents, inverse binds), and `write_manifest.py` refuses a mismatch. Face morphs on reduced LODs are rebuilt by nearest-vertex delta transfer rather than decimated directly. The world's eight residents transfer 13.5 MB of character files, against a 15 MB target.
 
@@ -63,7 +63,7 @@ Equipped maxima, measured in the browser: LOD0 25,486, LOD1 5,849 and LOD2 2,292
 
 ## Verification (2026-11-01)
 
-- `npm run check`: 41/41 tests, TypeScript and production build all pass. `scripts/character-kit-runtime.test.mjs` adds 13 tests:
+- `npm run check`: 44/44 tests, TypeScript and production build all pass. `scripts/character-kit-runtime.test.mjs` contains 16 tests:
   - catalog, Python spec and manifest agree
   - file hashes and rig digest match
   - 21 clip durations
@@ -75,25 +75,40 @@ Equipped maxima, measured in the browser: LOD0 25,486, LOD1 5,849 and LOD2 2,292
   - signature-action ground contact within 20 mm
   - resident clip coverage
   - LOD selector hysteresis
-  - stride clock
+  - stride clock and same-action seek reset
+  - actor-owned bone-texture disposal, preserving shared geometry
+  - real Ink page rotation, LOD continuity and reset on other actions
   - furniture clearance for all eight equipped residents over the full 210 s
 - `scripts/muse.browser.js` passed at desktop 1440×1000 and in 390×844 touch emulation:
-  - Viewer: all ten load with fleece and accessory PBR maps; heights are 0.85–1.05 m; signature clips animate; LOD triangles stay within budget; expressions do not leak into each other; three lighting presets work; pause works.
+  - Viewer: all ten load with fleece and accessory PBR maps; heights are 0.85–1.05 m; signature clips animate; LOD triangles stay within budget; expressions do not leak into each other; three lighting presets work; pause works; whole-character framing fits the sampled signature poses at both aspect ratios, with no horizontal page overflow.
   - World: the eight residents are the rigged kit; the scene and actor roots stay the same across seeks; speech framing works; there is a single canvas; LOD0 count is ≤2; the selected close Muse is at LOD0.
-  - Draw calls ≤71 (target ≤90). 60 fps in these desktop samples. No page errors.
+  - Draw calls ≤72 (target ≤90). 60 fps in these desktop samples. No page errors.
 - Khronos glTF Validator 2.0.0-dev.3.10 reports **0 errors and 0 warnings** on all 12 runtime files (`character-kit/validation/export/gltf-validator.json`). The first run found three problems, all fixed:
   - zero-length tangents left by decimation: repaired by `fix_tangents.py`
   - n-gon caps without tangents: now triangulated
   - skinned garments parented under the rig: now kept at the scene root
-- Browser evidence is saved in `character-kit/validation/runtime/browser-regression.json`.
+- Final independent browser evidence is saved in `character-kit/validation/runtime/browser-regression.json`.
 - Visual review: Blender renders of every variant (front, three-quarter, back, signature) and browser captures of the world and viewer. Issues found and fixed during review:
   - arms swung outward instead of inward
   - a star pin left at the origin (stale world matrix)
   - a detached watering-can spout
   - washed-out coats (white sheen, sky fill)
 
+## Independent review corrections (2026-11-01)
+
+- Fixed actor replacement leaking bone textures: dispose each unique actor-owned skeleton, while retaining shared geometry, materials and maps.
+- Reproduced GitHub Codex's same-action backward-seek finding (`wave` reached negative action time). Timeline discontinuities now reset both walking and single-play clocks.
+- Added a separate hinged paper leaf to Ink in the Blender source and attachment. Its 4-second, six-track prop clip animates rotation/scale for all three page LODs, using the body action time. Other actions restore the leaf; the shared rig and 21 body clips are unchanged. Executed official MCP `build_variants.py` → `export_kit.py` with `ONLY=['06-ink']` → `write_manifest.py`; all 12 rig digests remain identical.
+- Fixed portrait whole-character framing cutting off Sunny's extended arms. The camera now reserves width for the signature poses; face close-up and manual orbit/zoom remain available. Detail changes also refresh the visible triangle/LOD status.
+- Independent code review of the full branch and correction diff, local CI, all 12 GLB validators, browser tests and direct image inspection completed. Inspected studio signature captures for all ten, night world desktop/mobile captures and the mobile viewer layout. No obvious garment or prop penetration was observed in those sampled poses; this does not establish collision-free cloth for arbitrary poses.
+- LOD tests retain root/skeleton/phase/expression, and the page retains its local pose. Sampled world zoom/LOD swaps showed no actor replacement or pose restart. Simplification changes silhouette/material detail as expected; there is no cross-fade.
+- CodeRabbit reported a successful check and generated a walkthrough, with no actionable inline findings. Its review excluded Blender/images and could not fetch two base GLBs; the independent binary validation and visual inspection cover those separately. Its success is not full binary review evidence.
+- Independent logs/captures are in ignored `output/muse-nine-review/`; post-merge deployment and live evidence are recorded in PR #2.
+
 ## Not verified / deviations
 
+- The original **≤6 draws per equipped avatar** target was not met. Actual LOD0 primitives/draws are Jolly 4, Sunny 8, Moss 7, Ripple 9, Ember 7, Bloom 7, Ink 9, Tempo 7, Orbit 6, Copper 10. For this demo, retain distinct PBR materials and bone-parented props instead of a broad atlas/geometry rewrite; the revised near-avatar budget is ≤10, with the existing eight-resident world gate ≤90. The final sampled world maximum is 72. This is an explicit target revision, not a pass against the original ≤6 target.
+- Continuous 210-second median/p95 frame-time targets remain unmeasured; the 210-second test checks furniture clearance, not frame time.
 - **Physical mobile performance was not measured.** Touch results are desktop emulation.
 - Portable standalone per-variant GLBs are not produced or shipped, per the Task 7 release decision. The stale `portable/00-jolly/lod0.glb` (12 clips) was removed, and `character-kit/portable/` is ignored.
 - Garments are skinned with weights transferred from the body. Extreme arm poses may still graze a shawl or cape edge. The inspected clips and the furniture test passed, but cloth simulation is out of scope.

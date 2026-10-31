@@ -39,6 +39,8 @@ for name in SIGNATURE_CLIPS:
     for t in list(rig.animation_data.nla_tracks):
         if t.name == name:
             rig.animation_data.nla_tracks.remove(t)
+if 'read_book_page' in bpy.data.actions:
+    bpy.data.actions.remove(bpy.data.actions['read_book_page'])
 for img in [i for i in bpy.data.images if i.name.startswith('acc-')]:
     bpy.data.images.remove(img)
 
@@ -486,6 +488,21 @@ def build_ink(v, c):
     pages = obj_from('06-ink__book_pages', bm_box(.07, .012, .094), c, paper, loc=h + Vector((0, -.002, 0)), rot=(0, 0, -.25))
     book = join([cover, pages], '06-ink__book')
     bone_prop(book, 'Hand_L', 'Socket_Hand_L')
+    # A separate leaf hinges at the spine; the shared hand motion cannot turn a rigid book.
+    spine = h + Euler((0, 0, -.25)).to_matrix() @ Vector((-.035, -.010, 0))
+    page = obj_from('06-ink__turning_page', bm_box(.07, .001, .094), c, paper, loc=spine, rot=(0, 0, -.25))
+    page.data.transform(Matrix.Translation((.035, 0, 0)))
+    bone_prop(page, 'Hand_L', 'Socket_Hand_L'); page['musely_page'] = True
+    page.rotation_mode = 'QUATERNION'; rest = page.rotation_quaternion.copy()
+    # read_book lasts four seconds; its right hand reaches the page during the final second.
+    for frame, angle, size in [(1, 0, 1), (73, 0, 1), (83, math.pi / 2, 1),
+                                (93, math.pi, 1), (95, math.pi, .001), (96, 0, .001), (97, 0, 1)]:
+        page.rotation_quaternion = rest @ Quaternion((0, 0, 1), angle)
+        page.scale = (size, size, size)
+        page.keyframe_insert('rotation_quaternion', frame=frame)
+        page.keyframe_insert('scale', frame=frame)
+    page.animation_data.action.name = 'read_book_page'
+    scene.frame_set(1)
 
 
 def build_tempo(v, c):

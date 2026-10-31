@@ -17,8 +17,12 @@ async(page)=>{
     if(!m.materials.some(x=>x.name.startsWith('Fleece')&&x.normal&&x.colorMap))throw Error(id+' fleece maps missing');
     if(id!=='00-jolly'&&!m.materials.some(x=>x.name.startsWith('Acc ')&&x.normal&&x.colorMap))throw Error(id+' accessory PBR maps missing');
     if(m.height<.85||m.height>1.05)throw Error(id+' height '+m.height);
-    if(sig){await p.locator('#action').selectOption(sig);await p.waitForTimeout(300);const pose=()=>p.evaluate(()=>{const q=[];window.__jolly.root.traverse(o=>{if(o.isBone)q.push(...o.quaternion.toArray());});return q;});const a=await pose();await p.waitForTimeout(900);const b=await pose();const moved=a.reduce((s,v,i)=>s+Math.abs(v-b[i]),0);if(moved<.01)throw Error(id+' signature '+sig+' does not animate: '+moved);}
-    const tri=[];for(const l of['0','1','2']){await p.locator('#lod').selectOption(l);tri.push(await p.evaluate(()=>window.__jolly.getMetrics().triangles));}await p.locator('#lod').selectOption('0');
+    if(sig){await p.locator('#action').selectOption(sig);await p.waitForTimeout(300);const pose=()=>p.evaluate(()=>{const q=[];window.__jolly.root.traverse(o=>{if(o.isBone)q.push(...o.quaternion.toArray());});return q;});const a=await pose();let moved=0;for(let sample=0;sample<10&&moved<.01;sample++){await p.waitForTimeout(250);const b=await pose();moved=a.reduce((s,v,i)=>s+Math.abs(v-b[i]),0);}if(moved<.01)throw Error(id+' signature '+sig+' does not animate: '+moved);}
+    await p.locator('#whole').click();await p.waitForTimeout(300);
+    const extent=await p.evaluate(()=>{const w=window.__jolly,e=[Infinity,Infinity,-Infinity,-Infinity];w.root.updateMatrixWorld(true);w.root.traverseVisible(o=>{if(!o.isMesh)return;const v=o.position.clone();for(let k=0;k<o.geometry.attributes.position.count;k+=4){o.getVertexPosition(k,v);v.applyMatrix4(o.matrixWorld).project(w.camera);e[0]=Math.min(e[0],v.x);e[1]=Math.min(e[1],v.y);e[2]=Math.max(e[2],v.x);e[3]=Math.max(e[3],v.y);}});return e;});
+    if(extent.some(v=>Math.abs(v)>.98))throw Error(id+' whole character cropped: '+extent);
+    if(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw Error('Viewer overflows horizontally');
+    const tri=[];for(const l of['0','1','2']){await p.locator('#lod').selectOption(l);tri.push(await p.evaluate(()=>window.__jolly.getMetrics().triangles));if(!(await p.locator('#status').innerText()).includes('LOD'+l))throw Error('Stale detail status '+l);}await p.locator('#lod').selectOption('0');
     if(!(tri[0]<=28000&&tri[1]<=8000&&tri[2]<=3000&&tri[0]>tri[1]&&tri[1]>tri[2]))throw Error(id+' LOD triangles '+tri);
     viewer.push({id,signature:sig??null,triangles:tri});
    }

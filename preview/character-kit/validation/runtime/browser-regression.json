@@ -1,8 +1,8 @@
 {
  "date": "2026-11-01",
  "script": "scripts/muse.browser.js",
- "server": "static dist (python http.server)",
- "note": "Desktop Chromium via Playwright; 390x844 is touch emulation, not a physical device.",
+ "server": "static dist (python http.server, 127.0.0.1:8789)",
+ "note": "Independent rerun after review corrections. Desktop Chromium via Playwright; 390x844 is touch emulation, not a physical device. Sampled fps/calls are not continuous210s frame-time evidence.",
  "results": [
   {
    "viewport": "1440x1000",
@@ -65,9 +65,9 @@
      "id": "06-ink",
      "signature": "read_book",
      "triangles": [
-      24450,
-      5537,
-      2166
+      24462,
+      5538,
+      2167
      ]
     },
     {
@@ -121,7 +121,7 @@
       1,
       1
      ],
-     "drawCalls": 71
+     "drawCalls": 72
     },
     {
      "time": 16,
@@ -145,7 +145,7 @@
       1,
       1
      ],
-     "drawCalls": 71
+     "drawCalls": 72
     },
     {
      "time": 30,
@@ -169,7 +169,7 @@
       1,
       1
      ],
-     "drawCalls": 71
+     "drawCalls": 72
     },
     {
      "time": 55,
@@ -193,7 +193,7 @@
       1,
       1
      ],
-     "drawCalls": 71
+     "drawCalls": 72
     },
     {
      "time": 100,
@@ -217,7 +217,7 @@
       0,
       0
      ],
-     "drawCalls": 71
+     "drawCalls": 72
     },
     {
      "time": 150,
@@ -241,7 +241,7 @@
       0,
       1
      ],
-     "drawCalls": 71
+     "drawCalls": 72
     },
     {
      "time": 185,
@@ -265,7 +265,7 @@
       1,
       1
      ],
-     "drawCalls": 71
+     "drawCalls": 72
     }
    ],
    "closeLods": [
@@ -278,7 +278,7 @@
     1,
     1
    ],
-   "fps": 60,
+   "fps": 47,
    "errors": []
   },
   {
@@ -342,9 +342,9 @@
      "id": "06-ink",
      "signature": "read_book",
      "triangles": [
-      24450,
-      5537,
-      2166
+      24462,
+      5538,
+      2167
      ]
     },
     {
@@ -398,7 +398,7 @@
       2,
       2
      ],
-     "drawCalls": 71
+     "drawCalls": 72
     },
     {
      "time": 16,
@@ -422,7 +422,7 @@
       2,
       2
      ],
-     "drawCalls": 71
+     "drawCalls": 72
     },
     {
      "time": 30,
@@ -446,7 +446,7 @@
       1,
       1
      ],
-     "drawCalls": 71
+     "drawCalls": 72
     },
     {
      "time": 55,
@@ -470,7 +470,7 @@
       1,
       1
      ],
-     "drawCalls": 66
+     "drawCalls": 67
     },
     {
      "time": 100,
@@ -494,7 +494,7 @@
       1,
       1
      ],
-     "drawCalls": 71
+     "drawCalls": 72
     },
     {
      "time": 150,
@@ -518,7 +518,7 @@
       1,
       1
      ],
-     "drawCalls": 71
+     "drawCalls": 72
     },
     {
      "time": 185,
@@ -542,7 +542,7 @@
       1,
       1
      ],
-     "drawCalls": 71
+     "drawCalls": 72
     }
    ],
    "closeLods": [
@@ -555,7 +555,7 @@
     1,
     1
    ],
-   "fps": 60,
+   "fps": 47,
    "errors": []
   }
  ]

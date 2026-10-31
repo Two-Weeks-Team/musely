@@ -15,7 +15,7 @@ renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFShadowMap;stage.app
 const scene=new T.Scene();scene.background=new T.Color('#e9e7de');
 const pmrem=new T.PMREMGenerator(renderer),room=new RoomEnvironment(),env=pmrem.fromScene(room,.04);room.dispose();pmrem.dispose();scene.environment=env.texture;scene.environmentIntensity=.35;
 const camera=new T.PerspectiveCamera(30,1,.01,100);camera.position.set(.8,.68,1.9);
-const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,.45,0);controls.enableDamping=true;controls.minDistance=.45;controls.maxDistance=4;controls.maxPolarAngle=Math.PI*.51;
+const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,.45,0);controls.enableDamping=true;controls.minDistance=.45;controls.maxDistance=6;controls.maxPolarAngle=Math.PI*.51;
 const hemi=new T.HemisphereLight('#f5f7ff','#a5957b',.7);scene.add(hemi);
 const key=new T.DirectionalLight('#fff1db',1.8);key.position.set(-1.5,2.8,2);key.castShadow=true;key.shadow.mapSize.set(1024,1024);key.shadow.camera.left=-1;key.shadow.camera.right=1;key.shadow.camera.top=1.4;key.shadow.camera.bottom=-1;key.shadow.normalBias=.015;scene.add(key);
 const fill=new T.DirectionalLight('#bdcee7',.5);fill.position.set(2,1,1);scene.add(fill);
@@ -31,7 +31,8 @@ const actionSelect=$<HTMLSelectElement>('#action'),expressionSelect=$<HTMLSelect
 function clipsFor(id:MuseVariantId){const sig=variantById(id).signature;return [...SHARED_CLIPS,...(sig?[sig]:[])];}
 function setExpression(name:string){expression=name;actor?.setExpression(name);}
 function setAction(name:string){if(!clipsFor(variant).includes(name as never))return;active=name;actionStart=time;actor?.setAction(name);actionSelect.value=name;}
-function setLod(l:Lod){lod=l;actor?.setLod(l);($('#lod') as HTMLSelectElement).value=String(l);}
+function updateStatus(){if(!actor)return;const m=actor.getMetrics();$('#status').textContent=`${(m.bounds.max.y-m.bounds.min.y).toFixed(3)} m · ${actor.visibleTriangles().toLocaleString()} triangles · ${clipsFor(variant).length} actions · LOD${lod}`;}
+function setLod(l:Lod){lod=l;actor?.setLod(l);($('#lod') as HTMLSelectElement).value=String(l);updateStatus();}
 function setLighting(name:string){lighting=name;const night=name==='night',day=name==='daylight';scene.background=new T.Color(night?'#1b2436':day?'#dce5df':'#e9e7de');scene.environmentIntensity=night?.14:.35;hemi.intensity=night?.75:.7;key.color.set(night?'#ffb869':'#fff1db');key.intensity=night?1.6:day?2.5:1.8;fill.intensity=night?.65:.5;rim.intensity=night?.8:1;renderer.toneMappingExposure=night?1.3:.95;}
 async function setVariant(id:MuseVariantId){
  const ticket=++loading;variant=id;const v=variantById(id);
@@ -42,11 +43,14 @@ async function setVariant(id:MuseVariantId){
   const next=await loadMuse(id,library);if(ticket!==loading){next.dispose();return;}
   actor?.dispose();actor=next;scene.add(actor.root);actor.root.traverse(o=>{if(o instanceof T.Mesh){o.castShadow=true;o.receiveShadow=true;}});
   setLod(lod);setExpression(expression);setAction(v.signature??'idle_breathe');
-  const m=actor.getMetrics();$('#status').textContent=`${(m.bounds.max.y-m.bounds.min.y).toFixed(3)} m · ${actor.visibleTriangles().toLocaleString()} triangles · ${clipsFor(id).length} actions · LOD${lod}`;
+  updateStatus();
   $('#loading')?.remove();
  }catch(e){errors.push(String(e));$('#status').textContent='This Muse could not load.';console.error(e);}
 }
-function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();}new ResizeObserver(resize).observe(stage);resize();
+// Reserve room for the widest signature pose and its props even on a portrait stage.
+function frameWhole(){const distance=Math.max(2.45,1.65/(2*Math.tan(T.MathUtils.degToRad(camera.fov/2))*camera.aspect));controls.target.set(0,.45,0);camera.position.set(.8,.23,1.9).normalize().multiplyScalar(distance).add(controls.target);controls.update();}
+let wholeView=true;controls.addEventListener('start',()=>{wholeView=false;});
+function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();if(wholeView)frameWhole();}new ResizeObserver(resize).observe(stage);resize();
 
 const roster=$('.roster');
 for(const v of MUSE_VARIANTS){const b=document.createElement('button');b.type='button';b.dataset.id=v.id;b.style.setProperty('--muse',v.body);b.style.setProperty('--accent',v.accent);b.innerHTML=`<i></i><span>${v.name}</span>`;b.title=`${v.name} · ${v.role}`;b.onclick=()=>setVariant(v.id);roster.append(b);}
@@ -57,8 +61,8 @@ expressionSelect.addEventListener('change',e=>setExpression((e.target as HTMLSel
 $('#lod').addEventListener('change',e=>setLod(Number((e.target as HTMLSelectElement).value) as Lod));
 $('#orbit').addEventListener('click',e=>{controls.autoRotate=!controls.autoRotate;(e.target as HTMLElement).setAttribute('aria-pressed',String(controls.autoRotate));});
 $('#pause').addEventListener('click',e=>{paused=!paused;(e.target as HTMLElement).textContent=paused?'Resume motion':'Pause motion';});
-$('#face').addEventListener('click',()=>{camera.position.set(0,.72,.76);controls.target.set(0,.68,0);});
-$('#whole').addEventListener('click',()=>{camera.position.set(.8,.68,1.9);controls.target.set(0,.45,0);});
+$('#face').addEventListener('click',()=>{wholeView=false;camera.position.set(0,.72,.76);controls.target.set(0,.68,0);});
+$('#whole').addEventListener('click',()=>{wholeView=true;frameWhole();});
 ($('#world-link') as HTMLAnchorElement).href=location.pathname.includes('/characters')?'../':'./world/';
 
 let last=performance.now();

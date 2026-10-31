@@ -10,7 +10,7 @@ export class BaseMuseActor{
  readonly mixer:T.AnimationMixer;
  readonly meshes:T.SkinnedMesh[]=[];
  private actions=new Map<string,T.AnimationAction>();
- private current='idle_breathe';
+ protected current='idle_breathe';
  private expression='Neutral';
  constructor(source:GLTF){
   this.root=clone(source.scene) as T.Group;this.root.name='Jolly_actor';this.mixer=new T.AnimationMixer(this.root);
@@ -29,7 +29,7 @@ export class BaseMuseActor{
  }
  getBounds(){for(const mesh of this.meshes)mesh.computeBoundingBox();return new T.Box3().setFromObject(this.root);}
  getMetrics(){return {action:this.current,expression:this.expression,skins:this.meshes.length,rootId:this.root.uuid,position:this.root.position.toArray(),bounds:this.getBounds()};}
- dispose(){this.mixer.stopAllAction();this.mixer.uncacheRoot(this.root);this.root.removeFromParent();}
+ dispose(){this.mixer.stopAllAction();this.mixer.uncacheRoot(this.root);for(const s of new Set(this.meshes.map(m=>m.skeleton)))s.dispose();this.root.removeFromParent();}
 }
 const sources=new Map<string,Promise<GLTF>>();
 export async function loadMuseBase(url:string){if(!sources.has(url))sources.set(url,new GLTFLoader().loadAsync(url).catch(e=>{sources.delete(url);throw e;}));return new BaseMuseActor(await sources.get(url)!);}

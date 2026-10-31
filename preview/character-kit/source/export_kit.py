@@ -56,10 +56,11 @@ def select_only(objs, active):
     bpy.context.view_layer.objects.active = active
 
 
-def export(path, objs, animations):
+def export(path, objs, animations, prop_clip=False):
     select_only(objs, rig)
     bpy.ops.export_scene.gltf(filepath=str(path), export_format='GLB', use_selection=True, export_yup=True, export_apply=False,
-                              export_animations=animations, export_animation_mode='ACTIONS', export_anim_slide_to_zero=True,
+                              export_animations=animations, export_animation_mode='ACTIVE_ACTIONS' if prop_clip else 'ACTIONS',
+                              export_nla_strips_merged_animation_name='read_book', export_anim_slide_to_zero=True,
                               export_skins=True, export_morph=True, export_morph_normal=False, export_tangents=True,
                               export_materials='EXPORT', export_extras=True)
     return path.stat().st_size
@@ -142,7 +143,8 @@ def downsize_materials(objs, size):
             slot.material = _scaled[key]
 
 
-report = {'base': {}, 'attachments': {}}
+report_path = KIT / 'validation/export/report.json'
+report = json.loads(report_path.read_text()) if ONLY and report_path.exists() else {'base': {}, 'attachments': {}}
 neutral()
 sockets = [scene.objects[s] for s in SOCKETS]
 
@@ -183,7 +185,9 @@ for v in VARIANTS:
         out += lods
     for p in parts:
         p['musely_lod'] = 0
-    info['bytes'] = export(KIT / f'runtime/attachments/{vid}.glb', [rig] + out, False)
+    # ACTIVE_ACTIONS merges only the assigned page actions, not the rig's 21 NLA clips.
+    prop_clip = any(p.animation_data and p.animation_data.action for p in parts)
+    info['bytes'] = export(KIT / f'runtime/attachments/{vid}.glb', [rig] + out, prop_clip, prop_clip)
     report['attachments'][vid] = info
     for d in out:
         if d not in parts:

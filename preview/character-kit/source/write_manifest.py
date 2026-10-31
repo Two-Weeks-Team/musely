@@ -54,7 +54,8 @@ for v in VARIANTS[1:]:
     d, _ = rig_digest(j, b) if j.get('skins') else (None, None)
     parts = sorted({n['name'].split('__lod')[0] for n in j['nodes'] if n.get('extras', {}).get('musely_kind')})
     sockets = {n['name']: n['extras'].get('musely_socket') for n in j['nodes'] if n.get('extras', {}).get('musely_kind') == 'prop' and '__lod' not in n['name']}
-    files[f"attachments/{v['id']}.glb"] = {'bytes': p.stat().st_size, 'sha256': sha(p), 'rigDigest': d, 'parts': parts, 'propSockets': sockets}
+    files[f"attachments/{v['id']}.glb"] = {'bytes': p.stat().st_size, 'sha256': sha(p), 'rigDigest': d, 'parts': parts, 'propSockets': sockets,
+                                          'clips': [a['name'] for a in j.get('animations', [])]}
     digests[v['id']] = d
 
 base_digest = digests['base/lod0']
@@ -76,7 +77,8 @@ manifest = {
     'residents': ['00-jolly', '01-sunny', '07-tempo', '02-moss', '06-ink', '08-orbit', '05-bloom', '03-ripple'],
     'variants': [{**v, 'lods': [f'base/lod{l}.glb' for l in (0, 1, 2)],
                   'attachment': None if v['id'] == '00-jolly' else f"attachments/{v['id']}.glb",
-                  'actions': {'bodyClips': 12 + (1 if v['signature'] else 0), 'signature': v['signature'], 'propClip': None}} for v in VARIANTS],
+                  'actions': {'bodyClips': 12 + (1 if v['signature'] else 0), 'signature': v['signature'],
+                              'propClip': v['signature'] if v['signature'] in files.get(f"attachments/{v['id']}.glb", {}).get('clips', []) else None}} for v in VARIANTS],
     'files': files,
 }
 (KIT / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')

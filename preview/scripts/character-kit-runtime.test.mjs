@@ -28,9 +28,9 @@ test('the base carries all 21 body clips at their manifest durations, starting a
  for(const[name,s]of Object.entries(SIGNATURE_CLIPS))assert.equal(clips.clips.find(c=>c.name===name).loop,s.loop,name);
 });
 
-test('every equipped character stays inside the LOD0/LOD1/LOD2 triangle budgets',async()=>{
+test('every equipped character stays inside the LOD triangle and revised draw budgets',async()=>{
  for(const v of MUSE_VARIANTS){const a=await actor(v.id);const counts=[0,1,2].map(l=>{a.setLod(l);return a.visibleTriangles();});
-  assert.ok(counts[0]<=28000&&counts[1]<=8000&&counts[2]<=3000,`${v.id} ${counts}`);assert.ok(counts[0]>counts[1]&&counts[1]>counts[2],`${v.id} LODs must reduce: ${counts}`);a.dispose();}
+  assert.ok(counts[0]<=28000&&counts[1]<=8000&&counts[2]<=3000,`${v.id} ${counts}`);assert.ok(counts[0]>counts[1]&&counts[1]>counts[2],`${v.id} LODs must reduce: ${counts}`);a.setLod(0);let draws=0;a.root.traverseVisible(o=>{if(o instanceof Mesh)draws+=o.geometry.groups.length||1;});assert.ok(draws<=10,`${v.id} exceeds revised demo draw budget: ${draws}`);a.dispose();}
 });
 
 test('variants share base geometry but keep independent skeletons, garments bound to their own actor',async()=>{
@@ -107,4 +107,33 @@ test('all eight equipped residents clear commons furniture through the complete 
    if(hits.length>12)break;}
   a.dispose();}
  assert.deepEqual(hits,[]);
+});
+
+test('replacing actors releases each owned bone texture and keeps shared source resources usable',async()=>{
+ const survivor=await actor('06-ink'),shared=survivor.meshes[0].geometry;
+ let sharedDisposals=0;shared.addEventListener('dispose',()=>sharedDisposals++);
+ for(let i=0;i<3;i++){
+  const a=await actor('06-ink');const skeletons=[...new Set(a.meshes.map(m=>m.skeleton))];let released=0;
+  for(const s of skeletons){s.computeBoneTexture();s.boneTexture.addEventListener('dispose',()=>released++);}
+  a.dispose();assert.equal(released,skeletons.length,'all actor-owned GPU textures must be released');
+  assert.ok(skeletons.every(s=>s.boneTexture===null));
+ }
+ assert.equal(sharedDisposals,0,'geometry belongs to the library');survivor.update(1,pose);assert.equal(survivor.meshes[0].geometry,shared);survivor.dispose();
+});
+
+test('seeking within the same single-play action restarts its clock without freezing',()=>{
+ const c=new ResidentClock(),wave={action:'wave',expression:'Smile',timed:true};
+ assert.equal(c.time(wave,16,0,0),0);assert.ok(Math.abs(c.time(wave,16.1,0,0)-.1)<1e-9);
+ assert.equal(c.time(wave,14,0,0),0,'backward seek');assert.ok(Math.abs(c.time(wave,14.1,0,0)-.1)<1e-9);
+ assert.equal(c.time(wave,15.5,0,0),0,'forward seek');assert.ok(Math.abs(c.time(wave,15.6,0,0)-.1)<1e-9);
+});
+
+test('Ink turns a real page relative to the book and keeps its phase through LOD changes',async()=>{
+ const a=await actor('06-ink');const pages=[];a.root.traverse(o=>{if(o.userData.musely_page)pages.push(o);});
+ assert.equal(pages.length,3,'one animated page for each LOD');
+ a.setAction('read_book');a.update(2.8,pose,2.8);const rest=pages.map(p=>p.quaternion.clone());
+ a.update(3.45,pose,3.45);const turning=pages.map(p=>p.quaternion.clone());
+ for(let i=0;i<3;i++)assert.ok(rest[i].angleTo(turning[i])>.6,`page ${i} must turn independently of the hand`);
+ for(const l of[1,2,0]){a.setLod(l);a.update(3.45,pose,3.45);for(let i=0;i<3;i++)assert.ok(turning[i].angleTo(pages[i].quaternion)<1e-6,'LOD keeps page phase');}
+ a.setAction('walk');a.update(3.45,pose,.4);for(let i=0;i<3;i++)assert.ok(rest[i].angleTo(pages[i].quaternion)<1e-6,'other actions restore page');a.dispose();
 });

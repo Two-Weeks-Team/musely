@@ -162,7 +162,7 @@
       "actions": {
         "bodyClips": 13,
         "signature": "read_book",
-        "propClip": null
+        "propClip": "read_book"
       }
     },
     {
@@ -281,7 +281,8 @@
       ],
       "propSockets": {
         "01-sunny__badge": "Socket_Chest"
-      }
+      },
+      "clips": []
     },
     "attachments/02-moss.glb": {
       "bytes": 864128,
@@ -293,7 +294,8 @@
       ],
       "propSockets": {
         "02-moss__watering_can": "Socket_Hand_R"
-      }
+      },
+      "clips": []
     },
     "attachments/03-ripple.glb": {
       "bytes": 891772,
@@ -307,7 +309,8 @@
       ],
       "propSockets": {
         "03-ripple__map": "Socket_Hand_L"
-      }
+      },
+      "clips": []
     },
     "attachments/04-ember.glb": {
       "bytes": 618204,
@@ -319,7 +322,8 @@
       ],
       "propSockets": {
         "04-ember__lantern": "Socket_Hand_L"
-      }
+      },
+      "clips": []
     },
     "attachments/05-bloom.glb": {
       "bytes": 572400,
@@ -328,21 +332,27 @@
       "parts": [
         "05-bloom__cardigan"
       ],
-      "propSockets": {}
+      "propSockets": {},
+      "clips": []
     },
     "attachments/06-ink.glb": {
-      "bytes": 836724,
-      "sha256": "990e5f4dedaede3a961e1f782135c1b1c316fb646e7ee9d435a6be9ff36336f7",
+      "bytes": 846040,
+      "sha256": "42dc821e3a3b4768a1cf02248ca22f3753fac96362f57c04a8e20dd6d3c33923",
       "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
       "parts": [
         "06-ink__book",
         "06-ink__glasses",
-        "06-ink__pouch"
+        "06-ink__pouch",
+        "06-ink__turning_page"
       ],
       "propSockets": {
         "06-ink__glasses": "Socket_Head",
-        "06-ink__book": "Socket_Hand_L"
-      }
+        "06-ink__book": "Socket_Hand_L",
+        "06-ink__turning_page": "Socket_Hand_L"
+      },
+      "clips": [
+        "read_book"
+      ]
     },
     "attachments/07-tempo.glb": {
       "bytes": 839224,
@@ -353,7 +363,8 @@
       ],
       "propSockets": {
         "07-tempo__headphones": "Socket_Head"
-      }
+      },
+      "clips": []
     },
     "attachments/08-orbit.glb": {
       "bytes": 584716,
@@ -365,7 +376,8 @@
       ],
       "propSockets": {
         "08-orbit__star_pin": "Socket_Chest"
-      }
+      },
+      "clips": []
     },
     "attachments/09-copper.glb": {
       "bytes": 980692,
@@ -379,7 +391,8 @@
       "propSockets": {
         "09-copper__tool": "Socket_Hand_L",
         "09-copper__gadget": "Socket_Hand_R"
-      }
+      },
+      "clips": []
     }
   }
 }
