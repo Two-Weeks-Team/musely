@@ -1,0 +1,188 @@
+{
+  "schema": "musely.muse-clips.v2",
+  "fps": 24,
+  "rootMotion": "in-place; world routes own translation/yaw",
+  "walkStrideMeters": 0.27,
+  "sitAnchor": "Hips lowers 0.055m; seat alignment is owned by the world adapter",
+  "clips": [
+    {
+      "name": "idle_breathe",
+      "seconds": 4.0,
+      "loop": true
+    },
+    {
+      "name": "walk",
+      "seconds": 1.3333333333333333,
+      "loop": true
+    },
+    {
+      "name": "look_around",
+      "seconds": 4.0,
+      "loop": true
+    },
+    {
+      "name": "think",
+      "seconds": 4.0,
+      "loop": true
+    },
+    {
+      "name": "listen",
+      "seconds": 3.0,
+      "loop": true
+    },
+    {
+      "name": "talk",
+      "seconds": 3.0,
+      "loop": true
+    },
+    {
+      "name": "wave",
+      "seconds": 2.5,
+      "loop": false
+    },
+    {
+      "name": "sit_down",
+      "seconds": 1.5,
+      "loop": false
+    },
+    {
+      "name": "sit_idle",
+      "seconds": 4.0,
+      "loop": true
+    },
+    {
+      "name": "stand_up",
+      "seconds": 1.5,
+      "loop": false
+    },
+    {
+      "name": "celebrate",
+      "seconds": 2.5,
+      "loop": false
+    },
+    {
+      "name": "offer_item",
+      "seconds": 2.5,
+      "loop": false
+    },
+    {
+      "name": "welcome_neighbors",
+      "seconds": 2.5,
+      "loop": false,
+      "signature": true
+    },
+    {
+      "name": "water_plants",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "inspect_map",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "tell_story",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "reassure",
+      "seconds": 3.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "read_book",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "music_bounce",
+      "seconds": 2.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "observe_sky",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "inspect_gadget",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    }
+  ],
+  "sockets": {
+    "Socket_Head": {
+      "bone": "Head",
+      "neutralBlenderWorld": [
+        0,
+        0,
+        0.89
+      ]
+    },
+    "Socket_Hand_L": {
+      "bone": "Hand_L",
+      "neutralBlenderWorld": [
+        0.355,
+        -0.023,
+        0.17
+      ]
+    },
+    "Socket_Hand_R": {
+      "bone": "Hand_R",
+      "neutralBlenderWorld": [
+        -0.355,
+        -0.023,
+        0.17
+      ]
+    },
+    "Socket_Back": {
+      "bone": "Chest",
+      "neutralBlenderWorld": [
+        0,
+        0.17,
+        0.48
+      ]
+    },
+    "Socket_Chest": {
+      "bone": "Chest",
+      "neutralBlenderWorld": [
+        0,
+        -0.17,
+        0.47
+      ]
+    },
+    "SigilSocket": {
+      "bone": "Head",
+      "neutralBlenderWorld": [
+        0,
+        -0.154,
+        0.845
+      ]
+    }
+  },
+  "expressions": [
+    "Neutral",
+    "Smile",
+    "Curious",
+    "Thinking",
+    "Focused",
+    "Listening",
+    "Concerned",
+    "Delight"
+  ],
+  "controls": [
+    "Blink_L",
+    "Blink_R",
+    "MouthOpen"
+  ]
+}

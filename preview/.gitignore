@@ -7,3 +7,10 @@ assets/embedded.json
 *.log
 .DS_Store
 output/
+dist-character-proof/
+character-kit/source/*.blend1
+.playwright-cli/
+character-kit/source/muse_material.blend
+character-kit/validation/visual/variants/
+character-kit/source/__pycache__/
+character-kit/portable/

@@ -1,0 +1,77 @@
+{
+  "validator": "2.0.0-dev.3.10",
+  "files": {
+    "base/lod0.glb": {
+      "errors": 0,
+      "warnings": 0,
+      "infos": 11,
+      "codes": []
+    },
+    "base/lod1.glb": {
+      "errors": 0,
+      "warnings": 0,
+      "infos": 11,
+      "codes": []
+    },
+    "base/lod2.glb": {
+      "errors": 0,
+      "warnings": 0,
+      "infos": 11,
+      "codes": []
+    },
+    "attachments/01-sunny.glb": {
+      "errors": 0,
+      "warnings": 0,
+      "infos": 0,
+      "codes": []
+    },
+    "attachments/02-moss.glb": {
+      "errors": 0,
+      "warnings": 0,
+      "infos": 0,
+      "codes": []
+    },
+    "attachments/03-ripple.glb": {
+      "errors": 0,
+      "warnings": 0,
+      "infos": 3,
+      "codes": []
+    },
+    "attachments/04-ember.glb": {
+      "errors": 0,
+      "warnings": 0,
+      "infos": 6,
+      "codes": []
+    },
+    "attachments/05-bloom.glb": {
+      "errors": 0,
+      "warnings": 0,
+      "infos": 9,
+      "codes": []
+    },
+    "attachments/06-ink.glb": {
+      "errors": 0,
+      "warnings": 0,
+      "infos": 3,
+      "codes": []
+    },
+    "attachments/07-tempo.glb": {
+      "errors": 0,
+      "warnings": 0,
+      "infos": 1,
+      "codes": []
+    },
+    "attachments/08-orbit.glb": {
+      "errors": 0,
+      "warnings": 0,
+      "infos": 0,
+      "codes": []
+    },
+    "attachments/09-copper.glb": {
+      "errors": 0,
+      "warnings": 0,
+      "infos": 6,
+      "codes": []
+    }
+  }
+}

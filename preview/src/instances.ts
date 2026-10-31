@@ -3,7 +3,7 @@ import * as T from 'three';
 // share GPU batches; per-instance colors preserve each original palette.
 export function instanceMovingMeshes(scene:T.Scene,roots:T.Object3D[]){
  const groups=new Map<string,{material:T.Material;geometry:T.BufferGeometry;items:T.Mesh[]}>();
- for(const root of roots)root.traverse(o=>{if(!(o instanceof T.Mesh))return;if(Array.isArray(o.material))throw Error('Expected individual glTF primitives');const g=o.geometry as T.BufferGeometry&{parameters?:unknown};const m=o.material as T.MeshStandardMaterial;const key=JSON.stringify([g.type,g.parameters||g.uuid,m.type,m.map?.uuid,m.opacity,m.name]);if(!groups.has(key))groups.set(key,{geometry:g,material:m,items:[]});groups.get(key)!.items.push(o);o.visible=false;});
+ for(const root of roots)root.traverse(o=>{if(!(o instanceof T.Mesh)||o instanceof T.SkinnedMesh)return;if(Array.isArray(o.material))throw Error('Expected individual glTF primitives');const g=o.geometry as T.BufferGeometry&{parameters?:unknown};const m=o.material as T.MeshStandardMaterial;const key=JSON.stringify([g.type,g.parameters||g.uuid,m.type,m.map?.uuid,m.opacity,m.name]);if(!groups.has(key))groups.set(key,{geometry:g,material:m,items:[]});groups.get(key)!.items.push(o);o.visible=false;});
  const batches:{mesh:T.InstancedMesh;items:T.Mesh[]}[]=[];
  for(const {material,geometry,items} of groups.values()){
   const m=material.clone() as T.MeshStandardMaterial;m.color.set('#ffffff');
