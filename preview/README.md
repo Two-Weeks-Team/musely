@@ -18,7 +18,7 @@ npm run dev
 
 ## Deploy
 
-`npm run deploy` deploys only `dist/` to the `musely-preview` Cloudflare Worker and its custom domain `preview.musely.net`. The account and domain configuration are in `wrangler.jsonc`. Authenticate as `sejun@2weeks.co`; the selected account owns the `musely.net` zone.
+`npm run deploy` deploys only `dist/` to the `musely-preview` Cloudflare Worker and its custom domain `preview.musely.net`. The account and domain configuration are in `wrangler.jsonc`. Authenticate as the Cloudflare account owner (Kim Sejun); the selected account owns the `musely.net` zone.
 
 Cloudflare Workers Builds connects `two-weeks-team/musely`, branch `main`, with root directory `preview`. Build command: `npm ci && npm run check`; deploy command: `npx wrangler deploy`; Node version: `24.22.2`. Watch path: `preview/**`. Changes deploy after tests, type checking, and the asset integrity build pass.
 
