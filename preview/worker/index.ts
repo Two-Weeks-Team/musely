@@ -2,6 +2,8 @@
 import {handleMuse} from './core/proxy.ts';
 import {issueSession, readSession, cookieValue, sessionCookie, hashIp, timingSafeEqual, verifyTurnstile} from './core/session.ts';
 import type {Env} from './env.ts';
+import {authorizeUrl, claimViaWorker, recheck, ownerDirectRecord, ThreadsError, type ThreadsConfig} from './core/threads.ts';
+import ownerClaim from '../fixtures/owner-claim.json' with {type: 'json'};
 export {WorldDO} from './world-do.ts';
 
 const MODEL_TIMEOUT_MS = 8000;
@@ -58,8 +60,61 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     });
   }
 
+  // Owner claim (direction v2, 6.3). Only the owner Muse's claim exists in the demo.
+  const claimMatch = /^\/api\/claim\/([a-z-]{1,40})$/.exec(url.pathname);
+  if (claimMatch && request.method === 'GET') {
+    const agent = claimMatch[1];
+    if (agent !== ownerClaim.agent) return json({error: 'unknown_agent'}, 404);
+    let record = await world(env).getClaim(agent);
+    const token = record?.path === 'worker_token' ? await world(env).claimToken(agent) : null;
+    const cfg = threadsConfig(env, url);
+    // Re-read the post at most every 10 minutes; a deleted post becomes claim_revoked.
+    if (record && token && cfg && (!record.checkedAt || Date.now() - record.checkedAt > 600_000)) record = await world(env).setClaim(agent, await recheck(cfg, token, record));
+    return json({agent, handle: ownerClaim.handle, fingerprint: ownerClaim.fingerprint_display, fingerprintFull: ownerClaim.fingerprint, claimText: ownerClaim.claim_text, record: record ?? {status: 'pending_claim'}, workerTokenPath: !!cfg});
+  }
+
+  if (url.pathname === '/api/threads/start' && request.method === 'GET') {
+    const cfg = threadsConfig(env, url);
+    if (!cfg || !env.SESSION_SECRET) return json({error: 'threads_not_configured'}, 503);
+    const nonce = crypto.randomUUID();
+    const state = nonce + '.' + (await hashIp(env.SESSION_SECRET, 'threads-state:' + nonce));
+    return new Response(null, {status: 302, headers: {location: authorizeUrl(cfg, state), 'set-cookie': `musely_ts=${nonce}; Path=/api/threads; Max-Age=600; HttpOnly; Secure; SameSite=Lax`, 'cache-control': 'no-store'}});
+  }
+
+  if (url.pathname === '/api/threads/callback' && request.method === 'GET') {
+    const cfg = threadsConfig(env, url);
+    if (!cfg || !env.SESSION_SECRET) return json({error: 'threads_not_configured'}, 503);
+    const [nonce, mac] = (url.searchParams.get('state') ?? '').split('.');
+    const cookieNonce = cookieValue(request.headers.get('cookie'), 'musely_ts');
+    if (!nonce || !mac || nonce !== cookieNonce || !timingSafeEqual(mac, await hashIp(env.SESSION_SECRET, 'threads-state:' + nonce))) return json({error: 'state_mismatch'}, 400);
+    const code = url.searchParams.get('code');
+    if (!code) return redirectHome('claim=declined');
+    try {
+      const {record, token} = await claimViaWorker(cfg, code, {agent: ownerClaim.agent, handle: ownerClaim.handle, display: ownerClaim.fingerprint_display, text: ownerClaim.claim_text});
+      await world(env).setClaim(ownerClaim.agent, record, token);
+      return redirectHome('claim=' + record.status);
+    } catch (e) {
+      console.error('threads claim', e instanceof ThreadsError ? e.message : e);
+      return redirectHome('claim=failed');
+    }
+  }
+
+  if (url.pathname === '/api/claim/permalink' && request.method === 'POST') {
+    let body: {permalink?: string};
+    try { body = await readJson(request, 2048); } catch { return json({error: 'bad_request'}, 400); }
+    const record = ownerDirectRecord(ownerClaim.agent, ownerClaim.handle, ownerClaim.fingerprint_display, body.permalink ?? '');
+    if (!record) return json({error: 'not_a_post_by_owner'}, 400);
+    return json({record: await world(env).setClaim(ownerClaim.agent, record)});
+  }
+
   return json({error: 'not_found'}, 404);
 }
+
+function threadsConfig(env: Env, url: URL): ThreadsConfig | null {
+  if (!env.THREADS_APP_ID || !env.THREADS_APP_SECRET) return null;
+  return {appId: env.THREADS_APP_ID, appSecret: env.THREADS_APP_SECRET, redirectUri: `${url.origin}/api/threads/callback`};
+}
+const redirectHome = (query: string) => new Response(null, {status: 302, headers: {location: '/?' + query, 'set-cookie': 'musely_ts=; Path=/api/threads; Max-Age=0; HttpOnly; Secure; SameSite=Lax', 'cache-control': 'no-store'}});
 
 export default {
   async fetch(request, env): Promise<Response> {

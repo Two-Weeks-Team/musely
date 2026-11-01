@@ -15,4 +15,6 @@ export interface Env {
   SESSION_SECRET?: string;
   JUDGE_TOKEN?: string;
   OWNER_ROOT_JWK?: string;
+  THREADS_APP_ID?: string;
+  THREADS_APP_SECRET?: string;
 }
