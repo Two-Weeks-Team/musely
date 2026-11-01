@@ -1,5 +1,5 @@
 {
- "note": "Task 5b through group 3, scripts/actions.browser.js on the group-3 build (LOD2 and LOD0).",
+ "note": "Task 5b final: scripts/actions.browser.js on the final build (all 24 action clips, LOD2 and LOD0, props loaded).",
  "results": [
   {
    "clip": "drink",
@@ -10,7 +10,11 @@
    "rootDrift": 0,
    "lowestMm": 1.027,
    "socketToHandSurfaceMaxMm": -7.01,
-   "socketToHandCentroidMaxMm": 24.619
+   "socketToHandCentroidMaxMm": 24.619,
+   "propShown": [
+    "prop__cup__lod2@Hand_R"
+   ],
+   "otherPropsShown": []
   },
   {
    "clip": "plant",
@@ -19,7 +23,11 @@
    "moved": 13.776,
    "finite": true,
    "rootDrift": 0,
-   "lowestMm": -5.814
+   "lowestMm": -5.814,
+   "propShown": [
+    "prop__seedling__lod2@Hand_R"
+   ],
+   "otherPropsShown": []
   },
   {
    "clip": "high_five",
@@ -128,7 +136,11 @@
    "moved": 5.014,
    "finite": true,
    "rootDrift": 0,
-   "lowestMm": 1.027
+   "lowestMm": 1.027,
+   "propShown": [
+    "prop__plate__lod2@Hand_L"
+   ],
+   "otherPropsShown": []
   },
   {
    "clip": "board",
@@ -182,7 +194,11 @@
    "moved": 7.745,
    "finite": true,
    "rootDrift": 0,
-   "lowestMm": 1.027
+   "lowestMm": 1.027,
+   "propShown": [
+    "prop__notepad__lod2@Hand_L"
+   ],
+   "otherPropsShown": []
   },
   {
    "clip": "photo",
@@ -191,7 +207,11 @@
    "moved": 7.493,
    "finite": true,
    "rootDrift": 0,
-   "lowestMm": 1.027
+   "lowestMm": 1.027,
+   "propShown": [
+    "prop__camera__lod2@Hand_R"
+   ],
+   "otherPropsShown": []
   },
   {
    "clip": "yawn",
@@ -209,7 +229,11 @@
    "moved": 3.836,
    "finite": true,
    "rootDrift": 0,
-   "lowestMm": 1.027
+   "lowestMm": 1.027,
+   "propShown": [
+    "prop__hammer__lod2@Hand_R"
+   ],
+   "otherPropsShown": []
   },
   {
    "clip": "lantern_hold",
@@ -264,7 +288,11 @@
    "rootDrift": 0,
    "lowestMm": 0,
    "socketToHandSurfaceMaxMm": -5.608,
-   "socketToHandCentroidMaxMm": 21.803
+   "socketToHandCentroidMaxMm": 21.803,
+   "propShown": [
+    "prop__cup@Hand_R"
+   ],
+   "otherPropsShown": []
   },
   {
    "clip": "plant",
@@ -273,7 +301,11 @@
    "moved": 13.776,
    "finite": true,
    "rootDrift": 0,
-   "lowestMm": -10.017
+   "lowestMm": -10.017,
+   "propShown": [
+    "prop__seedling@Hand_R"
+   ],
+   "otherPropsShown": []
   },
   {
    "clip": "high_five",
@@ -382,7 +414,11 @@
    "moved": 5.014,
    "finite": true,
    "rootDrift": 0,
-   "lowestMm": 0
+   "lowestMm": 0,
+   "propShown": [
+    "prop__plate@Hand_L"
+   ],
+   "otherPropsShown": []
   },
   {
    "clip": "board",
@@ -436,7 +472,11 @@
    "moved": 7.745,
    "finite": true,
    "rootDrift": 0,
-   "lowestMm": 0
+   "lowestMm": 0,
+   "propShown": [
+    "prop__notepad@Hand_L"
+   ],
+   "otherPropsShown": []
   },
   {
    "clip": "photo",
@@ -445,7 +485,11 @@
    "moved": 7.493,
    "finite": true,
    "rootDrift": 0,
-   "lowestMm": 0
+   "lowestMm": 0,
+   "propShown": [
+    "prop__camera@Hand_R"
+   ],
+   "otherPropsShown": []
   },
   {
    "clip": "yawn",
@@ -463,7 +507,11 @@
    "moved": 3.836,
    "finite": true,
    "rootDrift": 0,
-   "lowestMm": 0
+   "lowestMm": 0,
+   "propShown": [
+    "prop__hammer@Hand_R"
+   ],
+   "otherPropsShown": []
   },
   {
    "clip": "lantern_hold",

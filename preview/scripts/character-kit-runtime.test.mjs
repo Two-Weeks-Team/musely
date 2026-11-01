@@ -19,7 +19,7 @@ test('the runtime catalog, Python authoring spec and kit manifest describe the s
 
 test('every runtime file matches its recorded hash and the single shared rig digest',()=>{
  for(const[path,info]of Object.entries(manifest.files)){const b=readFileSync(RT+path);assert.equal(createHash('sha256').update(b).digest('hex'),info.sha256,path);assert.equal(b.length,info.bytes,path);if(info.rigDigest)assert.equal(info.rigDigest,manifest.rigDigest,path);}
- assert.equal(Object.keys(manifest.files).length,12,'3 base LODs + 9 attachments');
+ assert.equal(Object.keys(manifest.files).length,13,'3 base LODs + 9 attachments + shared props');
 });
 
 test('the base carries all 21 shared/signature body clips and the action clips at their manifest durations, starting at zero',async()=>{
@@ -34,6 +34,19 @@ test('the base carries all 21 shared/signature body clips and the action clips a
 test('every equipped character stays inside the LOD triangle and revised draw budgets',async()=>{
  for(const v of MUSE_VARIANTS){const a=await actor(v.id);const counts=[0,1,2].map(l=>{a.setLod(l);return a.visibleTriangles();});
   assert.ok(counts[0]<=28000&&counts[1]<=8000&&counts[2]<=3000,`${v.id} ${counts}`);assert.ok(counts[0]>counts[1]&&counts[1]>counts[2],`${v.id} LODs must reduce: ${counts}`);a.setLod(0);let draws=0;a.root.traverseVisible(o=>{if(o instanceof Mesh)draws+=o.geometry.groups.length||1;});assert.ok(draws<=10,`${v.id} exceeds revised demo draw budget: ${draws}`);a.dispose();}
+});
+
+test('shared action props ride their socket bone, show only during their clip and keep every equipped Muse inside the LOD budgets',async()=>{
+ const props=await gltf('attachments/props.glb');
+ assert.deepEqual(Object.entries(manifest.props.byClip).map(([c,v])=>[c,v.prop]).sort(),Object.entries(ACTION_CLIPS).filter(([,s])=>s.prop).map(([c,s])=>[c,'prop__'+s.prop]).sort(),'every prop clip has its prop');
+ for(const v of MUSE_VARIANTS){const a=await actor(v.id);a.addProps(props);
+  for(const[clip,s]of Object.entries(ACTION_CLIPS).filter(([,s])=>s.prop)){a.setAction(clip);a.update(1,pose,1);
+   const shown=[];a.root.traverseVisible(o=>{if(o.userData.musely_clip)shown.push(o);});
+   assert.deepEqual([...new Set(shown.map(o=>o.userData.musely_clip))],[clip],`${v.id} ${clip} shows only its own prop`);
+   const socket=manifest.props.byClip[clip].socket,bone=socket.replace('Socket_','');assert.ok(shown.every(o=>o.parent.name===bone),`${clip} prop on ${bone}`);
+   const counts=[0,1,2].map(l=>{a.setLod(l);return a.visibleTriangles();});a.setLod(0);
+   assert.ok(counts[0]<=28000&&counts[1]<=8000&&counts[2]<=3000,`${v.id}+${s.prop} ${counts}`);}
+  a.setAction('idle_breathe');let any=false;a.root.traverseVisible(o=>{if(o.userData.musely_clip)any=true;});assert.ok(!any,'props hidden outside their clips');a.dispose();}
 });
 
 test('variants share base geometry but keep independent skeletons, garments bound to their own actor',async()=>{

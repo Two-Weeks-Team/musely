@@ -19,7 +19,7 @@ async (page) => {
  try {
   await p.goto(target.href, {waitUntil: 'domcontentloaded'});
   await p.waitForFunction(() => window.__world?.getMetrics().ready && window.__world.getMetrics().characterKit, null, {timeout: 60000});
-  await p.waitForFunction(() => window.__world.getMetrics().characterUpgrade?.lod0, null, {timeout: 120000});
+  await p.waitForFunction(() => window.__world.getMetrics().characterUpgrade?.props, null, {timeout: 120000});
   if (await p.locator('#pause').isVisible()) await p.locator('#pause').click();
   const {results, CLIPS} = await p.evaluate(() => {
    const W = window.__world, A = W.actor(0), B = W.actor(1), CLIPS = W.actionClips, PARTNER = .9;

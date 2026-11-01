@@ -91,13 +91,14 @@ export async function makeWorld(glb:string,sigils:string[],kitBase:string|null='
  // the embedded rigid preview characters stand in so the commons and story still appear.
  const light=library?await Promise.all(RESIDENT_VARIANTS.map(id=>loadMuseLight(id,library).catch(e=>{console.warn('Muse variant unavailable, using base:',id,e);return loadMuseLight('00-jolly',library);}))).catch(e=>{console.warn('Rigged kit unavailable, using rigid preview characters:',e);return null;}):null;
  const actors:MuseActor[]|null=light?light.map(l=>l.actor):null;
- const upgradeTimes:{attachment?:number;lod1?:number;lod0?:number}={};
+ const upgradeTimes:{attachment?:number;lod1?:number;lod0?:number;props?:number}={};
  /** Background detail: every attachment, then LOD1, then LOD0, each shared file fetched once. */
  async function upgradeCharacters(){
   if(!light)return upgradeTimes;
   await Promise.all(light.map(l=>l.upgrade(['attachment'])));upgradeTimes.attachment=performance.now();
   await Promise.all(light.map(l=>l.upgrade([1])));upgradeTimes.lod1=performance.now();
   await Promise.all(light.map(l=>l.upgrade([0])));upgradeTimes.lod0=performance.now();
+  await Promise.all(light.map(l=>l.upgrade(['props'])));upgradeTimes.props=performance.now();
   return upgradeTimes;
  }
  const clocks=PEOPLE.map(()=>new ResidentClock());let lods:Lod[]=PEOPLE.map(()=>2 as Lod);actors?.forEach(a=>a.setLod(2));

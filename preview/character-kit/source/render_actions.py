@@ -34,7 +34,8 @@ body, face = scene.objects['Jolly_Base'], scene.objects['Jolly_Face']
 camera, floor = scene.camera, scene.objects['Studio ground']
 for c in bpy.data.collections:
     if c.get('musely_variant'):
-        c.hide_render = True
+        c.hide_render = c['musely_variant'] != 'props'  # shared action props stay visible
+props = {o.get('musely_clip'): o for o in bpy.data.objects if o.get('musely_kind') == 'prop' and o.get('musely_clip')}
 
 FRAMES = {'drink': [0, 30, 48], 'plant': [0, 36, 66, 96], 'high_five': [0, 12, 24, 40]}
 for _n, _s in ACTION_CLIPS.items():
@@ -82,6 +83,8 @@ for name in ONLY:
     for ob in [o for o in extra if o.type == 'ARMATURE']:
         pa = bpy.data.actions[ACTION_CLIPS[name]['partner']]
         ob.animation_data.action = pa; ob.animation_data.action_slot = pa.slots[0]
+    for clip, o in props.items():
+        o.hide_render = clip != name  # a prop shows only during its own clip, as at runtime
     for f in FRAMES[name]:
         scene.frame_set(f + 1)
         for view, loc in VIEWS[name].items():

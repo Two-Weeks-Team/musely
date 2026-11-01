@@ -1,7 +1,7 @@
 import * as T from 'three';
 import {GLTFLoader,type GLTF} from 'three/addons/loaders/GLTFLoader.js';
 import {MuseActor,type Lod} from './MuseActor.ts';
-import {attachmentUrl,fleeceFactor,lodUrl,variantById,type MuseVariantId} from './catalog.ts';
+import {attachmentUrl,fleeceFactor,lodUrl,propsUrl,variantById,type MuseVariantId} from './catalog.ts';
 
 /** Caches parsed kit files and tinted fleece so every actor shares geometry, maps and palettes. */
 export class MaterialLibrary{
@@ -49,10 +49,11 @@ export const clipsUrl=(base:string)=>`${base}base/clips.glb`;
 export async function loadMuseLight(id:MuseVariantId,library:MaterialLibrary){
  const [l2,clips]=await Promise.all([library.load(lodUrl(2,library.base)),library.load(clipsUrl(library.base))]);
  const actor=new MuseActor({gltf:l2,lod:2,clips:clips.animations},null,id,library);
- const upgrade=async(steps:readonly ('attachment'|Lod)[]=['attachment',1,0])=>{
+ const upgrade=async(steps:readonly ('attachment'|'props'|Lod)[]=['attachment',1,0,'props'])=>{
   for(const step of steps){
    try{
     if(step==='attachment'){const url=attachmentUrl(id,library.base);if(url)actor.addAttachment(await library.load(url));}
+    else if(step==='props')actor.addProps(await library.load(propsUrl(library.base)));
     else actor.addLod(await library.load(lodUrl(step,library.base)),step);
    }catch(e){console.warn('Muse upgrade step unavailable, keeping current detail:',id,step,e);}
   }

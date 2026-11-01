@@ -58,6 +58,16 @@ for v in VARIANTS[1:]:
                                           'clips': [a['name'] for a in j.get('animations', [])]}
     digests[v['id']] = d
 
+props_path = RT / 'attachments/props.glb'
+if props_path.exists():
+    j, b = glb_json(props_path)
+    d, _ = rig_digest(j, b) if j.get('skins') else (None, None)
+    clips = {n['name']: n['extras']['musely_clip'] for n in j['nodes'] if n.get('extras', {}).get('musely_clip') and '__lod' not in n['name']}
+    files['attachments/props.glb'] = {'bytes': props_path.stat().st_size, 'sha256': sha(props_path), 'rigDigest': d,
+                                      'parts': sorted(clips), 'propClips': clips,
+                                      'propSockets': {n['name']: n['extras'].get('musely_socket') for n in j['nodes'] if n['name'] in clips}}
+    digests['props'] = d
+
 base_digest = digests['base/lod0']
 mismatch = {k: d for k, d in digests.items() if d is not None and d != base_digest}
 if mismatch:
@@ -95,6 +105,7 @@ manifest = {
                   'attachment': None if v['id'] == '00-jolly' else f"attachments/{v['id']}.glb",
                   'actions': {'bodyClips': 12 + len([n for n in ACTION_CLIPS if n in files['base/lod0.glb']['clips']]) + (1 if v['signature'] else 0), 'signature': v['signature'],
                               'propClip': v['signature'] if v['signature'] in files.get(f"attachments/{v['id']}.glb", {}).get('clips', []) else None}} for v in VARIANTS],
+    'props': {'file': 'attachments/props.glb', 'byClip': {c: {'prop': n, 'socket': files['attachments/props.glb']['propSockets'][n]} for n, c in files['attachments/props.glb']['propClips'].items()}} if 'attachments/props.glb' in files else None,
     'files': files,
 }
 (KIT / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')

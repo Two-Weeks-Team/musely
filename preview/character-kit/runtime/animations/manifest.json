@@ -123,13 +123,15 @@
       "name": "drink",
       "seconds": 4.0,
       "loop": true,
-      "action": true
+      "action": true,
+      "prop": "cup"
     },
     {
       "name": "plant",
       "seconds": 4.0,
       "loop": false,
-      "action": true
+      "action": true,
+      "prop": "seedling"
     },
     {
       "name": "high_five",
@@ -195,7 +197,8 @@
       "name": "eat",
       "seconds": 4.0,
       "loop": true,
-      "action": true
+      "action": true,
+      "prop": "plate"
     },
     {
       "name": "board",
@@ -231,13 +234,15 @@
       "name": "write_note",
       "seconds": 4.0,
       "loop": true,
-      "action": true
+      "action": true,
+      "prop": "notepad"
     },
     {
       "name": "photo",
       "seconds": 3.0,
       "loop": false,
-      "action": true
+      "action": true,
+      "prop": "camera"
     },
     {
       "name": "yawn",
@@ -249,7 +254,8 @@
       "name": "hammer",
       "seconds": 2.0,
       "loop": true,
-      "action": true
+      "action": true,
+      "prop": "hammer"
     },
     {
       "name": "lantern_hold",

@@ -6,6 +6,7 @@ Writes, under character-kit/runtime/:
   base/lod2.glb   same, further decimated, 256px maps, no clips
   attachments/<id>.glb  garments (skinned, own export skeleton) and bone-parented props,
                         with __lod1/__lod2 reduced copies of every part
+  attachments/props.glb shared action props (build_props.py), bone-parented, with __lod1/__lod2 copies
 Also writes validation/export/report.json with per-file triangle counts.
 Run via run_mcp_cli.py. Set ONLY = ['base'] or a list of variant ids to limit, and BASE_LODS = [0]
 to re-export only base/lod0.glb (the only file that carries clips; LOD1/LOD2 stay byte-identical).
@@ -164,9 +165,8 @@ if not ONLY or 'base' in ONLY:
                                       'tris': tris(b) + tris(f), 'faceMorphs': [k.name for k in f.data.shape_keys.key_blocks[1:]]}
         bpy.data.objects.remove(b, do_unlink=True); bpy.data.objects.remove(f, do_unlink=True)
 
-for v in VARIANTS:
-    vid = v['id']
-    coll = bpy.data.collections.get(f'Variant {vid}')
+# The nine variant attachments, then the shared action props (attachments/props.glb, collection 'Shared props').
+for vid, coll in [(v['id'], bpy.data.collections.get(f"Variant {v['id']}")) for v in VARIANTS] + [('props', bpy.data.collections.get('Shared props'))]:
     if coll is None or (ONLY and vid not in ONLY):
         continue
     parts = list(coll.objects)
