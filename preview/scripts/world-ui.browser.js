@@ -36,7 +36,7 @@ async (page) => {
     await p.locator('#evidence .close').click();
    }
    await p.screenshot({path: `output/world-ui-feed-${mobile ? 'mobile' : 'desktop'}.png`});
-   for (const [tab, expect] of [['highlights', /p0 trade|p0 refused|first trade|impostor rejected|injection blocked|off script/i], ['p1', /Engine, run in this browser/], ['autonomy', /Signature checks/], ['identity', /Claimed|pending_claim/], ['location', /Virtual location \(demo\)|GPS/]]) {
+   for (const [tab, expect] of [['highlights', /p0 trade|p0 refused|first trade|impostor rejected|injection blocked|off script/i], ['p1', /Engine, run in this browser/], ['autonomy', /Signature checks/], ['identity', /Claimed|pending_claim/], ['location', /Muse's current place/]]) {
     await p.locator(`#world-panel .tab[data-tab="${tab}"]`).click();
     await p.waitForFunction(re => new RegExp(re, 'i').test(document.querySelector('.world-body')?.textContent ?? ''), expect.source, {timeout: 30000});
     out[tab] = (await p.locator('.world-body').textContent()).replace(/\s+/g, ' ').slice(0, 140);
