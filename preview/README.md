@@ -1,5 +1,7 @@
 # Musely preview
 
+Project delivery follows **preview → implementation → demo (development complete) → GTM**. See the [four-stage roadmap](../docs/roadmap/2026-11-01-four-stage-roadmap.md). This directory contains both the visual preview and working product components; its name does not make live integrations a preview completion requirement. The existing 3:30 story below is the scripted mode, separate from the shared-world implementation.
+
 A 3 minute 30 second visual story on a real map: colorful Muse characters walk, think, tend a garden, and talk while their Muses find a mutually suitable meetup. The opening map shows stories across the neighborhood; one continuous camera then moves into the detailed commons.
 
 ## Run
@@ -30,7 +32,7 @@ The apex and `www` are reserved for the main product. No routes or redirects tar
 - `fixtures/`: public meetup proposal transcript used by tests.
 - `docs/SCENARIO.md`: complete English story and timing.
 
-The conversations and activity are scripted. The commons is an authored fictional space aligned to mapped ground; it does not imply public access to the physical location. This preview does not run personal agents, send invitations, or persist user data.
+The conversations and activity are scripted. The commons is an authored fictional space aligned to mapped ground; it does not imply public access to the physical location. The scripted mode does not run personal agents or send invitations. Shared-world components under `worker/` are tracked separately by the execution roadmap; their presence is not proof of a completed personal-Muse connector.
 
 ## Opening and playback verification
 
