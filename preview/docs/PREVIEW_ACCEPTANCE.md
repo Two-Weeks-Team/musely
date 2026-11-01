@@ -1,6 +1,6 @@
 # Preview acceptance — S1 gate (P-07, issue #46)
 
-Status: **evidence complete on one build; owner sign-off pending.** Records the walkthrough of the whole preview on one build (8 experiences × 6 states × desktop and mobile), the allowed fallbacks, the review and the S1 → S2 decision (DEC-01). Everything here is a **preview**: scenes are SCRIPTED fixtures unless a cell says it reads the live world. Nothing here claims a real connector, the webcam ritual, real-phone performance, S2/S3 completion or a submission.
+Status: **evidence ready for criteria 1, 2 and 4 on one build; a person's product experience review and the fallback acceptance are pending (§8).** Records the walkthrough of the whole preview on one build (8 experiences × 6 states × desktop and mobile), the allowed fallbacks, the review and the S1 → S2 decision (DEC-01). Everything here is a **preview**: scenes are SCRIPTED fixtures unless a cell says it reads the live world. Nothing here claims a real connector, the webcam ritual, real-phone performance, S2/S3 completion or a submission.
 
 ## 1. Identification
 
@@ -22,7 +22,7 @@ Status: **evidence complete on one build; owner sign-off pending.** Records the 
 
 | issue | task | state | C10 record | accepted at | relation to the tested build |
 |---|---|---|---|---|---|
-| #43 | P-04 traceability | CLOSED | comment on #43 | `c93b314` (PR #73) | an earlier docs-only change, carried unchanged into the tested build |
+| #43 | P-04 traceability | CLOSED | https://github.com/Two-Weeks-Team/musely/issues/43#issuecomment-6557524062 | `c93b314` (PR #73) | an earlier change to docs and the matrix checker; the matrix has been edited in 6 commits since, and this walkthrough exercised the matrix as of `5546113` |
 | #44 | P-05 one continuous scene | CLOSED | https://github.com/Two-Weeks-Team/musely/issues/44#issuecomment-6558746164 | `0a60183` (PR #76 `6641d22`, PR #77) | an ancestor of `5546113`; exercised again by this walkthrough |
 | #45 | P-06 source, replay, evidence UI | CLOSED | https://github.com/Two-Weeks-Team/musely/issues/45#issuecomment-6559785434 | `d918e0d` (PR #78) | an ancestor of `5546113`; exercised again by this walkthrough |
 
@@ -47,10 +47,10 @@ Evidence files for this record are in `preview/docs/acceptance-evidence/` (§3).
 | experience matrix | `node scripts/experience-matrix-check.mjs` | PASS: ids match the catalogs; 10 requirements, S2 14/14, S3 6/6, gates 4, decisions 11, problems 0 | executor's command output |
 | walkthrough | `scripts/walkthrough.browser.js` on production | **194/194** (97 per viewport: 81 walkthrough cells + 16 isolation cases) | `acceptance-evidence/walkthrough.json` |
 | flows and cues | `scripts/preview-flows.browser.js` on production | **66/66** | `acceptance-evidence/preview-flows.json` |
-| live world, replay, evidence, failures, accessibility | `scripts/world-ui.browser.js` on production | **140/140** | `acceptance-evidence/world-ui.json` |
-| entry and first paint | `scripts/entry.browser.js` on production | **2/2** | `acceptance-evidence/entry.json` |
+| live world, replay, evidence, failures, accessibility | `scripts/world-ui.browser.js` on production | **138/138 checks** (the runner prints 140: two more entries are per-viewport summary records without a result) | `acceptance-evidence/world-ui.json` |
+| entry and first paint | `scripts/entry.browser.js` on production | **2 viewport records, no page errors** (the script throws on any failure) | `acceptance-evidence/entry.json` |
 
-The saved result files keep every case with its viewport, name, result and detail, plus the run's start and end time, URL, browser and Node versions. The 162 screenshots of the walkthrough (45 MB) are not stored in the repository; the script writes them to `output/wt-<viewport>-<experience>-<state>.png`. The deploy build id was read from the GitHub check run of `5546113`.
+The saved result files keep every case with its viewport and detail (the walkthrough, preview-flows and world-ui checks also have a name and a result), plus the run's start and end time, URL, browser and Node versions. The header comment of `walkthrough.browser.js` changed after the run (comment only). The 162 screenshots of the walkthrough (45 MB) are not stored in the repository; the script writes them to `output/wt-<viewport>-<experience>-<state>.png`. The deploy build id was read from the GitHub check run of `5546113`.
 
 The isolation cases in the walkthrough (one pair per experience page) require **no `/api` write, no page error, and no request for the browser's position**.
 
@@ -212,9 +212,9 @@ Statuses in `EXPERIENCE_MATRIX.md` after this change: experiences 6 complete / 2
 | FB-CUE-PROP | an item card instead of a 3D prop that is not loaded yet or missing | Preview flows cues | `… is not loaded yet · item shown as a card` | I-09 |
 | FB-CUE-ABSENT | "not in the commons (card only)" for a Muse that is not one of the eight commons characters | Preview flows cues | `not in the commons (card only)` | I-09 |
 | FB-BEATS-ACTIONS | 26 beats and 29 meaningful actions use a substitute clip or a card | EXP-WORLD and the matrix §4 | the clip or card is labelled in the matrix; compound beats play their first clip | I-05 and I-09 (beats), I-09 with I-02 / I-07 / I-13 (actions) |
-| FB-MEETUP-CONTRACT | "the approval target changed" and "next candidate, at most five rounds" are scripted contract behaviour (C07), not engine behaviour yet | EXP-MEETUP | task states shown on SCRIPTED · PREVIEW FIXTURE cards | I-07 |
+| FB-MEETUP-CONTRACT | "the approval target changed" and "next candidate, at most five rounds" are scripted contract behaviour (C04 approval target check, C05 up to five candidates, C06 task revision and content hash), not engine behaviour yet | EXP-MEETUP | task states shown on SCRIPTED · PREVIEW FIXTURE cards | I-07 |
 
-## 6. Product experience review and agreed changes
+## 6. Reviews and changes so far
 
 This log is the record of what the walkthrough and the reviews found, what was changed, and the result on the tested build. Code review and test counts do **not** replace the owner's own look at the same build; that is §8.
 

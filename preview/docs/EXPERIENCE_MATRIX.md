@@ -468,5 +468,5 @@ Open decisions. Undecided facts are not invented as values; a task that needs on
 | DEC-09 | Public directory review time is unknown | G-02 | Application state tracked with receipts | Nothing before S4 |
 | DEC-10 | At 390 px the header rows overlap the time label and story eyebrow | P-05 | No overlap at 390×844 in the P-05 walkthrough | P-07 |
 
-The outcomes of DEC-01 and DEC-10 on build `5546113` are recorded in `preview/docs/PREVIEW_ACCEPTANCE.md` (evidence complete; owner sign-off pending for DEC-01; the DEC-10 release condition is met). The other decisions stay open.
+The outcomes of DEC-01 and DEC-10 on build `5546113` are recorded in `preview/docs/PREVIEW_ACCEPTANCE.md` (evidence ready for the walkthrough criteria; a person's product experience review and the fallback acceptance are pending for DEC-01; the DEC-10 release condition is met). The other decisions stay open.
 
