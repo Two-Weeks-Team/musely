@@ -5,6 +5,7 @@ import type {Hooks, MuseState, WorldEvent, WorldState} from './world.ts';
 import {discover, checkTrade, commitTrade, speedFor, abilityGain, itemName, canCraftTransitPass, type Ledger} from './items.ts';
 import {harnessById, HARNESSES} from './harness.ts';
 import type {Place} from './places.ts';
+import {isConnected, nextId, deliverMessage, notifyOwner, TASK_TTL_MS, emptyInbox} from './inbox.ts';
 
 type E = Omit<WorldEvent, 'id' | 'tick'>;
 
@@ -45,13 +46,27 @@ function pickTrade(a: MuseState, b: MuseState): {give: string; want: string} | n
 /** Meeting stages 3–8 (12.3) for the offline rule path: greet → propose → negotiate → lock/swap → ability → reflect. */
 export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: MuseState, place: Place, rand: () => number, at: number): E[] {
   const out: E[] = [];
-  out.push({at, source: 'rule', kind: 'greet', muse: a.id, other: b.id, place: place.id, line: `Hi ${harnessById(b.id).name}!`, data: {stage: 'greet', public: true}, tags: []});
+  const greeting = `Hi ${harnessById(b.id).name}!`;
+  out.push({at, source: 'rule', kind: 'greet', muse: a.id, other: b.id, place: place.id, line: greeting, data: {stage: 'greet', public: true}, tags: []});
+  // A connected Muse (7.2, 8.8) thinks in its owner's runtime: the rule engine never decides for it.
+  // Its initiations come only through MCP tools, and proposals to it wait in its inbox as Tasks.
+  const inbox = (s.inbox ??= emptyInbox());
+  if (isConnected(inbox, a.id, at)) return out;
+  const toConnected = isConnected(inbox, b.id, at);
+  if (toConnected) deliverMessage(inbox, {from: a.id, to: b.id, kind: 'greet', at, text: greeting});
   const t = a.intent?.kind === 'trade' && a.intent.target === b.id && a.intent.give && a.intent.want ? {give: a.intent.give, want: a.intent.want} : pickTrade(a, b);
   if (!t) return out;
   const check = checkTrade(ledger, s.day, a, b, t.give, t.want);
   out.push({at, source: 'rule', kind: 'trade_proposed', muse: a.id, other: b.id, place: place.id, line: `${itemName(t.give)} for your ${itemName(t.want)}?`, data: {give: t.give, want: t.want, stage: 'propose', check: check.ok ? 'ok' : check.reason}, tags: []});
   if (!check.ok) {
     out.push({at, source: 'rule', kind: 'trade_rejected', muse: b.id, other: a.id, place: place.id, line: 'Not this time.', data: {reason_public: check.reason === 'relic' ? 'relics stay with their place' : null, stage: 'negotiate'}, tags: ['trade_rejected']});
+    return out;
+  }
+  if (toConnected) {
+    // Inbox model: the proposal becomes a pending Task with a deadline instead of an automatic answer.
+    const id = nextId(inbox, 'task');
+    inbox.tasks.push({id, kind: 'trade', from: a.id, to: b.id, status: 'pending', awaiting: b.id, createdAt: at, deadline: at + TASK_TTL_MS, updatedAt: at, offer: {by: a.id, give: t.give, want: t.want}, round: 0, history: [{by: a.id, action: 'propose', at, give: t.give, want: t.want}]});
+    out[out.length - 1].data = {...out[out.length - 1].data, task_id: id, inbox: true, deadline: at + TASK_TTL_MS};
     return out;
   }
   // The responder accepts when what it receives changes its abilities (layer 1) or serves its desire.
@@ -62,6 +77,11 @@ export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: M
   }
   const first = ledger.history.filter(h => h.via === 'trade').length === 0;
   commitTrade(ledger, s.day, a, b, t.give, t.want, at);
+  const ownerMuse = s.owner?.muse;
+  if (ownerMuse && (a.id === ownerMuse || b.id === ownerMuse)) {
+    const other = a.id === ownerMuse ? b.id : a.id, got = a.id === ownerMuse ? t.want : t.give, gave = a.id === ownerMuse ? t.give : t.want;
+    notifyOwner(inbox, {kind: 'trade_completed', at, line: `Your Muse traded ${itemName(gave)} for ${harnessById(other).name}'s ${itemName(got)}`, ref: null, other});
+  }
   out.push({at, source: 'rule', kind: 'trade_completed', muse: a.id, other: b.id, place: place.id, line: `Traded ${itemName(t.give)} ↔ ${itemName(t.want)}`, data: {give: t.give, want: t.want, stage: 'swap', receipt: true}, tags: first ? ['first_trade', 'ability_change'] : ['ability_change']});
   a.reflection = `Traded with ${harnessById(b.id).name}: got ${itemName(t.want)}`;
   b.reflection = `Traded with ${harnessById(a.id).name}: got ${itemName(t.give)}`;
