@@ -5,6 +5,7 @@
 import {BEATS, CLIP_FALLBACK, inHours, type Beat} from './beats.ts';
 import {PLACES, PLACE_BY_ID, placeById, distanceM, WALK_MPS, type Place} from './places.ts';
 import {HARNESSES, harnessById} from './harness.ts';
+import {ITEM_BY_ID} from './items.ts';
 import {rngFor, weightedPick, daySeed} from './rng.ts';
 import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 
@@ -25,7 +26,10 @@ export type MuseState = {
   reflection: string;
   lastMet: Record<string, number>;
   intent: {kind: 'greet' | 'trade'; target: string; give?: string | null; want?: string | null} | null;
+  /** Public wants (7, 9.1): starts from the harness; Spark or the owner's connected Muse can update it. */
+  wants: Wants;
 };
+export type Wants = {goal: string; items: string[]; source: 'harness' | 'spark' | 'connected'; updatedAt: number};
 export type WorldEvent = {id: string; tick: number; at: number; source: Source; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data?: Record<string, unknown>; tags: string[]};
 export type WorldState = {worldId: string; day: string; seed: string; tick: number; version: number; muses: MuseState[]; spotlight: {cursor: number; visitorQueue: string[]}; lastTickAt: number;
   /** Item rule counters (daily limits, pair trades). The append-only item history is the run log. */
@@ -61,11 +65,26 @@ const START_ITEMS: Record<string, string[]> = {
   '05-bloom': ['petal_patch', 'tea'], '06-ink': ['book_glasses'], '07-tempo': ['headphones', 'snack_box'], '08-orbit': ['star_pin'], '09-copper': ['pocket_gadget', 'coffee'],
 };
 
+export const harnessWants = (museId: string, now: number): Wants => ({goal: harnessById(museId).wants.goal, items: [...harnessById(museId).wants.items], source: 'harness', updatedAt: now});
+
+/**
+ * The only way wants change: items must be catalog ids (max 4), the goal is plain public text (max 120).
+ * Returns a reason when refused. Private reasons never belong here; this text is shown to everyone.
+ */
+export function updateWants(m: MuseState, next: {goal?: string; items?: string[]}, source: Wants['source'], now: number): string | null {
+  const items = next.items ?? m.wants.items;
+  if (!Array.isArray(items) || items.length > 4 || items.some(i => typeof i !== 'string' || !(ITEM_BY_ID.has(i) || i === 'postcard'))) return 'items must be up to 4 catalog item ids';
+  const goal = next.goal === undefined ? m.wants.goal : String(next.goal).replace(/[\u0000-\u001f<>]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!goal || goal.length > 120) return 'goal must be 1-120 characters of plain text';
+  m.wants = {goal, items: [...new Set(items)], source, updatedAt: now};
+  return null;
+}
+
 export function createWorld(worldId: string, now: number): WorldState {
   const day = localClock(now).date;
   return {
     worldId, day, seed: daySeed(worldId, day), tick: 0, version: 0, lastTickAt: now,
-    muses: HARNESSES.map(h => ({id: h.id, place: START_PLACES[h.id], travel: null, beat: null, inventory: [...START_ITEMS[h.id]], memory: [], reflection: '', lastMet: {}, intent: null})),
+    muses: HARNESSES.map(h => ({id: h.id, place: START_PLACES[h.id], travel: null, beat: null, inventory: [...START_ITEMS[h.id]], memory: [], reflection: '', lastMet: {}, intent: null, wants: harnessWants(h.id, now)})),
     spotlight: {cursor: 0, visitorQueue: []},
     items: emptyLedger(),
   };
@@ -118,6 +137,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   const events: WorldEvent[] = [];
   const emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => events.push({...e, id: `${s.day}:${s.tick}:${events.length}`, tick: s.tick});
   s.items ??= emptyLedger();
+  for (const m of s.muses) m.wants ??= harnessWants(m.id, now);
   if (clock.date !== s.day) {
     s.day = clock.date; s.seed = daySeed(s.worldId, s.day);
     // Daily limits reset; older counters are dropped so the state stays small.
@@ -259,6 +279,7 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   const other = findMuse(s, o.target_agent);
   if (!other || other.id === m.id) return reject('offer needs another Muse');
   m.intent = {kind: 'trade', target: other.id, give: o.offer_item || null, want: o.want_item || null};
+  if (o.want_item && ITEM_BY_ID.has(o.want_item) && !m.wants.items.includes(o.want_item)) updateWants(m, {items: [o.want_item, ...m.wants.items].slice(0, 4)}, d.source === 'live' ? 'spark' : m.wants.source, now);
   const there = placeById(other.travel?.to ?? other.place);
   if (there.id !== here.id) startTrip(m, here, there, now, d.source, emit, hooks);
   emit({...base, kind: 'trade_intent', place: here.id, other: other.id, line: o.line || null, data: {...base.data, give: o.offer_item || null, want: o.want_item || null, live: true}, tags: ['off_script']});

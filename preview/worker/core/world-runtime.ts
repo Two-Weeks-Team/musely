@@ -134,6 +134,6 @@ export class WorldRuntime {
   /** Compact public view for clients: positions, current beats, inventories, spotlight. */
   view(now: number) {
     const s = this.state();
-    return {worldId: s.worldId, day: s.day, tick: s.tick, version: s.version, lastTickAt: s.lastTickAt, nextSpotlight: spotlightFor(s, now), muses: s.muses.map(m => ({id: m.id, place: m.place, travel: m.travel, beat: m.beat, inventory: m.inventory, reflection: m.reflection}))};
+    return {worldId: s.worldId, day: s.day, tick: s.tick, version: s.version, lastTickAt: s.lastTickAt, nextSpotlight: spotlightFor(s, now), muses: s.muses.map(m => ({id: m.id, place: m.place, travel: m.travel, beat: m.beat, inventory: m.inventory, reflection: m.reflection, wants: m.wants}))};
   }
 }
