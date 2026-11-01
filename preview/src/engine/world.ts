@@ -6,6 +6,7 @@ import {BEATS, CLIP_FALLBACK, inHours, type Beat} from './beats.ts';
 import {PLACES, PLACE_BY_ID, placeById, distanceM, WALK_MPS, type Place} from './places.ts';
 import {HARNESSES, harnessById} from './harness.ts';
 import {rngFor, weightedPick, daySeed} from './rng.ts';
+import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 
 export const ENGINE_VERSION = 'engine-1';
 export const TICK_MS = 60_000;
@@ -17,22 +18,26 @@ export type Speed = 'walk' | 'bus' | 'taxi';
 export type MuseState = {
   id: string;
   place: string;
-  travel: {to: string; departAt: number; arriveAt: number; speed: Speed} | null;
+  travel: {to: string; departAt: number; arriveAt: number; speed: Speed; chosen?: boolean} | null;
   beat: {id: string; clip: string; startedAt: number; endsAt: number; line: string | null} | null;
   inventory: string[];
   memory: string[];
   reflection: string;
   lastMet: Record<string, number>;
-  intent: {kind: 'greet' | 'trade'; target: string} | null;
+  intent: {kind: 'greet' | 'trade'; target: string; give?: string | null; want?: string | null} | null;
 };
 export type WorldEvent = {id: string; tick: number; at: number; source: Source; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data?: Record<string, unknown>; tags: string[]};
-export type WorldState = {worldId: string; day: string; seed: string; tick: number; version: number; muses: MuseState[]; spotlight: {cursor: number; visitorQueue: string[]}; lastTickAt: number};
+export type WorldState = {worldId: string; day: string; seed: string; tick: number; version: number; muses: MuseState[]; spotlight: {cursor: number; visitorQueue: string[]}; lastTickAt: number;
+  /** Item rule counters (daily limits, pair trades). The append-only item history is the run log. */
+  items: ItemLedger};
 export type Decision = {muse: string; freedom: Freedom; source: 'live' | 'replay'; output: {decision: string; target_place: string; target_agent: string; offer_item: string; want_item: string; public_reason: string; line: string}; evidence?: Record<string, unknown>};
 export type Hooks = {
   /** Item discovery etc. when a Muse arrives somewhere (task 4 rules). */
   onArrive?: (s: WorldState, m: MuseState, place: Place, rand: () => number, at: number) => Omit<WorldEvent, 'id' | 'tick'>[];
   /** Speed a Muse may use for a trip (items change abilities; task 4). */
   speedFor?: (m: MuseState, from: Place, to: Place) => Speed;
+  /** Trades, gifts and help when two Muses meet (task 4 rules). */
+  onEncounter?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, rand: () => number, at: number) => Omit<WorldEvent, 'id' | 'tick'>[];
 };
 
 const fmt = new Intl.DateTimeFormat('en-CA', {timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
@@ -62,6 +67,7 @@ export function createWorld(worldId: string, now: number): WorldState {
     worldId, day, seed: daySeed(worldId, day), tick: 0, version: 0, lastTickAt: now,
     muses: HARNESSES.map(h => ({id: h.id, place: START_PLACES[h.id], travel: null, beat: null, inventory: [...START_ITEMS[h.id]], memory: [], reflection: '', lastMet: {}, intent: null})),
     spotlight: {cursor: 0, visitorQueue: []},
+    items: emptyLedger(),
   };
 }
 
@@ -111,7 +117,15 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   const s: WorldState = structuredClone(prev);
   const events: WorldEvent[] = [];
   const emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => events.push({...e, id: `${s.day}:${s.tick}:${events.length}`, tick: s.tick});
-  if (clock.date !== s.day) { s.day = clock.date; s.seed = daySeed(s.worldId, s.day); emit({at: now, source: 'rule', kind: 'new_day', muse: null, data: {day: s.day}, tags: []}); }
+  s.items ??= emptyLedger();
+  if (clock.date !== s.day) {
+    s.day = clock.date; s.seed = daySeed(s.worldId, s.day);
+    // Daily limits reset; older counters are dropped so the state stays small.
+    for (const d of Object.keys(s.items.finds)) if (d !== s.day) delete s.items.finds[d];
+    for (const d of Object.keys(s.items.trades)) if (d !== s.day) delete s.items.trades[d];
+    emit({at: now, source: 'rule', kind: 'new_day', muse: null, data: {day: s.day}, tags: []});
+  }
+  if (s.items.history.length > 200) s.items.history = s.items.history.slice(-200);
 
   const spot = spotlightFor(s, now);
   // 1. Spotlight: a recorded live/replay decision for this turn, or the scenario's own choice.
@@ -125,8 +139,10 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     const rand = rngFor(s.seed, s.tick, m.id);
     if (m.travel && m.travel.arriveAt <= now) {
       const place = placeById(m.travel.to);
-      const speed = m.travel.speed;
+      const speed = m.travel.speed, chosen = !!m.travel.chosen;
       m.place = place.id; m.travel = null;
+      // A Muse that chose this place itself stays for a beat instead of wandering off at once.
+      if (chosen) { const b = weightedPick(rand, eligibleBeats(m, place, clock.hour), x => beatWeight(x, m.id)); if (b) { emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed, chosen}, tags: speed === 'taxi' ? ['teleport'] : []}); for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e); startBeat(m, b, place, now, 'rule', emit, s); continue; } }
       emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed}, tags: speed === 'taxi' ? ['teleport'] : []});
       for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e);
     }
@@ -156,6 +172,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       const initiator = a.intent?.target === b.id ? a : b.intent?.target === a.id ? b : (rngFor(s.seed, s.tick, a.id, b.id)() < .5 ? a : b);
       const other = initiator === a ? b : a;
       emit({at: now, source: 'rule', kind: 'encounter', muse: initiator.id, other: other.id, place: placeId, data: {initiatedByIntent: !!initiator.intent, stage: 'recognize'}, tags: []});
+      for (const e of hooks.onEncounter?.(s, initiator, other, placeById(placeId), rngFor(s.seed, s.tick, initiator.id, other.id, 'meet'), now) ?? []) emit(e);
       if (initiator.intent?.target === other.id) initiator.intent = null;
       remember(a, `Met ${harnessById(b.id).name} at ${placeById(placeId).name}`);
       remember(b, `Met ${harnessById(a.id).name} at ${placeById(placeId).name}`);
@@ -193,7 +210,9 @@ function finishBeat(m: MuseState, now: number, emit: (e: Omit<WorldEvent, 'id' |
 function startTrip(m: MuseState, from: Place, to: Place, now: number, source: Source, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void, hooks: Hooks) {
   const speed = hooks.speedFor?.(m, from, to) ?? 'walk';
   const ms = tripMs(from, to, speed);
-  m.travel = {to: to.id, departAt: now, arriveAt: now + ms, speed};
+  // A Taxi Token is spent when the in-world teleport starts (not a payment, not a booking).
+  if (speed === 'taxi') { const k = m.inventory.indexOf('taxi_token'); if (k >= 0) m.inventory.splice(k, 1); }
+  m.travel = {to: to.id, departAt: now, arriveAt: now + ms, speed, chosen: source === 'live' || source === 'replay'};
   m.beat = null;
   emit({at: now, source, kind: 'depart', muse: m.id, place: from.id, data: {to: to.id, speed, etaMs: Math.round(ms), distanceM: Math.round(distanceM(from, to))}, tags: []});
 }
@@ -239,7 +258,9 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   if (o.offer_item && !m.inventory.includes(o.offer_item)) return reject('offered item not held: ' + o.offer_item.slice(0, 40));
   const other = findMuse(s, o.target_agent);
   if (!other || other.id === m.id) return reject('offer needs another Muse');
-  m.intent = {kind: 'trade', target: other.id};
+  m.intent = {kind: 'trade', target: other.id, give: o.offer_item || null, want: o.want_item || null};
+  const there = placeById(other.travel?.to ?? other.place);
+  if (there.id !== here.id) startTrip(m, here, there, now, d.source, emit, hooks);
   emit({...base, kind: 'trade_intent', place: here.id, other: other.id, line: o.line || null, data: {...base.data, give: o.offer_item || null, want: o.want_item || null, live: true}, tags: ['off_script']});
 }
 
