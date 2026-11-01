@@ -1,4 +1,4 @@
-import {renderTemplate} from './embedding.mjs';import {Script} from 'node:vm';
+import {renderTemplate} from './embedding.mjs';import {deriveClipsGlb} from './clips-glb.mjs';import {Script} from 'node:vm';
 import {readFile,writeFile,mkdir,copyFile} from 'node:fs/promises';import {createHash} from 'node:crypto';import {build} from 'esbuild';
 const manifest=JSON.parse(await readFile('assets/source-manifest.json','utf8'));
 for(const [name,m]of Object.entries(manifest)){const b=await readFile('assets/'+name);if(createHash('sha256').update(b).digest('hex')!==m.sha256)throw Error('Changed source asset: '+name);}
@@ -17,3 +17,6 @@ await mkdir('dist/characters',{recursive:true});await writeFile('dist/characters
 // references and validation captures stay out of dist.
 const kit=JSON.parse(await readFile('character-kit/manifest.json','utf8'));
 for(const[path,info]of Object.entries(kit.files)){const bytes=await readFile('character-kit/runtime/'+path);if(createHash('sha256').update(bytes).digest('hex')!==info.sha256)throw Error('Changed character kit file: '+path);const out='dist/character-kit/runtime/'+path;await mkdir(out.slice(0,out.lastIndexOf('/')),{recursive:true});await copyFile('character-kit/runtime/'+path,out);}
+// Light first view: rig + clips derived from the hash-checked base LOD0 (scripts/clips-glb.mjs).
+const clips=deriveClipsGlb(await readFile('character-kit/runtime/base/lod0.glb'));await writeFile('dist/character-kit/runtime/base/clips.glb',clips);
+console.log(JSON.stringify({clipsGlb:{bytes:clips.length,sha256:createHash('sha256').update(clips).digest('hex')}}));

@@ -1,0 +1,72 @@
+// Derives a small "rig + clips" GLB from the verified base LOD0: the node hierarchy (names and rest
+// transforms) and every animation, without meshes, skins, materials or images. The light first view
+// plays these clips on the LOD2 body, whose rig is identical (same rig digest), before LOD0 arrives.
+// Deterministic: the same input bytes always give the same output bytes.
+
+const align4 = n => (n + 3) & ~3;
+
+export function deriveClipsGlb(glb) {
+  if (glb.readUInt32LE(0) !== 0x46546c67) throw Error('Not a GLB');
+  const jsonLength = glb.readUInt32LE(12);
+  const json = JSON.parse(glb.subarray(20, 20 + jsonLength).toString('utf8'));
+  const binHeader = 20 + jsonLength;
+  const binLength = glb.readUInt32LE(binHeader);
+  const bin = glb.subarray(binHeader + 8, binHeader + 8 + binLength);
+  if (!json.animations?.length) throw Error('Source has no animations');
+  for (const a of json.animations) for (const c of a.channels) if (c.target.path === 'weights') throw Error('Morph-weight clips need the mesh; not supported in clips.glb');
+
+  const accessorMap = new Map(), accessors = [], bufferViews = [], chunks = [];
+  let offset = 0;
+  const keepAccessor = index => {
+    if (accessorMap.has(index)) return accessorMap.get(index);
+    const src = json.accessors[index];
+    if (src.sparse) throw Error('Sparse animation accessors are not supported');
+    const view = json.bufferViews[src.bufferView];
+    const elementBytes = {SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16}[src.type] * {5126: 4, 5123: 2, 5121: 1, 5122: 2, 5120: 1}[src.componentType];
+    const stride = view.byteStride ?? elementBytes;
+    const start = (view.byteOffset ?? 0) + (src.byteOffset ?? 0);
+    const packed = Buffer.alloc(src.count * elementBytes);
+    for (let i = 0; i < src.count; i++) bin.copy(packed, i * elementBytes, start + i * stride, start + i * stride + elementBytes);
+    bufferViews.push({buffer: 0, byteOffset: offset, byteLength: packed.length});
+    chunks.push(packed, Buffer.alloc(align4(packed.length) - packed.length));
+    offset += align4(packed.length);
+    const {bufferView, byteOffset, ...rest} = src;
+    accessors.push({...rest, bufferView: bufferViews.length - 1});
+    accessorMap.set(index, accessors.length - 1);
+    return accessors.length - 1;
+  };
+  const animations = json.animations.map(a => ({
+    name: a.name,
+    channels: a.channels,
+    samplers: a.samplers.map(s => ({...s, input: keepAccessor(s.input), output: keepAccessor(s.output)})),
+  }));
+  const nodes = json.nodes.map(({mesh, skin, ...node}) => node);
+  const out = {
+    asset: {version: '2.0', generator: 'musely clips-glb (derived from base/lod0.glb)'},
+    scene: json.scene ?? 0,
+    scenes: json.scenes,
+    nodes,
+    animations,
+    accessors,
+    bufferViews,
+    buffers: [{byteLength: offset}],
+  };
+  const jsonBytes = Buffer.from(JSON.stringify(out), 'utf8');
+  const jsonPadded = Buffer.concat([jsonBytes, Buffer.alloc(align4(jsonBytes.length) - jsonBytes.length, 0x20)]);
+  const binPadded = Buffer.concat(chunks);
+  const header = Buffer.alloc(12);
+  header.writeUInt32LE(0x46546c67, 0);
+  header.writeUInt32LE(2, 4);
+  header.writeUInt32LE(12 + 8 + jsonPadded.length + 8 + binPadded.length, 8);
+  const jsonHeader = Buffer.alloc(8);
+  jsonHeader.writeUInt32LE(jsonPadded.length, 0);
+  jsonHeader.writeUInt32LE(0x4e4f534a, 4);
+  const binChunkHeader = Buffer.alloc(8);
+  binChunkHeader.writeUInt32LE(binPadded.length, 0);
+  binChunkHeader.writeUInt32LE(0x004e4942, 4);
+  return Buffer.concat([header, jsonHeader, jsonPadded, binChunkHeader, binPadded]);
+}
+
+export function readGlbJson(glb) {
+  return JSON.parse(glb.subarray(20, 20 + glb.readUInt32LE(12)).toString('utf8'));
+}
