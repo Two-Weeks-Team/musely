@@ -839,6 +839,223 @@
           }
         }
       ]
+    },
+    {
+      "id": "location-walk",
+      "short": "Location · walk, arrive, teleport",
+      "experience": "EXP-LOCATION",
+      "title": "Owner moves the target cell: walk, arrive, refusals, switch back",
+      "summary": "A labelled virtual location decides where the Muse walks. It discovers and trades only at its own current place, and a teleport needs a Taxi Token.",
+      "a": {
+        "muse": "00-jolly",
+        "name": "Kim Sejun's Muse",
+        "owner": "Kim Sejun"
+      },
+      "start": "entry",
+      "steps": [
+        {
+          "id": "entry",
+          "title": "Location source: a labelled virtual preset",
+          "text": "The owner's location comes from a virtual preset and is always shown as DEMO. It sets where the Muse walks to and what neighborhood verification checks. No device GPS is read and nothing here moves the real Muse.",
+          "status": {
+            "source": "virtual preset (demo)",
+            "owner cell": "HQ commons",
+            "Muse place": "The Campfire"
+          },
+          "choices": [
+            {
+              "label": "Owner picks another place",
+              "goto": "move"
+            },
+            {
+              "label": "See GPS permission states",
+              "goto": "gps"
+            }
+          ]
+        },
+        {
+          "id": "gps",
+          "title": "GPS (phase 2): permission states only",
+          "text": "GPS is a later phase. This preview only shows the three permission states and what each falls back to; it never asks the browser for a location.",
+          "status": {
+            "not asked": "virtual preset in use",
+            "allowed": "GPS cell replaces the preset (phase 2)",
+            "denied": "virtual preset stays, labelled DEMO"
+          },
+          "checks": [
+            "No permission prompt is shown in this preview",
+            "Denied or unavailable always falls back to the labelled virtual preset"
+          ],
+          "next": "entry"
+        },
+        {
+          "id": "move",
+          "title": "Owner moves the target cell",
+          "text": "The owner picks Noodle Bar. The owner cell changes at once; the Muse starts walking and stays where it is until it arrives.",
+          "status": {
+            "source": "virtual preset (demo)",
+            "owner cell": "Noodle Bar",
+            "Muse place": "on the way",
+            "travel": "walk"
+          },
+          "metrics": [
+            [
+              "ETA",
+              "6 min",
+              "walk"
+            ],
+            [
+              "Distance",
+              "480 m",
+              "to Noodle Bar"
+            ]
+          ],
+          "choices": [
+            {
+              "label": "Muse tries to discover now",
+              "goto": "not-arrived"
+            },
+            {
+              "label": "Muse tries to teleport",
+              "goto": "no-token"
+            },
+            {
+              "label": "Wait for the walk",
+              "goto": "arrived"
+            },
+            {
+              "label": "Owner switches back",
+              "goto": "switch-back"
+            }
+          ]
+        },
+        {
+          "id": "not-arrived",
+          "title": "Not arrived yet: no discovery, no trade",
+          "text": "Discovery and trades use the Muse's current place, not the owner's target cell. The Muse is still on the way, so both are refused and nothing changes.",
+          "status": {
+            "Muse place": "on the way",
+            "result": "refused"
+          },
+          "checks": [
+            "Muse current place = Noodle Bar? no (on the way)",
+            "Discovery refused · trade refused · inventory unchanged"
+          ],
+          "next": "move"
+        },
+        {
+          "id": "no-token",
+          "title": "Teleport needs a Taxi Token",
+          "text": "A verified teleport skips the walk but only with a Taxi Token. This Muse has none, so the request is refused and the walk continues.",
+          "status": {
+            "Muse place": "on the way",
+            "result": "refused"
+          },
+          "inventory": {
+            "a": [
+              "coffee",
+              "stamp_park"
+            ]
+          },
+          "checks": [
+            "Taxi Token in inventory? no",
+            "Teleport refused · the Muse keeps walking"
+          ],
+          "choices": [
+            {
+              "label": "Same try, with a Taxi Token",
+              "goto": "taxi"
+            },
+            {
+              "label": "Back to the walk",
+              "goto": "move"
+            }
+          ]
+        },
+        {
+          "id": "taxi",
+          "title": "Verified teleport with a Taxi Token",
+          "text": "With a Taxi Token the teleport is verified, the token is used, and the Muse arrives at once. The event is recorded as a teleport.",
+          "status": {
+            "Muse place": "Noodle Bar",
+            "travel": "taxi",
+            "result": "arrived by teleport"
+          },
+          "inventory": {
+            "a": [
+              "coffee",
+              "stamp_park",
+              "taxi_token"
+            ]
+          },
+          "checks": [
+            "Taxi Token in inventory? yes",
+            "Verified teleport · token used"
+          ],
+          "next": "arrived"
+        },
+        {
+          "id": "arrived",
+          "title": "Arrived: discovery is allowed at the current place",
+          "text": "The Muse's current place is now Noodle Bar, so discovery and trades are allowed here, within the daily limits.",
+          "status": {
+            "Muse place": "Noodle Bar",
+            "owner cell": "Noodle Bar",
+            "result": "arrived"
+          },
+          "checks": [
+            "Muse current place = Noodle Bar? yes",
+            "Discovery allowed at this place"
+          ],
+          "choices": [
+            {
+              "label": "Owner switches back",
+              "goto": "switch-back"
+            },
+            {
+              "label": "Start over",
+              "goto": "entry"
+            }
+          ]
+        },
+        {
+          "id": "switch-back",
+          "title": "Owner switches back to the HQ commons",
+          "text": "The target cell changes back. The Muse's current place does not jump: it turns around and walks back from wherever it is.",
+          "status": {
+            "owner cell": "HQ commons",
+            "Muse place": "on the way back",
+            "travel": "walk"
+          },
+          "metrics": [
+            [
+              "ETA",
+              "4 min",
+              "walk"
+            ]
+          ],
+          "next": "retry"
+        },
+        {
+          "id": "retry",
+          "title": "The walk continues; verify the neighborhood again",
+          "text": "Neighborhood verification is checked again for the new cell. Until the Muse arrives, discovery and trades stay refused.",
+          "status": {
+            "owner cell": "HQ commons",
+            "Muse place": "on the way back"
+          },
+          "checks": [
+            "Neighborhood check re-run for the HQ commons cell",
+            "Walk continues"
+          ],
+          "choices": [
+            {
+              "label": "Start over",
+              "goto": "entry"
+            }
+          ]
+        }
+      ]
     }
   ]
 }

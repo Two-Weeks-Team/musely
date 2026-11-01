@@ -63,7 +63,7 @@ export async function callMuse(action: MuseAction, input: unknown): Promise<Muse
 
 /** Short honest label for the header: connection state only; the world itself stays scripted until it runs live. */
 export function statusLabel(s: SparkStatus | null): {text: string; title: string; state: 'live' | 'replay' | 'offline'} {
-  if (!s) return {text: 'Muse Spark · not connected', title: 'This copy runs without the Worker proxy. Everything shown is scripted.', state: 'offline'};
+  if (!s) return {text: 'Muse Spark · not connected', title: 'The Worker status could not be read just now (no Worker proxy in this copy, or it did not answer). Nothing here depends on it: the commons stays scripted.', state: 'offline'};
   if (!s.model.connected) return {text: 'Muse Spark · not connected', title: 'The model key is not configured. Live calls fall back to recorded replays.', state: 'offline'};
   if (!s.model.live) return {text: 'Muse Spark · replay', title: `Today's budget ($${s.budget.capUsd}) is used up. Live calls fall back to recorded replays.`, state: 'replay'};
   return {text: 'Muse Spark · connected', title: `Server proxy ready (${s.model.id}). ${s.budget.liveCalls} live calls today. The model key never reaches this page.`, state: 'live'};
