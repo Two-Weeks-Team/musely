@@ -1,5 +1,8 @@
 // Client side of the Muse Spark proxy (direction v2, 15). The browser never holds a model key:
 // it gets a 24-hour session from Turnstile (or a judge link) and calls /api/muse with structured input.
+import {isolation} from './ui/isolation';
+import {BLOCKED} from './ui/resource-state';
+
 export type SparkStatus = {
   model: {id: string; connected: boolean; live: boolean};
   budget: {day: string; capUsd: number; spentUsd: number; reservedUsd: number; liveCalls: number; remainingUsd: number};
@@ -32,6 +35,8 @@ function loadTurnstile() {
 
 /** Opens a session: judge link token if present in the URL (then removed from the address bar), else Turnstile. */
 export async function ensureSession(status: SparkStatus): Promise<SparkStatus['session']> {
+  // The fixture replay makes no requests. Refuse before the judge token is taken out of the address bar, so a refused call never uses it up.
+  if (isolation.replay) throw new Error(BLOCKED);
   if (status.session) return status.session;
   const params = new URLSearchParams(location.search), judge = params.get('judge');
   let body: Record<string, string>;
@@ -63,7 +68,7 @@ export async function callMuse(action: MuseAction, input: unknown): Promise<Muse
 
 /** Short honest label for the header: connection state only; the world itself stays scripted until it runs live. */
 export function statusLabel(s: SparkStatus | null): {text: string; title: string; state: 'live' | 'replay' | 'offline'} {
-  if (!s) return {text: 'Muse Spark · not connected', title: 'This copy runs without the Worker proxy. Everything shown is scripted.', state: 'offline'};
+  if (!s) return {text: 'Muse Spark · not connected', title: 'The Worker status could not be read just now (no Worker proxy in this copy, or it did not answer). Nothing here depends on it: the commons stays scripted.', state: 'offline'};
   if (!s.model.connected) return {text: 'Muse Spark · not connected', title: 'The model key is not configured. Live calls fall back to recorded replays.', state: 'offline'};
   if (!s.model.live) return {text: 'Muse Spark · replay', title: `Today's budget ($${s.budget.capUsd}) is used up. Live calls fall back to recorded replays.`, state: 'replay'};
   return {text: 'Muse Spark · connected', title: `Server proxy ready (${s.model.id}). ${s.budget.liveCalls} live calls today. The model key never reaches this page.`, state: 'live'};

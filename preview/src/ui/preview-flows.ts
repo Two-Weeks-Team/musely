@@ -49,6 +49,8 @@ export function setFlowCue(fn: (entries: CueEntry[]) => CueResult) { cue = fn; }
 export let lastCue: CueResult | null = null;
 
 export const flowState = {scenario: FLOWS.scenarios[0].id, path: [FLOWS.scenarios[0].start] as string[], viewAs: 'public' as ViewAs};
+/** Jumps to a scenario's first step (the Location tab links to the scripted location states). */
+export function selectFlow(id: string) { const sc = FLOWS.scenarios.find(x => x.id === id); if (!sc) return false; flowState.scenario = sc.id; flowState.path = [sc.start]; flowState.viewAs = 'public'; return true; }
 
 export function renderFlows(body: HTMLElement) {
   const draw = () => renderFlows(body);
