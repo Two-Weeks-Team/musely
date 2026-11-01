@@ -63,7 +63,8 @@ OpenFreeMap TileJSON `https://tiles.openfreemap.org/planet` (v3.16.0, build 2026
 
 - Root key: ES256 (P-256) created once by `scripts/owner-key.mjs`. The private JWK is stored only in the owner's local config and as the Worker secret `OWNER_ROOT_JWK`; the public part and claim record are in `fixtures/owner-claim.json`.
 - Fingerprint: SHA-256 over JCS `{v, root_kid (RFC 7638 thumbprint), owner_hash}`; `owner_hash` = SHA-256 of the normalized Threads handle. Main test account: **@combba82** (switched from @centisgood before anything was posted; @centisgood stays a secondary tester). Display: `ef96 1d6f 307b a775`.
-- Status: `pending_claim`. Default path (direction v2 934c537, 6.3): the Worker exchanges the OAuth code with the app secret, publishes the approved text, re-reads the post and matches the fingerprint.
+- **Status: `claimed`, machine-verified at 2026-11-01T08:26:10Z.** Post: https://www.threads.com/@combba82/post/DfMS8pQk7S9 (media id 18127671887295795). The owner posted the approved text from the Threads app. The Worker's token path then found it among @combba82's recent posts, re-read it, and matched account, body and fingerprint (`note: existing claim post reused`). The Graph publish call had returned `code 24 / subcode 4279009` for this account even with `threads_content_publish` granted, so the reuse path was used. Agent Card `x-musely.owner_claimed: true`.
+- Earlier status: `pending_claim`. Default path (direction v2 934c537, 6.3): the Worker exchanges the OAuth code with the app secret, publishes the approved text, re-reads the post and matches the fingerprint.
 - Meta app "Musely Preview" (development mode, not submitted for review): Threads use case, `threads_basic` + `threads_content_publish`, redirect `https://preview.musely.net/api/threads/callback`. Testers: @centisgood (accepted) and @combba82. Worker secrets `THREADS_APP_ID` / `THREADS_APP_SECRET`.
 - Owner-direct posting is a visual check only: on 2026-11-01 Threads exposed no post text without a token (oEmbed returns an embed shell; public and `/embed` pages render client-side).
 
@@ -73,3 +74,14 @@ OpenFreeMap TileJSON `https://tiles.openfreemap.org/planet` (v3.16.0, build 2026
 - Rate Limiting binding: `ratelimits` in wrangler config, period 10 or 60 s, per-location and approximate.
 - Turnstile widgets can be created through the API; AI Gateway supports custom providers, and `cf-aig-collect-log-payload: false` keeps bodies out of logs.
 - Worker secrets set: `MODEL_API_KEY`, `OWNER_ROOT_JWK` (values never in the repository or the client bundle; the production HTML was re-checked for the key prefix after setting them).
+
+## 6. Proxy limits in production (2026-11-01)
+
+| Check | How | Result |
+|---|---|---|
+| Hourly quota → replay | One judge session, 120 paced live calls | Call 121 returned `source: replay, reason: session_quota`, a recorded real response (request id `2c7fc75e…`) |
+| Failure → replay | Observed during the same run | One real timeout became `replay: timeout`; the reservation was charged in full |
+| Daily cap → replay | Temporary deploy from the main build (`f8fddeea…`) with `DAILY_BUDGET_USD=0.372`, just above the day's spend ($0.3688); then redeployed with the config value | Proxy call → `replay, reason: budget` (`1b0893ff…`). Heartbeat tick 24 → `spotlight_fallback, reason: budget`, the world kept turning. Cap restored to $12 at 08:23 UTC; served HTML hash unchanged; 7 secrets intact |
+| Key exposure | Served HTML scanned for key patterns and secret names | none |
+
+Measured cost: about $0.0018 per live call (169 calls = $0.31). Daily cap set to $12 (team credits $150 over 10 days, with room for development).
