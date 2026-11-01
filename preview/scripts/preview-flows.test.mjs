@@ -43,3 +43,22 @@ test('the required states exist: P0 before/after, P1 before/after, no overlap, o
   const step = (sc, id) => flows.scenarios.find(s => s.id === sc)?.steps.find(s => s.id === id);
   for (const [sc, id] of [['p0-delegation', 'traded'], ['p0-delegation', 'refused'], ['p1-transit', 'before'], ['p1-transit', 'after'], ['meetup-no-overlap', 'stop'], ['meetup-agree', 'declined'], ['meetup-agree', 'revoked'], ['meetup-agree', 'expired'], ['meetup-agree', 'return']]) assert.ok(step(sc, id), `${sc}/${id}`);
 });
+
+test('P0 runs are controlled: same start and proposal, and the in-force trade passes the real trade rules', async () => {
+  const {checkTrade, emptyLedger} = await import('../src/engine/items.ts');
+  const sc = flows.scenarios.find(s => s.id === 'p0-delegation');
+  const step = id => sc.steps.find(s => s.id === id);
+  assert.deepEqual(step('revoke-first').inventory, step('propose').inventory, 'run 2 starts from run 1 state');
+  assert.deepEqual(step('refused').inventory, step('propose').inventory, 'refused run leaves inventories unchanged');
+  const start = step('propose').inventory, done = step('traded').inventory;
+  const give = start.a.find(i => !done.a.includes(i)), want = start.b.find(i => !done.b.includes(i));
+  const r = checkTrade(emptyLedger(), '2026-11-01', {id: sc.a.muse, place: 'commons:cafe', inventory: start.a}, {id: sc.b.muse, place: 'commons:cafe', inventory: start.b}, give, want);
+  assert.deepEqual(r, {ok: true}, `trade ${give} ↔ ${want}: ${r.reason}`);
+});
+
+test('a revoking owner\'s Muse does not resume on its own after revoke', () => {
+  for (const sc of flows.scenarios) for (const st of sc.steps.filter(s => /revoke/.test(s.id))) {
+    const after = [st.next, ...(st.choices ?? []).map(c => c.goto)].filter(Boolean).map(id => sc.steps.find(s => s.id === id));
+    for (const n of after) assert.notEqual(n.id, 'return', `${sc.id}/${st.id} → shared return`);
+  }
+});
