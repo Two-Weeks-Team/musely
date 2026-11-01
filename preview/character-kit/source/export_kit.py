@@ -7,7 +7,8 @@ Writes, under character-kit/runtime/:
   attachments/<id>.glb  garments (skinned, own export skeleton) and bone-parented props,
                         with __lod1/__lod2 reduced copies of every part
 Also writes validation/export/report.json with per-file triangle counts.
-Run via run_mcp_cli.py. Set ONLY = ['base'] or a list of variant ids to limit.
+Run via run_mcp_cli.py. Set ONLY = ['base'] or a list of variant ids to limit, and BASE_LODS = [0]
+to re-export only base/lod0.glb (the only file that carries clips; LOD1/LOD2 stay byte-identical).
 """
 import bpy, bmesh, json, sys, math
 from pathlib import Path
@@ -21,6 +22,7 @@ importlib.reload(variant_spec)
 from variant_spec import VARIANTS
 
 ONLY = globals().get('ONLY')
+BASE_LODS = globals().get('BASE_LODS') or (0, 1, 2)
 scene = bpy.data.scenes['Jolly • Base character studio']
 rig = scene.objects['MuseRig']
 body, face = scene.objects['Jolly_Base'], scene.objects['Jolly_Face']
@@ -149,9 +151,12 @@ neutral()
 sockets = [scene.objects[s] for s in SOCKETS]
 
 if not ONLY or 'base' in ONLY:
-    report['base']['lod0'] = {'bytes': export(KIT / 'runtime/base/lod0.glb', [rig, body, face] + sockets, True),
-                              'tris': tris(body) + tris(face), 'clips': len([a for a in bpy.data.actions])}
+    if 0 in BASE_LODS:
+        report['base']['lod0'] = {'bytes': export(KIT / 'runtime/base/lod0.glb', [rig, body, face] + sockets, True),
+                                  'tris': tris(body) + tris(face), 'clips': len([a for a in bpy.data.actions])}
     for lod, (rb, rf, size) in {1: (.15, .55, 512), 2: (.075, .14, 256)}.items():
+        if lod not in BASE_LODS:
+            continue
         b = decimate(duplicate(body, f'Jolly_Base_LOD{lod}'), rb)
         f = decimate(duplicate(face, f'Jolly_Face_LOD{lod}'), rf)
         downsize_materials([b, f], size)

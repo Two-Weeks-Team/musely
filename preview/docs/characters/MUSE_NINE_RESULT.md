@@ -121,6 +121,7 @@ From `character-kit/source/`, using the official Blender MCP via `run_mcp_cli.py
 
 1. `python3 make_accessory_textures.py`
 2. `python3 run_mcp_cli.py muse_family.blend build_variants.py` (idempotent; saves the .blend)
-3. `python3 run_mcp_cli.py muse_family.blend export_kit.py` (set `ONLY=['base']` or variant ids to split runs; the MCP call times out at about 2 min)
-4. `python3 write_manifest.py` (also repairs zero tangents via `fix_tangents.py`)
-5. Optional review renders: `python3 run_mcp_cli.py muse_family.blend render_variants.py` (use `ONLY` batches)
+3. `python3 run_mcp_cli.py muse_family.blend build_actions.py` (chapter-10 action clips `drink`, `plant`, `high_five`; idempotent, saves the opened .blend and returns measured contact/ground numbers; added in task 5a, see PR "Add drink, plant and high-five clips")
+4. `python3 run_mcp_cli.py muse_family.blend export_kit.py` (set `ONLY=['base']` or variant ids to split runs, and `BASE_LODS=[0]` to re-export only the clip-carrying `base/lod0.glb`; the MCP call times out at about 2 min)
+5. `python3 write_manifest.py` (also repairs zero tangents via `fix_tangents.py`)
+6. Optional review renders: `python3 run_mcp_cli.py muse_family.blend render_variants.py` (use `ONLY` batches); `render_actions.py` renders the action clips (high_five with a mirrored partner)

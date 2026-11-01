@@ -1,5 +1,5 @@
 {
-  "schema": "musely.muse-clips.v2",
+  "schema": "musely.muse-clips.v3",
   "fps": 24,
   "rootMotion": "in-place; world routes own translation/yaw",
   "walkStrideMeters": 0.27,
@@ -118,6 +118,26 @@
       "seconds": 4.0,
       "loop": true,
       "signature": true
+    },
+    {
+      "name": "drink",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "plant",
+      "seconds": 4.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "high_five",
+      "seconds": 2.5,
+      "loop": false,
+      "action": true,
+      "contactSeconds": 1.0,
+      "partnerDistanceMeters": 0.9
     }
   ],
   "sockets": {
@@ -184,5 +204,8 @@
     "Blink_L",
     "Blink_R",
     "MouthOpen"
-  ]
+  ],
+  "actionSockets": {
+    "drink": "Socket_Hand_R"
+  }
 }

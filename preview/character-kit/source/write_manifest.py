@@ -4,7 +4,7 @@ Plain Python (no Blender). Run after export_kit.py.
 """
 from pathlib import Path
 import hashlib, json, struct
-from variant_spec import VARIANTS, SIGNATURE_CLIPS
+from variant_spec import VARIANTS, SIGNATURE_CLIPS, ACTION_CLIPS
 import fix_tangents
 
 KIT = Path(__file__).resolve().parent.parent
@@ -64,9 +64,12 @@ if mismatch:
     raise SystemExit(f'rig digest mismatch: {mismatch}')
 
 shared = json.loads((RT / 'animations/manifest.json').read_text())
-shared_clips = [c for c in shared['clips'] if c['name'] not in SIGNATURE_CLIPS]
-shared['clips'] = shared_clips + [{'name': n, 'seconds': f / 24, 'loop': loop, 'signature': True} for n, (f, loop) in SIGNATURE_CLIPS.items()]
-shared['schema'] = 'musely.muse-clips.v2'
+shared_clips = [c for c in shared['clips'] if c['name'] not in SIGNATURE_CLIPS and c['name'] not in ACTION_CLIPS]
+shared['clips'] = shared_clips + [{'name': n, 'seconds': f / 24, 'loop': loop, 'signature': True} for n, (f, loop) in SIGNATURE_CLIPS.items()] + [
+    {'name': n, 'seconds': spec[0] / 24, 'loop': spec[1], 'action': True, **({'contactSeconds': spec[2] / 24, 'partnerDistanceMeters': 0.9} if len(spec) > 2 else {})}
+    for n, spec in ACTION_CLIPS.items() if n in files['base/lod0.glb']['clips']]  # only clips actually exported
+shared['schema'] = 'musely.muse-clips.v3'
+shared['actionSockets'] = {k: v for k, v in {'drink': 'Socket_Hand_R'}.items() if k in files['base/lod0.glb']['clips']}
 (RT / 'animations/manifest.json').write_text(json.dumps(shared, indent=2) + '\n')
 
 manifest = {
@@ -77,7 +80,7 @@ manifest = {
     'residents': ['00-jolly', '01-sunny', '07-tempo', '02-moss', '06-ink', '08-orbit', '05-bloom', '03-ripple'],
     'variants': [{**v, 'lods': [f'base/lod{l}.glb' for l in (0, 1, 2)],
                   'attachment': None if v['id'] == '00-jolly' else f"attachments/{v['id']}.glb",
-                  'actions': {'bodyClips': 12 + (1 if v['signature'] else 0), 'signature': v['signature'],
+                  'actions': {'bodyClips': 12 + len([n for n in ACTION_CLIPS if n in files['base/lod0.glb']['clips']]) + (1 if v['signature'] else 0), 'signature': v['signature'],
                               'propClip': v['signature'] if v['signature'] in files.get(f"attachments/{v['id']}.glb", {}).get('clips', []) else None}} for v in VARIANTS],
     'files': files,
 }
