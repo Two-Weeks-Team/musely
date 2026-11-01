@@ -530,6 +530,10 @@
             {
               "label": "Jimin revokes",
               "goto": "revoked"
+            },
+            {
+              "label": "The meeting changes before approval",
+              "goto": "changed"
             }
           ]
         },
@@ -587,12 +591,21 @@
               "text": "The candidate was declined. No reason is shared."
             }
           ],
-          "next": "return",
           "scene": [
             {
               "side": "b",
               "clip": "head_shake",
               "line": "Not this time."
+            }
+          ],
+          "choices": [
+            {
+              "label": "Back to normal life",
+              "goto": "return"
+            },
+            {
+              "label": "Try the next candidate",
+              "goto": "next-candidate"
             }
           ]
         },
@@ -605,6 +618,66 @@
             "deadline": "0 min"
           },
           "next": "return"
+        },
+        {
+          "id": "changed",
+          "title": "The approval target changed",
+          "text": "Approval is for the exact time and place shown. When the meeting changes, every earlier approval is void and a new candidate is needed. Nothing is confirmed.",
+          "status": {
+            "task": "rejected",
+            "reason": "target changed"
+          },
+          "ownerInbox": [
+            {
+              "owner": "a",
+              "kind": "blocked",
+              "text": "The meeting changed after you approved. Your approval no longer applies."
+            },
+            {
+              "owner": "b",
+              "kind": "blocked",
+              "text": "The meeting changed after you approved. Your approval no longer applies."
+            }
+          ],
+          "next": "return"
+        },
+        {
+          "id": "next-candidate",
+          "title": "The next candidate",
+          "text": "The Muses try another candidate from the public signals. There are at most five rounds; after the last one without agreement they stop and return to their owners.",
+          "status": {
+            "task": "input-required",
+            "deadline": "30 min"
+          },
+          "choices": [
+            {
+              "label": "See the candidate",
+              "goto": "candidate-2"
+            }
+          ]
+        },
+        {
+          "id": "candidate-2",
+          "title": "Agreement candidate · round 2",
+          "text": "Both Muses accepted 17:30 · the Garden. It goes to both owners' inboxes.",
+          "status": {
+            "task": "input-required",
+            "deadline": "30 min"
+          },
+          "choices": [
+            {
+              "label": "Both approve",
+              "goto": "ember"
+            },
+            {
+              "label": "Sora declines",
+              "goto": "declined"
+            },
+            {
+              "label": "Let it expire",
+              "goto": "expired"
+            }
+          ]
         },
         {
           "id": "revoked",
@@ -1052,6 +1125,463 @@
             {
               "label": "Start over",
               "goto": "entry"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "reward-trade-limits",
+      "short": "Rewards · refused, withdrawn, expired, try again",
+      "experience": "EXP-REWARD",
+      "title": "A trade or a find the rules refuse, an offer that ends, and the next try",
+      "summary": "Rewards stay honest: refused trades and finds change nothing, a withdrawn or expired offer changes nothing, and the next day, another place or another partner is a fresh start.",
+      "a": {
+        "muse": "03-ripple",
+        "name": "Ripple",
+        "owner": "System demo principal"
+      },
+      "b": {
+        "muse": "02-moss",
+        "name": "Moss",
+        "owner": "System demo principal"
+      },
+      "start": "offer",
+      "steps": [
+        {
+          "id": "offer",
+          "title": "A trade offer: Spark for a Snack Box",
+          "text": "Ripple offers a Spark for Moss's Snack Box. Moss's owner has 30 minutes to answer. The rules, the owner and the clock each have a way to end it.",
+          "status": {
+            "task": "submitted",
+            "deadline": "30 min"
+          },
+          "a": {
+            "bubble": "A Spark for your Snack Box?"
+          },
+          "inventory": {
+            "a": [
+              "spark",
+              "paper_map"
+            ],
+            "b": [
+              "snack_box",
+              "stamp_bus_stop"
+            ]
+          },
+          "choices": [
+            {
+              "label": "The rules check the offer",
+              "goto": "no-change"
+            },
+            {
+              "label": "The Muses are far apart",
+              "goto": "too-far"
+            },
+            {
+              "label": "The pair already traded today",
+              "goto": "pair-limit"
+            },
+            {
+              "label": "Ripple finds at the same place twice",
+              "goto": "place-limit"
+            },
+            {
+              "label": "Ripple has found ten things today",
+              "goto": "daily-cap"
+            },
+            {
+              "label": "The owner withdraws the offer",
+              "goto": "withdrawn"
+            },
+            {
+              "label": "Nobody answers in time",
+              "goto": "expired"
+            }
+          ]
+        },
+        {
+          "id": "no-change",
+          "title": "Refused: no ability would change",
+          "text": "Neither a Spark nor a Snack Box changes what either Muse can do, so no ability would change. The rules refuse the trade and both items stay where they were.",
+          "status": {
+            "task": "rejected",
+            "reason": "no ability change"
+          },
+          "inventory": {
+            "a": [
+              "spark",
+              "paper_map"
+            ],
+            "b": [
+              "snack_box",
+              "stamp_bus_stop"
+            ]
+          },
+          "checks": [
+            "Both sides hold the items? yes",
+            "Within 100 m? yes",
+            "Ability change on either side? no → refused"
+          ],
+          "next": "retry"
+        },
+        {
+          "id": "too-far",
+          "title": "Refused: too far apart",
+          "text": "Trades need both Muses within 100 m of each other. At about 240 m (an example distance) the offer is refused and nothing changes.",
+          "status": {
+            "task": "rejected",
+            "reason": "too far"
+          },
+          "inventory": {
+            "a": [
+              "spark",
+              "paper_map"
+            ],
+            "b": [
+              "snack_box",
+              "stamp_bus_stop"
+            ]
+          },
+          "checks": [
+            "Within 100 m? no → refused"
+          ],
+          "next": "retry"
+        },
+        {
+          "id": "pair-limit",
+          "title": "Refused: one trade per pair per day",
+          "text": "Ripple and Moss already traded today. A pair may trade once a day, so a second offer is refused until tomorrow.",
+          "status": {
+            "task": "rejected",
+            "reason": "pair limit"
+          },
+          "inventory": {
+            "a": [
+              "spark",
+              "paper_map"
+            ],
+            "b": [
+              "snack_box",
+              "stamp_bus_stop"
+            ]
+          },
+          "checks": [
+            "Trades by this pair today: 1 of 1 → refused"
+          ],
+          "next": "retry"
+        },
+        {
+          "id": "place-limit",
+          "title": "A second find at the same place is refused",
+          "text": "A Muse finds at most one thing per place per day. A second find at the same place is refused and gives no reward.",
+          "status": {
+            "result": "refused",
+            "reason": "place limit"
+          },
+          "inventory": {
+            "a": [
+              "paper_map"
+            ]
+          },
+          "checks": [
+            "Finds at this place today: 1 of 1 → refused",
+            "Reward: none"
+          ],
+          "next": "retry"
+        },
+        {
+          "id": "daily-cap",
+          "title": "Refused: ten finds a day",
+          "text": "A Muse finds at most ten things a day. The eleventh find is refused and gives no reward.",
+          "status": {
+            "result": "refused",
+            "reason": "daily limit"
+          },
+          "inventory": {
+            "a": [
+              "paper_map"
+            ]
+          },
+          "checks": [
+            "Finds today: 10 of 10 → refused",
+            "Reward: none"
+          ],
+          "next": "retry"
+        },
+        {
+          "id": "withdrawn",
+          "title": "The owner withdraws the offer",
+          "text": "The owner withdraws before an answer. Nothing was exchanged and the offer cannot be accepted later. (A scripted preview of the planned cancelled Task state: today's engine has no withdraw action yet.)",
+          "status": {
+            "task": "cancelled"
+          },
+          "inventory": {
+            "a": [
+              "spark",
+              "paper_map"
+            ],
+            "b": [
+              "snack_box",
+              "stamp_bus_stop"
+            ]
+          },
+          "ownerInbox": [
+            {
+              "owner": "a",
+              "kind": "withdrawn",
+              "text": "You withdrew the offer. Inventories are unchanged."
+            }
+          ],
+          "next": "retry"
+        },
+        {
+          "id": "expired",
+          "title": "The offer expires",
+          "text": "No answer in 30 minutes. The offer expires and inventories are unchanged.",
+          "status": {
+            "task": "expired",
+            "deadline": "passed"
+          },
+          "inventory": {
+            "a": [
+              "spark",
+              "paper_map"
+            ],
+            "b": [
+              "snack_box",
+              "stamp_bus_stop"
+            ]
+          },
+          "ownerInbox": [
+            {
+              "owner": "a",
+              "kind": "expired",
+              "text": "The offer expired without an answer. Nothing was exchanged."
+            }
+          ],
+          "next": "retry"
+        },
+        {
+          "id": "retry",
+          "title": "Try again, from a fresh start",
+          "text": "After a refusal, a withdrawn offer or an expired one, the next try needs something different. Pick what changes this time.",
+          "status": {
+            "task": "none"
+          },
+          "choices": [
+            {
+              "label": "Next day",
+              "goto": "next-day"
+            },
+            {
+              "label": "Another place",
+              "goto": "other-place"
+            },
+            {
+              "label": "Another partner",
+              "goto": "other-partner"
+            }
+          ]
+        },
+        {
+          "id": "next-day",
+          "title": "A new day: the daily limits reset",
+          "text": "The pair limit and the one-find-per-place limit start again, so the same offer can be made again.",
+          "status": {
+            "day": "new"
+          },
+          "choices": [
+            {
+              "label": "Make an offer again",
+              "goto": "offer"
+            }
+          ]
+        },
+        {
+          "id": "other-place",
+          "title": "Another place: a new find is allowed",
+          "text": "A different place gives a new find. A trade still needs both Muses within 100 m and a pair that has not traded today.",
+          "status": {
+            "place": "different"
+          },
+          "choices": [
+            {
+              "label": "Make an offer again",
+              "goto": "offer"
+            }
+          ]
+        },
+        {
+          "id": "other-partner",
+          "title": "Another partner: a different pair",
+          "text": "The pair limit counts each pair on its own, so a different partner can trade today.",
+          "status": {
+            "partner": "different"
+          },
+          "choices": [
+            {
+              "label": "Make an offer again",
+              "goto": "offer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "comms-task-expiry",
+      "short": "Messages · declined, expired, next encounter",
+      "experience": "EXP-COMMS",
+      "title": "A request that is refused, declined or expires, and the next encounter",
+      "summary": "Messages stay safe: a refused or expired request sends nothing and creates no reward, and the next encounter starts a new request. Invite and help are planned tools; this shows the task states they will use.",
+      "a": {
+        "muse": "01-sunny",
+        "name": "Sunny",
+        "owner": "System demo principal"
+      },
+      "b": {
+        "muse": "02-moss",
+        "name": "Moss",
+        "owner": "System demo principal"
+      },
+      "start": "ask",
+      "steps": [
+        {
+          "id": "ask",
+          "title": "Help request (planned tool): the task is open",
+          "text": "Sunny asks Moss for help carrying plants. Invite and help are planned tools: this is a preview of the task states, not a working tool. The task is open for 30 minutes.",
+          "status": {
+            "task": "submitted",
+            "deadline": "30 min"
+          },
+          "a": {
+            "bubble": "Can you help me carry these plants?"
+          },
+          "choices": [
+            {
+              "label": "Moss answers in time",
+              "goto": "answered"
+            },
+            {
+              "label": "Moss's owner declines",
+              "goto": "declined"
+            },
+            {
+              "label": "The request asks for too much",
+              "goto": "out-of-scope"
+            },
+            {
+              "label": "A fourth gift today",
+              "goto": "gift-limit"
+            },
+            {
+              "label": "Nobody answers in time",
+              "goto": "expired"
+            }
+          ]
+        },
+        {
+          "id": "answered",
+          "title": "Answered: the message and task are recorded",
+          "text": "Moss answers. The message and the task result are recorded with their source (a scripted fixture here).",
+          "status": {
+            "task": "completed"
+          },
+          "b": {
+            "bubble": "On my way."
+          },
+          "checks": [
+            "Message recorded · source: scripted fixture",
+            "Task completed",
+            "No reward was created"
+          ],
+          "next": "again"
+        },
+        {
+          "id": "declined",
+          "title": "Declined: nothing is sent",
+          "text": "Moss's owner declines. No delivery is made and no reward is created.",
+          "status": {
+            "task": "rejected"
+          },
+          "ownerInbox": [
+            {
+              "owner": "a",
+              "kind": "declined",
+              "text": "The request was declined. Nothing was sent."
+            }
+          ],
+          "next": "retry"
+        },
+        {
+          "id": "out-of-scope",
+          "title": "Refused: outside what the owner allowed",
+          "text": "The request asks for more than Moss's owner allowed, so it is refused before it reaches Moss. Nothing is sent.",
+          "status": {
+            "task": "rejected",
+            "reason": "out of scope"
+          },
+          "checks": [
+            "Inside the scope Moss's owner allowed? no → refused"
+          ],
+          "next": "retry"
+        },
+        {
+          "id": "gift-limit",
+          "title": "Refused: three gifts per Muse per day",
+          "text": "Three gifts per Muse per day. The fourth is refused and nothing is delivered.",
+          "status": {
+            "task": "rejected",
+            "reason": "daily limit"
+          },
+          "checks": [
+            "Gifts today: 3 of 3 → refused"
+          ],
+          "next": "retry"
+        },
+        {
+          "id": "expired",
+          "title": "The request expires",
+          "text": "No answer in 30 minutes. The task expires, nothing is sent and no reward is created. Sunny can ask again.",
+          "status": {
+            "task": "expired",
+            "deadline": "passed"
+          },
+          "ownerInbox": [
+            {
+              "owner": "a",
+              "kind": "expired",
+              "text": "The request expired without an answer. Nothing was sent."
+            }
+          ],
+          "next": "retry"
+        },
+        {
+          "id": "retry",
+          "title": "Next encounter: ask again",
+          "text": "The old task stays expired. The next time the two Muses meet, a new request can be made.",
+          "status": {
+            "task": "none"
+          },
+          "choices": [
+            {
+              "label": "The Muses meet again",
+              "goto": "again"
+            }
+          ]
+        },
+        {
+          "id": "again",
+          "title": "A new request, a new task",
+          "text": "A fresh task starts. Nothing from the earlier one carries over: no duplicate delivery and no reward.",
+          "status": {
+            "task": "submitted",
+            "deadline": "30 min"
+          },
+          "choices": [
+            {
+              "label": "See how it can end",
+              "goto": "ask"
             }
           ]
         }
