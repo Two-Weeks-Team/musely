@@ -1,16 +1,23 @@
 // Local static server for browser regressions that matches production transfer: text responses
 // (HTML/JS/JSON/CSS) are brotli-compressed like Cloudflare does; GLB/PNG are sent as-is.
-// Usage: node scripts/serve-dist.mjs [port=8788]
+// Usage: node scripts/serve-dist.mjs [port=8788] [--api https://preview.musely.net]
+// --api forwards /api/* and /.well-known/jwks/* (GET only) to a deployed Worker so the local UI shows real data.
 import {createServer} from 'node:http';
 import {readFile, stat} from 'node:fs/promises';
 import {brotliCompressSync, constants} from 'node:zlib';
 import {extname, join, normalize} from 'node:path';
 
-const root = new URL('../dist/', import.meta.url).pathname, port = Number(process.argv[2] ?? 8788);
+const root = new URL('../dist/', import.meta.url).pathname, port = Number(process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : 8788);
+const apiAt = process.argv.indexOf('--api'), api = apiAt > 0 ? process.argv[apiAt + 1] : null;
 const types = {'.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.glb': 'model/gltf-binary', '.png': 'image/png', '.ktx2': 'image/ktx2'};
 const cache = new Map();
 createServer(async (req, res) => {
   try {
+    if (api && /^\/(api\/|\.well-known\/jwks\/)/.test(req.url) && req.method === 'GET') {
+      const r = await fetch(api + req.url, {headers: {accept: 'application/json'}});
+      res.writeHead(r.status, {'content-type': r.headers.get('content-type') ?? 'application/json', 'cache-control': 'no-store'}).end(Buffer.from(await r.arrayBuffer()));
+      return;
+    }
     let path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^(\.\.[/\\])+/, '');
     let file = join(root, path);
     if ((await stat(file).catch(() => null))?.isDirectory()) file = join(file, 'index.html');
