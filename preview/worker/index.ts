@@ -60,6 +60,11 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     });
   }
 
+  // Shared world (direction v2, 8): read-only views for every visitor.
+  if (url.pathname === '/api/world' && request.method === 'GET') return json(await world(env).worldView());
+  if (url.pathname === '/api/world/events' && request.method === 'GET') return json(await world(env).worldEvents(Number(url.searchParams.get('since')) || 0, Number(url.searchParams.get('limit')) || 200));
+  if (url.pathname === '/api/world/highlights' && request.method === 'GET') return json(await world(env).worldHighlights(Number(url.searchParams.get('limit')) || 100));
+
   // Owner claim (direction v2, 6.3). Only the owner Muse's claim exists in the demo.
   const claimMatch = /^\/api\/claim\/([a-z-]{1,40})$/.exec(url.pathname);
   if (claimMatch && request.method === 'GET') {
