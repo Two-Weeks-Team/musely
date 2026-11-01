@@ -449,6 +449,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         const inbox = inboxOf(st);
         if (inbox.tasks.some(t => t.kind === 'meetup' && t.status === 'pending' && [t.from, t.to].includes(me) && [t.from, t.to].includes(to))) return {ok: false, reason: 'open_task_exists'};
         // Candidate from public information only: both harnesses' liked place kinds and the next free half hour.
+        // Its time and place stay in the Task (agent inbox) and the owner notification, never in public events.
         const likesA = harnessById(me).persona.likes as readonly string[], likesB = harnessById(to).persona.likes as readonly string[];
         const commons = ['commons:cafe', 'commons:campfire', 'commons:garden', 'commons:benches', 'commons:bookshelf', 'commons:workbench', 'commons:hq'].map(placeById);
         const shared = likesA.find(k => likesB.includes(k) && commons.some(p => p.kind === k));
@@ -456,7 +457,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         const candidate = {time: candidateTime(at), place: place.name, public_basis: shared ? `both like ${shared} spots` : `${name(to)} likes ${place.kind} spots`};
         const t: Task = {id: nextId(inbox, 'task'), kind: 'meetup', from: me, to, status: 'pending', awaiting: to, createdAt: at, deadline: at + TASK_TTL_MS, updatedAt: at, round: 0, candidate, answers: {}, history: [{by: me, action: 'propose', at}]};
         inbox.tasks.push(t);
-        live({at, source: 'live', kind: 'meetup_proposed', muse: me, other: to, line: `Meet at ${candidate.place}, ${candidate.time}?`, data: {task_id: t.id, candidate}, tags: []});
+        live({at, source: 'live', kind: 'meetup_proposed', muse: me, other: to, line: `Asked ${name(to)} about a meetup`, data: {task_id: t.id, candidate: 'private (owner only)'}, tags: []});
         if (!isConnected(inbox, to, at)) {
           const yes = likesB.includes(place.kind) || rngFor(st.seed, st.tick, t.id)() < .5;
           t.answers![to] = yes ? 'accept' : 'reject'; t.history.push({by: to, action: 'answer', at});
@@ -478,7 +479,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         if (answer === 'reject') { t.status = 'rejected'; t.awaiting = null; return {ok: true, data: {task: taskView(t, me)}}; }
         if (t.answers![otherId] === 'accept') {
           t.status = 'completed'; t.awaiting = null;
-          live({at, source: 'live', kind: 'meetup_candidate', muse: me, other: otherId, line: `Meetup candidate: ${t.candidate!.place}, ${t.candidate!.time}`, data: {task_id: t.id, candidate: t.candidate, owner_approval: 'required'}, tags: ['meetup_candidate']});
+          live({at, source: 'live', kind: 'meetup_candidate', muse: me, other: otherId, line: `A meetup candidate with ${name(otherId)} is waiting for the owner's approval`, data: {task_id: t.id, candidate: 'private (owner only)', owner_approval: 'required'}, tags: ['meetup_candidate']});
           notifyOwner(inboxOf(st), {kind: 'meetup_candidate', at, line: `A meetup candidate with ${name(otherId)} needs your approval`, ref: t.id, other: otherId, detail: {...t.candidate!}});
           return {ok: true, data: {task: taskView(t, me), candidate: t.candidate, owner_approval: 'required'}};
         }
