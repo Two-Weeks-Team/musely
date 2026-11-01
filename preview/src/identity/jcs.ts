@@ -20,7 +20,7 @@ export function canonicalize(value: unknown): string {
   throw new TypeError('JCS: unsupported value type ' + typeof value);
 }
 
-export const utf8 = (text: string) => new TextEncoder().encode(text);
+export const utf8 = (text: string) => new TextEncoder().encode(text) as Uint8Array<ArrayBuffer>;
 
 export function base64url(bytes: ArrayBuffer | Uint8Array): string {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);

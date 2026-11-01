@@ -9,10 +9,10 @@ const SIGN = {name: 'ECDSA', hash: 'SHA-256'} as const;
 
 export async function generateKeyPair(extractable = false): Promise<KeyPair> {
   const pair = await crypto.subtle.generateKey(ALG, true, ['sign', 'verify']) as CryptoKeyPair;
-  const {kty, crv, x, y} = await crypto.subtle.exportKey('jwk', pair.publicKey);
+  const {kty, crv, x, y} = await crypto.subtle.exportKey('jwk', pair.publicKey) as JsonWebKey;
   const publicJwk = {kty, crv, x, y} as EcPublicJwk;
   // Re-import the private key as non-extractable unless the caller must persist it.
-  const privateKey = extractable ? pair.privateKey : await crypto.subtle.importKey('jwk', await crypto.subtle.exportKey('jwk', pair.privateKey), ALG, false, ['sign']);
+  const privateKey = extractable ? pair.privateKey : await crypto.subtle.importKey('jwk', await crypto.subtle.exportKey('jwk', pair.privateKey) as JsonWebKey, ALG, false, ['sign']);
   return {privateKey, publicKey: pair.publicKey, publicJwk, kid: await jwkThumbprint(publicJwk)};
 }
 
