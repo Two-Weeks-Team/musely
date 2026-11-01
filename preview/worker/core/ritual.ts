@@ -15,9 +15,15 @@ export class RitualStore {
   init() {
     this.sql.exec('CREATE TABLE IF NOT EXISTS rituals (id TEXT PRIMARY KEY, session TEXT NOT NULL, steps TEXT NOT NULL, expires INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS ritual_record (id INTEGER PRIMARY KEY CHECK (id = 1), record TEXT NOT NULL)');
+    this.sql.exec('CREATE INDEX IF NOT EXISTS rituals_expires ON rituals (expires)');
+    this.sql.exec('CREATE INDEX IF NOT EXISTS rituals_session ON rituals (session, used, expires)');
   }
+  /** At most this many open (unused, unexpired) rituals per session; starting more is refused. */
+  static MAX_OPEN = 2;
   start(session: string, now = Date.now(), rand: () => number = Math.random) {
-    this.sql.exec('DELETE FROM rituals WHERE expires < ?', now - 3_600_000);
+    this.sql.exec('DELETE FROM rituals WHERE expires < ?', now - RITUAL_TTL_MS);
+    const open = Number(this.sql.exec('SELECT count(*) AS n FROM rituals WHERE session = ? AND used = 0 AND expires >= ?', session, now).toArray()[0].n);
+    if (open >= RitualStore.MAX_OPEN) return null;
     const pool = Object.keys(CHALLENGE_STEPS) as ChallengeStep[];
     const steps: ChallengeStep[] = [];
     while (steps.length < 3) { const s = pool[Math.floor(rand() * pool.length)]; if (!steps.includes(s)) steps.push(s); }

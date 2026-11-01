@@ -25,3 +25,14 @@ test('only a passing judge-link run becomes the owner record, without frames', (
   assert.equal(rec.requestId, 'req');
   assert.ok(!JSON.stringify(rec).includes('data:image'));
 });
+
+test('a session can hold at most two open rituals; finishing one frees a slot', () => {
+  const r = new RitualStore(sqlite()); r.init();
+  const a = r.start('s', 1000), b = r.start('s', 1000);
+  assert.ok(a && b);
+  assert.equal(r.start('s', 1000), null, 'third open ritual refused');
+  assert.ok(r.start('other', 1000), 'other sessions unaffected');
+  r.take(a.id, 's', 1001);
+  assert.ok(r.start('s', 1002), 'a used ritual frees a slot');
+  assert.ok(r.start('s', 1000 + RITUAL_TTL_MS + 5) , 'expired ones free slots too');
+});

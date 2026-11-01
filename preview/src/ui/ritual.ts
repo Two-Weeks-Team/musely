@@ -22,27 +22,35 @@ export function ritualCard(onDone: () => void) {
     if (rec) recorded.append(results(rec.results));
   }).catch(() => {});
 
+  // The ritual lives only while its card is on screen: a tab change removes the card and closing the panel hides
+  // it; either way capture stops, the camera is released and nothing more is uploaded.
+  const onScreen = () => box.isConnected && !!box.closest(':popover-open');
+  class Dismissed extends Error {}
   start.onclick = async () => {
     start.disabled = true; stage.hidden = false; stage.replaceChildren(el('p', 'muted', 'Preparing a session…'));
     let stream: MediaStream | null = null;
+    const guard = () => { if (!onScreen()) { stream?.getTracks().forEach(t => t.stop()); stream = null; throw new Dismissed(); } };
     try {
       const st = await sparkStatus(); if (st) await ensureSession(st);
       const ch = await fetch('/api/ritual/start', {method: 'POST'});
       if (!ch.ok) throw new Error(ch.status === 401 ? 'a session is required' : 'could not start (' + ch.status + ')');
       const {id, steps} = await ch.json() as {id: string; steps: {id: string; text: string}[]};
       stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'user', width: {ideal: 640}, height: {ideal: 480}}, audio: false});
+      guard();
       const video = el('video', 'ritual-video'); video.muted = true; video.playsInline = true; video.srcObject = stream; await video.play();
       const prompt = el('p', 'ritual-prompt'), count = el('p', 'ritual-count');
       stage.replaceChildren(video, prompt, count);
       const frames: string[] = [];
       for (let i = 0; i < steps.length; i++) {
         prompt.textContent = `${i + 1}/3 · Please ${steps[i].text}.`;
-        for (let n = 3; n > 0; n--) { count.textContent = String(n); await new Promise(r => setTimeout(r, 1000)); }
+        for (let n = 3; n > 0; n--) { guard(); count.textContent = String(n); await new Promise(r => setTimeout(r, 1000)); }
+        guard();
         count.textContent = '●';
         frames.push(capture(video));
         await new Promise(r => setTimeout(r, 300));
       }
-      stream.getTracks().forEach(t => t.stop()); stream = null;
+      guard();
+      stream?.getTracks().forEach(t => t.stop()); stream = null;
       prompt.textContent = 'Judging…'; count.textContent = '';
       const r = await fetch('/api/muse', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({action: 'challenge', input: {challengeId: id, frames}})});
       const j = await r.json();
@@ -55,6 +63,7 @@ export function ritualCard(onDone: () => void) {
       if (j.evidence?.requestId) stage.append(el('p', 'muted', `Request ${j.evidence.requestId} · ${j.evidence.latencyMs} ms`));
       onDone();
     } catch (err) {
+      if (err instanceof Dismissed) { stage.replaceChildren(el('p', 'muted', 'Ritual cancelled: nothing was sent.')); return; }
       stage.replaceChildren(el('p', 'muted', 'The ritual could not run: ' + (err as Error).message + '. The recorded ritual above still shows how it works.'));
     } finally {
       stream?.getTracks().forEach(t => t.stop());

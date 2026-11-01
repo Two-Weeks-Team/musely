@@ -54,7 +54,9 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   // Welcome ritual (6.4): the server picks the three steps; the client never chooses them.
   if (url.pathname === '/api/ritual/start' && request.method === 'POST') {
     if (!session) return json({error: 'session_required'}, 401);
-    return json(await world(env).ritualStart(session.sid));
+    if (env.BURST && !(await env.BURST.limit({key: 'ritual:' + session.sid})).success) return json({error: 'slow_down'}, 429);
+    const started = await world(env).ritualStart(session.sid);
+    return started ? json(started) : json({error: 'too_many_open_rituals', detail: 'Finish or let an open ritual expire (3 minutes) first.'}, 429);
   }
   if (url.pathname === '/api/ritual/record' && request.method === 'GET') return json({record: await world(env).ritualOwnerRecord()});
 
