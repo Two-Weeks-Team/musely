@@ -4,7 +4,10 @@
 //   continuity: the selected Muse, its state and its source stay visible from the close-up out to the map and back
 //   cues: a Preview flows item change plays on the commons character with its clip and prop; a Muse that is not in
 //     the commons gets a stated fallback; the world pauses during the cue and resumes after
-//   layout: at 390 px the header rows do not cover the time caption or the story heading
+//   layout: at 390 px the header rows do not cover the time caption or the story heading, and in Live world the story
+//     heading and time caption stay off the welcome card
+//   review regressions (PR #76): a cue never overrides a mode change; the pause button matches a cue-held world; a new
+//     cue releases the previous character; a prop that did not load is not claimed; ?entry=watch boots cleanly
 //   isolation: no non-GET request to /api while doing any of this; no page errors
 // Returns {ok, cases}; screenshots go to output/preview-flows-*.png.
 async (page) => {
@@ -32,6 +35,10 @@ async (page) => {
       await p.click('#mode-world'); await p.waitForTimeout(3000);
       s = await m(); check(vp, 'Live world stops the story and offers to resume', s.mode === 'world' && !s.tour && /Resume story · 0:0\d/.test(s.tourText) && s.zoom < 17, `${s.tourText} zoom ${s.zoom.toFixed(1)}`);
       await p.screenshot({path: `output/preview-flows-${vp}-world-mode.png`});
+      if (mobile) {
+        const o = await p.evaluate(() => { const box = el => { if (!el) return null; const s = getComputedStyle(el); if (s.display === 'none' || s.visibility === 'hidden') return null; const b = el.getBoundingClientRect(); return b.width && b.height ? {x: b.x, y: b.y, width: b.width, height: b.height} : null; }; return {heading: box(document.getElementById('story-heading')), caption: box(document.getElementById('time-label')), welcome: box(document.getElementById('welcome'))}; });
+        check(vp, 'Live world at 390 px: neither the story heading nor the time caption prints over the welcome card', !overlap(o.heading, o.welcome) && !overlap(o.caption, o.welcome), JSON.stringify(o));
+      }
       await p.click('#mode-story'); await p.waitForTimeout(400);
       s = await m(); check(vp, 'returning to Story resumes where it left', s.mode === 'story' && s.tour && s.elapsed >= left - 0.2 && s.elapsed < left + 3, `left ${left.toFixed(1)} resumed ${s.elapsed.toFixed(1)}`);
       if (mobile) {
@@ -76,6 +83,59 @@ async (page) => {
       check(vp, 'a clip with a 3D prop shows the prop (Moss writes the postcard on a notepad)', prop.held === 'write_note' && prop.result.includes('Moss: clip with its 3D notepad'), prop.result);
       await p.evaluate(() => document.getElementById('world-panel').hidePopover()); await p.waitForTimeout(300);
       await p.screenshot({path: `output/preview-flows-${vp}-cue-prop.png`});
+
+      // Review regressions on PR #76 (Codex 1-4 and the bot P1). Cues here last 2.5 s.
+      await p.waitForTimeout(6200);
+      const cueOn = specs => p.evaluate(specs => window.__world.previewCue(specs.map(s => ({variant: window.__world.actor(s.i).variant, clip: s.clip, item: s.item ?? null, label: 'regression'})), 2.5).shown, specs);
+      const st = () => p.evaluate(() => { const g = window.__world.getMetrics(), b = document.getElementById('pause'); return {mode: window.__world.mode, tour: g.tour, tourCamera: g.tourCamera, paused: g.paused, elapsed: g.elapsed, zoom: g.zoom, pauseText: b.textContent, pressed: b.getAttribute('aria-pressed'), tourText: document.getElementById('tour').textContent, cues: document.querySelectorAll('.preview-cue').length}; });
+      const note = [{i: 3, clip: 'write_note', item: 'notepad'}];
+      // Codex 1 / bot P2: switching mode while a cue plays must not let the cue's saved state undo the choice.
+      await p.click('#mode-story'); await p.waitForTimeout(700);
+      await cueOn(note); await p.click('#mode-world'); await p.waitForTimeout(3300);
+      let a = await st(); await p.waitForTimeout(900); let b = await st();
+      check(vp, 'Story -> cue -> Live world: the cue ending does not restart the story or snap the camera back', a.mode === 'world' && !a.tour && !a.tourCamera && a.cues === 0 && /Resume story/.test(a.tourText) && b.elapsed === a.elapsed && !b.tourCamera && b.zoom < 17, JSON.stringify({a, b}));
+      await p.click('#mode-world'); await p.waitForTimeout(600);
+      await cueOn(note); await p.click('#mode-story'); await p.waitForTimeout(3300);
+      a = await st(); await p.waitForTimeout(800); b = await st();
+      check(vp, 'Live world -> cue -> Story: the cue ending does not stop the story', a.mode === 'story' && a.tour && a.cues === 0 && b.tour && b.elapsed > a.elapsed + 0.4, JSON.stringify({a, b}));
+      // Codex 2: the pause button tells the truth while a cue holds the world, and pressing it ends the cue.
+      await p.click('#mode-world'); await p.waitForTimeout(500);
+      await cueOn(note); await p.waitForTimeout(400); a = await st();
+      check(vp, 'during a cue the pause button reads "Paused for preview" and is pressed', a.paused && a.pauseText === 'Paused for preview' && a.pressed === 'true', JSON.stringify(a));
+      await p.click('#pause'); await p.waitForTimeout(300); b = await st();
+      check(vp, 'pressing it ends the cue and resumes the world', b.cues === 0 && !b.paused && b.pauseText === 'Pause world' && b.pressed === 'false', JSON.stringify(b));
+      await cueOn(note); await p.waitForTimeout(3300); a = await st();
+      check(vp, 'when the cue runs out the button is back to "Pause world"', a.cues === 0 && !a.paused && a.pauseText === 'Pause world' && a.pressed === 'false', JSON.stringify(a));
+      await p.click('#pause'); await cueOn(note); await p.waitForTimeout(3300); a = await st();
+      check(vp, 'a world you paused yourself stays paused after a cue, and the button says so', a.cues === 0 && a.paused && a.pauseText === 'Resume world' && a.pressed === 'true', JSON.stringify(a));
+      await p.click('#pause'); await p.waitForTimeout(300);
+      // Codex 3: replacing a cue releases the previous character.
+      await cueOn([{i: 0, clip: 'handoff_receive'}]); await p.waitForTimeout(300);
+      await cueOn(note); await p.waitForTimeout(200);
+      const heldNow = await p.evaluate(() => [0, 3].map(i => window.__world.actor(i).getMetrics().held));
+      check(vp, 'a new cue releases the previous character\'s hold', heldNow[0] === null && heldNow[1] === 'write_note', JSON.stringify(heldNow));
+      await p.waitForTimeout(2800);
+      // Bot P1: ?entry=watch starts the story during onboarding mount, before the mode controls would exist.
+      const wp = await ctx.newPage(), werr = [];
+      wp.on('pageerror', e => werr.push(e.message));
+      const wurl = new URL(base.href); wurl.search = '?autoplay=0&entry=watch';
+      await wp.goto(wurl.href, {waitUntil: 'domcontentloaded'});
+      const wup = await wp.waitForFunction(() => window.__world?.getMetrics().ready && window.__world.getMetrics().characterKit, null, {timeout: 30000}).then(() => true, () => false);
+      const w = wup ? await wp.evaluate(() => ({mode: window.__world.mode, tour: window.__world.getMetrics().tour, cue: typeof window.__world.previewCue, pressed: document.getElementById('mode-story').getAttribute('aria-pressed')})) : null;
+      check(vp, '?entry=watch boots: the story plays, mode controls and cues exist, no errors', wup && w.mode === 'story' && w.tour && w.cue === 'function' && w.pressed === 'true' && werr.length === 0, JSON.stringify({w, werr}));
+      await wp.close();
+      // Codex 4: a prop that did not load must not be reported as shown.
+      const bctx = await browser.newContext({viewport: mobile ? {width: 390, height: 844} : {width: 1440, height: 900}, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1});
+      await bctx.route('**/attachments/props.glb', r => r.abort());
+      const bp = await bctx.newPage(), berr = [];
+      bp.on('pageerror', e => berr.push(e.message));
+      await bp.goto(base.href, {waitUntil: 'domcontentloaded'});
+      await bp.waitForFunction(() => window.__world?.getMetrics().ready && window.__world.getMetrics().characterKit, null, {timeout: 60000});
+      await bp.waitForTimeout(2500);
+      const np = await bp.evaluate(() => { const wd = window.__world, out = wd.previewCue([{variant: wd.actor(3).variant, clip: 'write_note', item: 'notepad', label: 'no props'}], 3), el = document.querySelector('.preview-cue'); return {result: out.results[0], visual: el?.dataset.visual, text: el?.textContent, propsLoaded: wd.actor(3).propsLoaded}; });
+      check(vp, 'props file missing: the cue says fallback and does not claim a 3D prop', np.propsLoaded === false && np.visual === 'fallback' && !/3D prop notepad/.test(np.text) && np.result.prop === null && np.result.visual === 'fallback' && berr.length === 0, JSON.stringify(np));
+      await bp.screenshot({path: `output/preview-flows-${vp}-cue-no-prop.png`});
+      await bctx.close();
       check(vp, 'no /api writes', writes.length === 0, writes.join(' '));
       check(vp, 'no page errors', errors.length === 0, errors.join(' / '));
     } catch (e) { check(vp, 'run', false, String(e).slice(0, 300)); }

@@ -100,6 +100,10 @@ export class MuseActor extends BaseMuseActor{
   this.held={name,from:now,until:now+seconds*1000};this.showLod();return true;
  }
  get heldAction(){return this.held&&performance.now()<this.held.until?this.held.name:null;}
+ /** Ends a preview hold at once (a replaced or cancelled cue); the story's own action takes over on the next frame. */
+ release(){this.held=null;}
+ /** True when the clip now playing has a 3D prop that is bound and actually rendered. A cue must not claim a prop that is not there. */
+ propShown(){let n=0;this.root.traverseVisible(o=>{const c=(o as Tagged).userData.museClip;if(c!==undefined&&c===this.current)n++;});return n>0;}
  setAction(name:string){if(this.held){if(performance.now()<this.held.until)name=this.held.name;else this.held=null;}super.setAction(name);this.showLod();}
  private tint(meshes:readonly T.SkinnedMesh[]){
   if(!this.library||this.variant==='00-jolly')return;
