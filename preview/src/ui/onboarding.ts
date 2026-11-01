@@ -215,7 +215,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   if (entry === 'trial') { const h = harness(opts.initial!.get('harness')); state.viewing = h?.id ?? null; open(h ? 'trial-card' : 'trial-pick'); }
   else if (entry === 'connect') open('connect');
   else if (entry === 'choose') open('choose');
-  else if (entry === 'watch') { state.path = 'watch'; updateChip(); }
+  else if (entry === 'watch') { state.path = 'watch'; updateChip(); opts.onWatch(); }
 
   return {state, open, close};
 }
