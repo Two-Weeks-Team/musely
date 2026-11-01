@@ -1,0 +1,655 @@
+{
+ "source": "OpenStreetMap via Overpass API",
+ "license": "ODbL 1.0 — © OpenStreetMap contributors",
+ "osmBase": "2026-11-01T06:41:01Z",
+ "center": [
+  -122.14991969950646,
+  37.48313116566372
+ ],
+ "radiusM": 1500,
+ "counts": {
+  "bus_stop": 38,
+  "cafe": 3,
+  "convenience": 1,
+  "fast_food": 15,
+  "ice_cream": 1,
+  "library": 2,
+  "park": 6,
+  "playground": 2,
+  "restaurant": 11
+ },
+ "places": [
+  {
+   "id": "osm:node/4869055832",
+   "name": "Noodle Bar",
+   "kind": "restaurant",
+   "lng": -122.149762,
+   "lat": 37.483689,
+   "distanceM": 64
+  },
+  {
+   "id": "osm:node/2337690763",
+   "name": "Sweet Stop",
+   "kind": "ice_cream",
+   "lng": -122.149519,
+   "lat": 37.484035,
+   "distanceM": 107
+  },
+  {
+   "id": "osm:node/4877348456",
+   "name": "Naan Stop",
+   "kind": "fast_food",
+   "lng": -122.148874,
+   "lat": 37.483886,
+   "distanceM": 125
+  },
+  {
+   "id": "osm:node/2337690762",
+   "name": "Café Epic",
+   "kind": "fast_food",
+   "lng": -122.148781,
+   "lat": 37.483973,
+   "distanceM": 137
+  },
+  {
+   "id": "osm:node/2611183820",
+   "name": "Lightning Bolt's Smokehouse",
+   "kind": "fast_food",
+   "lng": -122.149087,
+   "lat": 37.484222,
+   "distanceM": 142
+  },
+  {
+   "id": "osm:node/4877348455",
+   "name": "Juice Badger",
+   "kind": "fast_food",
+   "lng": -122.148695,
+   "lat": 37.48405,
+   "distanceM": 149
+  },
+  {
+   "id": "osm:node/4877348454",
+   "name": "Hacking The Dragon",
+   "kind": "fast_food",
+   "lng": -122.14862,
+   "lat": 37.484124,
+   "distanceM": 159
+  },
+  {
+   "id": "osm:node/2611183817",
+   "name": "Sol",
+   "kind": "restaurant",
+   "lng": -122.149168,
+   "lat": 37.484467,
+   "distanceM": 163
+  },
+  {
+   "id": "osm:node/4877348453",
+   "name": "Boba",
+   "kind": "cafe",
+   "lng": -122.147898,
+   "lat": 37.484876,
+   "distanceM": 264
+  },
+  {
+   "id": "osm:node/3831477778",
+   "name": "Full Circle",
+   "kind": "fast_food",
+   "lng": -122.151867,
+   "lat": 37.48115,
+   "distanceM": 279
+  },
+  {
+   "id": "osm:node/5113881826",
+   "name": "Fromage",
+   "kind": "restaurant",
+   "lng": -122.152075,
+   "lat": 37.48115,
+   "distanceM": 291
+  },
+  {
+   "id": "osm:node/2611183821",
+   "name": "Andytown Coffee Roasters",
+   "kind": "cafe",
+   "lng": -122.147802,
+   "lat": 37.485187,
+   "distanceM": 295
+  },
+  {
+   "id": "osm:way/123539752",
+   "name": "Starbucks",
+   "kind": "cafe",
+   "lng": -122.151169,
+   "lat": 37.480219,
+   "distanceM": 342
+  },
+  {
+   "id": "osm:way/30027515",
+   "name": "Togo's",
+   "kind": "fast_food",
+   "lng": -122.151358,
+   "lat": 37.480208,
+   "distanceM": 349
+  },
+  {
+   "id": "osm:node/2322611877",
+   "name": "Teddy's Nacho Royale",
+   "kind": "fast_food",
+   "lng": -122.147471,
+   "lat": 37.485683,
+   "distanceM": 357
+  },
+  {
+   "id": "osm:node/5845161685",
+   "name": "Willow Road & Hamilton Avenue",
+   "kind": "bus_stop",
+   "lng": -122.150726,
+   "lat": 37.479843,
+   "distanceM": 373
+  },
+  {
+   "id": "osm:node/2322611878",
+   "name": "Burger Shack",
+   "kind": "fast_food",
+   "lng": -122.146974,
+   "lat": 37.485586,
+   "distanceM": 377
+  },
+  {
+   "id": "osm:way/123539769",
+   "name": "SAJJ Mediterranean",
+   "kind": "restaurant",
+   "lng": -122.151965,
+   "lat": 37.480145,
+   "distanceM": 378
+  },
+  {
+   "id": "osm:node/2340209821",
+   "name": "Big Tony's Pizza",
+   "kind": "fast_food",
+   "lng": -122.147256,
+   "lat": 37.485837,
+   "distanceM": 382
+  },
+  {
+   "id": "osm:way/48236748",
+   "name": "Jack in the Box",
+   "kind": "fast_food",
+   "lng": -122.151382,
+   "lat": 37.479829,
+   "distanceM": 389
+  },
+  {
+   "id": "osm:node/2322611879",
+   "name": "Café Livin' The Dream",
+   "kind": "fast_food",
+   "lng": -122.147121,
+   "lat": 37.485848,
+   "distanceM": 390
+  },
+  {
+   "id": "osm:way/123539748",
+   "name": "High 5 Star Pizza",
+   "kind": "restaurant",
+   "lng": -122.152025,
+   "lat": 37.480027,
+   "distanceM": 392
+  },
+  {
+   "id": "osm:way/123539772",
+   "name": "Mi Taqueria",
+   "kind": "restaurant",
+   "lng": -122.152066,
+   "lat": 37.479948,
+   "distanceM": 401
+  },
+  {
+   "id": "osm:node/2611183815",
+   "name": "Harvest",
+   "kind": "fast_food",
+   "lng": -122.146722,
+   "lat": 37.485706,
+   "distanceM": 402
+  },
+  {
+   "id": "osm:node/5845166579",
+   "name": "Willow Road & Hamilton Avenue",
+   "kind": "bus_stop",
+   "lng": -122.151295,
+   "lat": 37.47937,
+   "distanceM": 435
+  },
+  {
+   "id": "osm:way/30027572",
+   "name": "Chevron",
+   "kind": "convenience",
+   "lng": -122.151581,
+   "lat": 37.479382,
+   "distanceM": 442
+  },
+  {
+   "id": "osm:way/525534460",
+   "name": "Building 20 Rooftop Park",
+   "kind": "park",
+   "lng": -122.154272,
+   "lat": 37.481004,
+   "distanceM": 451
+  },
+  {
+   "id": "osm:node/5113884524",
+   "name": "Straw",
+   "kind": "restaurant",
+   "lng": -122.154562,
+   "lat": 37.480746,
+   "distanceM": 488
+  },
+  {
+   "id": "osm:node/5113886040",
+   "name": "West Side Hot Dog Cart",
+   "kind": "fast_food",
+   "lng": -122.15509,
+   "lat": 37.480914,
+   "distanceM": 519
+  },
+  {
+   "id": "osm:node/6632053341",
+   "name": "Hamilton Court",
+   "kind": "bus_stop",
+   "lng": -122.148596,
+   "lat": 37.478489,
+   "distanceM": 529
+  },
+  {
+   "id": "osm:node/6632053342",
+   "name": "Hamilton Court",
+   "kind": "bus_stop",
+   "lng": -122.148112,
+   "lat": 37.478542,
+   "distanceM": 535
+  },
+  {
+   "id": "osm:node/4906324589",
+   "name": "Gold Line",
+   "kind": "bus_stop",
+   "lng": -122.149265,
+   "lat": 37.477716,
+   "distanceM": 605
+  },
+  {
+   "id": "osm:node/3831477780",
+   "name": "Cho's Hawker Center",
+   "kind": "restaurant",
+   "lng": -122.156835,
+   "lat": 37.481123,
+   "distanceM": 650
+  },
+  {
+   "id": "osm:node/3831477779",
+   "name": "Mama Penny's",
+   "kind": "restaurant",
+   "lng": -122.156618,
+   "lat": 37.48051,
+   "distanceM": 659
+  },
+  {
+   "id": "osm:node/6632053338",
+   "name": "Adams Court",
+   "kind": "bus_stop",
+   "lng": -122.143655,
+   "lat": 37.478607,
+   "distanceM": 747
+  },
+  {
+   "id": "osm:node/6632053337",
+   "name": "Adams Court",
+   "kind": "bus_stop",
+   "lng": -122.143685,
+   "lat": 37.478478,
+   "distanceM": 755
+  },
+  {
+   "id": "osm:node/6632053353",
+   "name": "1340 Willow Road",
+   "kind": "bus_stop",
+   "lng": -122.152388,
+   "lat": 37.476566,
+   "distanceM": 762
+  },
+  {
+   "id": "osm:way/31559990",
+   "name": "Soleska Market",
+   "kind": "restaurant",
+   "lng": -122.153119,
+   "lat": 37.476439,
+   "distanceM": 796
+  },
+  {
+   "id": "osm:node/6632053344",
+   "name": "1200 O'Brien Drive",
+   "kind": "bus_stop",
+   "lng": -122.146921,
+   "lat": 37.476138,
+   "distanceM": 821
+  },
+  {
+   "id": "osm:node/6632053345",
+   "name": "1200 O'Brien Drive",
+   "kind": "bus_stop",
+   "lng": -122.146831,
+   "lat": 37.47604,
+   "distanceM": 834
+  },
+  {
+   "id": "osm:way/603507901",
+   "name": "Facebook Building 21 Rooftop Park",
+   "kind": "park",
+   "lng": -122.159,
+   "lat": 37.481001,
+   "distanceM": 836
+  },
+  {
+   "id": "osm:node/5845167297",
+   "name": "Willow Road & Ivy Drive",
+   "kind": "bus_stop",
+   "lng": -122.153104,
+   "lat": 37.47583,
+   "distanceM": 859
+  },
+  {
+   "id": "osm:node/5845161168",
+   "name": "Willow Road & O'Brien Drive",
+   "kind": "bus_stop",
+   "lng": -122.152957,
+   "lat": 37.475464,
+   "distanceM": 894
+  },
+  {
+   "id": "osm:node/6632053351",
+   "name": "O'Brien Drive & Willow Road",
+   "kind": "bus_stop",
+   "lng": -122.152657,
+   "lat": 37.475161,
+   "distanceM": 919
+  },
+  {
+   "id": "osm:node/6632053350",
+   "name": "O'Brien Drive & Willow Road",
+   "kind": "bus_stop",
+   "lng": -122.152683,
+   "lat": 37.475042,
+   "distanceM": 932
+  },
+  {
+   "id": "osm:way/30118918",
+   "name": "Hamilton Park",
+   "kind": "park",
+   "lng": -122.159567,
+   "lat": 37.479114,
+   "distanceM": 961
+  },
+  {
+   "id": "osm:relation/17631372",
+   "name": "Hamilton Park Playground",
+   "kind": "playground",
+   "lng": -122.159677,
+   "lat": 37.479201,
+   "distanceM": 966
+  },
+  {
+   "id": "osm:node/6632053335",
+   "name": "1505 O'Brien Drive",
+   "kind": "bus_stop",
+   "lng": -122.142136,
+   "lat": 37.476974,
+   "distanceM": 970
+  },
+  {
+   "id": "osm:node/12769317083",
+   "name": "Chilco Street & Hamilton Avenue",
+   "kind": "bus_stop",
+   "lng": -122.161152,
+   "lat": 37.478632,
+   "distanceM": 1110
+  },
+  {
+   "id": "osm:node/12769317085",
+   "name": "Chilco Street & Hamilton Avenue",
+   "kind": "bus_stop",
+   "lng": -122.16113,
+   "lat": 37.478368,
+   "distanceM": 1122
+  },
+  {
+   "id": "osm:way/1043566767",
+   "name": "Meta Park",
+   "kind": "park",
+   "lng": -122.162322,
+   "lat": 37.48067,
+   "distanceM": 1128
+  },
+  {
+   "id": "osm:node/5845161154",
+   "name": "Willow Road & Newbridge Street",
+   "kind": "bus_stop",
+   "lng": -122.154112,
+   "lat": 37.473118,
+   "distanceM": 1173
+  },
+  {
+   "id": "osm:way/123525466",
+   "name": "Mi Tierra Linda",
+   "kind": "fast_food",
+   "lng": -122.154779,
+   "lat": 37.473306,
+   "distanceM": 1174
+  },
+  {
+   "id": "osm:way/123539756",
+   "name": "Belle Haven School Tot Lot",
+   "kind": "playground",
+   "lng": -122.16008,
+   "lat": 37.476295,
+   "distanceM": 1175
+  },
+  {
+   "id": "osm:node/6606357360",
+   "name": "Newbridge Street & Saratoga Avenue",
+   "kind": "bus_stop",
+   "lng": -122.153491,
+   "lat": 37.472597,
+   "distanceM": 1213
+  },
+  {
+   "id": "osm:node/6614753533",
+   "name": "Newbridge Street & Carlton Avenue",
+   "kind": "bus_stop",
+   "lng": -122.156547,
+   "lat": 37.473533,
+   "distanceM": 1217
+  },
+  {
+   "id": "osm:node/6614753534",
+   "name": "Newbridge Street & Carlton Avenue",
+   "kind": "bus_stop",
+   "lng": -122.155875,
+   "lat": 37.47322,
+   "distanceM": 1221
+  },
+  {
+   "id": "osm:node/6606357361",
+   "name": "Newbridge Street & Willow Road",
+   "kind": "bus_stop",
+   "lng": -122.1539,
+   "lat": 37.472564,
+   "distanceM": 1226
+  },
+  {
+   "id": "osm:way/1070476807",
+   "name": "Teardrop",
+   "kind": "park",
+   "lng": -122.163406,
+   "lat": 37.480401,
+   "distanceM": 1228
+  },
+  {
+   "id": "osm:node/14317308060",
+   "name": "Back A Yard",
+   "kind": "restaurant",
+   "lng": -122.154876,
+   "lat": 37.472788,
+   "distanceM": 1230
+  },
+  {
+   "id": "osm:node/5845167316",
+   "name": "Willow Road & Newbridge Street",
+   "kind": "bus_stop",
+   "lng": -122.154731,
+   "lat": 37.472727,
+   "distanceM": 1232
+  },
+  {
+   "id": "osm:node/6614753530",
+   "name": "Newbridge Street & Hollyburne Avenue",
+   "kind": "bus_stop",
+   "lng": -122.158228,
+   "lat": 37.47397,
+   "distanceM": 1255
+  },
+  {
+   "id": "osm:way/123525465",
+   "name": "Belle Haven Community Library",
+   "kind": "library",
+   "lng": -122.161226,
+   "lat": 37.476248,
+   "distanceM": 1257
+  },
+  {
+   "id": "osm:node/6606357363",
+   "name": "Newbridge Street & Laurel Avenue",
+   "kind": "bus_stop",
+   "lng": -122.151288,
+   "lat": 37.471872,
+   "distanceM": 1258
+  },
+  {
+   "id": "osm:node/6614753529",
+   "name": "Newbridge Street & Windermere Avenue",
+   "kind": "bus_stop",
+   "lng": -122.159213,
+   "lat": 37.474404,
+   "distanceM": 1271
+  },
+  {
+   "id": "osm:node/6614753528",
+   "name": "Newbridge Street & Windermere Avenue",
+   "kind": "bus_stop",
+   "lng": -122.159807,
+   "lat": 37.474485,
+   "distanceM": 1298
+  },
+  {
+   "id": "osm:node/6606357365",
+   "name": "Newbridge Street & Mello Street",
+   "kind": "bus_stop",
+   "lng": -122.150374,
+   "lat": 37.471397,
+   "distanceM": 1305
+  },
+  {
+   "id": "osm:node/6597314601",
+   "name": "Purdue Avenue & Fordham Street",
+   "kind": "bus_stop",
+   "lng": -122.136572,
+   "lat": 37.478065,
+   "distanceM": 1306
+  },
+  {
+   "id": "osm:way/962108486",
+   "name": "Womenhi Park",
+   "kind": "park",
+   "lng": -122.164182,
+   "lat": 37.479771,
+   "distanceM": 1313
+  },
+  {
+   "id": "osm:node/6606357367",
+   "name": "Newbridge Street & Bay Road",
+   "kind": "bus_stop",
+   "lng": -122.148277,
+   "lat": 37.470714,
+   "distanceM": 1388
+  },
+  {
+   "id": "osm:node/6606357369",
+   "name": "Bay Road & Oakwood Drive",
+   "kind": "bus_stop",
+   "lng": -122.146979,
+   "lat": 37.470844,
+   "distanceM": 1391
+  },
+  {
+   "id": "osm:node/6614753523",
+   "name": "Newbridge Street & Almanor Avenue",
+   "kind": "bus_stop",
+   "lng": -122.161894,
+   "lat": 37.474996,
+   "distanceM": 1391
+  },
+  {
+   "id": "osm:node/6614753524",
+   "name": "Newbridge Street & Almanor Avenue",
+   "kind": "bus_stop",
+   "lng": -122.162058,
+   "lat": 37.4751,
+   "distanceM": 1395
+  },
+  {
+   "id": "osm:node/6614870438",
+   "name": "Fordham Street & Notre Dame Avenue",
+   "kind": "bus_stop",
+   "lng": -122.137297,
+   "lat": 37.475524,
+   "distanceM": 1399
+  },
+  {
+   "id": "osm:node/6606357372",
+   "name": "Bay Road & Palo Verde Avenue",
+   "kind": "bus_stop",
+   "lng": -122.144167,
+   "lat": 37.471194,
+   "distanceM": 1421
+  },
+  {
+   "id": "osm:node/6606357373",
+   "name": "Bay Road & Palo Verde Avenue",
+   "kind": "bus_stop",
+   "lng": -122.144006,
+   "lat": 37.471061,
+   "distanceM": 1440
+  },
+  {
+   "id": "osm:node/6606357375",
+   "name": "Bay Road & Gloria Way",
+   "kind": "bus_stop",
+   "lng": -122.142146,
+   "lat": 37.471451,
+   "distanceM": 1469
+  },
+  {
+   "id": "osm:node/368169991",
+   "name": "East Palo Alto Library",
+   "kind": "library",
+   "lng": -122.139888,
+   "lat": 37.472338,
+   "distanceM": 1491
+  },
+  {
+   "id": "osm:node/6614870440",
+   "name": "Notre Dame Avenue & Illinois Street",
+   "kind": "bus_stop",
+   "lng": -122.135631,
+   "lat": 37.475917,
+   "distanceM": 1494
+  }
+ ]
+}
