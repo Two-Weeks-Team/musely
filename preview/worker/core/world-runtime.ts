@@ -6,7 +6,7 @@
 // - Late answers: if the world version moved or the actor's delegation was revoked while the model was
 //   thinking, the answer is logged and not executed. Timed-out calls are aborted and charged in full.
 import {createWorld, tick, spotlightFor, spotlightInput, TICK_MS, type WorldState, type WorldEvent, type Decision, type Hooks} from '../../src/engine/world.ts';
-import {validate, buildMessages, maxCostUsd, actualCostUsd, checkOutput} from './actions.ts';
+import {validate, buildMessages, maxCostUsd, actualCostUsd, failureCostUsd, checkOutput} from './actions.ts';
 import {callModel, type ModelConfig} from './model.ts';
 import {replayFor} from './replay.ts';
 import type {Ledger, Sql} from './ledger.ts';
@@ -97,7 +97,7 @@ export class WorldRuntime {
     const res = this.opts.ledger.reserve({id, tier: 'world', session: 'world', ip: '', action: 'spotlight', maxCostUsd: maxCostUsd('spotlight', messages)});
     if (!res.ok) return fallback(res.reason);
     const result = await callModel({...this.opts.model, key: this.opts.model.key}, 'spotlight', messages);
-    if (!result.ok) { this.opts.ledger.settle(id, result.kind === 'timeout' ? Number.NaN : actualCostUsd(result.usage) || 0, result.kind === 'timeout' ? 'timeout' : 'error'); return fallback(result.kind); }
+    if (!result.ok) { this.opts.ledger.settle(id, failureCostUsd(result), result.kind === 'timeout' ? 'timeout' : 'error'); return fallback(result.kind); }
     const problem = checkOutput('spotlight', input, result.output);
     this.opts.ledger.settle(id, actualCostUsd(result.usage), problem ? 'rejected' : 'live');
     if (problem) return fallback('output_rejected:' + problem);
