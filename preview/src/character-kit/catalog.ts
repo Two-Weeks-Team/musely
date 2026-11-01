@@ -31,6 +31,9 @@ export const ACTION_CLIPS:Readonly<Record<string,ActionClip>>={
  nod:{frames:36,loop:false},head_shake:{frames:48,loop:false},point_way:{frames:60,loop:false},clap:{frames:48,loop:true},
  fist_bump:{frames:48,loop:false,contact:20,partner:'fist_bump'},
  handoff_give:{frames:72,loop:false,contact:32,partner:'handoff_receive'},handoff_receive:{frames:72,loop:false,contact:32,partner:'handoff_give'},
+ eat:{frames:96,loop:true},board:{frames:48,loop:false},bus_sway:{frames:96,loop:true},stretch:{frames:96,loop:false},feed_birds:{frames:72,loop:true},
+ pick_up:{frames:72,loop:false},write_note:{frames:96,loop:true},photo:{frames:72,loop:false},yawn:{frames:72,loop:false},hammer:{frames:48,loop:true},
+ lantern_hold:{frames:96,loop:true},dance:{frames:96,loop:true},
 };
 /** Walking stride contract: metres of route travel per clip cycle, for walk and the strided action clips. */
 export const WALK_STRIDE={meters:.27,seconds:32/24} as const;

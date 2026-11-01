@@ -1,9 +1,9 @@
 {
   "base": {
     "lod0": {
-      "bytes": 6229280,
+      "bytes": 6456540,
       "tris": 22886,
-      "clips": 32
+      "clips": 44
     }
   },
   "attachments": {

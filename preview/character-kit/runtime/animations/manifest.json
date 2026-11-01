@@ -190,6 +190,78 @@
       "contactSeconds": 1.3333333333333333,
       "partnerClip": "handoff_give",
       "partnerDistanceMeters": 0.9
+    },
+    {
+      "name": "eat",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "board",
+      "seconds": 2.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "bus_sway",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "stretch",
+      "seconds": 4.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "feed_birds",
+      "seconds": 3.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "pick_up",
+      "seconds": 3.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "write_note",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "photo",
+      "seconds": 3.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "yawn",
+      "seconds": 3.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "hammer",
+      "seconds": 2.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "lantern_hold",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "dance",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true
     }
   ],
   "sockets": {

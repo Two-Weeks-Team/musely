@@ -58,6 +58,18 @@ ACTION_CLIPS = {
     'fist_bump': {'frames': 48, 'loop': False, 'contact': 20, 'partner': 'fist_bump'},
     'handoff_give': {'frames': 72, 'loop': False, 'contact': 32, 'partner': 'handoff_receive'},
     'handoff_receive': {'frames': 72, 'loop': False, 'contact': 32, 'partner': 'handoff_give'},
+    'eat': {'frames': 96, 'loop': True},
+    'board': {'frames': 48, 'loop': False},
+    'bus_sway': {'frames': 96, 'loop': True},
+    'stretch': {'frames': 96, 'loop': False},
+    'feed_birds': {'frames': 72, 'loop': True},
+    'pick_up': {'frames': 72, 'loop': False},
+    'write_note': {'frames': 96, 'loop': True},
+    'photo': {'frames': 72, 'loop': False},
+    'yawn': {'frames': 72, 'loop': False},
+    'hammer': {'frames': 48, 'loop': True},
+    'lantern_hold': {'frames': 96, 'loop': True},
+    'dance': {'frames': 96, 'loop': True},
 }
 
 # Accessory materials: texture family, tint (sRGB or 'accent'/'body'), roughness/metal hints.

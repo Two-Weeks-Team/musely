@@ -449,7 +449,7 @@ def bus_sway(t):
     angles = {'Spine': (.015 * math.sin(2 * ph), .05 * math.sin(ph), 0), 'Chest': (0, .035 * math.sin(ph + .6), 0), 'Head': (0, -.05 * math.sin(ph + 1.2), .04 * math.sin(ph)),
               'UpperArm_R': (-.2, 2.3, 0), 'Forearm_R': (0, .2, 0), 'UpperArm_L': (-.05, -.06 * math.sin(ph + .8), 0), 'Forearm_L': (-.15, 0, 0)}
     pose = Pose(angles)
-    strap = Vector((-.20, -.05, .84))
+    strap = Vector((-.31, -.06, .81))  # beside, not inside, the hood
     return pose, arm_free('R'), [hand_goal('R', strap, 20), hand_dir('R', (0, 0, 1), 2)]
 
 
@@ -484,7 +484,8 @@ def pick_up(t):
     rest_hand = bone_point(m0, 'Hand_R', SOCKET_R)
     ground, chest = Vector((-.08, -.29, .05)), Vector((-.08, -.27, .42))
     reach = smooth((t - .1) / .25)
-    target = rest_hand.lerp(ground, reach) if t < .55 else ground.lerp(chest, smooth((t - .55) / .3))
+    # Down and up in front of the body (control points ahead of the belly), not through it.
+    target = bezier(rest_hand, Vector((-.30, -.36, .16)), ground, reach) if t < .55 else bezier(ground, Vector((-.12, -.42, .25)), chest, smooth((t - .55) / .3))
     goals = goals + [hand_goal('R', target, 30)]
     return pose, free + [('hips', 2), ('Spine', 0), ('Chest', 0)] + arm_free('R'), goals
 
@@ -510,8 +511,9 @@ def photo(t):
     if up < 1e-3:
         return pose, [], []
     m0 = fk(Pose({}))
-    r = bone_point(m0, 'Hand_R', SOCKET_R).lerp(Vector((-.07, -.27, .66 - .01 * click)), up)
-    l = bone_point(m0, 'Hand_L', SOCKET_L).lerp(Vector((.07, -.27, .66)), up)
+    # Raise along an arc in front of the belly so the hands never pass through it.
+    r = bezier(bone_point(m0, 'Hand_R', SOCKET_R), Vector((-.24, -.46, .30)), Vector((-.07, -.27, .66 - .01 * click)), up)
+    l = bezier(bone_point(m0, 'Hand_L', SOCKET_L), Vector((.24, -.46, .30)), Vector((.07, -.27, .66)), up)
     return pose, arm_free('R') + arm_free('L'), [hand_goal('R', r, 30 * up), hand_goal('L', l, 30 * up)]
 
 

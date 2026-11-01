@@ -16,14 +16,20 @@ test('clips.glb carries every LOD0 clip and the rig hierarchy, without meshes or
   assert.ok(out.nodes.every(n => n.mesh === undefined && n.skin === undefined));
   for (const anim of out.animations) for (const c of anim.channels) assert.ok(out.nodes[c.target.node], 'channel targets an existing node');
   assert.ok(a.length < 400_000, 'light enough for the first view: ' + a.length);
-  // Lossless: every dropped channel restates the rest pose, and every clip keeps its full duration.
+  // Every dropped channel restates the rest pose, reduced channels stay within 1.5e-3, and clips keep their duration.
   const loader = new GLTFLoader().register(() => ({name: 'NoTextures', loadTexture: async () => null})), parse = buf => loader.parseAsync(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength), '');
   const [full, light] = await Promise.all([parse(lod0), parse(a)]);
   for (const clip of full.animations) {
     const l = light.animations.find(x => x.name === clip.name);
     assert.ok(Math.abs(l.duration - clip.duration) < 1e-6, clip.name + ' duration');
     for (const t of clip.tracks) {
-      if (l.tracks.some(x => x.name === t.name)) continue;
+      const lt = l.tracks.find(x => x.name === t.name);
+      if (lt) {
+        // Key reduction (1e-3 per component) stays within 1.5e-3 of the full track at every original key time (three.js interpolation).
+        const interp = lt.createInterpolant(), n = t.getValueSize();
+        for (let k = 0; k < t.times.length; k++) { const got = interp.evaluate(t.times[k]); for (let c = 0; c < n; c++) assert.ok(Math.abs(got[c] - t.values[k * n + c]) < 1.5e-3, `${clip.name} ${t.name} at ${t.times[k]}: ${got[c]} vs ${t.values[k * n + c]}`); }
+        continue;
+      }
       const [nodeName, prop] = t.name.split('.'), node = full.scene.getObjectByName(nodeName);
       const rest = prop === 'quaternion' ? node.quaternion.toArray() : node[prop === 'position' ? 'position' : 'scale'].toArray();
       for (let i = 0; i < t.values.length; i++) assert.ok(Math.abs(t.values[i] - rest[i % rest.length]) < 1e-5, `${clip.name} dropped ${t.name} that is not the rest pose`);

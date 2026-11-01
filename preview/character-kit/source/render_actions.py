@@ -39,6 +39,8 @@ for c in bpy.data.collections:
 FRAMES = {'drink': [0, 30, 48], 'plant': [0, 36, 66, 96], 'high_five': [0, 12, 24, 40]}
 for _n, _s in ACTION_CLIPS.items():
     FRAMES.setdefault(_n, [_s['contact']] if 'contact' in _s else [_s['frames'] // 4, _s['frames'] // 2, 3 * _s['frames'] // 4])
+if globals().get('MID_ONLY'):
+    FRAMES = {n: [f[len(f) // 2]] for n, f in FRAMES.items()}
 VIEWS = {'drink': {'side': (2.6, -1.2, .7), 'front': (.9, -2.8, .7)},
          'plant': {'side': (2.8, -.9, .6), 'front': (.9, -2.8, .7)},
          'high_five': {'side': (5.2, -.45, .8), 'above': (3.4, 2.2, 2.6)}}
