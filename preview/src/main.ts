@@ -9,7 +9,7 @@ import {makeBubbles} from './bubbles';
 import {DURATION,LINES,conversationAt,chapterAt,stateAt} from './story';
 import assetData from '../assets/embedded.json';
 import {MaterialLibrary,clipsUrl} from './character-kit/MaterialLibrary';
-import {lodUrl,ACTION_CLIPS} from './character-kit/catalog';
+import {lodUrl,ACTION_CLIPS,propsUrl} from './character-kit/catalog';
 import {sparkStatus,statusLabel,type SparkStatus} from './live';
 import {mountWorldPanel} from './ui/world-panel';
 import {isolation} from './ui/isolation';
@@ -157,7 +157,7 @@ function updateContinuity(){
  selectedLine.hidden=map.getZoom()>=20.35;
 }
 // Preview cues from Preview flows (P-03 scenes): played by the commons character of the same harness variant.
-type Cue={index:number;clip:string|null;item:string|null;line:string|null;label:string;visual:'complete'|'fallback';prop:string|null;reason?:'no_clip'|'prop_unavailable';el:HTMLElement;until:number};
+type Cue={index:number;clip:string|null;item:string|null;line:string|null;label:string;visual:'complete'|'fallback';prop:string|null;reason?:'no_clip'|'prop_unavailable';el:HTMLElement;how:HTMLElement;until:number};
 const itemLabel=(id:string)=>id.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 function previewCue(entries:{variant:string;clip?:string|null;item?:string|null;line?:string|null;label:string}[],seconds=6){
  if(!world?.actors)return {shown:false,reason:'characters_loading',results:[]};
@@ -173,13 +173,17 @@ function previewCue(entries:{variant:string;clip?:string|null;item?:string|null;
   // A clip that needs a 3D prop counts as complete only when that prop is bound and rendered; otherwise the item is a card.
   const propMissing=played&&!!spec?.prop&&!actor.propShown();
   const ok=played&&!propMissing,reason:Cue['reason']=!played?'no_clip':propMissing?'prop_unavailable':undefined;
+  // The shared props file (145 KB) is the last step of the background detail upgrade, which on a slow link ends minutes after
+  // load. A cue that needs a prop asks for it now (the library caches it, so this and the upgrade share one request) and
+  // updateCues swaps the card to the 3D prop once it is bound.
+  if(propMissing){const lib=world.library;if(lib)lib.load(propsUrl(lib.base)).then(g=>actor.addProps(g)).catch(()=>{});}
   const el=document.createElement('div');el.className='preview-cue';el.dataset.visual=ok?'complete':'fallback';
   const tag=document.createElement('span');tag.className='eyebrow';tag.textContent=`PREVIEW FLOW · ${r.label}`;el.append(tag);
   if(r.item){const card=document.createElement('b');card.className='cue-item';card.textContent='+ '+itemLabel(r.item);el.append(card);}
   if(r.line){const line=document.createElement('p');line.textContent=r.line;el.append(line);}
-  const how=document.createElement('small');how.textContent=ok?`clip ${r.clip}${spec?.prop?` · 3D prop ${spec.prop}`:' · item shown as a card'}`:propMissing?`fallback: clip ${r.clip} plays, but the 3D ${spec!.prop} is not available here · item shown as a card`:`fallback: ${r.clip?`no ${r.clip} clip on this character`:'no clip for this change'}, shown as an item card`;el.append(how);
+  const how=document.createElement('small');how.textContent=ok?`clip ${r.clip}${spec?.prop?` · 3D prop ${spec.prop}`:' · item shown as a card'}`:propMissing?`fallback: clip ${r.clip} plays, but the 3D ${spec!.prop} is not loaded yet · item shown as a card`:`fallback: ${r.clip?`no ${r.clip} clip on this character`:'no clip for this change'}, shown as an item card`;el.append(how);
   document.body.append(el);
-  return {index:r.index,clip:played?r.clip!:null,item:r.item??null,line:r.line??null,label:r.label,visual:ok?'complete':'fallback',prop:ok?spec?.prop??null:null,reason,el,until} as Cue;
+  return {index:r.index,clip:played?r.clip!:null,item:r.item??null,line:r.line??null,label:r.label,visual:ok?'complete':'fallback',prop:ok?spec?.prop??null:null,reason,el,how,until} as Cue;
  });
  selected=cues[0].index;const p=world.muses[selected].position;map.flyTo({center:toGeo(p.x,p.z),zoom:22.3,pitch:55,bearing:BEARING,duration:1600,essential:true});syncPause();updateUI();
  return {shown:true,results:results.map(r=>{const c=cues.find(c=>c.index===r.index);return {variant:r.variant,shown:!!c,visual:c?.visual??'fallback',prop:c?.prop??null,reason:c?c.reason:'not_in_commons'};})};
@@ -190,7 +194,9 @@ function endCues(){for(const c of cues){c.el.remove();world.actors?.[c.index]?.r
 function updateCues(now:number){
  if(!cues.length)return;
  if(now>cues[0].until){endCues();updateUI();return;}
- for(const c of cues){const h=projected(world.muses[c.index].position.clone().add(new T.Vector3(0,1.15,0)));c.el.style.transform=`translate(${Math.round(h.x)}px,${Math.round(h.y)}px) translate(-50%,-100%)`;}
+ for(const c of cues){
+  if(c.reason==='prop_unavailable'&&c.clip&&world.actors![c.index].propShown()){const prop=ACTION_CLIPS[c.clip].prop!;c.visual='complete';c.prop=prop;c.reason=undefined;c.el.dataset.visual='complete';c.how.textContent=`clip ${c.clip} · 3D prop ${prop}`;}
+  const h=projected(world.muses[c.index].position.clone().add(new T.Vector3(0,1.15,0)));c.el.style.transform=`translate(${Math.round(h.x)}px,${Math.round(h.y)}px) translate(-50%,-100%)`;}
 }
 setFlowCue(previewCue);
 // Header height drives the caption and story heading offsets so wrapped header rows never cover them (390 px).
