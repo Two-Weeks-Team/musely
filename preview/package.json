@@ -9,10 +9,10 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --test scripts/*.test.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p worker",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check": "npm test && npm run typecheck && npm run build",
+    "check": "npm test && npm run typecheck && npm run build && wrangler deploy --dry-run --outdir .wrangler/dry-run",
     "pretypecheck": "node scripts/prepare-assets.mjs",
     "proof:build": "node scripts/build-character-proof.mjs",
     "proof:dev": "python3 -m http.server 8788 --bind 127.0.0.1 --directory dist-character-proof"

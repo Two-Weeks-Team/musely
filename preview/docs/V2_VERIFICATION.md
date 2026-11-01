@@ -62,8 +62,10 @@ OpenFreeMap TileJSON `https://tiles.openfreemap.org/planet` (v3.16.0, build 2026
 ## 4. Owner claim (Threads)
 
 - Root key: ES256 (P-256) created once by `scripts/owner-key.mjs`. The private JWK is stored only in the owner's local config and as the Worker secret `OWNER_ROOT_JWK`; the public part and claim record are in `fixtures/owner-claim.json`.
-- Fingerprint: SHA-256 over JCS `{v, root_kid (RFC 7638 thumbprint), owner_hash}`; `owner_hash` = SHA-256 of the normalized Threads handle. Display: `dead ed5c 1e55 d7a3`.
-- Status: `pending_claim`. The owner posts the claim text directly from the Threads app (posting is the owner's approval); the permalink and fingerprint match are recorded here. A Threads tester app then lets the Worker re-read the post.
+- Fingerprint: SHA-256 over JCS `{v, root_kid (RFC 7638 thumbprint), owner_hash}`; `owner_hash` = SHA-256 of the normalized Threads handle. Main test account: **@combba82** (switched from @centisgood before anything was posted; @centisgood stays a secondary tester). Display: `ef96 1d6f 307b a775`.
+- Status: `pending_claim`. Default path (direction v2 934c537, 6.3): the Worker exchanges the OAuth code with the app secret, publishes the approved text, re-reads the post and matches the fingerprint.
+- Meta app "Musely Preview" (development mode, not submitted for review): Threads use case, `threads_basic` + `threads_content_publish`, redirect `https://preview.musely.net/api/threads/callback`. Testers: @centisgood (accepted) and @combba82. Worker secrets `THREADS_APP_ID` / `THREADS_APP_SECRET`.
+- Owner-direct posting is a visual check only: on 2026-11-01 Threads exposed no post text without a token (oEmbed returns an embed shell; public and `/embed` pages render client-side).
 
 ## 5. Cloudflare facts used by the design
 
