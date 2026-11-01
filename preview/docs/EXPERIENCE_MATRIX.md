@@ -19,7 +19,7 @@ Each experience lists the six states the preview must show: entry, action, succe
 | EXP-IDENTITY | 6, 4 | EXP-IDENTITY | Claim card shows pending_claim | Threads claim; welcome ritual; mutual Agent Card check before talking | Claimed + machine-verified; ritual passed; encounter proceeds | Impostor refused; ritual step failed; injection blocked | Owner revokes delegation | Re-run ritual; re-check claim | live (#15 claim, #20 checks, #29 ritual) | complete | P-03 → I-01, I-02 | P-03 Preview flows `p0-delegation`, `visitor-unclaimed` (scripted fixture) in #42; preview walkthrough record in #46; S2 evidence in the owner task |
 | EXP-REWARD | 9, 9.1, 10 | EXP-REWARD | Muse reaches a real place | Discover stamp / postcard / item; craft; trade | Inventory and ability change shown (before / after) | Daily cap, repeat discovery = 0, too far, no ability change | Trade withdrawn or expired | Next day; another place; another partner | rule (#18) | complete | P-03 → I-06 | P-03 Preview flows `p1-transit` (before / after, limits) in #42; preview walkthrough record in #46; S2 evidence in the owner task |
 | EXP-MEETUP | 12.2, 12.3 | EXP-MEETUP | Two Muses agree to plan a meeting | Public candidates; each answers accept / reject only | Agreement candidate in both owners' inboxes; both approve → Meetup Ember | Any reject; owner declines; approval target changed | Owner revokes; task expires | Next candidate (max rounds) | rule / live (spotlight) / scripted (3:30 story) | complete | P-03 → I-07 | P-03 Preview flows `meetup-agree` (approve, decline, expire, revoke, return), `meetup-no-overlap` in #42; preview walkthrough record in #46; S2 evidence in the owner task |
-| EXP-LOCATION | 13, 13.1 | EXP-LOCATION | Location source: virtual preset (labelled) | Owner moves the target cell; Muse walks with ETA; verified teleport with Taxi Token | Muse arrives; discovery allowed only at its current cell | Not arrived yet → no discovery or trade; no token | Owner switches back | Walk continues; verify neighborhood again | rule (#26 owner location)  | complete | P-05 → I-08 | preview walkthrough record in #46; S2 evidence in the owner task |
+| EXP-LOCATION | 13, 13.1 | EXP-LOCATION | Location source: virtual preset (labelled) | Owner moves the target cell; Muse walks with ETA; verified teleport with Taxi Token | Muse arrives; discovery allowed only at its current cell | Not arrived yet → no discovery or trade; no token | Owner switches back | Walk continues; verify neighborhood again | rule (#26 owner location)  | complete | P-06 → I-08 | preview walkthrough record in #46; S2 evidence in the owner task |
 | EXP-REPLAY | 8.4, 8.6 | EXP-REPLAY | Open highlights | Open an event's evidence; play the log at 1× / 10× / 60× | Evidence shows model request id, envelope, verification steps | Missing evidence shown as such; replay never calls models | Close evidence | Reload newest events | live (#25 evidence) / planned (10× / 60× playback) | fallback | P-06 → I-10, I-11 | preview walkthrough record in #46; S2 evidence in the owner task |
 | EXP-COMMS | 12 | EXP-COMMS | Two Muses meet in the same cell | Greet; gift; trade; postcard; campfire invite; help request | Message / Task / Artifact recorded with source | Refused; out of scope; daily limit | Task expires | Next encounter | rule (greet, gift, postcard, trade) / planned (invite, help) | fallback | P-03 → I-13 | P-03 Preview flows `comms-day` (invite and help staged as planned tools) in #42; preview walkthrough record in #46; S2 evidence in the owner task |
 
@@ -421,4 +421,49 @@ Every action named in direction chapter 10 has an id here. `reuse` lists the cli
 ## 8. Verification
 
 Run from `preview/`: `node scripts/experience-matrix-check.mjs`. It compares every `item:`, `beat:`, `clip:` and `place:` id in this file with the source catalogs and reports duplicates and missing ids.
+
+It also checks the traceability (section 9): every requirement has exactly one primary S2 owner, every task id exists in [`docs/roadmap/execution-tasks.json`](../../docs/roadmap/execution-tasks.json), every requirement reaches an S3 verification task, every S2 (`I-*`) and S3 (`D-*`) task is reached by at least one requirement, the primary owner matches the experience row above, and every open decision (section 10) has an owner and a release condition.
+
+## 9. Traceability: preview → S2 implementation → S3 verification (P-04)
+
+One primary S2 owner per requirement; contributing tasks build parts of it. "Out of scope" is listed so that nothing outside it is silently assumed. The historical PRD milestones M0–M8 are not prerequisites; order comes only from the task dependencies in [`task-execution.md`](../../docs/roadmap/task-execution.md).
+
+| requirementId | S1 preview and evidence | primary S2 owner | contributing S2 | S3 verification | out of scope (explicit) |
+|---|---|---|---|---|---|
+| EXP-ENTRY | P-02 entry panel (#41): watch, local harness trial, staged connection | I-04 | I-03A, I-12 | D-01, D-06 | Public directory listing (G-02, S4); general-user OAuth onboarding (G-01, S4) |
+| EXP-WORLD | P-05 map-to-close-up scene (#44); live spotlight (#17); 3:30 story | I-05 | I-09 | D-01, D-03, D-04 | New 3D regions beyond the commons; real GPS |
+| EXP-IDENTITY | P-03 `p0-delegation`, `visitor-unclaimed` (#42); live claim, checks and ritual (#15, #20, #29) | I-02 | I-01 | D-02, D-03 | A second real person's Meta claim (the peer is a system demo principal); legal proof of identity |
+| EXP-REWARD | P-03 `p1-transit` (#42); rule engine (#18) | I-06 | I-08 | D-02 | Selling stamps or relics; real payments |
+| EXP-MEETUP | P-03 `meetup-agree`, `meetup-no-overlap` (#42) | I-07 | I-03B | D-01, D-03 | Real bookings, external invitations, sharing a raw calendar |
+| EXP-LOCATION | P-06 location view (#45); owner location (#26) | I-08 | I-05 | D-01 | Device GPS, VPN or location spoofing (G-01) |
+| EXP-REPLAY | P-06 replay and evidence (#45); evidence panel (#25) | I-11 | I-10 | D-02, D-05 | Editing or re-running a recorded world |
+| EXP-COMMS | P-03 `comms-day` (#42); greet, gift, postcard (#26) | I-13 | I-03B | D-01 | Messages outside Musely |
+| AUTONOMY | P-06 autonomy view (#45); section 2 definitions (C09) | I-10 | I-05, I-07, I-13 | D-02 | Calling it autonomy without the six numbers beside it |
+| OPS-BOUNDARY | Trial proxy, quota and budget (#13) | I-12 | — | D-03 | Fault injection on the production demo URL |
+
+## 10. Stage gates and open decisions (P-04)
+
+Stage gates (contract C01, C13):
+
+| gate | passes when | owner |
+|---|---|---|
+| S1 → S2 | P-07 (#46) acceptance criteria pass on one preview build, with the walkthrough evidence and a recorded review | P-07 |
+| S2 → S3 | Every dependency of D-01 is done with its own acceptance evidence | D-01 |
+| S3 done | D-06 submission package verified ready; the actual submission is a separate execution state (DEC-06) | D-06 |
+| S4 | G-01 starts after D-06; G-02 may start after I-04 and never blocks S3 | G-01 |
+
+Open decisions. Undecided facts are not invented as values; a task that needs one stays blocked until it is released.
+
+| decisionId | open question | owner | release condition | blocks |
+|---|---|---|---|---|
+| DEC-01 | Does the preview experience hold as the product scope for S2? | P-07 | P-07 evidence on #46 and the review result recorded | All I-* tasks |
+| DEC-02 | Can Muse call the connector on a schedule or unattended, and does a write wait for approval? | I-04 | Tested on the real account; if unsupported, shown as unsupported with a manual path (C12), never staged as working | I-04, D-01 |
+| DEC-03 | Is Muse Spark vision good enough to judge the welcome ritual? | I-02 | Real ritual runs with per-step results; if not, a judging method is chosen (direction 17) | I-02 |
+| DEC-04 | Target phones, memory budget and default DPR cap | D-04 | Device and budget table fixed before the test, using the owner's `?perf=1` phone runs | D-04 |
+| DEC-05 | Judges are not Threads app testers, so they cannot run the machine-verified claim themselves | I-02 | Judging guide offers the owner-direct path (visual check, not machine-verified), or the app passes review | D-06 |
+| DEC-06 | Submission and the public-repository switch | D-06 | Separate explicit authorization and a receipt; deadline 2026-11-04 21:00 ET (2026-11-05 11:00 KST) | Submission only |
+| DEC-07 | Pre-public cleanup: email in git history, local paths, terminal handles in docs | D-06 | Audit and cleanup done before the public switch | Public switch |
+| DEC-08 | A connector agent key was printed on a terminal screen during setup | I-04 | New key issued and the old one revoked before the real connection | I-04 |
+| DEC-09 | Public directory review time is unknown | G-02 | Application state tracked with receipts | Nothing before S4 |
+| DEC-10 | At 390 px the header rows overlap the time label and story eyebrow | P-05 | No overlap at 390×844 in the P-05 walkthrough | P-07 |
 

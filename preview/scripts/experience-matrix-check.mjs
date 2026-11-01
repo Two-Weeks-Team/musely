@@ -38,5 +38,34 @@ const exps = ['EXP-ENTRY', 'EXP-WORLD', 'EXP-IDENTITY', 'EXP-REWARD', 'EXP-MEETU
 const missingExp = exps.filter(e => !doc.includes(`| ${e} |`));
 failures += missingExp.length;
 console.log(`experiences: ${exps.length - missingExp.length}/${exps.length}${missingExp.length ? ' missing ' + missingExp.join(', ') : ''}`);
+// P-04: traceability (section 9) and open decisions (section 10).
+const roadmap = JSON.parse(readFileSync(new URL('../../docs/roadmap/execution-tasks.json', import.meta.url)));
+const taskIds = new Set((roadmap.tasks ?? roadmap).map(t => t.id));
+const section = n => { const i = doc.indexOf(`\n## ${n}.`); if (i < 0) return ''; const j = doc.indexOf('\n## ', i + 1); return doc.slice(i, j < 0 ? undefined : j); };
+const cells = l => l.split('|').slice(1, -1).map(c => c.trim());
+const taskRefs = t => (t.match(/\b[IDPG]-\d{2}[AB]?\b/g) ?? []);
+const traceRows = section(9).split('\n').filter(l => /^\| (EXP-|AUTONOMY|OPS-)/.test(l)).map(cells);
+let traceFail = 0; const traceNote = m => { traceFail++; console.log('  ' + m); };
+const reachedS2 = new Set(), reachedS3 = new Set();
+for (const [req, , primary, contrib, s3] of traceRows) {
+  const p = taskRefs(primary);
+  if (p.length !== 1 || !p[0].startsWith('I-')) traceNote(`${req}: primary S2 owner must be exactly one I-* task (got "${primary}")`);
+  for (const t of [...p, ...taskRefs(contrib), ...taskRefs(s3)]) if (!taskIds.has(t)) traceNote(`${req}: unknown task ${t}`);
+  if (!taskRefs(s3).some(t => t.startsWith('D-'))) traceNote(`${req}: no S3 verification task`);
+  [...p, ...taskRefs(contrib)].forEach(t => reachedS2.add(t)); taskRefs(s3).forEach(t => reachedS3.add(t));
+  const expRow = doc.split('\n').map(cells).find(c => c[0] === req && c[2] === req);
+  if (expRow) {
+    const rowTasks = taskRefs(expRow[11]).filter(t => t.startsWith('I-'));
+    if (!rowTasks.includes(p[0])) traceNote(`${req}: primary ${p[0]} not in the experience row's ownerTask (${expRow[11]})`);
+    for (const t of rowTasks) if (![...p, ...taskRefs(contrib)].includes(t)) traceNote(`${req}: ${t} in the experience row but not in traceability`);
+  }
+}
+for (const e of exps) if (!traceRows.some(r => r[0] === e)) traceNote(`${e}: missing from traceability`);
+for (const t of taskIds) { if (t.startsWith('I-') && !reachedS2.has(t)) traceNote(`S2 task ${t} reached by no requirement`); if (t.startsWith('D-') && !reachedS3.has(t)) traceNote(`S3 task ${t} reached by no requirement`); }
+const decisions = section(10).split('\n').filter(l => /^\| DEC-\d+/.test(l)).map(cells);
+for (const [id, q, owner, release] of decisions) { if (!taskRefs(owner).length || !taskIds.has(taskRefs(owner)[0])) traceNote(`${id}: owner must be a task id (got "${owner}")`); if (!release || release.length < 10) traceNote(`${id}: no release condition`); }
+if (new Set(decisions.map(d => d[0])).size !== decisions.length) traceNote('duplicate decision ids');
+failures += traceFail;
+console.log(`traceability: ${traceRows.length} requirements, S2 tasks reached ${reachedS2.size}/${[...taskIds].filter(t => t.startsWith('I-')).length}, S3 tasks reached ${reachedS3.size}/${[...taskIds].filter(t => t.startsWith('D-')).length}, decisions ${decisions.length}, problems ${traceFail}`);
 if (failures) { console.error(`FAIL: ${failures} problem(s)`); process.exit(1); }
 console.log('PASS: matrix ids match the source catalogs');
