@@ -40,6 +40,14 @@ SIGNATURE_CLIPS = {
     'inspect_gadget': (96, True),
 }
 
+# Chapter-10 action body clips on the shared rig (in place, 24 fps): frames, loop flag and, for
+# two-actor clips, the contact frame (authored for an identical partner 0.9 m in front, facing back).
+ACTION_CLIPS = {
+    'drink': (96, True),        # cup on Socket_Hand_R, raised to the mouth
+    'plant': (96, False),       # kneel and plant; holds the last frame
+    'high_five': (60, False, 24),
+}
+
 # Accessory materials: texture family, tint (sRGB or 'accent'/'body'), roughness/metal hints.
 # Tint multiplies the near-neutral procedural albedo.
 MATERIALS = {

@@ -21,7 +21,10 @@ export const RESIDENT_VARIANTS:readonly MuseVariantId[]=['00-jolly','01-sunny','
 
 export const SHARED_CLIPS=['idle_breathe','walk','look_around','think','listen','talk','wave','sit_down','sit_idle','stand_up','celebrate','offer_item'] as const;
 export const SIGNATURE_CLIPS={welcome_neighbors:{frames:60,loop:false},water_plants:{frames:96,loop:true},inspect_map:{frames:96,loop:true},tell_story:{frames:96,loop:true},reassure:{frames:72,loop:true},read_book:{frames:96,loop:true},music_bounce:{frames:48,loop:true},observe_sky:{frames:96,loop:true},inspect_gadget:{frames:96,loop:true}} as const;
-export const SINGLE_PLAY=new Set<string>(['wave','sit_down','stand_up','celebrate','offer_item','welcome_neighbors']);
+/** Chapter-10 action clips on the shared rig (character-kit/source/variant_spec.py ACTION_CLIPS). Two-actor clips carry
+ * their contact frame, authored for an identical partner `partner` metres in front, facing back. */
+export const ACTION_CLIPS={drink:{frames:96,loop:true,socket:'Socket_Hand_R'},plant:{frames:96,loop:false},high_five:{frames:60,loop:false,contactFrame:24,partner:.9}} as const;
+export const SINGLE_PLAY=new Set<string>(['wave','sit_down','stand_up','celebrate','offer_item','welcome_neighbors',...Object.entries(ACTION_CLIPS).filter(([,c])=>!c.loop).map(([n])=>n)]);
 export const EXPRESSIONS=['Neutral','Smile','Curious','Thinking','Focused','Listening','Concerned','Delight'] as const;
 
 /** Mean sRGB of the shared fleece albedo; a variant tints fleece by palette / mean in linear light. */

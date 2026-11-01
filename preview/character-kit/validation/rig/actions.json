@@ -1,0 +1,104 @@
+{
+ "note": "Measured 2026-11-01. Blender: build_actions.py on the evaluated skinned mesh, partner mirrored 0.9 m in front, every 4th frame plus the contact frame. Browser: scripts/actions.browser.js on world residents (clips from dist base/clips.glb), every 2nd frame, LOD2 and LOD0.",
+ "lod0Sha256": "687d9b33dacc20ed8ee7271970464d1e4a697e62477a28269a965454c0929973",
+ "blender": {
+  "drink": {
+   "frames": 96,
+   "loop": true,
+   "lowestVertexM": 0.0,
+   "socketToHandCentroidMaxM": 0.0217,
+   "ownHandClearanceMinM": 0.0088,
+   "cupSocketToMouthMinM": 0.0792
+  },
+  "plant": {
+   "frames": 96,
+   "loop": false,
+   "lowestVertexM": -0.011,
+   "socketToHandCentroidMaxM": 0.0213,
+   "ownHandClearanceMinM": 0.0386
+  },
+  "high_five": {
+   "frames": 60,
+   "loop": false,
+   "lowestVertexM": -0.0117,
+   "socketToHandCentroidMaxM": 0.0234,
+   "ownHandClearanceMinM": 0.0302,
+   "contactFrame": 24,
+   "palmDistanceAtContactM": 0.038,
+   "handToPartnerTorsoMinM": 0.1323,
+   "handToPartnerHandMinM": 0.0018
+  }
+ },
+ "browser": [
+  {
+   "clip": "drink",
+   "lod": 2,
+   "frames": 96,
+   "moved": 4.304,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 1.027,
+   "socketToHandSurfaceMaxMm": -7.01,
+   "socketToHandCentroidMaxMm": 24.623
+  },
+  {
+   "clip": "plant",
+   "lod": 2,
+   "frames": 96,
+   "moved": 13.778,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -5.946
+  },
+  {
+   "clip": "high_five",
+   "lod": 2,
+   "frames": 60,
+   "moved": 12.541,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -9.65,
+   "partnerDistanceM": 0.9,
+   "minHandToPartnerTorsoMm": 91.538,
+   "minHandToPartnerHandMm": 8.271,
+   "contactFrame": 24,
+   "palmDistanceMm": 37.993,
+   "actorDistanceM": 0.9
+  },
+  {
+   "clip": "drink",
+   "lod": 0,
+   "frames": 96,
+   "moved": 4.304,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0,
+   "socketToHandSurfaceMaxMm": -5.608,
+   "socketToHandCentroidMaxMm": 21.805
+  },
+  {
+   "clip": "plant",
+   "lod": 0,
+   "frames": 96,
+   "moved": 13.778,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -10.97
+  },
+  {
+   "clip": "high_five",
+   "lod": 0,
+   "frames": 60,
+   "moved": 12.541,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -11.898,
+   "partnerDistanceM": 0.9,
+   "minHandToPartnerTorsoMm": 89.805,
+   "minHandToPartnerHandMm": 5.621,
+   "contactFrame": 24,
+   "palmDistanceMm": 37.993,
+   "actorDistanceM": 0.9
+  }
+ ]
+}

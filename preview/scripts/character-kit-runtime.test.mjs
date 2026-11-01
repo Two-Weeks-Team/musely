@@ -1,7 +1,7 @@
 import{test}from'node:test';import assert from'node:assert/strict';import{readFile}from'node:fs/promises';import{readFileSync}from'node:fs';import{createHash}from'node:crypto';
 import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';import{SkinnedMesh,Vector3,Box3,Mesh}from'three';
 import{MuseActor}from'../src/character-kit/MuseActor.ts';import{MaterialLibrary}from'../src/character-kit/MaterialLibrary.ts';
-import{MUSE_VARIANTS,RESIDENT_VARIANTS,SIGNATURE_CLIPS,SHARED_CLIPS,fleeceFactor}from'../src/character-kit/catalog.ts';import{residentBehavior,chooseLods,ResidentClock}from'../src/character-kit/residents.ts';import{positionAt}from'../src/activity.ts';import{conversationAt,DURATION}from'../src/story.ts';
+import{MUSE_VARIANTS,RESIDENT_VARIANTS,SIGNATURE_CLIPS,SHARED_CLIPS,ACTION_CLIPS,SINGLE_PLAY,fleeceFactor}from'../src/character-kit/catalog.ts';import{residentBehavior,chooseLods,ResidentClock}from'../src/character-kit/residents.ts';import{positionAt}from'../src/activity.ts';import{conversationAt,DURATION}from'../src/story.ts';
 import manifest from'../character-kit/manifest.json' with{type:'json'};import clips from'../character-kit/runtime/animations/manifest.json' with{type:'json'};
 const RT='character-kit/runtime/';
 const cache=new Map();
@@ -22,9 +22,10 @@ test('every runtime file matches its recorded hash and the single shared rig dig
  assert.equal(Object.keys(manifest.files).length,12,'3 base LODs + 9 attachments');
 });
 
-test('the base carries all 21 body clips at their manifest durations, starting at zero',async()=>{
- const g=await gltf('base/lod0.glb');assert.equal(clips.clips.length,21);
- for(const name of[...SHARED_CLIPS,...Object.keys(SIGNATURE_CLIPS)]){const spec=clips.clips.find(c=>c.name===name),clip=g.animations.find(a=>a.name===name);assert.ok(spec&&clip,name);assert.ok(Math.abs(clip.duration-spec.seconds)<1e-5,`${name} ${clip.duration}`);for(const t of clip.tracks)assert.ok(Math.abs(t.times[0])<1e-6,`${name} leading hold`);}
+test('the base carries all 21 shared/signature body clips and the action clips at their manifest durations, starting at zero',async()=>{
+ const g=await gltf('base/lod0.glb');assert.equal(clips.clips.length,21+Object.keys(ACTION_CLIPS).length);assert.equal(g.animations.length,clips.clips.length);
+ for(const[name,s]of Object.entries(ACTION_CLIPS)){const spec=clips.clips.find(c=>c.name===name);assert.ok(spec?.action,name);assert.equal(spec.loop,s.loop,name);assert.ok(Math.abs(spec.seconds-s.frames/24)<1e-9,name);assert.equal(SINGLE_PLAY.has(name),!s.loop,`${name} single play`);if('contactFrame'in s)assert.ok(Math.abs(spec.contactSeconds-s.contactFrame/24)<1e-9&&spec.partnerDistanceMeters===s.partner,name);}
+ for(const name of[...SHARED_CLIPS,...Object.keys(SIGNATURE_CLIPS),...Object.keys(ACTION_CLIPS)]){const spec=clips.clips.find(c=>c.name===name),clip=g.animations.find(a=>a.name===name);assert.ok(spec&&clip,name);assert.ok(Math.abs(clip.duration-spec.seconds)<1e-5,`${name} ${clip.duration}`);for(const t of clip.tracks)assert.ok(Math.abs(t.times[0])<1e-6,`${name} leading hold`);}
  for(const[name,s]of Object.entries(SIGNATURE_CLIPS))assert.equal(clips.clips.find(c=>c.name===name).loop,s.loop,name);
 });
 
@@ -73,6 +74,15 @@ test('signature actions keep a supporting foot on the ground within 20 mm',async
   for(let f=0;f<=frames;f+=4){const t=f/24;a.update(t,pose,t);let low=Infinity;for(const m of a.meshes.filter(m=>m.visible&&m.name.startsWith('Jolly'))){m.computeBoundingBox();low=Math.min(low,new Box3().setFromObject(m).min.y);}
    assert.ok(low>=-.02&&low<=.02,`${v.id} ${v.signature} lowest support at ${t.toFixed(2)}s: ${low.toFixed(4)}m`);}
   a.dispose();}
+});
+
+test('action clips stay in place and keep a support on the ground within 20 mm',async()=>{
+ const a=await actor('00-jolly');a.setLod(0);const root=a.skeleton.bones.find(b=>b.name==='Root');a.update(0,pose,0);const rp=root.position.clone(),rq=root.quaternion.clone();
+ for(const[name,s]of Object.entries(ACTION_CLIPS)){a.setAction(name);
+  for(let f=0;f<=s.frames;f+=4){const t=f/24;a.update(t,pose,t);assert.ok(root.position.distanceTo(rp)<1e-6&&root.quaternion.angleTo(rq)<1e-6,`${name} moves Root`);
+   let low=Infinity;for(const m of a.meshes.filter(m=>m.visible&&m.name.startsWith('Jolly'))){m.computeBoundingBox();low=Math.min(low,new Box3().setFromObject(m).min.y);}
+   assert.ok(low>=-.02&&low<=.02,`${name} lowest support at ${t.toFixed(2)}s: ${low.toFixed(4)}m`);}}
+ a.dispose();
 });
 
 test('every resident uses only clips the kit provides, and shows its own activity when idle',async()=>{

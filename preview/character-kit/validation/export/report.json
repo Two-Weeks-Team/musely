@@ -1,5 +1,11 @@
 {
-  "base": {},
+  "base": {
+    "lod0": {
+      "bytes": 6107800,
+      "tris": 22886,
+      "clips": 25
+    }
+  },
   "attachments": {
     "01-sunny": {
       "lod0": 1896,

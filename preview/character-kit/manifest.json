@@ -34,7 +34,7 @@
       ],
       "attachment": null,
       "actions": {
-        "bodyClips": 12,
+        "bodyClips": 15,
         "signature": null,
         "propClip": null
       }
@@ -55,7 +55,7 @@
       ],
       "attachment": "attachments/01-sunny.glb",
       "actions": {
-        "bodyClips": 13,
+        "bodyClips": 16,
         "signature": "welcome_neighbors",
         "propClip": null
       }
@@ -76,7 +76,7 @@
       ],
       "attachment": "attachments/02-moss.glb",
       "actions": {
-        "bodyClips": 13,
+        "bodyClips": 16,
         "signature": "water_plants",
         "propClip": null
       }
@@ -97,7 +97,7 @@
       ],
       "attachment": "attachments/03-ripple.glb",
       "actions": {
-        "bodyClips": 13,
+        "bodyClips": 16,
         "signature": "inspect_map",
         "propClip": null
       }
@@ -118,7 +118,7 @@
       ],
       "attachment": "attachments/04-ember.glb",
       "actions": {
-        "bodyClips": 13,
+        "bodyClips": 16,
         "signature": "tell_story",
         "propClip": null
       }
@@ -139,7 +139,7 @@
       ],
       "attachment": "attachments/05-bloom.glb",
       "actions": {
-        "bodyClips": 13,
+        "bodyClips": 16,
         "signature": "reassure",
         "propClip": null
       }
@@ -160,7 +160,7 @@
       ],
       "attachment": "attachments/06-ink.glb",
       "actions": {
-        "bodyClips": 13,
+        "bodyClips": 16,
         "signature": "read_book",
         "propClip": "read_book"
       }
@@ -181,7 +181,7 @@
       ],
       "attachment": "attachments/07-tempo.glb",
       "actions": {
-        "bodyClips": 13,
+        "bodyClips": 16,
         "signature": "music_bounce",
         "propClip": null
       }
@@ -202,7 +202,7 @@
       ],
       "attachment": "attachments/08-orbit.glb",
       "actions": {
-        "bodyClips": 13,
+        "bodyClips": 16,
         "signature": "observe_sky",
         "propClip": null
       }
@@ -223,7 +223,7 @@
       ],
       "attachment": "attachments/09-copper.glb",
       "actions": {
-        "bodyClips": 13,
+        "bodyClips": 16,
         "signature": "inspect_gadget",
         "propClip": null
       }
@@ -231,11 +231,13 @@
   ],
   "files": {
     "base/lod0.glb": {
-      "bytes": 6030464,
-      "sha256": "78211b7da70bddeaae08ff8e88144c27c9f7e816af75f989cb64c31f978709bb",
+      "bytes": 6107800,
+      "sha256": "687d9b33dacc20ed8ee7271970464d1e4a697e62477a28269a965454c0929973",
       "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
       "clips": [
         "celebrate",
+        "drink",
+        "high_five",
         "idle_breathe",
         "inspect_gadget",
         "inspect_map",
@@ -244,6 +246,7 @@
         "music_bounce",
         "observe_sky",
         "offer_item",
+        "plant",
         "read_book",
         "reassure",
         "sit_down",
