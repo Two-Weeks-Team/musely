@@ -293,7 +293,7 @@ export function mountWorldPanel(map: LibreMap) {
     f('Verified at', claim?.record?.verifiedAt ? new Date(claim.record.verifiedAt).toISOString() : null); f('Note', claim?.record?.note);
     card.append(dl);
     if (claim?.record?.permalink) { const a = el('a', '', 'Open the claim post on Threads ↗'); a.href = claim.record.permalink; a.target = '_blank'; a.rel = 'noopener'; card.append(a); }
-    card.append(el('p', 'muted', 'This record proves Kim Sejun\'s Muse only. A new visitor\'s session is not claimed by it. While the Threads app is in development mode, only accounts added as testers can connect: message @combba82 on Threads or sejun@2weeks.co with your Threads handle to be added.'));
+    card.append(el('p', 'muted', 'This record proves Kim Sejun\'s Muse only. A new visitor\'s session is not claimed by it. While the Threads app is in development mode, only accounts added as testers can connect: message @combba82 on Threads with your Threads handle to be added. Not a tester? You can still try the owner-direct path: post the claim text from your own Threads account and share the link (a visual check, not machine-verified).'));
     const actions = el('div', 'id-actions');
     const result = el('p', 'muted');
     const run = (label: string, path: string) => { const b = el('button', 'secondary', label); b.type = 'button'; b.onclick = async () => {

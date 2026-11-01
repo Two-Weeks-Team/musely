@@ -3,7 +3,7 @@
 - Site: https://preview.musely.net
 - Repository: https://github.com/Two-Weeks-Team/musely (private)
 - Worker: `musely-preview`
-- Cloudflare login: `sejun@2weeks.co`
+- Cloudflare login: the Cloudflare account owner (Kim Sejun)
 - Zone/account: the account owning `musely.net`, configured by ID in `wrangler.jsonc`
 - Published directory: `preview/dist` only
 
