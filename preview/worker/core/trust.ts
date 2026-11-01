@@ -76,13 +76,14 @@ export class Trust implements TrustRegistry {
     this.sql.exec('INSERT OR REPLACE INTO approvals (ref, content_hash, agent_id, at) VALUES (?, ?, ?, ?)', ref, contentHash, agentId, Date.now());
   }
 
-  /** The executor for an agent and signer kind; (re)issued when missing or after a revocation. */
+  /** The executor for an agent and signer kind; (re)issued when missing, expired, or after a revocation. */
   async executor(museId: string, signerKind: SignerKind, ownerRootJwk: JsonWebKey | null): Promise<Executor> {
     const agent = this.agentByMuse(museId);
     if (!agent) throw new Error('Unknown Muse ' + museId);
     const version = this.delegationVersion(agent.agentId);
     const row = this.sql.exec('SELECT kid, delegation, version FROM executors WHERE agent_id = ? AND signer_kind = ?', agent.agentId, signerKind).toArray()[0];
-    if (row && Number(row.version) === version) {
+    // Reuse the stored executor while its delegation is current; an expired one (24 h TTL) is re-issued at the same version.
+    if (row && Number(row.version) === version && (peekDelegation(String(row.delegation))?.exp ?? 0) > Date.now() + 60_000) {
       const key = await importPrivateJwk(JSON.parse(String(this.sql.exec('SELECT jwk FROM private_keys WHERE kid = ?', String(row.kid)).toArray()[0].jwk)));
       return {key, delegation: String(row.delegation), d: peekDelegation(String(row.delegation))!};
     }
@@ -103,6 +104,19 @@ export class Trust implements TrustRegistry {
     const key = await importPrivateJwk(JSON.parse(String(this.sql.exec('SELECT jwk FROM private_keys WHERE kid = ?', String(row.kid)).toArray()[0].jwk)));
     return {key, delegation: String(row.delegation), d: peekDelegation(String(row.delegation))!};
   }
+  /**
+   * Executor for writes made on behalf of a connected Muse (MCP). Unlike executor(), it never re-issues a
+   * delegation after the owner revoked: the stale executor is returned, so its envelope fails verification
+   * at the delegation step until the owner delegates again.
+   */
+  async custodialExecutor(museId: string, ownerRootJwk: JsonWebKey | null): Promise<Executor> {
+    const agent = this.agentByMuse(museId);
+    if (!agent) throw new Error('Unknown Muse ' + museId);
+    const row = this.sql.exec('SELECT version FROM executors WHERE agent_id = ? AND signer_kind = ?', agent.agentId, 'server_custodial').toArray()[0];
+    if (row && Number(row.version) < this.delegationVersion(agent.agentId)) return (await this.storedExecutor(museId, 'server_custodial'))!;
+    return this.executor(museId, 'server_custodial', ownerRootJwk);
+  }
+
   /** While suspended (after a revocation, before the owner delegates again) the Muse takes no live decisions. */
   suspended(museId: string) { const a = this.agentByMuse(museId); return !!a && this.sql.exec('SELECT 1 FROM executors WHERE agent_id = ? AND version < ?', a.agentId, this.delegationVersion(a.agentId)).toArray().length > 0; }
 

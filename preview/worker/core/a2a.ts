@@ -14,7 +14,7 @@ import type {WorldState} from '../../src/engine/world.ts';
 export type Ctx = {trust: Trust; runtime: WorldRuntime; ownerRoot: JsonWebKey | null; ownerClaimed: boolean; baseUrl: string; now?: () => number};
 const nowOf = (c: Ctx) => (c.now ? c.now() : Date.now());
 
-const envelopeEvidence = (s: Signed) => ({message_id: s.envelope.message_id, agent_id: s.envelope.agent_id, delegation_ref: s.envelope.delegation_ref, signer_kind: s.envelope.signer_kind, scope: s.envelope.scope, scope_hash: s.envelope.scope_hash, content_hash: s.envelope.content_hash, nonce: s.envelope.nonce, expires_at: s.envelope.expires_at, owner_claimed: s.envelope.owner_claimed});
+export const envelopeEvidence = (s: Signed) => ({message_id: s.envelope.message_id, agent_id: s.envelope.agent_id, delegation_ref: s.envelope.delegation_ref, signer_kind: s.envelope.signer_kind, scope: s.envelope.scope, scope_hash: s.envelope.scope_hash, content_hash: s.envelope.content_hash, nonce: s.envelope.nonce, expires_at: s.envelope.expires_at, owner_claimed: s.envelope.owner_claimed});
 
 /** A trade the owner's Muse can actually make now: nearby partner, both items held and the rules allow it. */
 export function findOwnerTrade(s: WorldState) {

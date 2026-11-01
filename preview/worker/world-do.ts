@@ -9,25 +9,29 @@ import {TICK_MS} from '../src/engine/world.ts';
 import {makeHooks} from '../src/engine/rules.ts';
 import {Trust, OWNER_SLOT} from './core/trust.ts';
 import {runP0, verifyMeeting, impostorCheck, injectionCheck, type Ctx} from './core/a2a.ts';
+import {ConnectedHost} from './core/connected.ts';
 
 export class WorldDO extends DurableObject<Env> {
   private ledger: Ledger;
   private runtime: WorldRuntime;
   private trust: Trust;
   private ownerRoot: JsonWebKey | null;
+  private connected: ConnectedHost;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.ledger = new Ledger(ctx.storage.sql, {dailyCapUsd: Number(env.DAILY_BUDGET_USD) || 20});
     this.trust = new Trust(ctx.storage.sql);
     this.ownerRoot = env.OWNER_ROOT_JWK ? JSON.parse(env.OWNER_ROOT_JWK) : null;
+    const hooks = makeHooks();
     this.runtime = new WorldRuntime(ctx.storage.sql, {
       // Live decisions for a Muse whose delegation was revoked (and not re-issued) are discarded.
       delegationValid: museId => !this.trust.suspended(museId),
       worldId: 'musely-preview',
       ledger: this.ledger,
-      hooks: makeHooks(),
+      hooks,
       model: {base: env.MODEL_BASE, key: env.MODEL_API_KEY, model: env.MODEL_ID, timeoutMs: 8000},
     });
+    this.connected = new ConnectedHost({sql: ctx.storage.sql, trust: this.trust, runtime: this.runtime, hooks, baseUrl: 'https://preview.musely.net', ownerRoot: () => this.ownerRoot, ownerClaimed: () => this.getClaim('owner-muse')?.status === 'claimed'});
     ctx.blockConcurrencyWhile(async () => {
       this.ledger.init();
       this.runtime.init(Date.now());
@@ -36,6 +40,7 @@ export class WorldDO extends DurableObject<Env> {
       // Owner claims. The Threads token stays inside this object; no method returns it over HTTP.
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS claims (agent TEXT PRIMARY KEY, record TEXT NOT NULL, token TEXT)');
       this.trust.init();
+      this.connected.init();
       await this.trust.ensureAgents(this.ownerRoot);
       // The owner's Muse arrives with a small welcome gift so it has something to trade (logged as a rule).
       const owner = this.runtime.state().muses.find(m => m.id === OWNER_SLOT);
@@ -76,6 +81,14 @@ export class WorldDO extends DurableObject<Env> {
   worldView() { return this.runtime.view(Date.now()); }
   worldEvents(since: number, limit: number, opts: {day?: string; tail?: number} = {}) { return this.runtime.events(since, Math.min(2000, Math.max(1, limit)), opts); }
   worldHighlights(limit: number) { return this.runtime.highlights(Math.min(300, Math.max(1, limit))); }
+  // Connected Muse (direction v2, 7.2, 12.3, 13.1): MCP dispatch, agent keys, owner location, notifications.
+  mcp(keyHash: string, method: string, params: unknown, isNotification: boolean) { return this.connected.mcp(keyHash, method, params, isNotification); }
+  issueAgentKey() { return this.connected.issueKey(); }
+  listAgentKeys() { return this.connected.listKeys(); }
+  revokeAgentKey(id: string) { return this.connected.revokeKey(id); }
+  ownerLocation() { return this.connected.ownerLocation(); }
+  setOwnerLocation(input: unknown) { return this.connected.setOwnerLocation(input); }
+  ownerNotifications(full: boolean) { return this.connected.notifications(full); }
   getClaim(agent: string): ClaimRecord | null {
     const r = this.ctx.storage.sql.exec('SELECT record FROM claims WHERE agent = ?', agent).toArray()[0];
     return r ? JSON.parse(String(r.record)) : null;
