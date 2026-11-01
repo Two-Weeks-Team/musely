@@ -10,17 +10,20 @@ import {makeHooks} from '../src/engine/rules.ts';
 import {Trust, OWNER_SLOT} from './core/trust.ts';
 import {runP0, verifyMeeting, impostorCheck, injectionCheck, type Ctx} from './core/a2a.ts';
 import {ConnectedHost} from './core/connected.ts';
+import {RitualStore, type RitualRecord} from './core/ritual.ts';
 
 export class WorldDO extends DurableObject<Env> {
   private ledger: Ledger;
   private runtime: WorldRuntime;
   private trust: Trust;
+  private ritual: RitualStore;
   private ownerRoot: JsonWebKey | null;
   private connected: ConnectedHost;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.ledger = new Ledger(ctx.storage.sql, {dailyCapUsd: Number(env.DAILY_BUDGET_USD) || 20});
     this.trust = new Trust(ctx.storage.sql);
+    this.ritual = new RitualStore(ctx.storage.sql);
     this.ownerRoot = env.OWNER_ROOT_JWK ? JSON.parse(env.OWNER_ROOT_JWK) : null;
     const hooks = makeHooks();
     this.runtime = new WorldRuntime(ctx.storage.sql, {
@@ -41,6 +44,7 @@ export class WorldDO extends DurableObject<Env> {
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS claims (agent TEXT PRIMARY KEY, record TEXT NOT NULL, token TEXT)');
       this.trust.init();
       this.connected.init();
+      this.ritual.init();
       await this.trust.ensureAgents(this.ownerRoot);
       // The owner's Muse arrives with a small welcome gift so it has something to trade (logged as a rule).
       const owner = this.runtime.state().muses.find(m => m.id === OWNER_SLOT);
@@ -78,6 +82,14 @@ export class WorldDO extends DurableObject<Env> {
     return this.trust.card(museId, this.ownerRoot, {claimed: claim?.status === 'claimed', fingerprint: museId === OWNER_SLOT ? claim?.fingerprint ?? null : null}, 'https://preview.musely.net');
   }
   jwks(kid: string) { const a = this.trust.agentById(kid); return a ? {keys: [{...a.rootJwk, kid: a.agentId, alg: 'ES256', use: 'sig'}]} : null; }
+  ritualStart(session: string) { return this.ritual.start(session); }
+  ritualTake(id: string, session: string) { return this.ritual.take(id, session); }
+  ritualOwnerRecord() { return this.ritual.ownerRecord(); }
+  /** Logs a judged ritual (verdicts only, never frames); a passing judge-link run becomes the owner's recorded ritual. */
+  ritualRecord(rec: RitualRecord, sessionTag: string) {
+    if (rec.tier === 'judge' && rec.passed) this.ritual.saveOwnerRecord(rec);
+    return this.runtime.commitExternal(Date.now(), 'ritual', (_s, emit) => emit({at: Date.now(), source: rec.requestId ? 'live' : 'replay', kind: 'ritual_judged', muse: null, line: rec.passed ? 'Welcome ritual passed' : 'Welcome ritual not passed', data: {passed: rec.passed, results: rec.results, evidence: rec.requestId ? {model: rec.model, requestId: rec.requestId} : null, who: rec.tier === 'judge' ? 'owner (judge link)' : 'visitor ' + sessionTag, framesStored: false}, tags: ['ritual']}));
+  }
   worldView() { return this.runtime.view(Date.now()); }
   worldEvents(since: number, limit: number, opts: {day?: string; tail?: number} = {}) { return this.runtime.events(since, Math.min(2000, Math.max(1, limit)), opts); }
   worldHighlights(limit: number) { return this.runtime.highlights(Math.min(300, Math.max(1, limit))); }

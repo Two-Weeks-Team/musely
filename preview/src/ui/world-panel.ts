@@ -13,6 +13,7 @@ import {MUSE_VARIANTS} from '../character-kit/catalog';
 import {createWorld, tick, TICK_MS} from '../engine/world';
 import {makeHooks} from '../engine/rules';
 import {ensureSession, sparkStatus} from '../live';
+import {ritualCard} from './ritual';
 
 type Ev = {seq: number; id: string; tick: number; at: number; source: 'live' | 'rule' | 'scripted' | 'replay'; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data: any; tags: string[]};
 type MuseView = {id: string; place: string; travel: {to: string; departAt: number; arriveAt: number; speed: string} | null; beat: {id: string; line: string | null} | null; inventory: string[]; reflection: string; wants?: {goal: string; items: string[]; source: string}};
@@ -63,6 +64,7 @@ export function describe(e: Ev): string {
     case 'injection_blocked': return `An instruction from ${b} to ${a} was blocked`;
     case 'welcome_gift': return `${a} received a welcome gift`;
     case 'new_day': return `A new day begins (${d.day})`;
+    case 'ritual_judged': return `Welcome ritual ${d.passed ? 'passed' : 'not passed'} (${d.who})`;
     default: return e.line ?? e.kind.replace(/_/g, ' ');
   }
 }
@@ -302,7 +304,7 @@ export function mountWorldPanel(map: LibreMap) {
       catch (err) { result.textContent = 'Could not run: ' + (err as Error).message; }
       b.disabled = false; }; return b; };
     actions.append(run('Try an impostor', '/api/demo/impostor'), run('Try an instruction injection', '/api/demo/injection'), run('Run P0 (judge link)', '/api/p0/run'));
-    body.append(card, el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it.'), actions, result);
+    body.append(card, ritualCard(() => void refresh()), el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it.'), actions, result);
   }
 
   async function renderLocation(stale: () => boolean) {
