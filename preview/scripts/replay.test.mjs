@@ -43,7 +43,7 @@ test('fixture is a scoped, ordered scenario with catalog ids and genuine recorde
     assert.ok(e.fixture); assert.ok(e.t >= 0 && e.t <= run.durationSec); if (i) assert.ok(e.t >= run.events[i - 1].t);
     assert.equal(e.at, run.startAt + e.t * 1000); assert.equal(e.seq, i + 1);
     if (e.muse) assert.ok(HARNESS_IDS.includes(e.muse)); if (e.other) assert.ok(HARNESS_IDS.includes(e.other)); if (e.place) assert.ok(places.has(e.place));
-    if (e.data.evidence) { const ref = library.entries.find(r => r.requestId === e.data.evidence.requestId); assert.ok(ref); assert.equal(e.data.evidence.responseId, ref.responseId); assert.equal(e.data.evidence.model, ref.model); assert.equal(e.data.evidence.replayOf, ref.requestId); assert.equal(e.muse, ref.muse); assert.equal(e.data.decision, ref.output.decision); }
+    if (e.data.evidence) { const rec = e.data.evidence.replayOf; assert.equal(typeof rec, 'object', 'the Worker stores the recorded answer in replayOf'); const ref = library.entries.find(r => r.requestId === rec.requestId); assert.ok(ref, 'a real recorded request id'); assert.equal(rec.responseId, ref.responseId); assert.equal(rec.model, ref.model); assert.equal(e.muse, ref.muse); assert.equal(e.data.evidence.requestId, undefined, 'no request id is invented for a replay'); }
     if (e.source === 'rule' || ['cards_verified', 'a2a_verified', 'a2a_refused', 'impostor_rejected'].includes(e.kind)) assert.equal(e.data.evidence, undefined);
   }
   assert.equal(run.events.filter(e => e.source === 'replay' && !e.data.evidence).length, 1);

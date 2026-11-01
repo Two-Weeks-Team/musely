@@ -152,6 +152,21 @@ async (page) => {
    // Isolation: nothing was requested from /api while replay was on screen, in any method.
    const during2 = reqs.slice(i0);
    check(vp, 'no request to /api or /.well-known while the replay played, seeked, filtered and opened evidence', during2.length === 0, JSON.stringify(during2));
+   // Clicking the active Replay tab again must not remount it (a second mount used to pause the shared clock).
+   await p.evaluate(() => { const r = window.__world.worldPanel.replay; r.pause(); r.setSpeed(1); r.seek(10); r.play(); });
+   await p.locator('#world-panel .tab[data-tab="replay"]').click(); await p.waitForTimeout(500);
+   check(vp, 'clicking the active Replay tab again keeps the replay playing', (await st()).playing === true);
+   await p.evaluate(() => window.__world.worldPanel.replay.pause());
+   // A request chain that began before the replay opened (Identity check button: status, then a POST) makes no request after it.
+   // The POST is answered locally in the browser so it can never reach the service even if the chain were not stopped.
+   await p.locator('#world-panel .tab[data-tab="identity"]').click(); await p.waitForSelector('.id-actions button', {timeout: 20000});
+   await p.route('**/api/status', async r => { await new Promise(d => setTimeout(d, 1800)); await r.continue().catch(() => {}); });
+   await p.route('**/api/demo/impostor', r => r.fulfill({status: 200, contentType: 'application/json', body: '{}'}));
+   await p.locator('.id-actions button', {hasText: 'Try an impostor'}).click(); await p.waitForTimeout(250);
+   await p.locator('#world-panel .tab[data-tab="replay"]').click(); await p.waitForSelector('.replay-view');
+   const k0 = reqs.length; await p.waitForTimeout(2800);
+   check(vp, 'a request chain started before the replay opened makes no request after it, no POST either', reqs.slice(k0).length === 0, JSON.stringify(reqs.slice(k0)));
+   await p.unroute('**/api/status'); await p.unroute('**/api/demo/impostor');
    // Keyboard and focus.
    await p.locator('#world-panel .tab[data-tab="replay"]').focus();
    let landed = null;

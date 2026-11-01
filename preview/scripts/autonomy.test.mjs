@@ -90,8 +90,23 @@ test('fixture six rows agree with independent raw-event counts', () => {
   }
   assert.equal(values.signatures, `${passed} passed · ${refused} refused`);
   const live = new Set(), replay = new Set(); let scenario = 0;
-  for (const e of events) { if (e.source === 'live' && e.data.evidence?.requestId) live.add(e.data.evidence.requestId); if (e.source === 'replay' && e.data.evidence?.replayOf) replay.add(e.data.evidence.replayOf); if (e.source === 'scripted' && e.kind === 'spotlight') scenario++; }
+  for (const e of events) { if (e.source === 'live' && e.data.evidence?.requestId) live.add(e.data.evidence.requestId); if (e.source === 'replay' && e.data.evidence?.replayOf) { const r = e.data.evidence.replayOf; replay.add(typeof r === 'string' ? r : r.requestId); } if (e.source === 'scripted' && e.kind === 'spotlight') scenario++; }
   assert.equal(values.models, `${live.size} live · ${replay.size} replay · ${scenario} scenario`);
   assert.equal(values.abilities, `${events.filter(e => e.tags.includes('ability_change') && e.data.beforeHash && e.data.afterHash && e.data.beforeHash !== e.data.afterHash).length} changes`);
   assert.equal(values.blocks, `${events.filter(e => e.kind === 'injection_blocked').length} instructions blocked · ${events.filter(e => e.kind === 'decision_rejected').length} out-of-scope decisions refused`);
+});
+
+test('C09 on real Worker data: replayOf is the recorded answer, so two events with the same request id are one replay', () => {
+  const rec = {requestId: 'same', responseId: 'r1', model: 'm'};
+  const events = [event('1', 'spotlight', {evidence: {replayOf: {...rec}}}, {source: 'replay'}), event('2', 'spotlight', {evidence: {replayOf: {...rec}}}, {source: 'replay'}), event('3', 'spotlight', {evidence: {replayOf: 'other'}}, {source: 'replay'})];
+  const row = computeAutonomy(events, scope).rows.find(r => r.key === 'models');
+  assert.match(row.value, /0 live · 2 replay · 0 scenario/); assert.equal(row.sample, 'n=2 unique requests');
+});
+
+test('C09: live model answers without a request id are not counted and never shown as a measured zero', () => {
+  const events = [event('1', 'spotlight', {evidence: {requestId: null}}, {source: 'live'})];
+  const row = computeAutonomy(events, scope).rows.find(r => r.key === 'models');
+  assert.equal(row.measured, false); assert.equal(row.value, 'Not measured'); assert.match(row.note, /1 live model answers without request id/);
+  const some = computeAutonomy([...events, event('2', 'spotlight', {evidence: {requestId: 'live-a'}}, {source: 'live'})], scope).rows.find(r => r.key === 'models');
+  assert.equal(some.measured, true); assert.match(some.value, /^1 live/); assert.match(some.note, /1 live model answers without request id \(not counted\)/);
 });

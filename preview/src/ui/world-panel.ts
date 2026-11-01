@@ -15,8 +15,8 @@ import {makeHooks} from '../engine/rules';
 import {ensureSession, sparkStatus} from '../live';
 import {ritualCard} from './ritual';
 import {renderFlows, flowState, selectFlow} from './preview-flows';
-import {fetchJson, newHealth, track, resState, stateText, type Health} from './resource-state';
-import {isolation} from './isolation';
+import {fetchJson, newHealth, track, resState, stateText, loadLog, type Health} from './resource-state';
+import {isolation, enforceIsolation} from './isolation';
 import {mountReplay, replayPlayer, type ReplayEvent} from './replay';
 import {computeAutonomy} from './autonomy';
 import {EMPTY_FILTER, matchFilter, type Filter} from './replay-core';
@@ -92,14 +92,9 @@ const dayCache = new Map<string, {at: number; events: Ev[]}>();
 async function dayEvents(day: string): Promise<DayLog> {
   const hit = dayCache.get(day);
   if (hit && Date.now() - hit.at < 60_000) return {events: hit.events, error: null, stale: false, at: hit.at};
-  const out: Ev[] = []; let since = 0, error: string | null = null;
-  for (let page = 0; page < 40; page++) {
-    const r = await load<Ev[]>('log', `/api/world/events?day=${day}&since=${since}&limit=2000`);
-    if (!r.ok) { error = r.error; break; }
-    if (!r.data.length) break;
-    out.push(...r.data); since = r.data[r.data.length - 1].seq;
-    if (r.data.length < 2000) break;
-  }
+  const got = await loadLog<Ev>(since => load<Ev[]>('log', `/api/world/events?day=${day}&since=${since}&limit=2000`));
+  // Reaching the page limit with a full last page means there may be more log: a partial sample, never a complete one.
+  const error = got.error ?? (got.capped ? 'the 80,000-event read limit was reached' : null), out = got.rows;
   if (!error) { const at = Date.now(); dayCache.set(day, {at, events: out}); return {events: out, error: null, stale: false, at}; }
   if (!out.length && hit) return {events: hit.events, error, stale: true, at: hit.at};
   return {events: out, error, stale: false, at: Date.now()};
@@ -184,6 +179,7 @@ function modelNote(e: EvidenceEv): string {
 const PARTS: [Filter['part'], string][] = [['', 'Any time'], ['night', 'Night 0–6'], ['morning', 'Morning 6–12'], ['afternoon', 'Afternoon 12–18'], ['evening', 'Evening 18–24']];
 
 export function mountWorldPanel(map: LibreMap) {
+  enforceIsolation();
   const header = document.querySelector('header')!;
   const open = el('button', 'quiet world-open'); open.type = 'button'; open.id = 'world-open';
   const openDot = el('span', 'live-pulse'); open.append(openDot, el('span', '', 'Live world'));
@@ -252,8 +248,9 @@ export function mountWorldPanel(map: LibreMap) {
     fact('When (Menlo Park)', at(e.at) + ` · tick ${e.tick} · event ${e.id}`);
     fact('Muse', museName(e.muse)); fact('Other', e.other ? museName(e.other) : null); fact('Place', placeName(e.place));
     const ev = e.data?.evidence;
-    if (ev) { fact('Model', ev.model); fact('Request id', ev.requestId); fact('Response id', ev.responseId); fact('Latency', ev.latencyMs ? ev.latencyMs + ' ms' : null); fact('Reservation', ev.reservationId); if (ev.replayOf) fact('Replayed from', ev.replayOf); }
-    if (!ev?.requestId) fact('Model call', modelNote(e)); // never invent an id: either it does not apply or the evidence is missing
+    const orig = typeof ev?.replayOf === 'string' ? ev.replayOf : ev?.replayOf?.requestId, rec = typeof ev?.replayOf === 'object' ? ev.replayOf : null;
+    if (ev) { fact('Model', ev.model ?? rec?.model); fact('Request id', ev.requestId); fact('Response id', ev.responseId); fact('Latency', ev.latencyMs ? ev.latencyMs + ' ms' : null); fact('Reservation', ev.reservationId); if (orig) fact('Replayed from', `request ${orig}${rec?.responseId ? ' · response ' + rec.responseId : ''}${rec?.recordedAt ? ' · recorded ' + new Date(rec.recordedAt).toISOString() : ''}`); }
+    if (!ev?.requestId && !orig) fact('Model call', modelNote(e)); // never invent an id: either it does not apply or the evidence is missing
     const env = e.data?.envelope;
     if (env) { fact('Message id', env.message_id); fact('Signer', env.signer_kind); fact('Delegation ref', env.delegation_ref); fact('Scope', env.scope + ' · ' + env.scope_hash); fact('Content hash', env.content_hash); fact('Owner claimed', String(env.owner_claimed)); }
     if (e.data?.steps) fact('Verified steps', (e.data.steps as string[]).join(' → '));
@@ -347,6 +344,7 @@ export function mountWorldPanel(map: LibreMap) {
     const day = world?.day ?? new Date().toISOString().slice(0, 10);
     tabs.querySelectorAll('button').forEach(b => { const on = (b as HTMLElement).dataset.tab === tab; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
     if (tab !== 'replay') leaveReplay();
+    else if (replayView && body.querySelector('.replay-view')) return; // already on screen: keep playing
     body.replaceChildren();
     if (tab === 'feed') {
       const evH = health.get('events'), s = resState(evH, events.length > 0);
@@ -476,6 +474,7 @@ export function mountWorldPanel(map: LibreMap) {
     if (isolation.replay && !force) return;
     // First load takes the newest events (the live tail); later polls fetch only what is new since then.
     const [wr, er] = await Promise.all([load<WorldView>('world', '/api/world'), load<Ev[]>('events', lastSeq ? `/api/world/events?since=${lastSeq}&limit=500` : '/api/world/events?tail=200')]);
+    if (isolation.replay && !force) return; // asked before the replay opened: not applied while it is on screen; the next poll fetches it again
     if (wr.ok) world = wr.data;
     if (er.ok && er.data.length) { events.push(...er.data); events = events.slice(-1500); lastSeq = er.data[er.data.length - 1].seq; }
     pins.update(world);

@@ -22,11 +22,14 @@ export function computeAutonomy(events: AutoEvent[], scope: AutoScope): AutoResu
   passed += ofKind('a2a_verified').length;
   refused += ofKind('a2a_refused').length + ofKind('impostor_rejected').length;
   const live = new Set<string>(), replay = new Set<string>();
-  let missingReplay = 0;
+  let missingReplay = 0, missingLive = 0;
   for (const e of unique) {
-    if (e.source === 'live' && e.data?.evidence?.requestId) live.add(e.data.evidence.requestId);
+    const ev = e.data?.evidence;
+    if (e.source === 'live') { if (ev?.requestId) live.add(String(ev.requestId)); else if (e.kind === 'spotlight') missingLive++; }
     if (e.source === 'replay') {
-      if (e.data?.evidence?.replayOf) replay.add(e.data.evidence.replayOf); else missingReplay++;
+      // The Worker stores the whole recorded answer in replayOf; older data and fixtures may carry just its request id.
+      const ref = ev?.replayOf, id = typeof ref === 'string' ? ref : ref?.requestId;
+      if (id) replay.add(String(id)); else missingReplay++;
     }
   }
   const tagged = unique.filter(e => e.tags.includes('ability_change'));
@@ -44,7 +47,7 @@ export function computeAutonomy(events: AutoEvent[], scope: AutoScope): AutoResu
     ]),
     row('interventions', 'Owner interventions', String(new Set(approvals.map(e => e.data?.requestId || e.id)).size), `n=${approvals.length} events`, true, [`${ofKind('meetup_candidate').length} meeting candidates (not counted as approval requests)`]),
     row('signatures', 'Signature checks', `${passed} passed · ${refused} refused`, `n=${passed + refused} checks`, missingChecks === 0, ['Check ids are not recorded; card directions and check events counted', ...(missingChecks ? [`${missingChecks} card check outcomes not recorded`] : [])]),
-    row('models', 'Muse Spark calls', `${live.size} live · ${replay.size} replay · ${unique.filter(e => e.source === 'scripted' && e.kind === 'spotlight').length} scenario`, `n=${live.size + replay.size} unique requests`, true, missingReplay ? [`${missingReplay} replay events without original request id`] : []),
+    row('models', 'Muse Spark calls', `${live.size} live · ${replay.size} replay · ${unique.filter(e => e.source === 'scripted' && e.kind === 'spotlight').length} scenario`, `n=${live.size + replay.size} unique requests`, !(live.size === 0 && missingLive > 0), [...(missingLive ? [`${missingLive} live model answers without request id (not counted)`] : []), ...(missingReplay ? [`${missingReplay} replay events without original request id`] : [])]),
     row('abilities', 'Ability changes', `${hashed.filter(e => e.data.beforeHash !== e.data.afterHash).length} changes`, `n=${tagged.length} events`, hashed.length > 0, observations || !hashed.length ? [`${observations} tagged observations (before/after state not recorded)`] : []),
     row('blocks', 'Blocks', `${ofKind('injection_blocked').length} instructions blocked · ${ofKind('decision_rejected').length} out-of-scope decisions refused`, `n=${ofKind('injection_blocked').length + ofKind('decision_rejected').length} events`),
   ];

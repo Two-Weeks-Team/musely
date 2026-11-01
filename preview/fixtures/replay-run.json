@@ -44,10 +44,15 @@
         "want_item": "",
         "target": "osm:way/30118918",
         "evidence": {
-          "model": "muse-spark-1.3",
-          "requestId": "2c7fc75e-4284-40b1-8059-6a2e34851934",
-          "responseId": "chatcmpl-01a195cd-5dec-707b-845f-4b0c527ebfb7",
-          "replayOf": "2c7fc75e-4284-40b1-8059-6a2e34851934"
+          "replayOf": {
+            "action": "spotlight",
+            "muse": "03-ripple",
+            "recordedAt": "2026-11-01T06:30:26.666Z",
+            "model": "muse-spark-1.3",
+            "requestId": "2c7fc75e-4284-40b1-8059-6a2e34851934",
+            "responseId": "chatcmpl-01a195cd-5dec-707b-845f-4b0c527ebfb7",
+            "latencyMs": 2784
+          }
         }
       },
       "tags": [
@@ -328,10 +333,15 @@
         "want_item": "",
         "target": "commons:campfire",
         "evidence": {
-          "model": "muse-spark-1.3",
-          "requestId": "d92f021a-6a73-4fbc-95c8-b7e199dddb53",
-          "responseId": "chatcmpl-01a195cd-699d-760c-b4f8-e5e90d98caf9",
-          "replayOf": "d92f021a-6a73-4fbc-95c8-b7e199dddb53"
+          "replayOf": {
+            "action": "spotlight",
+            "muse": "01-sunny",
+            "recordedAt": "2026-11-01T06:30:29.691Z",
+            "model": "muse-spark-1.3",
+            "requestId": "d92f021a-6a73-4fbc-95c8-b7e199dddb53",
+            "responseId": "chatcmpl-01a195cd-699d-760c-b4f8-e5e90d98caf9",
+            "latencyMs": 3023
+          }
         }
       },
       "tags": [
