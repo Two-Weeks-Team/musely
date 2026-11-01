@@ -644,7 +644,7 @@
         {
           "id": "next-candidate",
           "title": "The next candidate",
-          "text": "The Muses try another time and place. There are at most five rounds; after the last one without agreement they stop and return to their owners.",
+          "text": "The Muses try another candidate from the public signals. There are at most five rounds; after the last one without agreement they stop and return to their owners.",
           "status": {
             "task": "input-required",
             "deadline": "30 min"
@@ -652,7 +652,30 @@
           "choices": [
             {
               "label": "See the candidate",
-              "goto": "candidate"
+              "goto": "candidate-2"
+            }
+          ]
+        },
+        {
+          "id": "candidate-2",
+          "title": "Agreement candidate · round 2",
+          "text": "Both Muses accepted 17:30 · the Garden. It goes to both owners' inboxes.",
+          "status": {
+            "task": "input-required",
+            "deadline": "30 min"
+          },
+          "choices": [
+            {
+              "label": "Both approve",
+              "goto": "ember"
+            },
+            {
+              "label": "Sora declines",
+              "goto": "declined"
+            },
+            {
+              "label": "Let it expire",
+              "goto": "expired"
             }
           ]
         },
