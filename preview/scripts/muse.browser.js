@@ -31,6 +31,10 @@ async(page)=>{
    await p.locator('#pause').click();const paused=await p.evaluate(()=>window.__jolly.getMetrics().time);await p.waitForTimeout(200);if(await p.evaluate(()=>window.__jolly.getMetrics().time)!==paused)throw Error('Paused viewer advances');
    await ctx.route('https://tiles.openfreemap.org/**',async r=>{await new Promise(done=>setTimeout(done,6000));await r.continue().catch(()=>{});});
    await p.goto(new URL('?autoplay=0',origin).href,{waitUntil:'domcontentloaded'});await p.waitForFunction(()=>window.__world?.getMetrics().ready,null,{timeout:60000});
+   // Debug surface used by actions.browser.js: must stay a function returning world actors (lost once in #19).
+   const actorApi=await p.evaluate(()=>({type:typeof window.__world.actor,root:!!window.__world.actor?.(0)?.root}));if(actorApi.type!=='function'||!actorApi.root)throw Error('__world.actor accessor missing: '+JSON.stringify(actorApi));
+   // Muse card wants: text only (no markup), from harness/live data, with the private-reasons note as its own element.
+   const want=await p.evaluate(()=>({text:document.getElementById('muse-want-text')?.textContent,html:document.getElementById('muse-want-text')?.innerHTML,note:document.getElementById('muse-want-note')?.textContent}));if(!/^Wants: \S/.test(want.text||'')||want.html!==want.text||want.note!=='Its reasons stay private.')throw Error('Muse card wants: '+JSON.stringify(want));
    const first=await p.evaluate(()=>window.__world.getMetrics());
    if(!first.characterKit||first.characters.map(c=>c.variant).join()!==residents.join())throw Error('World residents are not the rigged kit');
    await p.locator('#pause').click();const scenes=[];
