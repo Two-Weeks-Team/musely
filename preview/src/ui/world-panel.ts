@@ -14,6 +14,7 @@ import {createWorld, tick, TICK_MS} from '../engine/world';
 import {makeHooks} from '../engine/rules';
 import {ensureSession, sparkStatus} from '../live';
 import {ritualCard} from './ritual';
+import {renderFlows, flowState} from './preview-flows';
 
 type Ev = {seq: number; id: string; tick: number; at: number; source: 'live' | 'rule' | 'scripted' | 'replay'; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data: any; tags: string[]};
 type MuseView = {id: string; place: string; travel: {to: string; departAt: number; arriveAt: number; speed: string} | null; beat: {id: string; line: string | null} | null; inventory: string[]; reflection: string; wants?: {goal: string; items: string[]; source: string}};
@@ -236,7 +237,7 @@ export function mountWorldPanel(map: LibreMap) {
     return li;
   }
 
-  const TABS: [string, string][] = [['feed', 'Feed'], ['highlights', 'Highlights'], ['p1', 'P1 · items change plans'], ['autonomy', 'Autonomy'], ['identity', 'Identity'], ['location', 'Location']];
+  const TABS: [string, string][] = [['feed', 'Feed'], ['highlights', 'Highlights'], ['p1', 'P1 · items change plans'], ['autonomy', 'Autonomy'], ['identity', 'Identity'], ['location', 'Location'], ['flows', 'Preview flows']];
   for (const [id, label] of TABS) { const t = el('button', 'tab', label); t.type = 'button'; t.dataset.tab = id; t.onclick = () => { tab = id; render(); }; tabs.append(t); }
 
   let generation = 0;
@@ -279,6 +280,9 @@ export function mountWorldPanel(map: LibreMap) {
       await renderIdentity(stale);
     } else if (tab === 'location') {
       await renderLocation(stale);
+    } else if (tab === 'flows') {
+      // Scripted state previews (P-03): fixture only, no requests.
+      renderFlows(body);
     }
   }
   function trow(cells: (string | number)[], tag: 'td' | 'th' = 'td', cls = '') { const tr = el('tr', cls); for (const c of cells) tr.append(el(tag, '', String(c))); return tr; }
@@ -355,5 +359,5 @@ export function mountWorldPanel(map: LibreMap) {
   void refresh();
   setInterval(refresh, 10_000);
   setInterval(() => pins.update(world), 1000);
-  return {refresh, get events() { return events; }, get world() { return world; }, showEvidence};
+  return {refresh, get events() { return events; }, get world() { return world; }, showEvidence, flows: flowState, openTab(id: string) { tab = id; if (!panel.matches(':popover-open')) panel.showPopover(); render(); }};
 }
