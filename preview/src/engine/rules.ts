@@ -3,17 +3,14 @@
 // abilities); the world Durable Object replaces this with a live Muse Spark negotiation when budget allows.
 import type {Hooks, MuseState, WorldEvent, WorldState} from './world.ts';
 import {discover, checkTrade, commitTrade, speedFor, abilityGain, itemName, canCraftTransitPass, type Ledger} from './items.ts';
-import {harnessById} from './harness.ts';
+import {harnessById, HARNESSES} from './harness.ts';
 import type {Place} from './places.ts';
 
 type E = Omit<WorldEvent, 'id' | 'tick'>;
 
-/** Desires (9.1): an item matters when it serves the harness goal. */
-export const DESIRES: Record<string, string[]> = {
-  '03-ripple': ['transit_pass', 'taxi_token', 'route_map'], '02-moss': ['clover_seed', 'garden_pass', 'wildflower'], '01-sunny': ['fruit', 'invite_token', 'coffee'],
-  '07-tempo': ['mixtape', 'event_pass', 'snack_box'], '08-orbit': ['night_pass', 'star_chart'], '06-ink': ['reading_list', 'postage_stamp', 'tea'],
-  '04-ember': ['invite_token', 'story_scroll', 'pastry'], '05-bloom': ['tea', 'wildflower', 'comfort_note'], '09-copper': ['pocket_gadget', 'coffee', 'repaired_gadget'], '00-jolly': ['coffee', 'postcard'],
-};
+/** Desires (9.1) now live in each Muse's `wants` (harness default, updatable); kept as a lookup for tests. */
+export const DESIRES: Record<string, string[]> = Object.fromEntries(HARNESSES.map(h => [h.id, [...h.wants.items]]));
+const wantsOf = (m: MuseState) => m.wants?.items ?? DESIRES[m.id] ?? [];
 
 /** Hooks read the item ledger from the world state, so it persists with every committed tick. */
 export function makeHooks(): Hooks {
@@ -39,9 +36,9 @@ export function makeHooks(): Hooks {
 }
 
 function pickTrade(a: MuseState, b: MuseState): {give: string; want: string} | null {
-  const want = (DESIRES[a.id] ?? []).find(i => b.inventory.includes(i) && !a.inventory.includes(i));
+  const want = wantsOf(a).find(i => b.inventory.includes(i) && !a.inventory.includes(i));
   if (!want) return null;
-  const give = (DESIRES[b.id] ?? []).find(i => a.inventory.includes(i)) ?? a.inventory.find(i => abilityGain(i, b.inventory));
+  const give = wantsOf(b).find(i => a.inventory.includes(i)) ?? a.inventory.find(i => abilityGain(i, b.inventory));
   return give ? {give, want} : null;
 }
 
@@ -58,7 +55,7 @@ export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: M
     return out;
   }
   // The responder accepts when what it receives changes its abilities (layer 1) or serves its desire.
-  const accept = abilityGain(t.give, b.inventory) && ((DESIRES[b.id] ?? []).includes(t.give) || rand() < .55);
+  const accept = abilityGain(t.give, b.inventory) && (wantsOf(b).includes(t.give) || rand() < .55);
   if (!accept) {
     out.push({at, source: 'rule', kind: 'trade_rejected', muse: b.id, other: a.id, place: place.id, line: 'I will keep mine for now.', data: {reason_public: null, stage: 'negotiate'}, tags: ['trade_rejected']});
     return out;

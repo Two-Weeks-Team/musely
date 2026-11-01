@@ -86,3 +86,30 @@ test('a Muse that chose a place by itself stays there for a beat after arriving'
   }
   assert.fail('never arrived');
 });
+
+test('wants: harness defaults, validated updates, Spark adds a wanted item, old state is backfilled', async () => {
+  const {updateWants} = await import('../src/engine/world.ts');
+  const s = createWorld('wants', T0);
+  const ripple = s.muses.find(m => m.id === '03-ripple');
+  assert.equal(ripple.wants.source, 'harness');
+  assert.ok(ripple.wants.items.includes('transit_pass'));
+  assert.match(updateWants(ripple, {items: ['not_an_item']}, 'connected', T0), /catalog/);
+  assert.match(updateWants(ripple, {items: ['a', 'b', 'c', 'd', 'e'].map(() => 'coffee').concat('tea', 'fruit', 'spark', 'pastry')}, 'connected', T0), /up to 4/);
+  assert.equal(updateWants(ripple, {goal: '<b>Ride</b> the 296 bus\n'}, 'connected', T0), null);
+  assert.equal(ripple.wants.goal, 'b Ride /b the 296 bus', 'no markup, single line');
+  assert.equal(ripple.wants.source, 'connected');
+  // Spark: an offer decision with a want_item adds it to the Muse's wants.
+  const s2 = createWorld('wants2', T0 + 9 * 3600_000);
+  let st = s2;
+  for (let i = 0; i < 40; i++) {
+    const now = T0 + 9 * 3600_000 + i * TICK_MS, sp = spotlightFor(st, now);
+    if (sp.freedom !== 'offer') { st = tick(st, {now}).state; continue; }
+    const me = st.muses.find(m => m.id === sp.muse), other = st.muses.find(m => m.id !== sp.muse);
+    const r = tick(st, {now, decision: {muse: sp.muse, freedom: 'offer', source: 'live', output: {decision: 'trade', target_place: '', target_agent: other.id, offer_item: me.inventory[0] ?? '', want_item: 'night_pass', public_reason: '', line: ''}}});
+    if (me.inventory[0]) { assert.equal(r.state.muses.find(m => m.id === sp.muse).wants.items[0], 'night_pass'); assert.equal(r.state.muses.find(m => m.id === sp.muse).wants.source, 'spark'); return; }
+    st = r.state;
+  }
+  // Backfill: a state saved before wants existed gets harness wants on the next tick.
+  const old = createWorld('old', T0); for (const m of old.muses) delete m.wants;
+  assert.ok(tick(old, {now: T0}).state.muses.every(m => m.wants?.items.length));
+});
