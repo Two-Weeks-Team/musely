@@ -105,9 +105,27 @@ export class WorldRuntime {
     return {decision: {muse, freedom, source: 'live', output: result.output as Decision['output'], evidence}, info: {source: 'live', requestId: result.requestId}};
   }
 
+  /**
+   * Commit point for actions outside the heartbeat (A2A trades, revocations, demo checks): the mutator runs
+   * synchronously on the current state, then state, version and events are written together.
+   */
+  commitExternal(now: number, label: string, mutate: (s: WorldState, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void) => void) {
+    const s = this.state(), out: WorldEvent[] = [];
+    let n = 0;
+    mutate(s, e => out.push({...e, id: `${s.day}:${s.tick}:${label}:${now}:${n++}`, tick: s.tick}));
+    s.version += 1;
+    this.sql.exec('UPDATE world SET state = ?, version = ? WHERE id = 1', JSON.stringify(s), s.version);
+    for (const e of out) this.sql.exec('INSERT OR IGNORE INTO events (id, tick, at, source, kind, muse, other, place, line, data, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', e.id, e.tick, e.at, e.source, e.kind, e.muse, e.other ?? null, e.place ?? null, e.line ?? null, JSON.stringify(e.data ?? {}), JSON.stringify(e.tags));
+    return out;
+  }
+
   events(sinceSeq = 0, limit = 200) {
     return this.sql.exec('SELECT seq, id, tick, at, source, kind, muse, other, place, line, data, tags FROM events WHERE seq > ? ORDER BY seq LIMIT ?', sinceSeq, limit).toArray()
-      .map(r => ({...r, data: JSON.parse(String(r.data)), tags: JSON.parse(String(r.tags))}));
+      .map(r => ({...r, data: JSON.parse(String(r.data)), tags: JSON.parse(String(r.tags))}) as WorldEvent & {seq: number});
+  }
+  eventsOfKind(tick: number, kind: string) {
+    return this.sql.exec('SELECT seq, id, tick, at, source, kind, muse, other, place, line, data, tags FROM events WHERE tick = ? AND kind = ? ORDER BY seq', tick, kind).toArray()
+      .map(r => ({...r, data: JSON.parse(String(r.data)), tags: JSON.parse(String(r.tags))}) as WorldEvent & {seq: number});
   }
   highlights(limit = 100) {
     return this.sql.exec("SELECT seq, id, tick, at, source, kind, muse, other, place, line, data, tags FROM events WHERE tags != '[]' ORDER BY seq DESC LIMIT ?", limit).toArray()

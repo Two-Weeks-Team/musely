@@ -65,6 +65,23 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   if (url.pathname === '/api/world/events' && request.method === 'GET') return json(await world(env).worldEvents(Number(url.searchParams.get('since')) || 0, Number(url.searchParams.get('limit')) || 200));
   if (url.pathname === '/api/world/highlights' && request.method === 'GET') return json(await world(env).worldHighlights(Number(url.searchParams.get('limit')) || 100));
 
+  // Identity (direction v2, 6): signed A2A Agent Cards and the P0 / demo checks.
+  const cardMatch = /^\/api\/agents\/(0\d-[a-z]+)\/card$/.exec(url.pathname);
+  if (cardMatch && request.method === 'GET') { const card = await world(env).agentCard(cardMatch[1]); return card ? json(card) : json({error: 'unknown_agent'}, 404); }
+  if (url.pathname === '/api/p0/run' && request.method === 'POST') {
+    if (session?.tier !== 'judge') return json({error: 'judge_session_required'}, 403);
+    return json(await world(env).p0());
+  }
+  const demo = /^\/api\/demo\/(impostor|injection)$/.exec(url.pathname);
+  if (demo && request.method === 'POST') {
+    if (!session) return json({error: 'session_required'}, 401);
+    if (env.BURST && !(await env.BURST.limit({key: 'demo:' + session.sid})).success) return json({error: 'slow_down'}, 429);
+    const muses = ['01-sunny', '02-moss', '03-ripple', '04-ember', '05-bloom', '06-ink', '07-tempo', '08-orbit', '09-copper'];
+    const pick = muses[Math.floor(Math.random() * muses.length)];
+    const events = demo[1] === 'impostor' ? await world(env).impostor(pick) : await world(env).injection(muses[(muses.indexOf(pick) + 3) % muses.length], pick, Math.floor(Math.random() * 3));
+    return json({events});
+  }
+
   // Owner claim (direction v2, 6.3). Only the owner Muse's claim exists in the demo.
   const claimMatch = /^\/api\/claim\/([a-z-]{1,40})$/.exec(url.pathname);
   if (claimMatch && request.method === 'GET') {
@@ -131,6 +148,8 @@ const redirectHome = (query: string) => new Response(null, {status: 302, headers
 export default {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
+    const jwks = /^\/\.well-known\/jwks\/([A-Za-z0-9_-]{20,64})\.json$/.exec(url.pathname);
+    if (jwks) { const set = await world(env).jwks(jwks[1]); return set ? json(set, 200, {'cache-control': 'public, max-age=300'}) : json({error: 'unknown_key'}, 404); }
     if (url.pathname.startsWith('/api/')) {
       try {
         return await api(request, env, url);

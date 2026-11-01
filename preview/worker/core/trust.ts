@@ -95,6 +95,17 @@ export class Trust implements TrustRegistry {
     return {key: exec, delegation, d: peekDelegation(delegation)!};
   }
 
+  /** The stored executor as issued, even if its delegation was revoked since (to replay a stale request). */
+  async storedExecutor(museId: string, signerKind: SignerKind): Promise<Executor | null> {
+    const agent = this.agentByMuse(museId);
+    const row = agent && this.sql.exec('SELECT kid, delegation FROM executors WHERE agent_id = ? AND signer_kind = ?', agent.agentId, signerKind).toArray()[0];
+    if (!row) return null;
+    const key = await importPrivateJwk(JSON.parse(String(this.sql.exec('SELECT jwk FROM private_keys WHERE kid = ?', String(row.kid)).toArray()[0].jwk)));
+    return {key, delegation: String(row.delegation), d: peekDelegation(String(row.delegation))!};
+  }
+  /** While suspended (after a revocation, before the owner delegates again) the Muse takes no live decisions. */
+  suspended(museId: string) { const a = this.agentByMuse(museId); return !!a && this.sql.exec('SELECT 1 FROM executors WHERE agent_id = ? AND version < ?', a.agentId, this.delegationVersion(a.agentId)).toArray().length > 0; }
+
   /** Owner revocation (7, "철회"): bump the version and revoke every issued delegation at once. */
   async revoke(museId: string) {
     const agent = this.agentByMuse(museId);
