@@ -398,7 +398,8 @@ test('key revocation stops MCP; the owner\'s delegation revocation stops writes 
   const reg = await t.call('register_agent');
   assert.equal(reg.structuredContent.delegation.status, 'revoked');
   // The owner delegates again (as the P0 flow does): writes work again.
-  await t.trust.executor(OWNER_SLOT, 'server_custodial', t.ownerRoot);
+  await assert.rejects(t.trust.executor(OWNER_SLOT, 'server_custodial', t.ownerRoot), /revoked/, 'no silent re-issue');
+  t.trust.redelegate(OWNER_SLOT);
   assert.equal((await t.call('greet', {text: 'Back again'})).isError, false);
   // Revoking the key itself: every MCP request answers 401.
   const del = await t.route('DELETE', '/api/agent-keys/' + t.keyId);
@@ -417,4 +418,43 @@ test('pending_claim: looking around works, trading is refused', async () => {
   const r = await t.call('propose_trade', {to: '02-moss', give: 'wildflower', want: 'fruit'});
   assert.equal(r.structuredContent.refused, 'pending_claim');
   assert.equal((await t.call('greet', {text: 'Hello'})).isError, false);
+});
+
+test('a revocation holds even before any custodial executor exists; only an explicit re-delegation allows writes', async () => {
+  const t = await setup();
+  assert.equal(await t.trust.storedExecutor(OWNER_SLOT, 'server_custodial'), null, 'fresh registry: no custodial executor yet');
+  await t.trust.revoke(OWNER_SLOT);
+  assert.equal(t.trust.suspended(OWNER_SLOT), true);
+  assert.equal(await t.trust.custodialExecutor(OWNER_SLOT, t.ownerRoot), null, 'no new delegation is issued');
+  await assert.rejects(t.trust.executor(OWNER_SLOT, 'server_custodial', t.ownerRoot), /revoked/);
+  const w = await t.call('greet', {text: 'Hello?'});
+  assert.equal(w.isError, true); assert.equal(w.structuredContent.refused, 'delegation_revoked');
+  const ev = t.events('a2a_refused').at(-1);
+  assert.equal(ev.data.step, 'delegation'); assert.equal(ev.data.envelope, null);
+  assert.equal(await t.trust.storedExecutor(OWNER_SLOT, 'server_custodial'), null, 'still nothing issued');
+  t.trust.redelegate(OWNER_SLOT);
+  assert.equal(t.trust.suspended(OWNER_SLOT), false);
+  const ok = await t.call('greet', {text: 'Hello again'});
+  assert.equal(ok.isError, false);
+  assert.equal(t.events('greet').at(-1).data.envelope.signer_kind, 'server_custodial');
+});
+
+test('while connected, the scenario picks no trips or beats for the Muse; requested trips still advance', async () => {
+  const N = 60;
+  const scripted = t => t.events().filter(e => e.muse === OWNER_SLOT && e.source === 'scripted' && ['depart', 'beat'].includes(e.kind));
+  // Control: not connected, the scenario moves the owner's Muse on its own within N ticks.
+  const free = await setup();
+  for (let i = 1; i <= N; i++) await free.runtime.heartbeat(T0 + i * TICK_MS);
+  assert.ok(scripted(free).length > 0, 'control: scripted beats/trips happen when not connected');
+
+  const t = await setup();
+  await t.call('get_world_state'); // connected
+  const walk = await t.call('move', {to: 'commons:workbench'});
+  assert.equal(walk.isError, false);
+  for (let i = 1; i <= N; i++) await t.runtime.heartbeat(T0 + i * TICK_MS);
+  assert.deepEqual(scripted(t), [], 'no scripted departures or beats for a connected Muse');
+  const arrive = t.events('arrive').find(e => e.muse === OWNER_SLOT);
+  assert.ok(arrive, 'the requested trip still arrives');
+  assert.equal(t.muse(OWNER_SLOT).place, 'commons:workbench');
+  assert.equal(t.muse(OWNER_SLOT).beat, null, 'no beat chosen on arrival either');
 });

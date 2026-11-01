@@ -45,6 +45,28 @@ test('Worker entry: /api/agent-keys → /mcp handshake and tools → owner locat
   assert.equal(g.body.result.isError, false); assert.equal(g.body.result.structuredContent.envelope.signer_kind, 'server_custodial');
   assert.equal((await go('GET', '/mcp', null, auth)).status, 405);
 
+  // Meetup candidate time and place stay private: never in /api/world/events or highlights.
+  dobj.setClaim('owner-muse', {agent: 'owner-muse', status: 'claimed', path: 'worker_token', handle: 'x', fingerprint: 'x', permalink: null, mediaId: null, postedText: null, verifiedAt: Date.now(), checkedAt: Date.now(), machineVerified: true, note: 'test'});
+  const tool = async (name, args) => (await go('POST', '/mcp', {jsonrpc: '2.0', id: 9, method: 'tools/call', params: {name, arguments: args}}, v)).body.result;
+  const meet = await tool('propose_meetup', {to: '01-sunny'});
+  assert.equal(meet.isError, false);
+  const cand = meet.structuredContent.task.candidate;
+  assert.ok(cand.time && cand.place, 'the connected Muse itself sees the candidate');
+  assert.equal((await tool('answer_candidate', {task_id: meet.structuredContent.task.id, answer: 'accept'})).isError, false);
+  const pubEvents = (await go('GET', '/api/world/events?limit=500')).body;
+  const pubHigh = (await go('GET', '/api/world/highlights')).body;
+  assert.ok(pubHigh.some(e => e.kind === 'meetup_candidate'), 'the highlight exists');
+  for (const e of [...pubEvents, ...pubHigh]) {
+    const visible = JSON.stringify({line: e.line, data: e.data});
+    assert.ok(!visible.includes(cand.time), `${e.kind} leaks the candidate time`);
+    if (e.kind.startsWith('meetup')) assert.ok(!visible.includes(cand.place), `${e.kind} leaks the candidate place`);
+    assert.ok(typeof e.data?.candidate !== 'object' || e.data.candidate === null, `${e.kind} carries a candidate object`);
+  }
+  const publicN = (await go('GET', '/api/owner/notifications')).body.notifications.find(n => n.kind === 'meetup_candidate');
+  assert.ok(publicN && !JSON.stringify(publicN).includes(cand.time));
+  const judgeN = (await go('GET', '/api/owner/notifications', null, {cookie})).body.notifications.find(n => n.kind === 'meetup_candidate');
+  assert.equal(judgeN.detail.time, cand.time, 'the judge (owner) session sees the details');
+
   const loc = await go('POST', '/api/owner/location', {source: 'virtual', preset: 'stanford'}, {cookie});
   assert.equal(loc.status, 200); assert.equal(loc.body.follow.mode, 'walking');
   const pub = await go('GET', '/api/owner/location');
