@@ -22,6 +22,18 @@ for (const kind of Object.keys(source)) {
   console.log(`${kind}: source ${source[kind].length}, matrix ${inDoc.length}, duplicates ${dup.length}, missing ${missing.length}, extra ${extra.length}`);
   for (const [label, list] of [['duplicate', dup], ['missing', missing], ['extra', extra]]) if (list.length) console.log(`  ${label}: ${list.join(', ')}`);
 }
+// Meaningful actions (direction 10): every row maps to clips that exist and beats that exist, or is planned.
+const actionRows = doc.split('\n').filter(l => /\| action:[a-z_]+ \|/.test(l));
+const actionIds = actionRows.map(l => l.match(/\| action:([a-z_]+) \|/)[1]);
+const dupActions = actionIds.filter((id, i) => actionIds.indexOf(id) !== i);
+let badRefs = 0;
+for (const l of actionRows) {
+  for (const [, c] of l.matchAll(/clip:([a-z_]+)/g)) if (!clips.includes(c)) { badRefs++; console.log('  unknown clip in action row: ' + c); }
+  const beatList = l.match(/; beats ([a-z_, ]+?)(?: ;[^|]*)? \|/);
+  if (beatList) for (const b of beatList[1].split(',').map(x => x.trim()).filter(Boolean)) if (!source.beat.includes(b)) { badRefs++; console.log('  unknown beat in action row: ' + b); }
+}
+failures += dupActions.length + badRefs;
+console.log(`actions: ${actionIds.length} rows, duplicates ${dupActions.length}, unknown references ${badRefs}`);
 const exps = ['EXP-ENTRY', 'EXP-WORLD', 'EXP-IDENTITY', 'EXP-REWARD', 'EXP-MEETUP', 'EXP-LOCATION', 'EXP-REPLAY', 'EXP-COMMS'];
 const missingExp = exps.filter(e => !doc.includes(`| ${e} |`));
 failures += missingExp.length;
