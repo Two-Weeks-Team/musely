@@ -64,16 +64,42 @@ export function matchClaim(post: {text?: string; username?: string}, expected: {
   return {ok: handleOk && textOk, handleOk, textOk};
 }
 
-/** Full default path: code → token → identity check → publish approved text → read back → match. */
-export async function claimViaWorker(cfg: ThreadsConfig, code: string, expected: {agent: string; handle: string; display: string; text: string}, now = Date.now()): Promise<{record: ClaimRecord; token: string}> {
-  const t = await exchangeCode(cfg, code);
-  const who = await me(cfg, t.token);
-  if (who.username.toLowerCase() !== expected.handle.toLowerCase()) throw new ThreadsError(`Signed in as @${who.username}, not the claimed owner @${expected.handle}`, 403);
-  const mediaId = await publishText(cfg, t.token, who.id, expected.text);
-  const post = await readPost(cfg, t.token, mediaId);
+export type ClaimStep = 'exchange' | 'identity' | 'find_existing' | 'publish' | 'read_back';
+export class ClaimStepError extends Error {
+  step: ClaimStep; cause: unknown;
+  constructor(step: ClaimStep, cause: unknown) { super(`${step}: ${cause instanceof Error ? cause.message : String(cause)}`); this.step = step; this.cause = cause; }
+}
+const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+async function step<T>(name: ClaimStep, fn: () => Promise<T>): Promise<T> {
+  try { return await fn(); } catch (e) { throw e instanceof ClaimStepError ? e : new ClaimStepError(name, e); }
+}
+async function retry<T>(fn: () => Promise<T>, tries: number, delayMs: number): Promise<T> {
+  let last: unknown;
+  for (let i = 0; i < tries; i++) {
+    try { return await fn(); } catch (e) { last = e; if (e instanceof ThreadsError && e.isAuth) break; if (i < tries - 1) await wait(delayMs * (i + 1)); }
+  }
+  throw last;
+}
+
+/** The owner's recent posts, to reuse an existing claim post instead of posting twice. */
+export const recentPosts = (cfg: ThreadsConfig, token: string) =>
+  call<{data?: {id: string; text?: string; permalink?: string; username?: string; timestamp?: string}[]}>(cfg, 'GET', '/v1.0/me/threads', {fields: 'id,text,permalink,username,timestamp', limit: '25', access_token: token});
+
+/**
+ * Full default path: code → token → identity check → reuse or publish the approved text → read back → match.
+ * `onPublished` persists the media id and token before the read-back, so a retry never posts twice.
+ */
+export async function claimViaWorker(cfg: ThreadsConfig, code: string, expected: {agent: string; handle: string; display: string; text: string}, now = Date.now(), hooks: {onPublished?: (mediaId: string, token: string) => Promise<void> | void; readDelayMs?: number} = {}): Promise<{record: ClaimRecord; token: string; reused: boolean}> {
+  const t = await step('exchange', () => exchangeCode(cfg, code));
+  const who = await step('identity', () => me(cfg, t.token));
+  if (who.username.toLowerCase() !== expected.handle.toLowerCase()) throw new ClaimStepError('identity', new ThreadsError(`Signed in as @${who.username}, not the claimed owner @${expected.handle}`, 403));
+  const existing = await step('find_existing', async () => (await recentPosts(cfg, t.token).catch(() => ({data: []}))).data?.find(p => matchClaim({...p, username: p.username ?? who.username}, expected).textOk) ?? null);
+  const mediaId = existing?.id ?? await step('publish', () => retry(() => publishText(cfg, t.token, who.id, expected.text), 3, 1500));
+  await hooks.onPublished?.(mediaId, t.token);
+  const post = existing?.permalink && existing.text ? {...existing, username: existing.username ?? who.username} : await step('read_back', () => retry(() => readPost(cfg, t.token, mediaId), 4, hooks.readDelayMs ?? 1500));
   const m = matchClaim(post, expected);
   return {
-    token: t.token,
+    token: t.token, reused: !!existing,
     record: {agent: expected.agent, status: m.ok ? 'claimed' : 'mismatch', path: 'worker_token', handle: who.username, fingerprint: expected.display, permalink: post.permalink ?? null, mediaId, postedText: post.text ?? null, verifiedAt: m.ok ? now : null, checkedAt: now, machineVerified: m.ok},
   };
 }

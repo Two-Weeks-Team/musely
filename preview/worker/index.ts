@@ -2,7 +2,7 @@
 import {handleMuse} from './core/proxy.ts';
 import {issueSession, readSession, cookieValue, sessionCookie, hashIp, timingSafeEqual, verifyTurnstile} from './core/session.ts';
 import type {Env} from './env.ts';
-import {authorizeUrl, claimViaWorker, recheck, ownerDirectRecord, ThreadsError, type ThreadsConfig} from './core/threads.ts';
+import {authorizeUrl, claimViaWorker, recheck, ownerDirectRecord, ThreadsError, ClaimStepError, type ThreadsConfig} from './core/threads.ts';
 import ownerClaim from '../fixtures/owner-claim.json' with {type: 'json'};
 export {WorldDO} from './world-do.ts';
 
@@ -89,13 +89,20 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     if (!nonce || !mac || nonce !== cookieNonce || !timingSafeEqual(mac, await hashIp(env.SESSION_SECRET, 'threads-state:' + nonce))) return json({error: 'state_mismatch'}, 400);
     const code = url.searchParams.get('code');
     if (!code) return redirectHome('claim=declined');
+    const stub = world(env), expected = {agent: ownerClaim.agent, handle: ownerClaim.handle, display: ownerClaim.fingerprint_display, text: ownerClaim.claim_text};
     try {
-      const {record, token} = await claimViaWorker(cfg, code, {agent: ownerClaim.agent, handle: ownerClaim.handle, display: ownerClaim.fingerprint_display, text: ownerClaim.claim_text});
-      await world(env).setClaim(ownerClaim.agent, record, token);
+      const {record, token, reused} = await claimViaWorker(cfg, code, expected, Date.now(), {
+        // Persist the post id first: if the read-back fails, a retry reuses this post instead of posting again.
+        onPublished: async (mediaId, token) => { await stub.setClaim(ownerClaim.agent, {agent: ownerClaim.agent, status: 'pending_claim', path: 'worker_token', handle: ownerClaim.handle, fingerprint: ownerClaim.fingerprint_display, permalink: null, mediaId, postedText: null, verifiedAt: null, checkedAt: Date.now(), machineVerified: false, note: 'published; read-back pending'}, token); },
+      });
+      await stub.setClaim(ownerClaim.agent, reused ? {...record, note: 'existing claim post reused'} : record, token);
       return redirectHome('claim=' + record.status);
     } catch (e) {
-      console.error('threads claim', e instanceof ThreadsError ? e.message : e);
-      return redirectHome('claim=failed');
+      const stepName = e instanceof ClaimStepError ? e.step : 'unknown';
+      const cause = e instanceof ClaimStepError ? e.cause : e;
+      const g = cause instanceof ThreadsError ? {status: cause.status, code: cause.code, subcode: cause.subcode, type: cause.type} : {};
+      console.error('threads claim failed', JSON.stringify({step: stepName, message: cause instanceof Error ? cause.message : String(cause), ...g}));
+      return redirectHome(`claim=failed&step=${stepName}${g.code ? '&code=' + g.code : ''}`);
     }
   }
 
