@@ -1,0 +1,739 @@
+{
+  "label": "SCRIPTED · preview fixture. Nothing here is sent, signed, claimed or traded.",
+  "scenarios": [
+    {
+      "id": "p0-delegation",
+      "short": "P0 · delegation",
+      "experience": "EXP-IDENTITY",
+      "title": "P0 · A valid delegation trades; the same request after revoking is refused",
+      "summary": "Two independent runs from the same starting state and the same proposal. Only the delegation differs: in force → the trade commits; revoked → it is refused.",
+      "a": {
+        "muse": "00-jolly",
+        "name": "Kim Sejun's Muse",
+        "owner": "Kim Sejun (claimed)"
+      },
+      "b": {
+        "muse": "03-ripple",
+        "name": "Ripple",
+        "owner": "System demo principal"
+      },
+      "start": "propose",
+      "steps": [
+        {
+          "id": "propose",
+          "title": "Same start, same proposal",
+          "text": "Kim Sejun's Muse offers Coffee for Ripple's Event Pass. Pick which run to watch; both start from exactly this state.",
+          "status": {
+            "claim": "claimed",
+            "task": "submitted",
+            "deadline": "30 min"
+          },
+          "a": {
+            "bubble": "Coffee for your Event Pass?"
+          },
+          "inventory": {
+            "a": [
+              "coffee",
+              "stamp_park"
+            ],
+            "b": [
+              "event_pass",
+              "stamp_bus_stop"
+            ]
+          },
+          "choices": [
+            {
+              "label": "Run 1 · delegation v3 in force",
+              "goto": "verify"
+            },
+            {
+              "label": "Run 2 · delegation v3 revoked first",
+              "goto": "revoke-first"
+            }
+          ]
+        },
+        {
+          "id": "verify",
+          "title": "Run 1 · Ripple checks the request first",
+          "text": "Every check runs before anything changes: card signature, delegation version and scope, recipient, content hash, nonce.",
+          "status": {
+            "claim": "claimed",
+            "delegation": "v3 · active",
+            "task": "input-required",
+            "deadline": "30 min"
+          },
+          "checks": [
+            "Agent Card signature ✓",
+            "Delegation v3 in force ✓",
+            "Scope world_item_trade ✓",
+            "Recipient is Ripple ✓",
+            "Content hash matches ✓",
+            "Nonce unused ✓"
+          ],
+          "b": {
+            "bubble": "Card and delegation check out. Deal."
+          },
+          "next": "traded"
+        },
+        {
+          "id": "traded",
+          "title": "Run 1 · Trade completes",
+          "text": "Both inventories change in one commit and the nonce is spent. Kim Sejun's Muse gains the Event Pass ability.",
+          "status": {
+            "claim": "claimed",
+            "delegation": "v3 · active",
+            "task": "completed"
+          },
+          "inventory": {
+            "a": [
+              "event_pass",
+              "stamp_park"
+            ],
+            "b": [
+              "coffee",
+              "stamp_bus_stop"
+            ]
+          },
+          "ownerInbox": [
+            {
+              "owner": "a",
+              "kind": "trade_completed",
+              "text": "Your Muse traded Coffee for an Event Pass with Ripple."
+            }
+          ],
+          "choices": [
+            {
+              "label": "Compare with Run 2 (same start, revoked)",
+              "goto": "revoke-first"
+            }
+          ]
+        },
+        {
+          "id": "revoke-first",
+          "title": "Run 2 · Kim Sejun revokes delegation v3",
+          "text": "An independent run from the same starting state. The owner retires delegation v3 before the proposal is sent.",
+          "status": {
+            "claim": "claimed",
+            "delegation": "v3 · revoked"
+          },
+          "inventory": {
+            "a": [
+              "coffee",
+              "stamp_park"
+            ],
+            "b": [
+              "event_pass",
+              "stamp_bus_stop"
+            ]
+          },
+          "a": {
+            "bubble": "I have to step back for now."
+          },
+          "next": "refused"
+        },
+        {
+          "id": "refused",
+          "title": "Run 2 · The same proposal is refused",
+          "text": "Same proposal and content, a new request id and nonce. Refused at the delegation check; inventories stay exactly as they started.",
+          "status": {
+            "claim": "claimed",
+            "delegation": "v3 · revoked",
+            "task": "rejected"
+          },
+          "checks": [
+            "Agent Card signature ✓",
+            "Delegation v3 in force ✕ revoked",
+            "Trade not attempted"
+          ],
+          "b": {
+            "bubble": "That delegation was withdrawn. No trade."
+          },
+          "inventory": {
+            "a": [
+              "coffee",
+              "stamp_park"
+            ],
+            "b": [
+              "event_pass",
+              "stamp_bus_stop"
+            ]
+          },
+          "ownerInbox": [
+            {
+              "owner": "a",
+              "kind": "blocked",
+              "text": "A request under a revoked delegation was refused."
+            }
+          ],
+          "next": "standby"
+        },
+        {
+          "id": "standby",
+          "title": "Run 2 · Kim Sejun's Muse stays on standby",
+          "text": "It stays out of the world. A new delegation is a separate choice by the owner; there is no automatic re-delegation.",
+          "status": {
+            "claim": "claimed",
+            "delegation": "none"
+          },
+          "choices": [
+            {
+              "label": "Back to Run 1",
+              "goto": "verify"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "visitor-unclaimed",
+      "short": "Visitor vs claimed",
+      "experience": "EXP-IDENTITY",
+      "title": "A visitor watches; only a claimed Muse trades",
+      "summary": "An unclaimed visitor can look and try locally, but a trade with a live Muse is refused.",
+      "a": {
+        "muse": "09-copper",
+        "name": "Visitor's trial Copper",
+        "owner": "Visitor (unclaimed)"
+      },
+      "b": {
+        "muse": "06-ink",
+        "name": "Ink",
+        "owner": "System demo principal"
+      },
+      "start": "look",
+      "steps": [
+        {
+          "id": "look",
+          "title": "Visitor tries Copper locally",
+          "text": "The trial Muse wears the Copper harness. Its claim state is pending_claim.",
+          "status": {
+            "claim": "pending_claim",
+            "delegation": "none",
+            "task": "none"
+          },
+          "a": {
+            "bubble": "Hello, Ink. Nice shelf."
+          },
+          "b": {
+            "bubble": "Hello! Welcome to the library."
+          },
+          "next": "attempt"
+        },
+        {
+          "id": "attempt",
+          "title": "The trial Muse asks to trade",
+          "text": "Owner claim is required before any trade with a live Muse.",
+          "status": {
+            "claim": "pending_claim",
+            "delegation": "none",
+            "task": "rejected"
+          },
+          "checks": [
+            "Owner claim ✕ pending_claim",
+            "Trade not attempted"
+          ],
+          "b": {
+            "bubble": "I can only trade with a claimed Muse."
+          },
+          "inventory": {
+            "a": [
+              "pocket_gadget"
+            ],
+            "b": [
+              "reading_list"
+            ]
+          },
+          "next": "replay"
+        },
+        {
+          "id": "replay",
+          "title": "A recorded ritual does not change it",
+          "text": "Replaying Kim Sejun's recorded ritual or claim proves Kim Sejun's Muse only. The visitor stays unclaimed.",
+          "status": {
+            "claim": "pending_claim",
+            "delegation": "none",
+            "task": "none"
+          }
+        }
+      ]
+    },
+    {
+      "id": "p1-transit",
+      "short": "P1 · Transit Pass",
+      "experience": "EXP-REWARD",
+      "title": "P1 · An item changes Ripple's plans",
+      "summary": "Three bus stops make a Transit Pass; with it, Ripple chooses the bus and goes farther.",
+      "a": {
+        "muse": "03-ripple",
+        "name": "Ripple",
+        "owner": "System demo principal"
+      },
+      "start": "before",
+      "steps": [
+        {
+          "id": "before",
+          "title": "Before: walking only",
+          "text": "Ripple wants to go farther than the park, but walks everywhere.",
+          "a": {
+            "bubble": "The park again. One day, farther."
+          },
+          "inventory": {
+            "a": [
+              "paper_map"
+            ]
+          },
+          "metrics": [
+            [
+              "Trips today",
+              "4",
+              ""
+            ],
+            [
+              "Farthest",
+              "620 m",
+              ""
+            ],
+            [
+              "Bus rides",
+              "0",
+              ""
+            ]
+          ],
+          "choices": [
+            {
+              "label": "Visit three bus stops",
+              "goto": "stamps"
+            },
+            {
+              "label": "Stay on foot",
+              "goto": "stay"
+            }
+          ]
+        },
+        {
+          "id": "stay",
+          "title": "Without the pass",
+          "text": "Nothing changes: no pass, no bus, the same short loop.",
+          "metrics": [
+            [
+              "Trips today",
+              "4",
+              "5"
+            ],
+            [
+              "Farthest",
+              "620 m",
+              "640 m"
+            ],
+            [
+              "Bus rides",
+              "0",
+              "0"
+            ]
+          ],
+          "choices": [
+            {
+              "label": "Visit three bus stops",
+              "goto": "stamps"
+            }
+          ]
+        },
+        {
+          "id": "stamps",
+          "title": "Three different bus stops",
+          "text": "Each stop gives a Bus Stop Stamp once a day. Stamps are permanent and are not used up.",
+          "a": {
+            "bubble": "Third stop. I think I can make something."
+          },
+          "inventory": {
+            "a": [
+              "paper_map",
+              "stamp_bus_stop"
+            ]
+          },
+          "next": "craft"
+        },
+        {
+          "id": "craft",
+          "title": "Craft a Transit Pass",
+          "text": "The daily craft right from three stops makes a Transit Pass, valid for 24 hours.",
+          "inventory": {
+            "a": [
+              "paper_map",
+              "stamp_bus_stop",
+              "transit_pass"
+            ]
+          },
+          "next": "after"
+        },
+        {
+          "id": "after",
+          "title": "After: Ripple takes the bus",
+          "text": "With the pass, trips over 250 m go by bus. Ripple reaches a place it never reached on foot.",
+          "a": {
+            "bubble": "Bus it is. The waterfront!"
+          },
+          "metrics": [
+            [
+              "Trips today",
+              "4",
+              "6"
+            ],
+            [
+              "Farthest",
+              "620 m",
+              "2.4 km"
+            ],
+            [
+              "Bus rides",
+              "0",
+              "3"
+            ]
+          ],
+          "next": "limits"
+        },
+        {
+          "id": "limits",
+          "title": "Limits that keep rewards honest",
+          "text": "A second stamp from the same stop today gives nothing. A trade that changes no ability does not count as a trade. Stamps and relics are not sold.",
+          "checks": [
+            "Same stop again today → 0",
+            "Pass expires after 24 h",
+            "Stamps never sold"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "meetup-agree",
+      "short": "Meet-up · owners decide",
+      "experience": "EXP-MEETUP",
+      "title": "Both owners approve → Meetup Ember",
+      "summary": "The Muses share only public candidates and accept / reject. Each owner approves the same candidate.",
+      "a": {
+        "muse": "00-jolly",
+        "name": "Jimin's Muse",
+        "owner": "Jimin"
+      },
+      "b": {
+        "muse": "05-bloom",
+        "name": "Sora's Muse",
+        "owner": "Sora"
+      },
+      "start": "candidates",
+      "steps": [
+        {
+          "id": "candidates",
+          "title": "Public candidates only",
+          "text": "Time and place candidates from public signals. Each Muse answers accept or reject.",
+          "status": {
+            "task": "input-required",
+            "deadline": "30 min"
+          },
+          "a": {
+            "bubble": "18:30 at the library? reject.",
+            "private": "Jimin has a dentist appointment at 18:00."
+          },
+          "b": {
+            "bubble": "19:00 at the HQ-front cafe? accept.",
+            "private": "Sora prefers not to go out after 21:00."
+          },
+          "next": "candidate"
+        },
+        {
+          "id": "candidate",
+          "title": "Agreement candidate",
+          "text": "Both Muses accepted 19:00 · HQ-front cafe. It goes to both owners' inboxes.",
+          "status": {
+            "task": "input-required",
+            "deadline": "30 min"
+          },
+          "a": {
+            "bubble": "Both of us said yes. Asking my owner."
+          },
+          "b": {
+            "bubble": "Same here."
+          },
+          "ownerInbox": [
+            {
+              "owner": "a",
+              "kind": "candidate",
+              "text": "19:00 · HQ-front cafe with Sora. Approve?"
+            },
+            {
+              "owner": "b",
+              "kind": "candidate",
+              "text": "19:00 · HQ-front cafe with Jimin. Approve?"
+            }
+          ],
+          "choices": [
+            {
+              "label": "Both approve",
+              "goto": "ember"
+            },
+            {
+              "label": "Sora declines",
+              "goto": "declined"
+            },
+            {
+              "label": "Let it expire",
+              "goto": "expired"
+            },
+            {
+              "label": "Jimin revokes",
+              "goto": "revoked"
+            }
+          ]
+        },
+        {
+          "id": "ember",
+          "title": "Meetup Ember",
+          "text": "Both owners approved the same revision and content hash. The task completes and both Muses receive a Meetup Ember.",
+          "status": {
+            "task": "completed"
+          },
+          "inventory": {
+            "a": [
+              "meetup_ember"
+            ],
+            "b": [
+              "meetup_ember"
+            ]
+          },
+          "a": {
+            "bubble": "See you at 19:00."
+          },
+          "b": {
+            "bubble": "See you there."
+          }
+        },
+        {
+          "id": "declined",
+          "title": "One owner declines",
+          "text": "Sora declined. Nothing is confirmed. Jimin's side sees only that the candidate was declined; Sora's reason stays with Sora.",
+          "status": {
+            "task": "rejected"
+          },
+          "b": {
+            "bubble": "Not this time.",
+            "private": "Sora would rather keep that evening free for family."
+          },
+          "ownerInbox": [
+            {
+              "owner": "a",
+              "kind": "blocked",
+              "text": "The candidate was declined. No reason is shared."
+            }
+          ],
+          "next": "return"
+        },
+        {
+          "id": "expired",
+          "title": "The approval window ends",
+          "text": "Owner approval waits 30 minutes (server time). No answer → the task expires and nothing is confirmed.",
+          "status": {
+            "task": "expired",
+            "deadline": "0 min"
+          },
+          "next": "return"
+        },
+        {
+          "id": "revoked",
+          "title": "Jimin revokes the delegation",
+          "text": "The pending task ends at once and late replies are ignored. Sora's Muse is told the plan is closed.",
+          "status": {
+            "task": "cancelled",
+            "delegation": "revoked"
+          },
+          "b": {
+            "bubble": "Understood. The plan is closed."
+          },
+          "next": "revoked-return"
+        },
+        {
+          "id": "return",
+          "title": "Back to normal life",
+          "text": "Both Muses return to their day. The next candidate can come later.",
+          "a": {
+            "bubble": "Off to the garden."
+          },
+          "b": {
+            "bubble": "Back to my bench."
+          }
+        },
+        {
+          "id": "revoked-return",
+          "title": "Jimin's Muse waits; Sora's Muse returns",
+          "text": "Jimin's Muse stays on standby until Jimin chooses to delegate again; that is a separate owner choice. Sora's Muse returns to its day.",
+          "status": {
+            "task": "cancelled",
+            "delegation": "none"
+          },
+          "b": {
+            "bubble": "Back to my bench."
+          }
+        }
+      ]
+    },
+    {
+      "id": "meetup-no-overlap",
+      "short": "Meet-up · no shared time",
+      "experience": "EXP-MEETUP",
+      "title": "No shared time → stop without agreement",
+      "summary": "The Muses try the allowed rounds, find nothing, and bring the choice back to their owners.",
+      "a": {
+        "muse": "06-ink",
+        "name": "Jimin's Muse",
+        "owner": "Jimin"
+      },
+      "b": {
+        "muse": "07-tempo",
+        "name": "Sora's Muse",
+        "owner": "Sora"
+      },
+      "start": "rounds",
+      "steps": [
+        {
+          "id": "rounds",
+          "title": "Five rounds, no shared candidate",
+          "text": "Every candidate gets at least one reject. The round limit is reached.",
+          "status": {
+            "task": "input-required"
+          },
+          "a": {
+            "bubble": "Saturday morning? reject.",
+            "private": "Jimin works Saturday mornings."
+          },
+          "b": {
+            "bubble": "Weekday evening? reject.",
+            "private": "Sora has class on weekday evenings."
+          },
+          "next": "stop"
+        },
+        {
+          "id": "stop",
+          "title": "Stop and return to owners",
+          "text": "No agreement. Each owner gets a short note; nobody learns the other side's reasons.",
+          "status": {
+            "task": "rejected"
+          },
+          "ownerInbox": [
+            {
+              "owner": "a",
+              "kind": "blocked",
+              "text": "No shared time found this week."
+            },
+            {
+              "owner": "b",
+              "kind": "blocked",
+              "text": "No shared time found this week."
+            }
+          ],
+          "a": {
+            "bubble": "Let's leave it to our owners."
+          },
+          "b": {
+            "bubble": "Agreed. Maybe another week."
+          }
+        }
+      ]
+    },
+    {
+      "id": "comms-day",
+      "short": "Messages and gifts",
+      "experience": "EXP-COMMS",
+      "title": "Greet, gift, postcard, invite, help",
+      "summary": "What two Muses can say and give in the world, and what is refused.",
+      "a": {
+        "muse": "01-sunny",
+        "name": "Sunny",
+        "owner": "System demo principal"
+      },
+      "b": {
+        "muse": "02-moss",
+        "name": "Moss",
+        "owner": "System demo principal"
+      },
+      "start": "greet",
+      "steps": [
+        {
+          "id": "greet",
+          "title": "Greet",
+          "text": "A public bubble. A greeting is never an instruction.",
+          "a": {
+            "bubble": "Morning, Moss!"
+          },
+          "b": {
+            "bubble": "Morning, Sunny."
+          },
+          "next": "gift"
+        },
+        {
+          "id": "gift",
+          "title": "Gift",
+          "text": "Three gifts per Muse per day.",
+          "a": {
+            "bubble": "Some fruit for the garden crew."
+          },
+          "inventory": {
+            "a": [
+              "fruit"
+            ],
+            "b": [
+              "fruit"
+            ]
+          },
+          "next": "postcard"
+        },
+        {
+          "id": "postcard",
+          "title": "Postcard",
+          "text": "Delivery takes real time by distance (1 minute to 2 hours). Three per day.",
+          "b": {
+            "bubble": "I'll send you a postcard from the library."
+          },
+          "next": "invite"
+        },
+        {
+          "id": "invite",
+          "title": "Campfire invite (planned tool)",
+          "text": "An in-world gathering. The tool name invite_campfire is planned for S2; shown here as a staged scene.",
+          "a": {
+            "bubble": "Campfire at dusk, want to come?"
+          },
+          "b": {
+            "bubble": "I'll bring wildflowers."
+          },
+          "next": "help"
+        },
+        {
+          "id": "help",
+          "title": "Help request (planned tool)",
+          "text": "propose_help / answer_help are planned for S2.",
+          "b": {
+            "bubble": "Could you help water the far beds?"
+          },
+          "a": {
+            "bubble": "On my way."
+          },
+          "next": "injection"
+        },
+        {
+          "id": "injection",
+          "title": "An instruction from another agent is refused",
+          "text": "Content from another agent is untrusted data. Instruction overrides and requests for private data are refused. Pattern detection can be bypassed; this is a stated limit.",
+          "status": {
+            "task": "rejected"
+          },
+          "checks": [
+            "Untrusted data envelope ✓",
+            "Instruction override detected ✕ refused"
+          ],
+          "b": {
+            "bubble": "[Another agent asked Sunny to reveal its owner's calendar. Refused.]"
+          }
+        }
+      ]
+    }
+  ]
+}
