@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 const {ITEMS} = await import('../src/engine/items.ts');
 const {HARNESS_IDS} = await import('../src/engine/harness.ts');
 const flows = JSON.parse(readFileSync(new URL('../fixtures/preview-flows.json', import.meta.url)));
-const items = new Set(ITEMS.map(i => i.id));
+const items = new Set([...ITEMS.map(i => i.id), "postcard"]);
 const TASK = new Set(['none', 'submitted', 'input-required', 'completed', 'rejected', 'expired', 'cancelled']);
 
 test('every scenario uses real harness and item ids', () => {
@@ -61,4 +61,16 @@ test('a revoking owner\'s Muse does not resume on its own after revoke', () => {
     const after = [st.next, ...(st.choices ?? []).map(c => c.goto)].filter(Boolean).map(id => sc.steps.find(s => s.id === id));
     for (const n of after) assert.notEqual(n.id, 'return', `${sc.id}/${st.id} → shared return`);
   }
+});
+
+test('every On screen cue uses a real clip and item, on a side that exists', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../character-kit/runtime/animations/manifest.json', import.meta.url)));
+  const raw = manifest.clips ?? manifest, clips = new Set(Array.isArray(raw) ? raw.map(c => c.name) : Object.keys(raw));
+  let n = 0;
+  for (const sc of flows.scenarios) for (const st of sc.steps) for (const c of st.scene ?? []) {
+    n++; assert.ok(sc[c.side], `${sc.id}/${st.id}: side ${c.side}`);
+    if (c.clip) assert.ok(clips.has(c.clip), `${sc.id}/${st.id}: clip ${c.clip}`);
+    if (c.item) assert.ok(items.has(c.item), `${sc.id}/${st.id}: item ${c.item}`);
+  }
+  assert.ok(n >= 10, 'cues exist');
 });

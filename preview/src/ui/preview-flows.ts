@@ -16,6 +16,8 @@ type Step = {
   checks?: string[];
   ownerInbox?: {owner: 'a' | 'b'; kind: string; text: string}[];
   next?: string; choices?: {label: string; goto: string}[];
+  /** What the item change looks like on the commons character (P-05): clip, prop item and bubble. */
+  scene?: {side: 'a' | 'b'; clip?: string; item?: string; line?: string}[];
 };
 type Party = {muse: string; name: string; owner: string};
 export type Scenario = {id: string; short: string; experience: string; title: string; summary: string; a: Party; b?: Party; start: string; steps: Step[]};
@@ -27,12 +29,24 @@ const harnessName = (id: string) => HARNESSES.find(h => h.id === id)?.name ?? id
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const button = (text: string, cls: string, onClick: () => void) => { const b = el('button', cls, text); b.type = 'button'; b.onclick = onClick; return b; };
 
+function cueText(r: CueResult) {
+  if (!r.shown) return r.reason === 'not_in_commons' ? 'Fallback: this Muse does not live in the commons scene, so the change is shown on this card only.' : r.reason === 'characters_loading' ? 'The commons characters are still loading. Try again in a moment.' : 'The 3D scene is not available here.';
+  return r.results.map(x => `${harnessName(x.variant)}: ${x.shown ? (x.visual === 'complete' ? (x.prop ? `clip with its 3D ${x.prop}` : 'clip, item shown as a card') : x.reason === 'prop_unavailable' ? 'clip plays, its 3D prop is not available here · item card shown' : 'fallback item card shown') : 'not in the commons (card only)'}`).join(' · ') + '. The world is paused while it plays.';
+}
+
 /** Inventories carried forward: a step without an inventory shows the latest one before it on the visited path. */
 function inventoryAt(path: Step[]) {
   const inv: {a?: string[]; b?: string[]} = {};
   for (const s of path) { if (s.inventory?.a) inv.a = s.inventory.a; if (s.inventory?.b) inv.b = s.inventory.b; }
   return inv;
 }
+
+type CueEntry = {variant: string; clip?: string | null; item?: string | null; line?: string | null; label: string};
+type CueResult = {shown: boolean; reason?: string; results: {variant: string; shown: boolean; visual: string; prop?: string | null; reason?: string}[]};
+let cue: ((entries: CueEntry[]) => CueResult) | null = null;
+/** main.ts hands over the commons cue player; without it (tests, no 3D) the On screen box still describes the change. */
+export function setFlowCue(fn: (entries: CueEntry[]) => CueResult) { cue = fn; }
+export let lastCue: CueResult | null = null;
 
 export const flowState = {scenario: FLOWS.scenarios[0].id, path: [FLOWS.scenarios[0].start] as string[], viewAs: 'public' as ViewAs};
 
@@ -90,6 +104,16 @@ export function renderFlows(body: HTMLElement) {
     }
     if (box.childElementCount === 1) box.append(el('p', 'flow-note muted', 'Nothing for this viewer.'));
     card.append(box);
+  }
+  if (step.scene?.length) {
+    const box = el('div', 'flow-scene'); box.append(el('span', 'eyebrow', 'ON SCREEN · IN THE COMMONS'));
+    const entries: CueEntry[] = step.scene.map(sc0 => ({variant: sc[sc0.side]!.muse, clip: sc0.clip ?? null, item: sc0.item ?? null, line: sc0.line ?? null, label: sc[sc0.side]!.name}));
+    for (const e of entries) box.append(el('p', 'flow-note', `${harnessName(e.variant)} ${e.clip ? `plays ${e.clip.replace(/_/g, ' ')}` : 'has no clip for this'}${e.item ? ` with ${itemName(e.item)}` : ''}${e.line ? ` · “${e.line}”` : ''}`));
+    const result = el('p', 'flow-note muted flow-cue-result');
+    if (lastCue && (lastCue as any).step === `${sc.id}/${step.id}`) result.textContent = cueText(lastCue);
+    const show = button('Show in the commons', 'secondary', () => { lastCue = cue ? cue(entries) : {shown: false, reason: 'no_scene', results: []}; (lastCue as any).step = `${sc.id}/${step.id}`; result.textContent = cueText(lastCue); });
+    show.classList.add('flow-show');
+    box.append(show, result); card.append(box);
   }
   const controls = el('div', 'id-actions flow-controls');
   if (steps.length > 1) controls.append(button('← Back', 'secondary', () => { flowState.path.pop(); draw(); }));

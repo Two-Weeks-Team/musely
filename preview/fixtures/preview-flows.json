@@ -106,6 +106,20 @@
               "label": "Compare with Run 2 (same start, revoked)",
               "goto": "revoke-first"
             }
+          ],
+          "scene": [
+            {
+              "side": "a",
+              "clip": "handoff_receive",
+              "item": "event_pass",
+              "line": "An Event Pass. Thank you!"
+            },
+            {
+              "side": "b",
+              "clip": "handoff_give",
+              "item": "coffee",
+              "line": "Enjoy the coffee run."
+            }
           ]
         },
         {
@@ -165,7 +179,14 @@
               "text": "A request under a revoked delegation was refused."
             }
           ],
-          "next": "standby"
+          "next": "standby",
+          "scene": [
+            {
+              "side": "b",
+              "clip": "head_shake",
+              "line": "No trade."
+            }
+          ]
         },
         {
           "id": "standby",
@@ -243,7 +264,18 @@
               "reading_list"
             ]
           },
-          "next": "replay"
+          "next": "replay",
+          "scene": [
+            {
+              "side": "b",
+              "clip": "head_shake",
+              "line": "Only with a claimed Muse."
+            },
+            {
+              "side": "a",
+              "clip": "think"
+            }
+          ]
         },
         {
           "id": "replay",
@@ -364,7 +396,15 @@
               "transit_pass"
             ]
           },
-          "next": "after"
+          "next": "after",
+          "scene": [
+            {
+              "side": "a",
+              "clip": "inspect_map",
+              "item": "transit_pass",
+              "line": "A Transit Pass. The bus it is."
+            }
+          ]
         },
         {
           "id": "after",
@@ -390,7 +430,15 @@
               "3"
             ]
           ],
-          "next": "limits"
+          "next": "limits",
+          "scene": [
+            {
+              "side": "a",
+              "clip": "board",
+              "item": "transit_pass",
+              "line": "Waterfront, here I come."
+            }
+          ]
         },
         {
           "id": "limits",
@@ -505,7 +553,21 @@
           },
           "b": {
             "bubble": "See you there."
-          }
+          },
+          "scene": [
+            {
+              "side": "a",
+              "clip": "celebrate",
+              "item": "meetup_ember",
+              "line": "See you at 19:00."
+            },
+            {
+              "side": "b",
+              "clip": "celebrate",
+              "item": "meetup_ember",
+              "line": "See you there."
+            }
+          ]
         },
         {
           "id": "declined",
@@ -525,7 +587,14 @@
               "text": "The candidate was declined. No reason is shared."
             }
           ],
-          "next": "return"
+          "next": "return",
+          "scene": [
+            {
+              "side": "b",
+              "clip": "head_shake",
+              "line": "Not this time."
+            }
+          ]
         },
         {
           "id": "expired",
@@ -683,7 +752,20 @@
               "fruit"
             ]
           },
-          "next": "postcard"
+          "next": "postcard",
+          "scene": [
+            {
+              "side": "a",
+              "clip": "offer_item",
+              "item": "fruit",
+              "line": "Some fruit for the garden crew."
+            },
+            {
+              "side": "b",
+              "clip": "handoff_receive",
+              "item": "fruit"
+            }
+          ]
         },
         {
           "id": "postcard",
@@ -692,7 +774,15 @@
           "b": {
             "bubble": "I'll send you a postcard from the library."
           },
-          "next": "invite"
+          "next": "invite",
+          "scene": [
+            {
+              "side": "b",
+              "clip": "write_note",
+              "item": "postcard",
+              "line": "I'll send you a postcard."
+            }
+          ]
         },
         {
           "id": "invite",
@@ -704,7 +794,15 @@
           "b": {
             "bubble": "I'll bring wildflowers."
           },
-          "next": "help"
+          "next": "help",
+          "scene": [
+            {
+              "side": "a",
+              "clip": "welcome_neighbors",
+              "item": "invite_token",
+              "line": "Campfire at dusk?"
+            }
+          ]
         },
         {
           "id": "help",
@@ -716,7 +814,14 @@
           "a": {
             "bubble": "On my way."
           },
-          "next": "injection"
+          "next": "injection",
+          "scene": [
+            {
+              "side": "a",
+              "clip": "water_plants",
+              "line": "On my way."
+            }
+          ]
         },
         {
           "id": "injection",
