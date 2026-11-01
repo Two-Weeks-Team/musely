@@ -143,9 +143,39 @@ export function maxCostUsd(action: Action, messages: unknown[]) {
 export const actualCostUsd = (usage: {prompt_tokens?: number; completion_tokens?: number} | undefined) =>
   usage ? (usage.prompt_tokens ?? 0) * PRICE.inputPerToken + (usage.completion_tokens ?? 0) * PRICE.outputPerToken : Number.NaN;
 
+// Structural check against the same json_schema the request asked for (object/array/string/number/
+// boolean, enum, pattern, required, additionalProperties: false). Returns a reason, never throws.
+export function schemaViolation(schema: any, value: unknown, at = '$'): string | null {
+  const t = schema?.type;
+  if (t === 'object') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return `${at} must be an object`;
+    const v = value as Record<string, unknown>;
+    for (const k of schema.required ?? []) if (!(k in v)) return `${at}.${k} is missing`;
+    if (schema.additionalProperties === false) for (const k of Object.keys(v)) if (!(k in (schema.properties ?? {}))) return `${at}.${k} is not allowed`;
+    for (const [k, sub] of Object.entries(schema.properties ?? {})) if (k in v) { const r = schemaViolation(sub, v[k], `${at}.${k}`); if (r) return r; }
+    return null;
+  }
+  if (t === 'array') {
+    if (!Array.isArray(value)) return `${at} must be an array`;
+    for (let i = 0; i < value.length; i++) { const r = schemaViolation(schema.items, value[i], `${at}[${i}]`); if (r) return r; }
+    return null;
+  }
+  if (t === 'string') {
+    if (typeof value !== 'string') return `${at} must be a string`;
+    if (schema.enum && !schema.enum.includes(value)) return `${at} is not an allowed value`;
+    if (schema.pattern && !new RegExp(schema.pattern).test(value)) return `${at} does not match its pattern`;
+    return null;
+  }
+  if (t === 'number') return typeof value === 'number' && Number.isFinite(value) ? null : `${at} must be a number`;
+  if (t === 'boolean') return typeof value === 'boolean' ? null : `${at} must be a boolean`;
+  return null;
+}
+
 // Post-checks the model output; anything outside the allowed shape is rejected and logged.
 export function checkOutput(action: Action, input: ActionInput, out: any): string | null {
   if (!out || typeof out !== 'object') return 'not an object';
+  const structural = schemaViolation((OUTPUT_SCHEMAS[action] as any).json_schema.schema, out);
+  if (structural) return structural;
   const i = input as any;
   if (action === 'spotlight' && out.freedom !== i.freedom) return 'freedom mismatch';
   if (action === 'negotiate') {
@@ -155,7 +185,10 @@ export function checkOutput(action: Action, input: ActionInput, out: any): strin
       if (!i.places.includes(c.place)) return 'place outside the list';
     }
   }
-  if (action === 'challenge' && (!Array.isArray(out.results) || out.results.length !== 3)) return 'need three results';
+  if (action === 'challenge') {
+    if (out.results.length !== 3) return 'need three results';
+    if (out.results.some((r: any) => r.confidence < 0 || r.confidence > 1)) return 'confidence out of range';
+  }
   for (const v of Object.values(out)) if (typeof v === 'string' && v.length > 400) return 'field too long';
   return null;
 }

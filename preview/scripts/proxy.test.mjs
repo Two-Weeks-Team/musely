@@ -178,3 +178,20 @@ test('the liveness challenge has its own allowance, separate from the 3-per-hour
   assert.deepEqual(r('c3', 'challenge'), {ok: false, reason: 'session_quota'});
   assert.equal(l.quotaFor('v', 'visitor').usedThisHour, 3);
 });
+
+test('schema-violating model output is rejected with a reason and falls back, never a 500', async () => {
+  const {checkOutput, validate} = await import('../worker/core/actions.ts');
+  const trade = validate('trade', {muse: '02-moss', other: '03-ripple', give: 'transit_pass', want: 'clover_seed', round: 1});
+  assert.match(checkOutput('trade', trade, {}), /missing/);
+  assert.match(checkOutput('trade', trade, {decision: 'maybe', counter_give: '', counter_want: '', line: ''}), /not an allowed value/);
+  const neg = validate('negotiate', {muses: ['00-jolly', '05-bloom'], day: '2026-11-03', signals: [], places: ['Andytown Coffee']});
+  assert.match(checkOutput('negotiate', neg, {candidates: [null, null, null, null, null]}), /must be an object/);
+  const ch = {steps: ['raise_left_hand', 'thumbs_up', 'touch_nose'], frames: []};
+  assert.match(checkOutput('challenge', ch, {results: [{}, null, 3]}), /missing|object/);
+  assert.match(checkOutput('challenge', ch, {results: [1, 2, 3].map(() => ({step: 's', passed: true, confidence: 7, observation: ''}))}), /confidence/);
+  const l = ledger();
+  const r = await call(l, modelFetch(200, {...OK_BODY, choices: [{message: {content: JSON.stringify({freedom: 'where'})}}]}));
+  assert.equal(r.status, 200);
+  assert.match(r.body.reason, /^output_rejected:/);
+  assert.equal(l.status().reservedUsd, 0, 'settled');
+});
