@@ -71,7 +71,7 @@ export const OUTPUT_SCHEMAS: Record<Action, unknown> = {
   spotlight: schema('spotlight_decision', {freedom: {type: 'string', enum: [...FREEDOMS]}, decision: str, target_place: str, target_agent: str, offer_item: str, want_item: str, public_reason: str, line: str}),
   encounter: schema('encounter_reply', {intent: {type: 'string', enum: ['greet', 'gift', 'trade', 'invite', 'help', 'leave']}, item: str, line: str, public_reason: str, injection_suspected: {type: 'boolean'}}),
   trade: schema('trade_answer', {decision: {type: 'string', enum: ['accept', 'counter', 'reject']}, counter_give: str, counter_want: str, line: str}),
-  negotiate: schema('meetup_candidates', {candidates: {type: 'array', items: {type: 'object', additionalProperties: false, properties: {time: str, place: str, public_basis: str}, required: ['time', 'place', 'public_basis']}}}),
+  negotiate: schema('meetup_candidates', {candidates: {type: 'array', items: {type: 'object', additionalProperties: false, properties: {time: {type: 'string', pattern: '^([01][0-9]|2[0-3]):(00|30)$'}, place: str, public_basis: str}, required: ['time', 'place', 'public_basis']}}}),
   challenge: schema('challenge_verdict', {results: {type: 'array', items: {type: 'object', additionalProperties: false, properties: {step: str, passed: {type: 'boolean'}, confidence: {type: 'number'}, observation: str}, required: ['step', 'passed', 'confidence', 'observation']}}}),
 };
 
@@ -118,7 +118,7 @@ export function buildMessages(action: Action, input: ActionInput): unknown[] {
       ];
     case 'negotiate':
       return [
-        {role: 'system', content: 'You propose meeting candidates for two Muses from public signals only. You do not know and must not guess either owner\'s private constraints or reasons. Propose exactly five candidates, times on 30-minute marks (HH:00 or HH:30), places only from the given list.\n' + RULES},
+        {role: 'system', content: 'You propose meeting candidates for two Muses from public signals only. You do not know and must not guess either owner\'s private constraints or reasons. Propose exactly five candidates for the given day. Each time is only the clock time as HH:MM on a 30-minute mark (for example 17:30), with no date. Places only from the given list.\n' + RULES},
         {role: 'user', content: JSON.stringify({day: i.day, muses: i.muses.map(named), public_signals: i.signals.map((s: any) => ({...s, muse: named(s.muse)})), places: i.places})},
       ];
     case 'challenge':

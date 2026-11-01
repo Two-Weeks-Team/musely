@@ -12,3 +12,7 @@ header,footer,.map-tools,#muse-card,.attribution,.quiet{z-index:30}#story-headin
 /* Keep the public world quiet; implementation details live in About. */
 .quiet .preview-tag{font-size:8px;font-weight:650;letter-spacing:1px;text-transform:uppercase;color:#FFB36B;padding:3px 6px;border:1px solid #FFB36B50;border-radius:6px}.quiet{gap:12px}
 @media(max-width:700px){.quiet{gap:7px}.quiet .preview-tag{font-size:7px;padding:3px 5px}}
+
+/* Muse Spark proxy state: connection only, never a claim that the scripted world is live. */
+.spark-status{background:#0D1220ed;color:#aeb8cc;border:1px solid #2A3550;border-radius:25px;padding:10px 14px;font-size:9px;font-weight:650;letter-spacing:1px;display:flex;gap:7px;align-items:center}.spark-status:before{content:'';width:6px;height:6px;border-radius:50%;background:#5b6680}.spark-status[data-state=live]:before{background:#7fd18b;box-shadow:0 0 8px #7fd18b90}.spark-status[data-state=replay]:before{background:#FFB36B}.turnstile-host{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:60}
+@media(max-width:700px){.spark-status{font-size:7px;padding:9px 10px;order:3}}
