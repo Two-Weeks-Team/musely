@@ -18,7 +18,7 @@ export type Speed = 'walk' | 'bus' | 'taxi';
 export type MuseState = {
   id: string;
   place: string;
-  travel: {to: string; departAt: number; arriveAt: number; speed: Speed} | null;
+  travel: {to: string; departAt: number; arriveAt: number; speed: Speed; chosen?: boolean} | null;
   beat: {id: string; clip: string; startedAt: number; endsAt: number; line: string | null} | null;
   inventory: string[];
   memory: string[];
@@ -139,8 +139,10 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     const rand = rngFor(s.seed, s.tick, m.id);
     if (m.travel && m.travel.arriveAt <= now) {
       const place = placeById(m.travel.to);
-      const speed = m.travel.speed;
+      const speed = m.travel.speed, chosen = !!m.travel.chosen;
       m.place = place.id; m.travel = null;
+      // A Muse that chose this place itself stays for a beat instead of wandering off at once.
+      if (chosen) { const b = weightedPick(rand, eligibleBeats(m, place, clock.hour), x => beatWeight(x, m.id)); if (b) { emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed, chosen}, tags: speed === 'taxi' ? ['teleport'] : []}); for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e); startBeat(m, b, place, now, 'rule', emit, s); continue; } }
       emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed}, tags: speed === 'taxi' ? ['teleport'] : []});
       for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e);
     }
@@ -210,7 +212,7 @@ function startTrip(m: MuseState, from: Place, to: Place, now: number, source: So
   const ms = tripMs(from, to, speed);
   // A Taxi Token is spent when the in-world teleport starts (not a payment, not a booking).
   if (speed === 'taxi') { const k = m.inventory.indexOf('taxi_token'); if (k >= 0) m.inventory.splice(k, 1); }
-  m.travel = {to: to.id, departAt: now, arriveAt: now + ms, speed};
+  m.travel = {to: to.id, departAt: now, arriveAt: now + ms, speed, chosen: source === 'live' || source === 'replay'};
   m.beat = null;
   emit({at: now, source, kind: 'depart', muse: m.id, place: from.id, data: {to: to.id, speed, etaMs: Math.round(ms), distanceM: Math.round(distanceM(from, to))}, tags: []});
 }

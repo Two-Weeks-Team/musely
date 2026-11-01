@@ -69,3 +69,20 @@ test('beats only use known places and real-time durations', () => {
   assert.ok(PLACES.filter(p => p.zone === 'neighborhood').length >= 70);
   assert.equal(PLACES.filter(p => p.zone === 'bay').length, 7);
 });
+
+test('a Muse that chose a place by itself stays there for a beat after arriving', () => {
+  let s = createWorld('stay', T0);
+  const spot = spotlightFor(s, T0), target = spotlightInput(s, spot.muse, spot.freedom, T0).places[0].name;
+  s = tick(s, {now: T0, decision: {muse: spot.muse, freedom: spot.freedom, source: 'live', output: {decision: 'go', target_place: target, target_agent: '', offer_item: '', want_item: '', public_reason: '', line: ''}}}).state;
+  for (let i = 1; i < 30; i++) {
+    const r = tick(s, {now: T0 + i * TICK_MS}); s = r.state;
+    const arrive = r.events.find(e => e.kind === 'arrive' && e.muse === spot.muse);
+    if (arrive) {
+      assert.equal(arrive.data.chosen, true);
+      assert.ok(r.events.some(e => e.kind === 'beat' && e.muse === spot.muse), 'starts a beat there');
+      assert.ok(!r.events.some(e => e.kind === 'depart' && e.muse === spot.muse), 'does not leave on arrival');
+      return;
+    }
+  }
+  assert.fail('never arrived');
+});
