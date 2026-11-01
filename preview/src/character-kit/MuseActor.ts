@@ -91,7 +91,16 @@ export class MuseActor extends BaseMuseActor{
   }
   this.propsLoaded=true;this.setLod(this.wanted);
  }
- setAction(name:string){super.setAction(name);this.showLod();}
+ /** A preview cue (P-05) holds one clip for a few seconds: the story's per-frame action is ignored meanwhile and the clip
+  * runs on its own clock from the start, so a single-play clip (hand-over, celebrate) is seen whole. */
+ private held:{name:string;from:number;until:number}|null=null;
+ hold(name:string,seconds:number):boolean{
+  const now=performance.now();
+  try{super.setAction(name);}catch{return false;}
+  this.held={name,from:now,until:now+seconds*1000};this.showLod();return true;
+ }
+ get heldAction(){return this.held&&performance.now()<this.held.until?this.held.name:null;}
+ setAction(name:string){if(this.held){if(performance.now()<this.held.until)name=this.held.name;else this.held=null;}super.setAction(name);this.showLod();}
  private tint(meshes:readonly T.SkinnedMesh[]){
   if(!this.library||this.variant==='00-jolly')return;
   for(const m of meshes){const mat=m.material as T.MeshStandardMaterial;if(mat.name.startsWith('Fleece'))m.material=this.library.fleece(this.variant,mat);}
@@ -123,6 +132,7 @@ export class MuseActor extends BaseMuseActor{
  }
  private showLod(){for(const o of this.tagged??[])o.visible=o.userData.museLod===this.lod&&(o.userData.museClip===undefined||o.userData.museClip===this.current);}
  update(time:number,pose:import('./BaseMuseActor.ts').RoutePose,actionTime=time){
+  if(this.held&&performance.now()<this.held.until)actionTime=(performance.now()-this.held.from)/1000;
   super.update(time,pose,actionTime);
   if(this.propMixer){const a=this.propActions.get(this.current);if(a){a.reset().play();this.propMixer.setTime(Math.max(0,actionTime)%a.getClip().duration);}else this.propMixer.stopAllAction();this.root.updateMatrixWorld(true);}
  }
@@ -130,5 +140,5 @@ export class MuseActor extends BaseMuseActor{
  /** Materials of currently rendered meshes (diagnostics for material/tint checks). */
  visibleMaterials(){const out:{mesh:string;material:string;color:string;map:boolean;normal:boolean}[]=[];this.root.traverseVisible(o=>{if(o instanceof T.Mesh)for(const m of [o.material].flat() as T.MeshStandardMaterial[])out.push({mesh:o.name,material:m.name,color:'#'+m.color.getHexString(T.LinearSRGBColorSpace),map:!!m.map,normal:!!m.normalMap});});return out;}
  visibleTriangles(){let n=0;this.root.traverseVisible(o=>{if(o instanceof T.Mesh){const g=o.geometry;n+=(g.index?g.index.count:g.attributes.position.count)/3;}});return n;}
- getMetrics(){return {...super.getMetrics(),variant:this.variant,lod:this.lod,wantedLod:this.wanted,loadedLods:[...this.loaded].sort(),attachment:this.attachmentLoaded,triangles:this.visibleTriangles(),tint:variantById(this.variant).body,fleeceFactor:fleeceFactor(variantById(this.variant).body)};}
+ getMetrics(){return {...super.getMetrics(),held:this.heldAction,variant:this.variant,lod:this.lod,wantedLod:this.wanted,loadedLods:[...this.loaded].sort(),attachment:this.attachmentLoaded,triangles:this.visibleTriangles(),tint:variantById(this.variant).body,fleeceFactor:fleeceFactor(variantById(this.variant).body)};}
 }

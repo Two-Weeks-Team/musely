@@ -13,6 +13,7 @@ import {lodUrl,ACTION_CLIPS} from './character-kit/catalog';
 import {sparkStatus,statusLabel,type SparkStatus} from './live';
 import {mountWorldPanel} from './ui/world-panel';
 import {mountOnboarding} from './ui/onboarding';
+import {setFlowCue} from './ui/preview-flows';
 import {pixelRatioFor,mountPerf} from './ui/perf';
 import {harnessById} from './engine/harness';
 import {RESIDENT_VARIANTS} from './character-kit/catalog';
@@ -61,7 +62,7 @@ $('visit').onclick=()=>visit();$('bay').onclick=()=>{manual();map.flyTo({center:
 $('plus').onclick=()=>{manual();map.zoomIn({duration:500});};$('minus').onclick=()=>{manual();map.zoomOut({duration:500});};
 $('follow').onclick=()=>{manual();follow=true;$('follow').classList.add('active');const p=positionAt(selected,lifeTime);map.flyTo({center:toGeo(p.x,p.z),zoom:22.7,pitch:55,bearing:BEARING,duration:2300,essential:true});};
 $('pause').onclick=()=>{clock.paused=!clock.paused;$('pause').textContent=clock.paused?'Resume world':'Pause world';$('pause').setAttribute('aria-pressed',String(clock.paused));if(clock.paused)map.stop();};
-function startStory(){follow=false;clock=makeClock();lifeTime=0;selected=0;ownerDecision='pending';$('decision-note').textContent='Local interaction only. Nothing is sent or booked.';tour=true;tourCamera=true;document.body.classList.add('story-mode');$('tour').classList.add('active');$('tour').textContent='Story · 0:00 / 3:30';$('pause').textContent='Pause world';$('pause').setAttribute('aria-pressed','false');map.jumpTo({center:anchor,zoom:innerWidth<700?9.6:10.25,pitch:54,bearing:BEARING});last=performance.now();}
+function startStory(){markMode('story');follow=false;clock=makeClock();lifeTime=0;selected=0;ownerDecision='pending';$('decision-note').textContent='Local interaction only. Nothing is sent or booked.';tour=true;tourCamera=true;document.body.classList.add('story-mode');$('tour').classList.add('active');$('tour').textContent='Story · 0:00 / 3:30';$('pause').textContent='Pause world';$('pause').setAttribute('aria-pressed','false');map.jumpTo({center:anchor,zoom:innerWidth<700?9.6:10.25,pitch:54,bearing:BEARING});last=performance.now();}
 $('tour').onclick=startStory;
 function seekStory(t:number){follow=false;$('follow').classList.remove('active');clock.elapsed=Math.max(0,Math.min(DURATION,t));clock.tourFinished=clock.elapsed>=DURATION;lifeTime=clock.elapsed;tour=!clock.tourFinished;tourCamera=true;bubbles?.invalidate();if(clock.tourFinished){$('tour').textContent='Replay story · 3:30';$('tour').classList.remove('active');}updateUI();}
 $('story-scrubber').oninput=()=>seekStory(Number(($('story-scrubber') as HTMLInputElement).value));
@@ -81,6 +82,7 @@ async function refreshWants(){try{const r=await fetch('/api/world',{cache:'no-st
 void refreshWants();setInterval(refreshWants,60_000);
 function updateUI(){($('story-scrubber') as HTMLInputElement).value=String(clock.elapsed);const p=PEOPLE[selected],t=Math.min(lifeTime,DURATION),chapter=chapterAt(t),turn=conversationAt(t);$('muse-name').textContent=p.name;$('muse-role').textContent=(selected===0?'YOUR MUSE':'A FAMILIAR FACE')+' · '+stateAt(selected,lifeTime);$('avatar-large').style.setProperty('--muse',p.color);$('activity-title').textContent=chapter.title;$('muse-want-text').textContent=wantsLine(selected);$('activity-detail').textContent=turn?PEOPLE[turn.person].name+': '+turn.text:t<14?'Little stories are already unfolding around the Bay.':'Your Muse can connect. The next commitment is still yours.';$('meetup').hidden=selected!==0;$('muse-card').hidden=map.getZoom()<20.35;$('decision-state').textContent=ownerDecision==='approved'?'Local preview · approved':ownerDecision==='declined'?'Local preview · declined':'Your confirmation comes first';portraits.querySelectorAll('button').forEach((b,i)=>{b.classList.toggle('selected',i===selected);b.setAttribute('aria-pressed',String(i===selected));});$('welcome').hidden=document.body.classList.contains('story-mode')||map.getZoom()>20.5;$('place-line').textContent=map.getZoom()<14?'LITTLE STORIES AROUND THE BAY':map.getZoom()<20?'MENLO PARK · CALIFORNIA':'HQ · THE LITTLE COMMONS';pin.hidden=map.getZoom()>20.2||map.getZoom()<18.3;
 $('story-title').textContent=chapter.title;$('story-speaker').textContent=turn?PEOPLE[turn.person].name:'Around the Bay';const candidate=$('story-candidate');candidate.hidden=turn?.round===undefined;if(turn?.round!==undefined){const r=ROUNDS[turn.round];candidate.textContent=`${r.time} · ${r.place}    Jimin ${r.jimin?'✓ yes':'✕ no'} · Sora ✓ yes`;}
+updateContinuity();
 }
 updateUI();
 let spark:SparkStatus|null=null;
@@ -101,7 +103,7 @@ const layer:CustomLayerInterface={id:'musely-world',type:'custom',renderingMode:
  renderer.resetState();renderer.setViewport(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);renderer.render(world.scene,camera);drawCalls=renderer.info.render.calls;triangles=renderer.info.render.triangles;renderer.resetState();frame++;fpsFrames++;
  if(now-fpsStart>=1000){fps=Math.round(fpsFrames*1000/(now-fpsStart));fpsFrames=0;fpsStart=now;}
  if(now-lastUI>200){updateUI();bubbles?.invalidate();$('time-label').textContent=clock.paused?'A quiet pause':tour?`STORY ${Math.floor(clock.elapsed/60)}:${String(Math.floor(clock.elapsed%60)).padStart(2,'0')} / 3:30`:'A LITTLE LIFE, IN MOTION';if(tour)$('tour').textContent=`Story · ${Math.floor(clock.elapsed/60)}:${String(Math.floor(clock.elapsed%60)).padStart(2,'0')} / 3:30`;lastUI=now;}
- bubbles?.update(lifeTime);
+ bubbles?.update(lifeTime);updateCues(now);
  if(!ready){ready=true;sceneReadyAtMs=performance.now();if(autoplay)startStory();$('loading').hidden=true;statuses.push('world rendered');}
  if(!detailReadyAtMs&&map.getZoom()>=20.35)detailReadyAtMs=performance.now();
  map.triggerRepaint();
@@ -121,4 +123,67 @@ const perf=mountPerf(()=>({drawCalls,triangles,canvas:map.getCanvas()}),ratio);
 const worldPanel=mountWorldPanel(map);
 // Entry paths (P-02): watch, a local harness trial, or the staged connection walkthrough. Preview state only.
 const onboarding=mountOnboarding({onWatch:()=>{if(!tour)startStory();},initial:new URLSearchParams(location.search)});
-window.__world={getMetrics:()=>({ready,startup:{sceneReadyAtMs,onlineMapReadyAtMs,onlineMapAddedAtMs,detailReadyAtMs,overviewVisible:map.getZoom()<14},frame,zoom:map.getZoom(),center:map.getCenter().toArray(),pitch:map.getPitch(),bearing:map.getBearing(),elapsed:clock.elapsed,lifeTime,dialogue:conversationAt(Math.min(lifeTime,DURATION)),bubbles:bubbles?.getMetrics(),paused:clock.paused,tour,tourCamera,follow,selected,ownerDecision,drawCalls,triangles,fps,renderer:'WebGL2 shared map canvas',canvasCount:document.querySelectorAll('#map canvas').length,sceneId:world?.scene.uuid,museIds:world?.muses.map(m=>m.uuid),muses:ready?PEOPLE.map((p,i)=>({...p,position:world.muses[i].position.toArray(),floorY:surfaceHeightAt(world.muses[i].position.x,world.muses[i].position.z),bounds:museBounds(i)})):[],characterHeightM:world?.sourceHeight,characters:world?.actors?.map(a=>({variant:a.variant,rootId:a.root.uuid,lod:a.lod,wantedLod:a.wanted,loadedLods:[...a.loaded].sort(),attachment:a.attachmentLoaded,action:a.getMetrics().action,expression:a.getMetrics().expression,triangles:a.visibleTriangles()})),characterKit:!!world?.actors,characterUpgrade:world?{...world.upgradeTimes}:null,characterMaterials:(i:number)=>world?.actors?.[i]?.visibleMaterials(),errors,statuses,onlineMap:true,liveAgent:false,spark:spark?{connected:spark.model.connected,live:spark.model.live,model:spark.model.id}:null,dynamicLights:1}),script:LINES,map,startStory,seek:seekStory,visit,select,worldPanel,onboarding,perf,pixelRatio:ratio,actor:(i:number)=>world?.actors?.[i]??null,actionClips:ACTION_CLIPS,alignmentAt:(x:number,z:number)=>{const p=map.project(toGeo(x,z));return {geo:toGeo(x,z).toArray(),mapPixel:[p.x,p.y],modelPixel:projected(new T.Vector3(x,0,z))};},fixture:ROUNDS};
+// P-05: one continuous scene. Story (scripted) and live world are explicit modes you can switch between and back;
+// the selected Muse, its state and its source stay visible at every zoom; preview-flow item changes play on the
+// commons character with its clip and prop, or say plainly that a fallback is shown.
+let mode:'story'|'world'=autoplay?'story':'world',storyResume=0;
+const fmtTime=(t:number)=>`${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')}`;
+const modeBar=document.createElement('div');modeBar.className='mode-switch';modeBar.setAttribute('role','group');modeBar.setAttribute('aria-label','What you are watching');
+const modeButton=(id:string,label:string,m:'story'|'world')=>{const b=document.createElement('button');b.type='button';b.id=id;b.textContent=label;b.onclick=()=>setMode(m);modeBar.append(b);return b;};
+const storyModeButton=modeButton('mode-story','Story · scripted','story'),worldModeButton=modeButton('mode-world','Live world','world');
+document.querySelector('.playback')!.prepend(modeBar);
+function markMode(m:'story'|'world'){mode=m;document.body.dataset.mode=m;storyModeButton.setAttribute('aria-pressed',String(m==='story'));worldModeButton.setAttribute('aria-pressed',String(m==='world'));const note=document.getElementById('commons-note');if(note)note.textContent=m==='story'?'Story mode: the commons plays a scripted 3:30 story · switch to Live world for the shared world':'Live world: map pins are live Muses · the commons scene itself stays scripted';}
+function setMode(m:'story'|'world'){
+ if(m==='world'){if(tour||clock.elapsed>0)storyResume=clock.tourFinished?0:clock.elapsed;tour=false;tourCamera=false;follow=false;document.body.classList.remove('story-mode');$('tour').classList.remove('active');$('tour').textContent=storyResume>0?`Resume story · ${fmtTime(storyResume)}`:'Play story · 3:30';markMode('world');map.flyTo({center:anchor,zoom:15.2,pitch:50,bearing:BEARING,duration:2600,essential:true});}
+ else{const at=storyResume;startStory();if(at>0)seekStory(at);storyResume=0;}
+ updateUI();
+}
+$('tour').onclick=()=>setMode('story');
+// Selected Muse line under the neighbors: same Muse, state and source when the close-up card is hidden.
+const selectedLine=document.createElement('p');selectedLine.id='selected-line';selectedLine.className='selected-line';document.querySelector('.neighbors')!.append(selectedLine);
+const museSource=document.createElement('span');museSource.id='muse-source';museSource.className='src src-scripted';document.querySelector('#muse-card .muse-heading > div:nth-child(2)')!.prepend(museSource);
+function updateContinuity(){
+ // updateUI first runs before this block is evaluated; the continuity UI joins from the next refresh.
+ if(!museSource||!selectedLine||!cues)return;
+ const name=PEOPLE[selected].name,state=stateAt(selected,lifeTime),cue=cues.find(c=>c.index===selected);
+ const source=cue?'PREVIEW FLOW · SCRIPTED':'SCRIPTED · STORY CHARACTER';
+ museSource.textContent=source;
+ selectedLine.textContent=`${name} · ${state} · ${cue?'preview flow':'scripted story'}`;
+ selectedLine.hidden=map.getZoom()>=20.35;
+}
+// Preview cues from Preview flows (P-03 scenes): played by the commons character of the same harness variant.
+type Cue={index:number;clip:string|null;item:string|null;line:string|null;label:string;visual:'complete'|'fallback';el:HTMLElement;until:number};
+let cues:Cue[]=[],cueRestore:{paused:boolean;tour:boolean;tourCamera:boolean}|null=null;
+const itemLabel=(id:string)=>id.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+function previewCue(entries:{variant:string;clip?:string|null;item?:string|null;line?:string|null;label:string}[],seconds=6){
+ if(!world?.actors)return {shown:false,reason:'characters_loading',results:[]};
+ endCues();
+ const results=entries.map(e=>{const index=(RESIDENT_VARIANTS as readonly string[]).indexOf(e.variant);return {...e,index};});
+ const present=results.filter(r=>r.index>=0);
+ if(!present.length)return {shown:false,reason:'not_in_commons',results:results.map(r=>({variant:r.variant,shown:false,visual:'fallback'}))};
+ cueRestore={paused:clock.paused,tour,tourCamera};clock.paused=true;tour=false;tourCamera=false;follow=false;
+ const until=performance.now()+seconds*1000;
+ cues=present.map(r=>{
+  const ok=!!r.clip&&world.actors![r.index].hold(r.clip,seconds);
+  const el=document.createElement('div');el.className='preview-cue';el.dataset.visual=ok?'complete':'fallback';
+  const tag=document.createElement('span');tag.className='eyebrow';tag.textContent=`PREVIEW FLOW · ${r.label}`;el.append(tag);
+  if(r.item){const card=document.createElement('b');card.className='cue-item';card.textContent='+ '+itemLabel(r.item);el.append(card);}
+  if(r.line){const line=document.createElement('p');line.textContent=r.line;el.append(line);}
+  const how=document.createElement('small');how.textContent=ok?`clip ${r.clip}${ACTION_CLIPS[r.clip!]?.prop?` · 3D prop ${ACTION_CLIPS[r.clip!].prop}`:' · item shown as a card'}`:`fallback: ${r.clip?`no ${r.clip} clip on this character`:'no clip for this change'}, shown as an item card`;el.append(how);
+  document.body.append(el);
+  return {index:r.index,clip:ok?r.clip!:null,item:r.item??null,line:r.line??null,label:r.label,visual:ok?'complete':'fallback',el,until} as Cue;
+ });
+ selected=cues[0].index;const p=world.muses[selected].position;map.flyTo({center:toGeo(p.x,p.z),zoom:22.3,pitch:55,bearing:BEARING,duration:1600,essential:true});updateUI();
+ return {shown:true,results:results.map(r=>{const c=cues.find(c=>c.index===r.index);return {variant:r.variant,shown:!!c,visual:c?.visual??'fallback',prop:c?.clip?ACTION_CLIPS[c.clip]?.prop??null:null,reason:c?undefined:'not_in_commons'};})};
+}
+function endCues(){for(const c of cues)c.el.remove();cues=[];if(cueRestore){clock.paused=cueRestore.paused;tour=cueRestore.tour;tourCamera=cueRestore.tourCamera;cueRestore=null;last=performance.now();}}
+function updateCues(now:number){
+ if(!cues.length)return;
+ if(now>cues[0].until){endCues();updateUI();return;}
+ for(const c of cues){const h=projected(world.muses[c.index].position.clone().add(new T.Vector3(0,1.15,0)));c.el.style.transform=`translate(${Math.round(h.x)}px,${Math.round(h.y)}px) translate(-50%,-100%)`;}
+}
+setFlowCue(previewCue);
+// Header height drives the caption and story heading offsets so wrapped header rows never cover them (390 px).
+const headerEl=document.querySelector('header')!;new ResizeObserver(()=>document.documentElement.style.setProperty('--header-h',headerEl.getBoundingClientRect().bottom+'px')).observe(headerEl);
+markMode(mode);
+window.__world={getMetrics:()=>({ready,startup:{sceneReadyAtMs,onlineMapReadyAtMs,onlineMapAddedAtMs,detailReadyAtMs,overviewVisible:map.getZoom()<14},frame,zoom:map.getZoom(),center:map.getCenter().toArray(),pitch:map.getPitch(),bearing:map.getBearing(),elapsed:clock.elapsed,lifeTime,dialogue:conversationAt(Math.min(lifeTime,DURATION)),bubbles:bubbles?.getMetrics(),paused:clock.paused,tour,tourCamera,follow,selected,ownerDecision,drawCalls,triangles,fps,renderer:'WebGL2 shared map canvas',canvasCount:document.querySelectorAll('#map canvas').length,sceneId:world?.scene.uuid,museIds:world?.muses.map(m=>m.uuid),muses:ready?PEOPLE.map((p,i)=>({...p,position:world.muses[i].position.toArray(),floorY:surfaceHeightAt(world.muses[i].position.x,world.muses[i].position.z),bounds:museBounds(i)})):[],characterHeightM:world?.sourceHeight,characters:world?.actors?.map(a=>({variant:a.variant,rootId:a.root.uuid,lod:a.lod,wantedLod:a.wanted,loadedLods:[...a.loaded].sort(),attachment:a.attachmentLoaded,action:a.getMetrics().action,expression:a.getMetrics().expression,triangles:a.visibleTriangles()})),characterKit:!!world?.actors,characterUpgrade:world?{...world.upgradeTimes}:null,characterMaterials:(i:number)=>world?.actors?.[i]?.visibleMaterials(),errors,statuses,onlineMap:true,liveAgent:false,spark:spark?{connected:spark.model.connected,live:spark.model.live,model:spark.model.id}:null,dynamicLights:1}),script:LINES,map,startStory,seek:seekStory,visit,select,worldPanel,setMode,previewCue,get mode(){return mode;},onboarding,perf,pixelRatio:ratio,actor:(i:number)=>world?.actors?.[i]??null,actionClips:ACTION_CLIPS,alignmentAt:(x:number,z:number)=>{const p=map.project(toGeo(x,z));return {geo:toGeo(x,z).toArray(),mapPixel:[p.x,p.y],modelPixel:projected(new T.Vector3(x,0,z))};},fixture:ROUNDS};
