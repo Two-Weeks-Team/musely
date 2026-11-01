@@ -60,6 +60,10 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
 
   let timer = 0;
   const stopTimer = () => { if (timer) clearInterval(timer); timer = 0; };
+  // The three paths are exclusive. Leaving a running connection always ends it as cancelled (never a frozen
+  // "connecting"), and starting a connection or watching ends an active trial (kept only as the resume offer).
+  const cancelConnect = () => { if (state.connect === 'connecting') { stopTimer(); state.connect = 'cancelled'; } };
+  const endTrial = () => { if (state.trial) { state.lastTrial = state.trial; state.trial = null; } };
   const harness = (id: string | null) => HARNESSES.find(h => h.id === id) ?? null;
 
   function updateChip() {
@@ -76,12 +80,12 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
     state.open = true;
     if (view) state.view = view;
     else state.view = state.path === 'trial' ? 'trial-card' : state.path === 'connect' ? 'connect' : 'choose';
-    if (state.view === 'trial-card' && !state.viewing) state.viewing = state.trial ?? state.lastTrial;
+    if (state.view === 'trial-card' && (state.path === 'trial' || !state.viewing)) state.viewing = state.trial ?? state.lastTrial;
     panel.showPopover(); render();
   }
   function close() {
     // Closing the panel mid-connection cancels the staged connection; nothing else changes.
-    if (state.connect === 'connecting') { stopTimer(); state.connect = 'cancelled'; }
+    cancelConnect();
     state.open = false; panel.hidePopover(); updateChip();
   }
   function go(view: View) { state.view = view; render(); }
@@ -95,7 +99,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
       b.append(el('span', 'src ' + tagCls, tag), el('b', '', title), el('small', '', text)); paths.append(b);
     };
     path('entry-watch', 'Watch the world', 'Look around the shared world and the 3:30 story. Nothing of yours acts.', 'WATCH', 'src-live', () => {
-      stopTimer(); state.path = 'watch'; state.trial = null; close(); opts.onWatch();
+      cancelConnect(); endTrial(); state.path = 'watch'; close(); opts.onWatch();
     });
     path('entry-trial', 'Try a Muse here', 'Put one of ten harnesses on a trial Muse. Local to this tab: not claimed, and it cannot trade with live Muses.', 'TRIAL · LOCAL', 'src-scripted', () => go('trial-pick'));
     path('entry-connect', 'Connect my Muse', 'See how your own Muse joins through a custom connector. In this preview the connection is a staged walkthrough.', 'STAGED', 'src-replay', () => go('connect'));
@@ -153,12 +157,12 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
       body.append(el('span', 'eyebrow', 'FIRST STEPS · SCRIPTED PREVIEW'), steps,
         button('End trial', 'secondary', () => { state.lastTrial = state.trial; state.trial = null; state.path = null; updateChip(); go('choose'); }, 'entry-end-trial'));
     } else {
-      body.append(button(`Wear the ${h.name} harness`, 'primary', () => { stopTimer(); state.trial = h.id; state.lastTrial = h.id; state.path = 'trial'; updateChip(); render(); }, 'entry-wear'));
+      body.append(button(`Wear the ${h.name} harness`, 'primary', () => { cancelConnect(); state.trial = h.id; state.lastTrial = h.id; state.path = 'trial'; updateChip(); render(); }, 'entry-wear'));
     }
   }
 
   function connectView() {
-    body.append(button('← All ways in', 'link-button', () => { if (state.connect === 'connecting') { stopTimer(); state.connect = 'cancelled'; } go('choose'); }, 'entry-back'),
+    body.append(button('← All ways in', 'link-button', () => { cancelConnect(); updateChip(); go('choose'); }, 'entry-back'),
       el('span', 'eyebrow', 'CONNECT MY MUSE · STAGED WALKTHROUGH'), el('h2', '', 'Your Muse, wearing a harness'),
       el('p', 'world-sub', 'Your own Muse thinks in its own runtime and acts here only through Musely tools, inside the limits you set. The steps below are staged: no connector is connected and no key is issued in this preview.'));
     const badge = el('span', 'src ' + (state.connect === 'error' ? 'src-error' : 'src-replay'), {
@@ -183,12 +187,12 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
     body.append(note);
     const actions = el('div', 'id-actions');
     const play = () => {
-      stopTimer(); state.path = 'connect'; state.connect = 'connecting'; state.connectStep = 0; updateChip(); render();
+      stopTimer(); endTrial(); state.path = 'connect'; state.connect = 'connecting'; state.connectStep = 0; updateChip(); render();
       timer = window.setInterval(() => { state.connectStep++; if (state.connectStep >= CONNECT_STEPS.length) { stopTimer(); state.connect = 'connected_staged'; } updateChip(); if (state.open && state.view === 'connect') render(); }, 900);
     };
-    if (state.connect === 'connecting') actions.append(button('Cancel', 'secondary', () => { stopTimer(); state.connect = 'cancelled'; updateChip(); render(); }, 'connect-cancel'));
+    if (state.connect === 'connecting') actions.append(button('Cancel', 'secondary', () => { cancelConnect(); updateChip(); render(); }, 'connect-cancel'));
     else if (state.connect === 'error') actions.append(button('Retry', 'primary', play, 'connect-retry'), button('Cancel', 'secondary', () => { state.connect = 'cancelled'; updateChip(); render(); }, 'connect-cancel'));
-    else if (state.connect === 'unconnected') actions.append(button('Play the staged connection', 'primary', play, 'connect-play'), button('Show an error example', 'secondary', () => { state.path = 'connect'; state.connect = 'error'; updateChip(); render(); }, 'connect-error'));
+    else if (state.connect === 'unconnected') actions.append(button('Play the staged connection', 'primary', play, 'connect-play'), button('Show an error example', 'secondary', () => { endTrial(); state.path = 'connect'; state.connect = 'error'; updateChip(); render(); }, 'connect-error'));
     else actions.append(button('Start over', 'secondary', () => { state.connect = 'unconnected'; state.connectStep = 0; if (state.path === 'connect') state.path = null; updateChip(); render(); }, 'connect-reset'));
     body.append(actions);
   }
