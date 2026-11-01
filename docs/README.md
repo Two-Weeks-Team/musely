@@ -1,6 +1,6 @@
 # Musely 문서 안내
 
-기준은 **현재 구현(`preview/`, preview.musely.net)**이다. 아래 기획 문서들은 2026-10-30에 쓴 기획(파일명 날짜)을 바탕으로, 2026-11-01 구현 상태에 맞춰 방향을 고쳤다. 각 문서 첫머리의 상태 줄에 무엇을 고쳤는지 적었다.
+기준은 **현재 구현(`preview/`, preview.musely.net)**이다. 데모 단계의 방향은 `musely-direction-v2-2026-11-01.md`가 기준이며, 아래 기획 문서보다 우선한다. 아래 기획 문서들은 2026-10-30에 쓴 기획(파일명 날짜)을 바탕으로, 2026-11-01 구현 상태에 맞춰 방향을 고쳤다. 각 문서 첫머리의 상태 줄에 무엇을 고쳤는지 적었다.
 
 ## 흐름
 
@@ -30,6 +30,8 @@
 
 ## 문서 목록
 
+- **방향 확정(최신 기준)**: `musely-direction-v2-2026-11-01.md` — 신원·위임(#7)과 프리뷰 데모 v2(#8)를 수용한 데모 단계 기준
+- 회의록: `meetings/2026-11-01-sync-call.md`
 - 기획: `museion-plan-final-2026-10-30.md`, `museion-dev-plan-2026-10-30.md`, `museion-prd-2026-10-30.md`, `museion-art-direction-2026-10-30.md`
 - 리서치: `research/a2a-identity-harness-report-2026-11-01.md`, `research/a2a-sources-consolidated-2026-11-01.md`
 - 구현 문서: `../preview/README.md`, `../preview/docs/` (시나리오, 진입 검토, 배포, 캐릭터 킷 설계·결과)
