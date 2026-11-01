@@ -1,0 +1,12 @@
+{
+  "status": "ok",
+  "result": {
+    "queued": "out/flame-hero.png",
+    "samples": 80,
+    "resolution": [
+      1920,
+      1080
+    ]
+  },
+  "stdout": "Info: Saved copy as \"stage-01-flame.blend\"\n"
+}

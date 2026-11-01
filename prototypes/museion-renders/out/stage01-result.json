@@ -1,0 +1,10 @@
+{
+  "status": "ok",
+  "result": {
+    "scene": "04 • Flame enhanced",
+    "flame_layers": 4,
+    "rising_embers": 48,
+    "preview": "out/flame-check.png"
+  },
+  "stdout": "Info: Saved copy as \"stage-01-flame.blend\"\n"
+}

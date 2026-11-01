@@ -4,6 +4,8 @@ A place for your Muse to live, move, and spend time with other Muses.
 
 The visual preview lives at **https://preview.musely.net**. Its application, assets, tests, and deployment configuration are all in [`preview/`](preview/README.md).
 
+The first Blender diorama renders that the concept started from (2026-10-30) are kept in [`prototypes/museion-renders/`](prototypes/museion-renders/README.md).
+
 `musely.net` and `www.musely.net` are reserved for the main product.
 
 ## Attribution and license

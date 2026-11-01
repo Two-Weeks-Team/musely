@@ -1,0 +1,22 @@
+{
+  "method": "Blender MCP: Python MCP stdio client -> uvx blender-mcp -> installed Blender addon, localhost:9876. All three PNGs rendered inside the GUI Blender session; background Blender was used only for API probing and saved-file validation.",
+  "blender": "5.2.1 LTS",
+  "renderer": "Cycles, Metal GPU, Apple M1 Max; 160 samples with denoising",
+  "outputs": ["diorama-hero.png", "ember-split.png", "cold-open.png", "museion-cafe.blend"],
+  "png_resolution": [1920, 1080],
+  "blend_scenes": ["01 • Campfire", "02 • Ember split", "03 • Cold open"],
+  "visual_review": {
+    "hero": "Inspected final render: full island and buildings fit frame; two cream hooded seated avatars face the central fire; dark navy cafe silhouettes, six chairs, two tables and cups; orange/yellow faceted fire and rising embers.",
+    "ember_split": "Inspected final render: the shared ember separates into two curved, broken trails with bright arrival embers at the two phones.",
+    "cold_open": "Diorama placed at right; left title space uses a subtle irregular concentric grain motif. Final revised output inspected before delivery."
+  },
+  "lighting": "One point light at the fire plus emissive fire, coals and embers. Zero world illumination; no fill, rim, sun or area lights. Non-fire materials have a camera-ray-only base-color floor for the specified flat palette; this casts no light on other objects.",
+  "issues": [
+    {"issue": "MCP client expects addon protocol 15; installed addon reports protocol 5.", "resolution": "Existing execute-code API worked. No addon replacement or persistent global MCP configuration change was needed."},
+    {"issue": "Blender 5.2 moved glare controls to node input sockets; first attempt using glare_type failed and produced a black preliminary preview.", "resolution": "Probed installed RNA and socket values, changed to Type='Fog Glow' and Quality='High', repaired node links, and inspected regenerated PNGs."},
+    {"issue": "First artwork preview clipped building tops and overexposed the warm light.", "resolution": "Widened orthographic framing, lowered fire light, and applied a camera-only flat base-color floor."},
+    {"issue": "First cold-open framing placed the title area on the opposite side from the intended layout.", "resolution": "Corrected the camera-right vector sign and rerendered the cold-open scene."}
+  ],
+  "provenance": "Locally authored procedural meshes, curves and materials. No external assets, textures, paid generation or external asset licenses.",
+  "validation": "validation.json records readback of the final saved blend, per-scene object counts, light configuration, compositor scene links, decoded PNG sizes and SHA-256 hashes."
+}

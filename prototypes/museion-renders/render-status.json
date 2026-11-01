@@ -1,0 +1,24 @@
+{
+  "state": "done",
+  "completed": [
+    {
+      "scene": "01 \u2022 Campfire",
+      "path": "/Users/kimsejun/museion-renders/diorama-hero.png",
+      "seconds": 10.37
+    },
+    {
+      "scene": "02 \u2022 Ember split",
+      "path": "/Users/kimsejun/museion-renders/ember-split.png",
+      "seconds": 10.24
+    },
+    {
+      "scene": "03 \u2022 Cold open",
+      "path": "/Users/kimsejun/museion-renders/cold-open.png",
+      "seconds": 8.01
+    }
+  ],
+  "cold_open_revision": {
+    "reason": "Corrected camera-right sign after visual inspection. Title space and grain now on left; diorama on right.",
+    "seconds": 7.53
+  }
+}

@@ -1,0 +1,55 @@
+──────────────────────────────────────────────────────────────
+  blender-mcp is now mcp-for-blender.
+
+  This package is a compatibility wrapper. Everything still
+  works and there is nothing you need to change today.
+
+  When convenient, update your MCP client config to:
+      uvx mcp-for-blender
+
+  https://github.com/ahujasid/mcp-for-blender
+──────────────────────────────────────────────────────────────
+
+2026-10-30 20:55:20,248 - BlenderMCPServer - INFO - BlenderMCP server starting up
+2026-10-30 20:55:20,249 - BlenderMCPServer - WARNING - MCP for Blender addon on disk is outdated (expected protocol 15): /Users/kimsejun/Library/Application Support/Blender/5.2/scripts/addons/blender_mcp.py. Run `uvx mcp-for-blender install-addon` to update it, then in Blender: Preferences → Add-ons → disable and re-enable 'Interface: MCP for Blender' (or restart Blender) and click Start MCP Server.
+2026-10-30 20:55:20,250 - blender-mcp-telemetry - WARNING - Telemetry disabled via environment variable
+2026-10-30 20:55:20,252 - BlenderMCPServer - INFO - Connected to Blender at localhost:9876
+2026-10-30 20:55:20,252 - BlenderMCPServer - INFO - Created new persistent connection to Blender
+2026-10-30 20:55:20,252 - BlenderMCPServer - INFO - Sending command: get_addon_info with params: None
+2026-10-30 20:55:20,253 - BlenderMCPServer - INFO - Command sent, waiting for response...
+2026-10-30 20:55:20,309 - BlenderMCPServer - INFO - Received complete response (358 bytes)
+2026-10-30 20:55:20,309 - BlenderMCPServer - INFO - Received 358 bytes of data
+2026-10-30 20:55:20,309 - BlenderMCPServer - INFO - Response parsed, status: success
+2026-10-30 20:55:20,309 - BlenderMCPServer - WARNING - Blender addon protocol 5 is behind expected 15. Run `uvx mcp-for-blender install-addon` to update it, then restart Blender or disable/enable 'Interface: MCP for Blender', then Start MCP Server. Trajectory still works via fallbacks.
+2026-10-30 20:55:20,309 - BlenderMCPServer - INFO - Successfully connected to Blender on startup
+2026-10-30 20:55:20,309 - BlenderMCPServer - WARNING - Blender addon protocol 5 is behind expected 15. Run `uvx mcp-for-blender install-addon` to update it, then restart Blender or disable/enable 'Interface: MCP for Blender', then Start MCP Server. Trajectory still works via fallbacks.
+2026-10-30 20:55:20,313 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-10-30 20:55:20,313 - BlenderMCPServer - INFO - MCP client mcp 0.1.0: extensions=[], apps=False, openai_forms=False
+2026-10-30 20:55:20,314 - BlenderMCPServer - INFO - Sending command: execute_code with params: {'code': "import bpy,json,time,traceback\nfrom pathlib import Path\nOUT=Path('/Users/kimsejun/museion-renders')\ndef render_all():\n    results=[]\n    try:\n        for name in ('01 • Campfire','02 • Ember split','03 • Cold open'):\n            s=bpy.data.scenes[name]\n            bpy.context.window.scene=s\n            (OUT/'render-status.json').write_text(json.dumps({'state':'rendering','scene':name,'completed':results},indent=2))\n            start=time.time()\n            bpy.ops.render.render(write_still=True,scene=name)\n            results.append({'scene':name,'path':s.render.filepath,'seconds':round(time.time()-start,2)})\n        bpy.context.window.scene=bpy.data.scenes['01 • Campfire']\n        bpy.ops.wm.save_as_mainfile(filepath=str(OUT/'museion-cafe.blend'))\n        (OUT/'render-status.json').write_text(json.dumps({'state':'done','completed':results},indent=2))\n    except Exception:\n        (OUT/'render-status.json').write_text(json.dumps({'state':'error','traceback':traceback.format_exc(),'completed':results},indent=2))\n    return None\nbpy.app.timers.register(render_all,first_interval=2)\nprint('Queued: three 1920x1080 Cycles / Metal PNG renders')\n"}
+2026-10-30 20:55:20,314 - BlenderMCPServer - INFO - Command sent, waiting for response...
+2026-10-30 20:55:20,363 - BlenderMCPServer - INFO - Received complete response (117 bytes)
+2026-10-30 20:55:20,363 - BlenderMCPServer - INFO - Received 117 bytes of data
+2026-10-30 20:55:20,363 - BlenderMCPServer - INFO - Response parsed, status: success
+2026-10-30 20:55:20,363 - BlenderMCPServer - INFO - Sending command: get_telemetry_consent with params: None
+2026-10-30 20:55:20,363 - BlenderMCPServer - INFO - Command sent, waiting for response...
+2026-10-30 20:55:20,414 - BlenderMCPServer - INFO - Received complete response (50 bytes)
+2026-10-30 20:55:20,414 - BlenderMCPServer - INFO - Received 50 bytes of data
+2026-10-30 20:55:20,414 - BlenderMCPServer - INFO - Response parsed, status: success
+2026-10-30 20:55:20,420 - mcp.server.lowlevel.server - INFO - Processing request of type ListToolsRequest
+2026-10-30 20:55:20,426 - BlenderMCPServer - INFO - Disconnecting from Blender on shutdown
+2026-10-30 20:55:20,426 - BlenderMCPServer - INFO - BlenderMCP server shut down
+{
+  "meta": null,
+  "content": [
+    {
+      "type": "text",
+      "text": "Code executed successfully: Queued: three 1920x1080 Cycles / Metal PNG renders\n",
+      "annotations": null,
+      "meta": null
+    }
+  ],
+  "structuredContent": {
+    "result": "Code executed successfully: Queued: three 1920x1080 Cycles / Metal PNG renders\n"
+  },
+  "isError": false
+}

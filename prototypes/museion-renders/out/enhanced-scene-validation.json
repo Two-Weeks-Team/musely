@@ -1,0 +1,60 @@
+{
+  "scenes": [
+    {
+      "name": "04 • Flame enhanced",
+      "objects": 274,
+      "samples": 80,
+      "resolution": [
+        1920,
+        1080
+      ],
+      "output": "flame-hero.png"
+    },
+    {
+      "name": "05 • Avatar variants",
+      "objects": 108,
+      "samples": 80,
+      "resolution": [
+        1920,
+        1080
+      ],
+      "output": "avatar-variants.png"
+    },
+    {
+      "name": "06 • Cafe enhanced",
+      "objects": 300,
+      "samples": 80,
+      "resolution": [
+        1920,
+        1080
+      ],
+      "output": "diorama-hero-v2.png"
+    },
+    {
+      "name": "07 • Ember split animation",
+      "objects": 311,
+      "frames": [
+        1,
+        72
+      ],
+      "fps": 24,
+      "samples": 32,
+      "resolution": [
+        1280,
+        720
+      ]
+    }
+  ],
+  "static_checks": {
+    "hero_camera_unchanged": true,
+    "flame_layers": 4,
+    "spiral_embers": 48,
+    "avatar_poses": 3,
+    "avatar_sheet_lights": 2,
+    "emblems_on_all_variants": true,
+    "cafe_pots": 4,
+    "original_still_scenes_retained": true
+  },
+  "blend_path": "/Users/kimsejun/museion-renders/out/museion-enhanced.blend",
+  "status": "PASS"
+}

@@ -1,0 +1,7 @@
+{
+  "status": "ok",
+  "result": {
+    "queued": "out/avatar-variants.png"
+  },
+  "stdout": "Info: Saved copy as \"stage-02-avatars.blend\"\n"
+}

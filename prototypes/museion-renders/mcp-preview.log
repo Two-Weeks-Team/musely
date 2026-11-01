@@ -1,0 +1,55 @@
+──────────────────────────────────────────────────────────────
+  blender-mcp is now mcp-for-blender.
+
+  This package is a compatibility wrapper. Everything still
+  works and there is nothing you need to change today.
+
+  When convenient, update your MCP client config to:
+      uvx mcp-for-blender
+
+  https://github.com/ahujasid/mcp-for-blender
+──────────────────────────────────────────────────────────────
+
+2026-10-30 20:50:24,062 - BlenderMCPServer - INFO - BlenderMCP server starting up
+2026-10-30 20:50:24,062 - BlenderMCPServer - WARNING - MCP for Blender addon on disk is outdated (expected protocol 15): /Users/kimsejun/Library/Application Support/Blender/5.2/scripts/addons/blender_mcp.py. Run `uvx mcp-for-blender install-addon` to update it, then in Blender: Preferences → Add-ons → disable and re-enable 'Interface: MCP for Blender' (or restart Blender) and click Start MCP Server.
+2026-10-30 20:50:24,063 - blender-mcp-telemetry - WARNING - Telemetry disabled via environment variable
+2026-10-30 20:50:24,065 - BlenderMCPServer - INFO - Connected to Blender at localhost:9876
+2026-10-30 20:50:24,065 - BlenderMCPServer - INFO - Created new persistent connection to Blender
+2026-10-30 20:50:24,065 - BlenderMCPServer - INFO - Sending command: get_addon_info with params: None
+2026-10-30 20:50:24,065 - BlenderMCPServer - INFO - Command sent, waiting for response...
+2026-10-30 20:50:24,113 - BlenderMCPServer - INFO - Received complete response (358 bytes)
+2026-10-30 20:50:24,113 - BlenderMCPServer - INFO - Received 358 bytes of data
+2026-10-30 20:50:24,113 - BlenderMCPServer - INFO - Response parsed, status: success
+2026-10-30 20:50:24,113 - BlenderMCPServer - WARNING - Blender addon protocol 5 is behind expected 15. Run `uvx mcp-for-blender install-addon` to update it, then restart Blender or disable/enable 'Interface: MCP for Blender', then Start MCP Server. Trajectory still works via fallbacks.
+2026-10-30 20:50:24,113 - BlenderMCPServer - INFO - Successfully connected to Blender on startup
+2026-10-30 20:50:24,113 - BlenderMCPServer - WARNING - Blender addon protocol 5 is behind expected 15. Run `uvx mcp-for-blender install-addon` to update it, then restart Blender or disable/enable 'Interface: MCP for Blender', then Start MCP Server. Trajectory still works via fallbacks.
+2026-10-30 20:50:24,118 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-10-30 20:50:24,118 - BlenderMCPServer - INFO - MCP client mcp 0.1.0: extensions=[], apps=False, openai_forms=False
+2026-10-30 20:50:24,119 - BlenderMCPServer - INFO - Sending command: execute_code with params: {'code': "import bpy\nfrom pathlib import Path\nimport traceback\ndef render_preview():\n    try:\n        bpy.ops.render.render(write_still=True)\n        Path('/Users/kimsejun/museion-renders/preview-status.txt').write_text('DONE')\n    except Exception:\n        Path('/Users/kimsejun/museion-renders/preview-status.txt').write_text(traceback.format_exc())\n    return None\nbpy.app.timers.register(render_preview,first_interval=2)\nprint('Preview queued at 960x540')\n"}
+2026-10-30 20:50:24,119 - BlenderMCPServer - INFO - Command sent, waiting for response...
+2026-10-30 20:50:24,163 - BlenderMCPServer - INFO - Received complete response (92 bytes)
+2026-10-30 20:50:24,163 - BlenderMCPServer - INFO - Received 92 bytes of data
+2026-10-30 20:50:24,163 - BlenderMCPServer - INFO - Response parsed, status: success
+2026-10-30 20:50:24,163 - BlenderMCPServer - INFO - Sending command: get_telemetry_consent with params: None
+2026-10-30 20:50:24,163 - BlenderMCPServer - INFO - Command sent, waiting for response...
+2026-10-30 20:50:24,215 - BlenderMCPServer - INFO - Received complete response (50 bytes)
+2026-10-30 20:50:24,218 - BlenderMCPServer - INFO - Received 50 bytes of data
+2026-10-30 20:50:24,218 - BlenderMCPServer - INFO - Response parsed, status: success
+2026-10-30 20:50:24,222 - mcp.server.lowlevel.server - INFO - Processing request of type ListToolsRequest
+2026-10-30 20:50:24,228 - BlenderMCPServer - INFO - Disconnecting from Blender on shutdown
+2026-10-30 20:50:24,228 - BlenderMCPServer - INFO - BlenderMCP server shut down
+{
+  "meta": null,
+  "content": [
+    {
+      "type": "text",
+      "text": "Code executed successfully: Preview queued at 960x540\n",
+      "annotations": null,
+      "meta": null
+    }
+  ],
+  "structuredContent": {
+    "result": "Code executed successfully: Preview queued at 960x540\n"
+  },
+  "isError": false
+}

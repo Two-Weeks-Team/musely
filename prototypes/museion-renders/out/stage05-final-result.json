@@ -1,0 +1,13 @@
+{
+  "status": "ok",
+  "result": {
+    "queued_frames": 72,
+    "samples": 32,
+    "resolution": [
+      1280,
+      720
+    ],
+    "fps": 24
+  },
+  "stdout": "Info: Saved copy as \"stage-05-ember-animation.blend\"\n"
+}

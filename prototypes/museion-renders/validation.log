@@ -1,0 +1,75 @@
+00:00.527  blend            | Read blend: "/Users/kimsejun/museion-renders/museion-cafe.blend"
+BlenderMCP: cannot start server in background mode (blender -b) - commands would never execute
+BlenderMCP: run Blender with a GUI, or use a virtual display: xvfb-run -a blender
+BlenderMCP addon registered
+Reloading external rigs...
+Reloading external metarigs...
+{
+  "saved_blend": "/Users/kimsejun/museion-renders/museion-cafe.blend",
+  "blender": "5.2.1 LTS",
+  "scenes": [
+    {
+      "scene": "01 • Campfire",
+      "objects": 233,
+      "chairs": 6,
+      "avatars": 2,
+      "tables": 2,
+      "logs": 3,
+      "ascending_ember_particles": 34,
+      "light_objects": 1,
+      "world_illumination": 0,
+      "camera": "ORTHO",
+      "png": "diorama-hero.png",
+      "size": [
+        1920,
+        1080
+      ],
+      "bytes": 1642865,
+      "sha256": "94c03198e606d0ca237c15e8aa01b526e8411beaa54f3223ba74f40a8aa2bee4"
+    },
+    {
+      "scene": "02 • Ember split",
+      "objects": 279,
+      "chairs": 6,
+      "avatars": 2,
+      "tables": 2,
+      "logs": 3,
+      "ascending_ember_particles": 34,
+      "light_objects": 1,
+      "world_illumination": 0,
+      "camera": "ORTHO",
+      "png": "ember-split.png",
+      "size": [
+        1920,
+        1080
+      ],
+      "bytes": 1650841,
+      "sha256": "07873ddc39d9dd69e2cdda111771cd87bba3f984e5cda24e68a9fc7217871aee"
+    },
+    {
+      "scene": "03 • Cold open",
+      "objects": 249,
+      "chairs": 6,
+      "avatars": 2,
+      "tables": 2,
+      "logs": 3,
+      "ascending_ember_particles": 34,
+      "light_objects": 1,
+      "world_illumination": 0,
+      "camera": "ORTHO",
+      "png": "cold-open.png",
+      "size": [
+        1920,
+        1080
+      ],
+      "bytes": 1528065,
+      "sha256": "324b6bdb17fce85cd5b1c4b095e13eb2d373e58e855218e3f2d04545af366e7c"
+    }
+  ],
+  "checks": "PASS: saved scene counts, single point light, no world illumination, variant compositor linkage, decoded PNGs, dimensions, nonblank pixels. Visual review recorded separately in render-notes.json."
+}
+BlenderMCP server stopped
+BlenderMCP addon unregistered
+Blender 5.2.1 LTS (hash 9e2066aef7ef built 2026-08-25 01:35:57)
+
+Blender quit

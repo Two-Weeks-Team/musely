@@ -1,0 +1,12 @@
+{
+  "decoded_frames": 72,
+  "fps": 24.0,
+  "duration": 3.0,
+  "size": [
+    1280,
+    720
+  ],
+  "codec": "h264",
+  "source": "72 PNG frames rendered through official Blender MCP / Metal Cycles 32 samples",
+  "sha256": "adeac7d2220e59ce74153305cd19f8a8c2bdad6e9c390fead4205b86782c3992"
+}

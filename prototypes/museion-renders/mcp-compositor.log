@@ -1,0 +1,55 @@
+──────────────────────────────────────────────────────────────
+  blender-mcp is now mcp-for-blender.
+
+  This package is a compatibility wrapper. Everything still
+  works and there is nothing you need to change today.
+
+  When convenient, update your MCP client config to:
+      uvx mcp-for-blender
+
+  https://github.com/ahujasid/mcp-for-blender
+──────────────────────────────────────────────────────────────
+
+2026-10-30 20:50:31,135 - BlenderMCPServer - INFO - BlenderMCP server starting up
+2026-10-30 20:50:31,135 - BlenderMCPServer - WARNING - MCP for Blender addon on disk is outdated (expected protocol 15): /Users/kimsejun/Library/Application Support/Blender/5.2/scripts/addons/blender_mcp.py. Run `uvx mcp-for-blender install-addon` to update it, then in Blender: Preferences → Add-ons → disable and re-enable 'Interface: MCP for Blender' (or restart Blender) and click Start MCP Server.
+2026-10-30 20:50:31,136 - blender-mcp-telemetry - WARNING - Telemetry disabled via environment variable
+2026-10-30 20:50:31,138 - BlenderMCPServer - INFO - Connected to Blender at localhost:9876
+2026-10-30 20:50:31,138 - BlenderMCPServer - INFO - Created new persistent connection to Blender
+2026-10-30 20:50:31,139 - BlenderMCPServer - INFO - Sending command: get_addon_info with params: None
+2026-10-30 20:50:31,139 - BlenderMCPServer - INFO - Command sent, waiting for response...
+2026-10-30 20:52:13,138 - BlenderMCPServer - INFO - Received complete response (358 bytes)
+2026-10-30 20:52:13,139 - BlenderMCPServer - INFO - Received 358 bytes of data
+2026-10-30 20:52:13,139 - BlenderMCPServer - INFO - Response parsed, status: success
+2026-10-30 20:52:13,139 - BlenderMCPServer - WARNING - Blender addon protocol 5 is behind expected 15. Run `uvx mcp-for-blender install-addon` to update it, then restart Blender or disable/enable 'Interface: MCP for Blender', then Start MCP Server. Trajectory still works via fallbacks.
+2026-10-30 20:52:13,139 - BlenderMCPServer - INFO - Successfully connected to Blender on startup
+2026-10-30 20:52:13,139 - BlenderMCPServer - WARNING - Blender addon protocol 5 is behind expected 15. Run `uvx mcp-for-blender install-addon` to update it, then restart Blender or disable/enable 'Interface: MCP for Blender', then Start MCP Server. Trajectory still works via fallbacks.
+2026-10-30 20:52:13,149 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-10-30 20:52:13,150 - BlenderMCPServer - INFO - MCP client mcp 0.1.0: extensions=[], apps=False, openai_forms=False
+2026-10-30 20:52:13,151 - BlenderMCPServer - INFO - Sending command: execute_code with params: {'code': "import bpy,json\ng=bpy.context.scene.compositing_node_group\nnode=next(n for n in g.nodes if n.bl_idname=='CompositorNodeGlare')\nprint(json.dumps({'properties':[p.identifier for p in node.bl_rna.properties], 'inputs':[(s.name,str(s.default_value) if hasattr(s,'default_value') else '') for s in node.inputs], 'outputs':[s.name for s in node.outputs]}))\n"}
+2026-10-30 20:52:13,151 - BlenderMCPServer - INFO - Command sent, waiting for response...
+2026-10-30 20:52:13,194 - BlenderMCPServer - INFO - Received complete response (1477 bytes)
+2026-10-30 20:52:13,194 - BlenderMCPServer - INFO - Received 1477 bytes of data
+2026-10-30 20:52:13,194 - BlenderMCPServer - INFO - Response parsed, status: success
+2026-10-30 20:52:13,194 - BlenderMCPServer - INFO - Sending command: get_telemetry_consent with params: None
+2026-10-30 20:52:13,194 - BlenderMCPServer - INFO - Command sent, waiting for response...
+2026-10-30 20:52:13,244 - BlenderMCPServer - INFO - Received complete response (50 bytes)
+2026-10-30 20:52:13,245 - BlenderMCPServer - INFO - Received 50 bytes of data
+2026-10-30 20:52:13,245 - BlenderMCPServer - INFO - Response parsed, status: success
+2026-10-30 20:52:13,248 - mcp.server.lowlevel.server - INFO - Processing request of type ListToolsRequest
+2026-10-30 20:52:13,251 - BlenderMCPServer - INFO - Disconnecting from Blender on shutdown
+2026-10-30 20:52:13,251 - BlenderMCPServer - INFO - BlenderMCP server shut down
+{
+  "meta": null,
+  "content": [
+    {
+      "type": "text",
+      "text": "Code executed successfully: {\"properties\": [\"rna_type\", \"type\", \"location\", \"location_absolute\", \"width\", \"height\", \"dimensions\", \"name\", \"label\", \"inputs\", \"outputs\", \"panel_states\", \"internal_links\", \"parent\", \"warning_propagation\", \"use_custom_color\", \"color\", \"color_tag\", \"select\", \"show_options\", \"show_preview\", \"hide\", \"mute\", \"show_texture\", \"bl_idname\", \"bl_label\", \"bl_description\", \"bl_icon\", \"bl_static_type\", \"bl_width_default\", \"bl_width_min\", \"bl_width_max\", \"bl_height_default\", \"bl_height_min\", \"bl_height_max\"], \"inputs\": [[\"Image\", \"<bpy_float[4], NodeSocketColor.default_value>\"], [\"Type\", \"Streaks\"], [\"Quality\", \"Medium\"], [\"Threshold\", \"1.0\"], [\"Smoothness\", \"0.10000000149011612\"], [\"Clamp\", \"False\"], [\"Maximum\", \"10.0\"], [\"Strength\", \"1.0\"], [\"Saturation\", \"1.0\"], [\"Tint\", \"<bpy_float[4], NodeSocketColor.default_value>\"], [\"Size\", \"0.5\"], [\"Streaks\", \"4\"], [\"Streaks Angle\", \"0.0\"], [\"Iterations\", \"3\"], [\"Fade\", \"0.8999999761581421\"], [\"Color Modulation\", \"0.25\"], [\"Diagonal\", \"True\"], [\"Sun Position\", \"<bpy_float[2], NodeSocketVectorFactor2D.default_value>\"], [\"Jitter\", \"0.0\"], [\"Kernel Data Type\", \"Float\"], [\"Kernel\", \"0.0\"], [\"Kernel\", \"<bpy_float[4], NodeSocketColor.default_value>\"]], \"outputs\": [\"Image\", \"Glare\", \"Highlights\"]}\n",
+      "annotations": null,
+      "meta": null
+    }
+  ],
+  "structuredContent": {
+    "result": "Code executed successfully: {\"properties\": [\"rna_type\", \"type\", \"location\", \"location_absolute\", \"width\", \"height\", \"dimensions\", \"name\", \"label\", \"inputs\", \"outputs\", \"panel_states\", \"internal_links\", \"parent\", \"warning_propagation\", \"use_custom_color\", \"color\", \"color_tag\", \"select\", \"show_options\", \"show_preview\", \"hide\", \"mute\", \"show_texture\", \"bl_idname\", \"bl_label\", \"bl_description\", \"bl_icon\", \"bl_static_type\", \"bl_width_default\", \"bl_width_min\", \"bl_width_max\", \"bl_height_default\", \"bl_height_min\", \"bl_height_max\"], \"inputs\": [[\"Image\", \"<bpy_float[4], NodeSocketColor.default_value>\"], [\"Type\", \"Streaks\"], [\"Quality\", \"Medium\"], [\"Threshold\", \"1.0\"], [\"Smoothness\", \"0.10000000149011612\"], [\"Clamp\", \"False\"], [\"Maximum\", \"10.0\"], [\"Strength\", \"1.0\"], [\"Saturation\", \"1.0\"], [\"Tint\", \"<bpy_float[4], NodeSocketColor.default_value>\"], [\"Size\", \"0.5\"], [\"Streaks\", \"4\"], [\"Streaks Angle\", \"0.0\"], [\"Iterations\", \"3\"], [\"Fade\", \"0.8999999761581421\"], [\"Color Modulation\", \"0.25\"], [\"Diagonal\", \"True\"], [\"Sun Position\", \"<bpy_float[2], NodeSocketVectorFactor2D.default_value>\"], [\"Jitter\", \"0.0\"], [\"Kernel Data Type\", \"Float\"], [\"Kernel\", \"0.0\"], [\"Kernel\", \"<bpy_float[4], NodeSocketColor.default_value>\"]], \"outputs\": [\"Image\", \"Glare\", \"Highlights\"]}\n"
+  },
+  "isError": false
+}

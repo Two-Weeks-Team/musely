@@ -1,0 +1,90 @@
+{
+  "originals_preserved": true,
+  "stills": [
+    {
+      "path": "/Users/kimsejun/museion-renders/out/flame-hero.png",
+      "size": [
+        1920,
+        1080
+      ],
+      "bytes": 1727165,
+      "sha256": "e01a99f875c330d7ec37189faa7c02595169e8c9f421cea0a37f8c40e5a398ef"
+    },
+    {
+      "path": "/Users/kimsejun/museion-renders/out/avatar-variants.png",
+      "size": [
+        1920,
+        1080
+      ],
+      "bytes": 1607507,
+      "sha256": "0326cf03f398c8ff013ba3e4dc088146eea14862f46f5cf3d0f0f524ba05c28f"
+    },
+    {
+      "path": "/Users/kimsejun/museion-renders/out/diorama-hero-v2.png",
+      "size": [
+        1920,
+        1080
+      ],
+      "bytes": 1748931,
+      "sha256": "caef1293c222fbe6d7ee0fbaa786f8d44f99711894a43ccf3e6256a66e828d92"
+    }
+  ],
+  "saved_blend_readback": {
+    "path": "/Users/kimsejun/museion-renders/out/museion-enhanced.blend",
+    "status": "PASS",
+    "scenes": [
+      "01 • Campfire",
+      "02 • Ember split",
+      "03 • Cold open",
+      "04 • Flame enhanced",
+      "05 • Avatar variants",
+      "06 • Cafe enhanced",
+      "07 • Ember split animation"
+    ],
+    "arrival_errors": [
+      0.0,
+      0.0
+    ],
+    "final_phone_emission": [
+      5.0,
+      5.0
+    ]
+  },
+  "video": {
+    "decoded_frames": 72,
+    "fps": 24.0,
+    "duration": 3.0,
+    "size": [
+      1280,
+      720
+    ],
+    "codec": "h264",
+    "source": "72 PNG frames rendered through official Blender MCP / Metal Cycles 32 samples",
+    "sha256": "adeac7d2220e59ce74153305cd19f8a8c2bdad6e9c390fead4205b86782c3992"
+  },
+  "motion_checks": {
+    "maximum_step": 0.0559589118801688,
+    "arrival_errors": [
+      0.0,
+      0.0
+    ],
+    "final_phone_strengths": [
+      5.0,
+      5.0
+    ],
+    "status": "PASS"
+  },
+  "scene_checks": {
+    "hero_camera_unchanged": true,
+    "flame_layers": 4,
+    "spiral_embers": 48,
+    "avatar_poses": 3,
+    "avatar_sheet_lights": 2,
+    "emblems_on_all_variants": true,
+    "cafe_pots": 4,
+    "original_still_scenes_retained": true
+  },
+  "map_motion": "HELD: ComBba map still completion not recorded in INDEX at step 04; no canonical map .blend supplied.",
+  "method": "Blender Lab official MCP 1.0.3 / Metal Cycles. Stills 80 samples; animation 32 samples. Original three stills not regenerated.",
+  "status": "PASS for 01/02/03/05; 04 held per prerequisite"
+}
