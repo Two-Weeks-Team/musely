@@ -40,6 +40,9 @@ async (page) => {
     await p.locator(`#world-panel .tab[data-tab="${tab}"]`).click();
     await p.waitForFunction(re => new RegExp(re, 'i').test(document.querySelector('.world-body')?.textContent ?? ''), expect.source, {timeout: 30000});
     out[tab] = (await p.locator('.world-body').textContent()).replace(/\s+/g, ' ').slice(0, 140);
+    // No email address may appear on any public screen (contact is Threads @combba82 only).
+    const emails = await p.evaluate(() => (document.body.innerText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) ?? []));
+    if (emails.length) throw Error(`Email shown on screen (${tab}): ` + emails.join(', '));
     if (tab === 'autonomy' && (await p.locator('.world-body table.data tr').count()) !== 6) throw Error('Autonomy table must have 6 rows');
     await p.screenshot({path: `output/world-ui-${tab}-${mobile ? 'mobile' : 'desktop'}.png`});
    }
