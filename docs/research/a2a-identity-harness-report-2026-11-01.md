@@ -1,6 +1,6 @@
 # Meta Global AI Developer Hackathon — Winning with A2A Identity + Harness/Class Onboarding + Location-Based Agent Communication
 
-> **상태: 참고 자료로 유효.** 평가 기준, A2A 신원 현황, 하네스/클래스 조사는 그대로 참고한다. 6.4의 시나리오는 제안이며 채택된 방향이 아니다. 현재 방향은 [`docs/README.md`](../README.md)를 본다.
+> **상태: 참고 자료로 유효.** 평가 기준, A2A 신원 현황, 하네스/클래스 조사는 그대로 참고한다. 6.4의 시나리오는 제안이며 채택된 방향이 아니다. 트랙은 팀이 **Startup**으로 정했다(기획안 9장). 6.1의 Indie 권고는 검토 당시의 의견으로 남긴다. 현재 방향은 [`docs/README.md`](../README.md)를 본다.
 
 **Research date:** 1 Nov 2026 (KST). All web sources read 29 Oct 2026 via web index / live page fetch; flags below say `verified live` (official page fetched directly) or `index` (search-index / secondary summary). **Verified facts and inference are labelled separately throughout.** Where sources disagreed, both readings are shown.
 
