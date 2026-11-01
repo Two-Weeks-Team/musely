@@ -81,3 +81,18 @@ test('without a key the world still turns, marked as not connected', async () =>
   assert.equal(r.spotlight.reason, 'not_connected');
   assert.ok(s.rt.view(T0).muses.length === 10);
 });
+
+test('a Muse holding a postcard (or any odd item id) never stops the heartbeat', async () => {
+  let rt; const s = setup({fetcher: (...a) => goodModel(rt)(...a)}); rt = s.rt;
+  const st = rt.state();
+  for (const m of st.muses) m.inventory.push('postcard:osm:node/4869055832', 'postcard:osm:way/123539756');
+  s.sql.exec('UPDATE world SET state = ? WHERE id = 1', JSON.stringify(st));
+  const r = await rt.heartbeat(T0);
+  assert.equal(r.status, 'committed');
+  assert.equal(r.spotlight.source, 'live', 'postcards are summarised, the live call still happens');
+  // Even an input the validator rejects falls back to the scenario instead of throwing.
+  const st2 = rt.state(); st2.muses.forEach(m => m.inventory.push('BAD ITEM!')); s.sql.exec('UPDATE world SET state = ? WHERE id = 1', JSON.stringify(st2));
+  const r2 = await rt.heartbeat(T0 + TICK_MS);
+  assert.equal(r2.status, 'committed');
+  assert.match(r2.spotlight.reason, /^input_invalid/);
+});
