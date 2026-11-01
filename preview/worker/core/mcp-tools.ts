@@ -372,6 +372,8 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         const otherId = t.from === me ? t.to : t.from;
         if (t.round + 1 > MAX_COUNTERS) { live({at, source: 'live', kind: 'trade_counter_refused', muse: me, other: otherId, line: null, data: {task_id: t.id, reason: 'counter_limit', max_counters: MAX_COUNTERS}, tags: []}); return {ok: false, reason: 'counter_limit', extra: {max_counters: MAX_COUNTERS, logged: true}}; }
         const a = museOf(st, me), b = museOf(st, otherId);
+        // Same guard as propose/accept: no counter (and no resident auto-accept) while either side is on the move.
+        if (a.travel || b.travel) return {ok: false, reason: 'travelling'};
         const check = checkTrade(st.items, st.day, a, b, give, want, t.round + 1);
         if (!check.ok) return {ok: false, reason: check.reason};
         t.round += 1; t.offer = {by: me, give, want}; t.awaiting = otherId; t.deadline = at + TASK_TTL_MS; t.updatedAt = at;

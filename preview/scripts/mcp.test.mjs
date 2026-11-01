@@ -458,3 +458,17 @@ test('while connected, the scenario picks no trips or beats for the Muse; reques
   assert.equal(t.muse(OWNER_SLOT).place, 'commons:workbench');
   assert.equal(t.muse(OWNER_SLOT).beat, null, 'no beat chosen on arrival either');
 });
+
+test('a counter while either side is travelling is refused (no swap on the move)', async () => {
+  const t = await setup();
+  t.edit(st => st.muses.find(m => m.id === OWNER_SLOT).inventory.push('pastry', 'wildflower'));
+  const p = await t.call('propose_trade', {to: '02-moss', give: 'pastry', want: 'fruit'});
+  assert.equal(p.structuredContent.result, 'countered');
+  const before = t.muse(OWNER_SLOT).inventory.slice();
+  const mv = await t.call('move', {to: 'bay:oakland'});
+  assert.equal(mv.isError, false);
+  const c = await t.call('counter_trade', {task_id: p.structuredContent.task.id, give: 'wildflower', want: 'fruit'});
+  assert.equal(c.isError, true);
+  assert.equal(c.structuredContent.refused, 'travelling');
+  assert.deepEqual(t.muse(OWNER_SLOT).inventory, before, 'nothing swapped');
+});
