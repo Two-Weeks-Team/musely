@@ -4,6 +4,8 @@ import {issueSession, readSession, cookieValue, sessionCookie, hashIp, timingSaf
 import type {Env} from './env.ts';
 import {authorizeUrl, claimViaWorker, recheck, ownerDirectRecord, ThreadsError, ClaimStepError, type ThreadsConfig} from './core/threads.ts';
 import ownerClaim from '../fixtures/owner-claim.json' with {type: 'json'};
+import {connectedRoutes} from './core/owner-api.ts';
+import {handleMcpHttp} from './core/mcp-server.ts';
 export {WorldDO} from './world-do.ts';
 
 const MODEL_TIMEOUT_MS = 8000;
@@ -82,6 +84,10 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     return json({events});
   }
 
+  // Connected Muse (direction v2, 7.2, 12.3, 13.1): owner location, agent keys, owner notifications.
+  const connected = await connectedRoutes(request, url, session, world(env));
+  if (connected) return connected;
+
   // Owner claim (direction v2, 6.3). Only the owner Muse's claim exists in the demo.
   const claimMatch = /^\/api\/claim\/([a-z-]{1,40})$/.exec(url.pathname);
   if (claimMatch && request.method === 'GET') {
@@ -150,6 +156,15 @@ export default {
     const url = new URL(request.url);
     const jwks = /^\/\.well-known\/jwks\/([A-Za-z0-9_-]{20,64})\.json$/.exec(url.pathname);
     if (jwks) { const set = await world(env).jwks(jwks[1]); return set ? json(set, 200, {'cache-control': 'public, max-age=300'}) : json({error: 'unknown_key'}, 404); }
+    // Musely MCP server (Streamable HTTP, 2025-06-18) for custom connectors; auth is a Musely agent key.
+    if (url.pathname === '/mcp') {
+      try {
+        return await handleMcpHttp(request, world(env), {allowedHosts: [...env.ALLOWED_HOSTS.split(','), ...(env.MCP_ALLOWED_ORIGINS ?? '').split(',').filter(Boolean)], rateLimit: env.BURST ? async key => (await env.BURST!.limit({key})).success : undefined});
+      } catch (e) {
+        console.error('mcp error', e);
+        return json({jsonrpc: '2.0', id: null, error: {code: -32603, message: 'Internal error'}}, 500);
+      }
+    }
     if (url.pathname.startsWith('/api/')) {
       try {
         return await api(request, env, url);

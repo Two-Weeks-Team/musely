@@ -9,6 +9,7 @@ import {createWorld, tick, spotlightFor, spotlightInput, TICK_MS, type WorldStat
 import {validate, buildMessages, maxCostUsd, actualCostUsd, failureCostUsd, checkOutput} from './actions.ts';
 import {callModel, type ModelConfig} from './model.ts';
 import {replayFor} from './replay.ts';
+import {isConnected} from '../../src/engine/inbox.ts';
 import type {Ledger, Sql} from './ledger.ts';
 
 export type RuntimeOptions = {
@@ -94,6 +95,8 @@ export class WorldRuntime {
       if (r.source === 'replay' && out?.freedom === freedom && (r.recorded as {muse?: string} | null)?.muse === muse) return {decision: {muse, freedom, source: 'replay' as const, output: out, evidence: {replayOf: r.recorded}}, info: {source: 'replay', reason}};
       return {decision: null, info: {source: 'scripted', reason}};
     };
+    // A connected Muse thinks in its owner's runtime (8.8): the team key never decides for it.
+    if (isConnected(s.inbox, muse, now)) return {decision: null, info: {source: 'scripted', reason: 'connected_muse'}};
     if (!this.opts.model?.key) return fallback('not_connected');
     const messages = buildMessages('spotlight', input);
     const id = this.reservationId(s);
