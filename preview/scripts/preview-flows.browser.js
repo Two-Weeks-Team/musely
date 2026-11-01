@@ -18,6 +18,7 @@ async (page) => {
   for (const mobile of [false, true]) {
     const vp = mobile ? 'mobile' : 'desktop';
     const ctx = await browser.newContext({viewport: mobile ? {width: 390, height: 844} : {width: 1440, height: 900}, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1});
+    await ctx.addInitScript(() => { window.__geoCalls = 0; const g = navigator.geolocation; if (g) for (const k of ['getCurrentPosition', 'watchPosition']) { const orig = g[k]?.bind(g); g[k] = (...a) => { window.__geoCalls++; return orig?.(...a); }; } });
     const p = await ctx.newPage(), errors = [], writes = [];
     p.on('pageerror', e => errors.push(e.message));
     p.on('request', r => { if (r.method() !== 'GET' && r.url().includes('/api/')) writes.push(r.method() + ' ' + r.url()); });
@@ -83,6 +84,32 @@ async (page) => {
       check(vp, 'a clip with a 3D prop shows the prop (Moss writes the postcard on a notepad)', prop.held === 'write_note' && prop.result.includes('Moss: clip with its 3D notepad'), prop.result);
       await p.evaluate(() => document.getElementById('world-panel').hidePopover()); await p.waitForTimeout(300);
       await p.screenshot({path: `output/preview-flows-${vp}-cue-prop.png`});
+
+      // P-06 EXP-LOCATION: the scripted location states (entry, GPS permission states, walk, both refusals, teleport, arrive, switch back, retry).
+      const flowText = () => p.evaluate(() => document.querySelector('.world-body')?.textContent ?? '');
+      const go = async to => { await p.click(`.flow-controls button[data-goto="${to}"]`); await p.waitForTimeout(120); };
+      await p.evaluate(() => window.__world.worldPanel.openTab('flows'));
+      await p.click('.flow-list button[data-flow="location-walk"]');
+      let t = await flowText();
+      check(vp, 'location: entry says the source is a labelled virtual preset (DEMO) and no GPS is read', /virtual preset/.test(t) && /DEMO/.test(t) && /No device GPS is read/.test(t));
+      await go('gps'); t = await flowText();
+      check(vp, 'location: GPS permission states are shown without asking the browser', /not asked/.test(t) && /allowed/.test(t) && /denied/.test(t) && /No permission prompt/.test(t) && (await p.evaluate(() => window.__geoCalls)) === 0);
+      await go('entry'); await go('move'); t = await flowText();
+      check(vp, 'location: the owner moves the target cell; the Muse walks with an ETA', /Noodle Bar/.test(t) && /ETA/.test(t) && /on the way/.test(t));
+      await go('not-arrived'); t = await flowText();
+      check(vp, 'location reject: not arrived yet means no discovery and no trade', /Not arrived yet/.test(t) && /Discovery refused/.test(t) && /inventory unchanged/.test(t));
+      await go('move'); await go('no-token'); t = await flowText();
+      check(vp, 'location reject: a teleport without a Taxi Token is refused', /Teleport needs a Taxi Token/.test(t) && /Taxi Token in inventory\? no/.test(t) && /refused/.test(t));
+      await go('taxi'); t = await flowText();
+      check(vp, 'location: a verified teleport with a Taxi Token arrives at once and uses the token', /Verified teleport/.test(t) && /Taxi Token in inventory\? yes/.test(t) && /token used/.test(t));
+      await go('arrived'); t = await flowText();
+      check(vp, 'location success: arrived, so discovery is allowed at the current place', /Arrived/.test(t) && /Discovery allowed/.test(t));
+      await go('switch-back'); t = await flowText();
+      check(vp, 'location cancel: switching back does not teleport the Muse; it walks back', /walks back/.test(t) && /ETA/.test(t));
+      await go('retry'); t = await flowText();
+      check(vp, 'location retry: the neighborhood is verified again and the walk continues', /verify the neighborhood again/i.test(t) && /Walk continues/.test(t));
+      check(vp, 'location: the browser was never asked for a position', (await p.evaluate(() => window.__geoCalls)) === 0);
+      await p.evaluate(() => document.getElementById('world-panel').hidePopover()); await p.waitForTimeout(200);
 
       // Review regressions on PR #76 (Codex 1-4 and the bot P1). Cues here last 2.5 s.
       await p.waitForTimeout(6200);
