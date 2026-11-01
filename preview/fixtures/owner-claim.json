@@ -2,8 +2,8 @@
   "version": "musely-claim-v1",
   "agent": "owner-muse",
   "provider": "threads",
-  "handle": "centisgood",
-  "owner_hash": "5bcef1b217c3985d010ad9a86691b08962f5a424861a143ff57706e3085072fc",
+  "handle": "combba82",
+  "owner_hash": "c50072bb9c1849da05e9c842bb91b916573fde90c4fd07dc36aa8d40f89caf6f",
   "root_public_jwk": {
     "kty": "EC",
     "crv": "P-256",
@@ -13,9 +13,9 @@
     "alg": "ES256",
     "use": "sig"
   },
-  "fingerprint": "deaded5c1e55d7a3d24cf78a578ba6fa93f52e70e4f3863093ba1b60ffb25c9a",
-  "fingerprint_display": "dead ed5c 1e55 d7a3",
-  "claim_text": "I am claiming my Muse on Musely. Fingerprint: dead ed5c 1e55 d7a3 · preview.musely.net",
+  "fingerprint": "ef961d6f307ba7750291a6169849e84da1aff584bf8c2295949dacc3ece7b39d",
+  "fingerprint_display": "ef96 1d6f 307b a775",
+  "claim_text": "I am claiming my Muse on Musely. Fingerprint: ef96 1d6f 307b a775 · preview.musely.net",
   "status": "pending_claim",
   "permalink": null,
   "verified_at": null
