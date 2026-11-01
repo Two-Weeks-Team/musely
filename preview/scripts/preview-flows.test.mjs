@@ -74,3 +74,28 @@ test('every On screen cue uses a real clip and item, on a side that exists', () 
   }
   assert.ok(n >= 10, 'cues exist');
 });
+
+test('reward-trade-limits: every refusal on screen is the engine\'s own reason (P-07)', async () => {
+  const {checkTrade, discover, emptyLedger, RULES} = await import('../src/engine/items.ts');
+  const {PLACES, distanceM} = await import('../src/engine/places.ts');
+  const sc = flows.scenarios.find(s => s.id === 'reward-trade-limits'), step = id => sc.steps.find(s => s.id === id);
+  const offer = step('offer').inventory, give = offer.a[0], want = offer.b[0], day = '2026-11-02';
+  const home = PLACES.find(p => p.id === 'commons:cafe'), far = PLACES.find(p => distanceM(home, p) > RULES.tradeRangeM + 50), near = PLACES.find(p => p.id !== home.id && distanceM(home, p) < RULES.tradeRangeM - 20);
+  assert.ok(home && far && near, 'two places within 100 m and one beyond');
+  const a = place => ({id: sc.a.muse, place: place.id, inventory: offer.a}), b = place => ({id: sc.b.muse, place: place.id, inventory: offer.b});
+  // The screens say: no ability change / too far apart (100 m) / one trade per pair per day.
+  assert.deepEqual(checkTrade(emptyLedger(), day, a(home), b(near), give, want), {ok: false, reason: 'no_ability_change'}, 'no-change');
+  assert.deepEqual(checkTrade(emptyLedger(), day, a(home), b(far), give, want), {ok: false, reason: 'too_far'}, 'too-far');
+  const traded = emptyLedger(); traded.trades[day] = {[[sc.a.muse, sc.b.muse].sort().join('|')]: RULES.pairTradesPerDay};
+  assert.deepEqual(checkTrade(traded, day, a(home), b(near), give, want), {ok: false, reason: 'pair_limit'}, 'pair-limit');
+  assert.match(step('too-far').text + step('too-far').checks.join(' '), new RegExp(`${RULES.tradeRangeM} m`));
+  assert.equal(RULES.pairTradesPerDay, 1); assert.match(step('pair-limit').text + step('pair-limit').checks.join(' '), /once a day|1 of 1/);
+  // Finds: one per place per day, ten a day.
+  const finds = emptyLedger(), rand = () => 0;
+  assert.equal(discover(finds, day, sc.a.muse, home, [], rand, 1).ok, true);
+  assert.deepEqual(discover(finds, day, sc.a.muse, home, [], rand, 2), {ok: false, reason: 'place_limit'}, 'place-limit');
+  const ten = emptyLedger(); ten.finds[day] = {[sc.a.muse]: Array.from({length: RULES.perDay}, (_, i) => ({place: 'x' + i, item: 'i', kind: 'k'}))};
+  assert.deepEqual(discover(ten, day, sc.a.muse, home, [], rand, 3), {ok: false, reason: 'daily_limit'}, 'daily-cap');
+  assert.match(step('daily-cap').checks.join(' '), new RegExp(`${RULES.perDay} of ${RULES.perDay}`));
+  assert.equal(RULES.perPlacePerDay, 1);
+});

@@ -18,7 +18,7 @@ async (page) => {
  const TABS = ['feed', 'highlights', 'p1', 'autonomy', 'identity', 'location', 'replay', 'flows'];
  for (const mobile of [false, true]) {
   const vp = mobile ? 'mobile' : 'desktop', shot = n => `output/world-ui-${n}-${vp}.png`;
-  const size = mobile ? {width: 390, height: 844} : {width: 1440, height: 1000};
+  const size = mobile ? {width: 390, height: 844} : {width: 1440, height: 900};
   const ctx = await browser.newContext({viewport: size, isMobile: mobile, hasTouch: mobile});
   const p = await ctx.newPage(), errors = [], reqs = [];
   p.on('pageerror', e => errors.push(e.message));
@@ -219,7 +219,7 @@ async (page) => {
     if (mobile && (tab === 'replay' || tab === 'autonomy' || tab === 'location')) await p.screenshot({path: shot('a11y-' + tab)});
    }
    check(vp, 'no page errors', errors.length === 0, errors.join(' / '));
-   cases.push({vp, viewport: mobile ? '390x844 touch emulation' : '1440x1000', chip, errors});
+   cases.push({vp, viewport: mobile ? '390x844 touch emulation' : '1440x900', chip, errors});
   } catch (e) { check(vp, 'run', false, String(e).slice(0, 400)); }
   await ctx.close();
 

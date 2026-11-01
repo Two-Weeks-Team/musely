@@ -4,7 +4,7 @@ async (page)=>{
  const browser=page.context().browser(),target=new URL(page.url());target.search='';
  const cases=[];
  for(const mobile of [false,true]){
-  const ctx=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:1000},isMobile:mobile,hasTouch:mobile});
+  const ctx=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:900},isMobile:mobile,hasTouch:mobile});
   const p=await ctx.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));
   await ctx.route('https://tiles.openfreemap.org/**',async r=>{await new Promise(done=>setTimeout(done,6000));await r.continue().catch(()=>{});});
   try{
@@ -36,7 +36,7 @@ async (page)=>{
    await p.locator('#about').click();
    if(!await p.locator('#about-dialog').isVisible()||!await p.locator('#about-dialog').textContent().then(t=>t.includes('not observed live conversations')))throw Error('Preview disclosure is not reachable in About.');
    await p.locator('#close-about').click();
-   cases.push({viewport:mobile?'390x844 touch emulation':'1440x1000',early,arrived,returned,errors});
+   cases.push({viewport:mobile?'390x844 touch emulation':'1440x900',early,arrived,returned,errors});
    if(errors.length)throw Error('Application errors: '+errors.join('; '));
   }finally{await ctx.close();}
  }

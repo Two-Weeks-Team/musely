@@ -530,6 +530,10 @@
             {
               "label": "Jimin revokes",
               "goto": "revoked"
+            },
+            {
+              "label": "The meeting changes before approval",
+              "goto": "changed"
             }
           ]
         },
@@ -587,12 +591,21 @@
               "text": "The candidate was declined. No reason is shared."
             }
           ],
-          "next": "return",
           "scene": [
             {
               "side": "b",
               "clip": "head_shake",
               "line": "Not this time."
+            }
+          ],
+          "choices": [
+            {
+              "label": "Back to normal life",
+              "goto": "return"
+            },
+            {
+              "label": "Try the next candidate",
+              "goto": "next-candidate"
             }
           ]
         },
@@ -605,6 +618,43 @@
             "deadline": "0 min"
           },
           "next": "return"
+        },
+        {
+          "id": "changed",
+          "title": "The approval target changed",
+          "text": "Approval is for the exact time and place shown. When the meeting changes, every earlier approval is void and a new candidate is needed. Nothing is confirmed.",
+          "status": {
+            "task": "rejected",
+            "reason": "target changed"
+          },
+          "ownerInbox": [
+            {
+              "owner": "a",
+              "kind": "blocked",
+              "text": "The meeting changed after you approved. Your approval no longer applies."
+            },
+            {
+              "owner": "b",
+              "kind": "blocked",
+              "text": "The meeting changed after you approved. Your approval no longer applies."
+            }
+          ],
+          "next": "return"
+        },
+        {
+          "id": "next-candidate",
+          "title": "The next candidate",
+          "text": "The Muses try another time and place. There are at most five rounds; after the last one without agreement they stop and return to their owners.",
+          "status": {
+            "task": "input-required",
+            "deadline": "30 min"
+          },
+          "choices": [
+            {
+              "label": "See the candidate",
+              "goto": "candidate"
+            }
+          ]
         },
         {
           "id": "revoked",
@@ -1077,22 +1127,22 @@
       "steps": [
         {
           "id": "offer",
-          "title": "A trade offer: Coffee for a Fruit",
-          "text": "Ripple offers Coffee for Moss's Fruit. Moss's owner has 30 minutes to answer. The rules, the owner and the clock each have a way to end it.",
+          "title": "A trade offer: Spark for a Snack Box",
+          "text": "Ripple offers a Spark for Moss's Snack Box. Moss's owner has 30 minutes to answer. The rules, the owner and the clock each have a way to end it.",
           "status": {
             "task": "submitted",
             "deadline": "30 min"
           },
           "a": {
-            "bubble": "Coffee for your Fruit?"
+            "bubble": "A Spark for your Snack Box?"
           },
           "inventory": {
             "a": [
-              "coffee",
+              "spark",
               "paper_map"
             ],
             "b": [
-              "fruit",
+              "snack_box",
               "stamp_bus_stop"
             ]
           },
@@ -1114,6 +1164,10 @@
               "goto": "place-limit"
             },
             {
+              "label": "Ripple has found ten things today",
+              "goto": "daily-cap"
+            },
+            {
               "label": "The owner withdraws the offer",
               "goto": "withdrawn"
             },
@@ -1126,18 +1180,18 @@
         {
           "id": "no-change",
           "title": "Refused: no ability would change",
-          "text": "Neither item changes what either Muse can do, so the rules refuse the trade. Both items stay where they were.",
+          "text": "Neither a Spark nor a Snack Box changes what either Muse can do, so no ability would change. The rules refuse the trade and both items stay where they were.",
           "status": {
             "task": "rejected",
             "reason": "no ability change"
           },
           "inventory": {
             "a": [
-              "coffee",
+              "spark",
               "paper_map"
             ],
             "b": [
-              "fruit",
+              "snack_box",
               "stamp_bus_stop"
             ]
           },
@@ -1158,11 +1212,11 @@
           },
           "inventory": {
             "a": [
-              "coffee",
+              "spark",
               "paper_map"
             ],
             "b": [
-              "fruit",
+              "snack_box",
               "stamp_bus_stop"
             ]
           },
@@ -1181,11 +1235,11 @@
           },
           "inventory": {
             "a": [
-              "coffee",
+              "spark",
               "paper_map"
             ],
             "b": [
-              "fruit",
+              "snack_box",
               "stamp_bus_stop"
             ]
           },
@@ -1196,8 +1250,8 @@
         },
         {
           "id": "place-limit",
-          "title": "A repeat find gives nothing",
-          "text": "A Muse finds at most one thing per place per day. The second find at the same place is refused and gives no reward.",
+          "title": "A second find at the same place is refused",
+          "text": "A Muse finds at most one thing per place per day. A second find at the same place is refused and gives no reward.",
           "status": {
             "result": "refused",
             "reason": "place limit"
@@ -1214,19 +1268,38 @@
           "next": "retry"
         },
         {
+          "id": "daily-cap",
+          "title": "Refused: ten finds a day",
+          "text": "A Muse finds at most ten things a day. The eleventh find is refused and gives no reward.",
+          "status": {
+            "result": "refused",
+            "reason": "daily limit"
+          },
+          "inventory": {
+            "a": [
+              "paper_map"
+            ]
+          },
+          "checks": [
+            "Finds today: 10 of 10 → refused",
+            "Reward: none"
+          ],
+          "next": "retry"
+        },
+        {
           "id": "withdrawn",
           "title": "The owner withdraws the offer",
-          "text": "The owner withdraws before an answer. Nothing was exchanged and the offer cannot be accepted later.",
+          "text": "The owner withdraws before an answer. Nothing was exchanged and the offer cannot be accepted later. (A scripted preview of the planned cancelled Task state: today's engine has no withdraw action yet.)",
           "status": {
             "task": "cancelled"
           },
           "inventory": {
             "a": [
-              "coffee",
+              "spark",
               "paper_map"
             ],
             "b": [
-              "fruit",
+              "snack_box",
               "stamp_bus_stop"
             ]
           },
@@ -1249,11 +1322,11 @@
           },
           "inventory": {
             "a": [
-              "coffee",
+              "spark",
               "paper_map"
             ],
             "b": [
-              "fruit",
+              "snack_box",
               "stamp_bus_stop"
             ]
           },
@@ -1269,7 +1342,7 @@
         {
           "id": "retry",
           "title": "Try again, from a fresh start",
-          "text": "A refused, withdrawn or expired offer changes nothing, so trying again is always open. Pick what is different this time.",
+          "text": "After a refusal, a withdrawn offer or an expired one, the next try needs something different. Pick what changes this time.",
           "status": {
             "task": "none"
           },
@@ -1305,7 +1378,7 @@
         {
           "id": "other-place",
           "title": "Another place: a new find is allowed",
-          "text": "A different place gives a new find, and the Muses can trade once they are within 100 m of each other.",
+          "text": "A different place gives a new find. A trade still needs both Muses within 100 m and a pair that has not traded today.",
           "status": {
             "place": "different"
           },
