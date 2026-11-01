@@ -14,6 +14,7 @@ async (page) => {
  const base = new URL(page.url()); base.search = '?autoplay=0';
  const browser = page.context().browser(), cases = [];
  const check = (vp, name, ok, detail = '') => cases.push({vp, name, ok: !!ok, detail});
+ const sparkStatus = session => ({model: {id: 'fixture-model', connected: true, live: true}, budget: {day: '2026-11-01', capUsd: 1, spentUsd: 0, reservedUsd: 0, liveCalls: 0, remainingUsd: 1}, turnstile: {sitekey: 'x', configured: false}, session});
  const TABS = ['feed', 'highlights', 'p1', 'autonomy', 'identity', 'location', 'replay', 'flows'];
  for (const mobile of [false, true]) {
   const vp = mobile ? 'mobile' : 'desktop', shot = n => `output/world-ui-${n}-${vp}.png`;
@@ -167,6 +168,16 @@ async (page) => {
    const k0 = reqs.length; await p.waitForTimeout(2800);
    check(vp, 'a request chain started before the replay opened makes no request after it, no POST either', reqs.slice(k0).length === 0, JSON.stringify(reqs.slice(k0)));
    await p.unroute('**/api/status'); await p.unroute('**/api/demo/impostor');
+   // The POST was already sent when the replay opened; its answer arrives during the replay and must not touch the header.
+   await p.locator('#world-panel .tab[data-tab="identity"]').click(); await p.waitForSelector('.id-actions button', {timeout: 20000});
+   await p.route('**/api/status', r => r.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(sparkStatus({tier: 'visitor', expiresAt: Date.now() + 3600000, quota: {perHour: 10, usedThisHour: 0}}))}));
+   await p.route('**/api/demo/impostor', async r => { await new Promise(d => setTimeout(d, 1800)); await r.fulfill({status: 200, contentType: 'application/json', body: '{}'}).catch(() => {}); });
+   await p.locator('.id-actions button', {hasText: 'Try an impostor'}).click(); await p.waitForTimeout(350);
+   await p.locator('#world-panel .tab[data-tab="replay"]').click(); await p.waitForSelector('.replay-view');
+   const k1 = reqs.length; await p.waitForTimeout(2600);
+   const chip1 = await p.locator('#spot-chip').textContent();
+   check(vp, 'an answer that arrives while the replay is open changes nothing: no new request, header not "not updating"', reqs.slice(k1).length === 0 && !/not updating/.test(chip1), JSON.stringify([reqs.slice(k1), chip1]));
+   await p.unroute('**/api/status'); await p.unroute('**/api/demo/impostor');
    // Keyboard and focus.
    await p.locator('#world-panel .tab[data-tab="replay"]').focus();
    let landed = null;
@@ -185,7 +196,9 @@ async (page) => {
    await p.waitForTimeout(11500);
    check(vp, 'leaving the replay tab resumes the live polling', reqs.slice(j0).some(r => r.m === 'GET' && r.p === '/api/world'), JSON.stringify(reqs.slice(j0).map(r => r.p)));
    // Writes: the whole run made none.
-   check(vp, 'no non-GET request to /api in this whole run', reqs.filter(r => r.m !== 'GET').length === 0, JSON.stringify(reqs.filter(r => r.m !== 'GET')));
+   // The only write is the POST the in-flight chain case sends on purpose; the browser answers it itself and it never reaches the service.
+   const posts = reqs.filter(r => r.m !== 'GET');
+   check(vp, 'the only non-GET request to /api in this whole run is the one mocked POST of the in-flight chain case', posts.length === 1 && posts[0].m === 'POST' && posts[0].p === '/api/demo/impostor', JSON.stringify(posts));
 
    // ---------- C: layout and touch targets on every tab ----------
    for (const tab of TABS) {
@@ -258,6 +271,18 @@ async (page) => {
    await c2.unroute(/\/api\/world\/highlights/, fail503); await q2.locator('.world-body button', {hasText: 'Retry'}).click(); await q2.waitForSelector('.world-body [aria-label="Find moments"], .world-body p:has-text("No highlights yet")', {timeout: 15000});
    check(vp, 'A5 Retry loads the highlights once the service answers', true);
    await c2.close();
+   // A refused session call keeps the one-time judge token in the address bar.
+   const c3 = await mk(); const u3 = new URL(base.href); u3.searchParams.set('judge', 'TESTTOKEN');
+   await c3.route('**/api/status', async r => { await new Promise(d => setTimeout(d, 1500)); await r.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(sparkStatus(null))}).catch(() => {}); });
+   await c3.route('**/api/session*', r => r.fulfill({status: 500, contentType: 'application/json', body: '{}'}));
+   const q3 = await open(c3, u3.href); const before3 = await q3.evaluate(() => location.search);
+   await q3.locator('#world-open').click(); await q3.waitForSelector('#world-panel:popover-open');
+   await q3.locator('#world-panel .tab[data-tab="identity"]').click(); await q3.waitForSelector('.id-actions button', {timeout: 20000});
+   await q3.locator('.id-actions button', {hasText: 'Try an impostor'}).click(); await q3.waitForTimeout(250);
+   await q3.locator('#world-panel .tab[data-tab="replay"]').click(); await q3.waitForSelector('.replay-view'); await q3.waitForTimeout(2300);
+   const after3 = await q3.evaluate(() => location.search);
+   check(vp, 'a session request refused by the replay keeps the judge token in the address bar', /judge=TESTTOKEN/.test(before3) && /judge=TESTTOKEN/.test(after3), JSON.stringify([before3, after3]));
+   await c3.close();
   } catch (e) { check(vp, 'A failure states', false, String(e).slice(0, 400)); }
  }
  return {ok: cases.every(c => c.ok ?? true), cases};

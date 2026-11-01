@@ -15,7 +15,7 @@ import {makeHooks} from '../engine/rules';
 import {ensureSession, sparkStatus} from '../live';
 import {ritualCard} from './ritual';
 import {renderFlows, flowState, selectFlow} from './preview-flows';
-import {fetchJson, newHealth, track, resState, stateText, loadLog, type Health} from './resource-state';
+import {fetchJson, newHealth, track, resState, stateText, loadLog, BLOCKED, type Health} from './resource-state';
 import {isolation, enforceIsolation} from './isolation';
 import {mountReplay, replayPlayer, type ReplayEvent} from './replay';
 import {computeAutonomy} from './autonomy';
@@ -200,7 +200,7 @@ export function mountWorldPanel(map: LibreMap) {
   const conn = el('div', 'conn'); conn.id = 'conn';
   const connState = el('span', 'conn-state'); connState.setAttribute('role', 'status');
   const connTime = el('span', 'conn-time');
-  const connRetry = el('button', 'secondary conn-retry', 'Retry'); connRetry.type = 'button'; connRetry.hidden = true; connRetry.onclick = () => void refresh(true);
+  const connRetry = el('button', 'secondary conn-retry', 'Retry'); connRetry.type = 'button'; connRetry.hidden = true; connRetry.onclick = () => void refresh();
   conn.append(el('span', 'conn-label', 'Connection'), connState, connTime, connRetry);
   const tabs = el('nav', 'world-tabs'); tabs.setAttribute('role', 'group'); tabs.setAttribute('aria-label', 'Live world sections'); const body = el('div', 'world-body');
   panel.append(close, el('span', 'eyebrow', 'MUSELY · SHARED WORLD'), title, sub, legend, conn, tabs, body);
@@ -348,8 +348,8 @@ export function mountWorldPanel(map: LibreMap) {
     body.replaceChildren();
     if (tab === 'feed') {
       const evH = health.get('events'), s = resState(evH, events.length > 0);
-      if (s === 'error') { body.append(stateCard('Feed unavailable', `${evH?.error} · there are no events to show yet.`, () => void refresh(true))); return; }
-      if (s === 'stale') body.append(staleNote(`The feed could not be refreshed (${evH?.error}). Showing events up to ${events.length ? at(events[events.length - 1].at) : '—'}.`, () => void refresh(true)));
+      if (s === 'error') { body.append(stateCard('Feed unavailable', `${evH?.error} · there are no events to show yet.`, () => void refresh())); return; }
+      if (s === 'stale') body.append(staleNote(`The feed could not be refreshed (${evH?.error}). Showing events up to ${events.length ? at(events[events.length - 1].at) : '—'}.`, () => void refresh()));
       const ul = el('ul', 'ev-list'); for (const e of events.slice(-80).reverse()) ul.append(row(e));
       body.append(ul.childNodes.length ? ul : el('p', 'muted', 'Waiting for the next heartbeat…'));
     } else if (tab === 'highlights') {
@@ -426,11 +426,11 @@ export function mountWorldPanel(map: LibreMap) {
     const result = el('p', 'muted'); result.setAttribute('role', 'status');
     const run = (label: string, path: string) => { const b = el('button', 'secondary', label); b.type = 'button'; b.onclick = async () => {
       b.disabled = true; result.textContent = 'Running a real check…';
-      try { const st = await sparkStatus(); if (st) await ensureSession(st); const r = await fetch(path, {method: 'POST'}); const j = await r.json(); result.textContent = r.ok ? 'Done. The result is in the Feed and Highlights.' : `Not allowed: ${j.error ?? r.status}`; await refresh(true); }
+      try { const st = await sparkStatus(); if (st) await ensureSession(st); const r = await fetch(path, {method: 'POST'}); const j = await r.json(); result.textContent = r.ok ? 'Done. The result is in the Feed and Highlights.' : `Not allowed: ${j.error ?? r.status}`; await refresh(); }
       catch (err) { result.textContent = 'Could not run: ' + (err as Error).message; }
       b.disabled = false; }; return b; };
     actions.append(run('Try an impostor', '/api/demo/impostor'), run('Try an instruction injection', '/api/demo/injection'), run('Run P0 (judge link)', '/api/p0/run'));
-    body.append(card, ritualCard(() => void refresh(true)), el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it.'), actions, result);
+    body.append(card, ritualCard(() => void refresh()), el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it.'), actions, result);
   }
 
   async function renderLocation(stale: () => boolean) {
@@ -459,7 +459,7 @@ export function mountWorldPanel(map: LibreMap) {
       go.onclick = async () => {
         const res = await fetchJson('/api/owner/location', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({source: 'virtual', preset: sel.value})});
         msg.textContent = res.ok ? 'Moved. Watch the Muse walk on the map.' : /HTTP 40[13]/.test(res.error) ? 'Only the judge link can move the owner in this preview.' : `Could not move the owner (${res.error}). Nothing changed.`;
-        await refresh(true);
+        await refresh();
       };
       box.append(lab, go, msg);
     }
@@ -469,12 +469,13 @@ export function mountWorldPanel(map: LibreMap) {
   }
 
   let lastSeq = 0;
-  async function refresh(force = false) {
-    // Replay makes no requests: background polls wait while it is on screen (a visitor's own Retry still works elsewhere).
-    if (isolation.replay && !force) return;
+  async function refresh() {
+    // Replay makes no requests: nothing refreshes while it is on screen, whoever asked (a poll, a Retry, or a button chain that
+    // began before it opened). The next refresh after the replay asks again.
+    if (isolation.replay) return;
     // First load takes the newest events (the live tail); later polls fetch only what is new since then.
     const [wr, er] = await Promise.all([load<WorldView>('world', '/api/world'), load<Ev[]>('events', lastSeq ? `/api/world/events?since=${lastSeq}&limit=500` : '/api/world/events?tail=200')]);
-    if (isolation.replay && !force) return; // asked before the replay opened: not applied while it is on screen; the next poll fetches it again
+    if (isolation.replay || (!wr.ok && wr.error === BLOCKED) || (!er.ok && er.error === BLOCKED)) return; // asked before the replay opened: not applied; the next refresh fetches it again
     if (wr.ok) world = wr.data;
     if (er.ok && er.data.length) { events.push(...er.data); events = events.slice(-1500); lastSeq = er.data[er.data.length - 1].seq; }
     pins.update(world);

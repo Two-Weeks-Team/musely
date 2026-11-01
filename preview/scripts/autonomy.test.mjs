@@ -110,3 +110,17 @@ test('C09: live model answers without a request id are not counted and never sho
   const some = computeAutonomy([...events, event('2', 'spotlight', {evidence: {requestId: 'live-a'}}, {source: 'live'})], scope).rows.find(r => r.key === 'models');
   assert.equal(some.measured, true); assert.match(some.value, /^1 live/); assert.match(some.note, /1 live model answers without request id \(not counted\)/);
 });
+
+test('C09: a live answer with no request id hides only the live count; replay and scenario counts stay', () => {
+  const rec = {requestId: 'rec-1', responseId: 'r1', model: 'm'};
+  const events = [event('1', 'spotlight', {evidence: {replayOf: rec}}, {source: 'replay'}), event('2', 'spotlight', {evidence: {requestId: null}}, {source: 'live'})];
+  const row = computeAutonomy(events, scope).rows.find(r => r.key === 'models');
+  assert.equal(row.measured, true); assert.equal(row.value, 'live not measured · 1 replay · 0 scenario'); assert.match(row.note, /1 live model answers without request id/);
+});
+
+test('C09: a model answer on any kind of event (decision_rejected, decision_discarded) with a null request id is noted, not a silent zero', () => {
+  for (const kind of ['decision_rejected', 'decision_discarded']) {
+    const row = computeAutonomy([event('1', kind, {evidence: {model: 'm', responseId: 'r1', requestId: null}}, {source: 'live'})], scope).rows.find(r => r.key === 'models');
+    assert.equal(row.measured, false, kind); assert.equal(row.value, 'Not measured', kind); assert.match(row.note, /without request id/, kind);
+  }
+});

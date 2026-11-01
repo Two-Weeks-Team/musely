@@ -79,3 +79,10 @@ test('loadLog: one page, an empty log, a failing later page (partial) and the pa
   r = await loadLog(async since => since < 6000 ? ok(rows(since, 2000)) : ok(rows(since, 7)));
   assert.deepEqual([r.rows.length, r.capped], [6007, false], 'a short last page ends a complete read');
 });
+
+test('judge link: the replay refuses a session request before the token is taken out of the address bar', async () => {
+  const {readFileSync} = await import('node:fs');
+  const src = readFileSync(new URL('../src/live.ts', import.meta.url), 'utf8');
+  assert.ok(src.indexOf('if (isolation.replay) throw new Error(BLOCKED)') > 0);
+  assert.ok(src.indexOf('if (isolation.replay) throw new Error(BLOCKED)') < src.indexOf("params.delete('judge')"), 'the refusal comes first');
+});

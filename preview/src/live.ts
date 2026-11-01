@@ -1,5 +1,8 @@
 // Client side of the Muse Spark proxy (direction v2, 15). The browser never holds a model key:
 // it gets a 24-hour session from Turnstile (or a judge link) and calls /api/muse with structured input.
+import {isolation} from './ui/isolation';
+import {BLOCKED} from './ui/resource-state';
+
 export type SparkStatus = {
   model: {id: string; connected: boolean; live: boolean};
   budget: {day: string; capUsd: number; spentUsd: number; reservedUsd: number; liveCalls: number; remainingUsd: number};
@@ -32,6 +35,8 @@ function loadTurnstile() {
 
 /** Opens a session: judge link token if present in the URL (then removed from the address bar), else Turnstile. */
 export async function ensureSession(status: SparkStatus): Promise<SparkStatus['session']> {
+  // The fixture replay makes no requests. Refuse before the judge token is taken out of the address bar, so a refused call never uses it up.
+  if (isolation.replay) throw new Error(BLOCKED);
   if (status.session) return status.session;
   const params = new URLSearchParams(location.search), judge = params.get('judge');
   let body: Record<string, string>;
