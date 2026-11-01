@@ -51,15 +51,36 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     return json({tier, expiresAt: s.exp, quota: await world(env).quota(s.sid, tier)}, 200, {'set-cookie': sessionCookie(token)});
   }
 
+  // Welcome ritual (6.4): the server picks the three steps; the client never chooses them.
+  if (url.pathname === '/api/ritual/start' && request.method === 'POST') {
+    if (!session) return json({error: 'session_required'}, 401);
+    if (env.BURST && !(await env.BURST.limit({key: 'ritual:' + session.sid})).success) return json({error: 'slow_down'}, 429);
+    const started = await world(env).ritualStart(session.sid);
+    return started ? json(started) : json({error: 'too_many_open_rituals', detail: 'Finish or let an open ritual expire (3 minutes) first.'}, 429);
+  }
+  if (url.pathname === '/api/ritual/record' && request.method === 'GET') return json({record: await world(env).ritualOwnerRecord()});
+
   if (url.pathname === '/api/muse' && request.method === 'POST') {
-    let body: unknown;
+    let body: any;
     try { body = await readJson(request, 1_300_000); } catch { return json({error: 'bad_request'}, 400); }
     const stub = world(env);
-    return handleMuse(body, session, await hashIp(env.SESSION_SECRET ?? 'unset', ip), {
+    const isRitual = body?.action === 'challenge';
+    if (isRitual) {
+      if (!session) return json({error: 'session_required'}, 401);
+      const steps = await stub.ritualTake(String(body?.input?.challengeId ?? ''), session.sid);
+      if (!steps) return json({error: 'ritual_expired_or_used'}, 400);
+      body = {action: 'challenge', input: {steps, frames: body?.input?.frames}};
+    }
+    const res = await handleMuse(body, session, await hashIp(env.SESSION_SECRET ?? 'unset', ip), {
       ledger: {reserve: r => stub.reserve(r), settle: (id, cost, outcome) => stub.settle(id, cost, outcome)},
       model: {base: env.MODEL_BASE, key: env.MODEL_API_KEY, model: env.MODEL_ID, timeoutMs: MODEL_TIMEOUT_MS},
       burst: env.BURST ? async key => (await env.BURST!.limit({key})).success : undefined,
     });
+    if (!isRitual || !session) return res;
+    const out = await res.clone().json().catch(() => null) as any;
+    const results = Array.isArray(out?.output?.results) ? out.output.results.map((r: any) => ({step: String(r.step).slice(0, 40), passed: r.passed === true, confidence: Number(r.confidence) || 0})) : [];
+    if (out && results.length === 3) await stub.ritualRecord({at: Date.now(), passed: out.source === 'live' && results.every((r: any) => r.passed), results, requestId: out.evidence?.requestId ?? null, model: out.evidence?.model ?? null, tier: session.tier}, session.sid.slice(0, 6));
+    return res;
   }
 
   // Shared world (direction v2, 8): read-only views for every visitor.

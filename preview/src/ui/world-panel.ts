@@ -13,6 +13,7 @@ import {MUSE_VARIANTS} from '../character-kit/catalog';
 import {createWorld, tick, TICK_MS} from '../engine/world';
 import {makeHooks} from '../engine/rules';
 import {ensureSession, sparkStatus} from '../live';
+import {ritualCard} from './ritual';
 
 type Ev = {seq: number; id: string; tick: number; at: number; source: 'live' | 'rule' | 'scripted' | 'replay'; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data: any; tags: string[]};
 type MuseView = {id: string; place: string; travel: {to: string; departAt: number; arriveAt: number; speed: string} | null; beat: {id: string; line: string | null} | null; inventory: string[]; reflection: string; wants?: {goal: string; items: string[]; source: string}};
@@ -63,6 +64,7 @@ export function describe(e: Ev): string {
     case 'injection_blocked': return `An instruction from ${b} to ${a} was blocked`;
     case 'welcome_gift': return `${a} received a welcome gift`;
     case 'new_day': return `A new day begins (${d.day})`;
+    case 'ritual_judged': return `Welcome ritual ${d.passed ? 'passed' : 'not passed'} (${d.who})`;
     default: return e.line ?? e.kind.replace(/_/g, ' ');
   }
 }
@@ -302,7 +304,7 @@ export function mountWorldPanel(map: LibreMap) {
       catch (err) { result.textContent = 'Could not run: ' + (err as Error).message; }
       b.disabled = false; }; return b; };
     actions.append(run('Try an impostor', '/api/demo/impostor'), run('Try an instruction injection', '/api/demo/injection'), run('Run P0 (judge link)', '/api/p0/run'));
-    body.append(card, el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it.'), actions, result);
+    body.append(card, ritualCard(() => void refresh()), el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it.'), actions, result);
   }
 
   async function renderLocation(stale: () => boolean) {
@@ -311,10 +313,14 @@ export function mountWorldPanel(map: LibreMap) {
     const box = el('div', 'id-card');
     box.append(el('span', 'eyebrow', 'OWNER LOCATION · 13.1'));
     if (!loc) { box.append(el('h4', '', 'Virtual location (demo) · HQ commons'), el('p', 'muted', 'Location switching is being connected (MCP server PR). Until then the owner location is the HQ commons preset.')); body.append(box); return; }
-    box.append(el('h4', '', `${loc.source === 'gps' ? 'GPS (phase 2)' : 'Virtual location (demo)'} · ${loc.presetLabel ?? loc.preset ?? ''}`));
+    const presetLabel = ((loc.presets ?? []) as {id: string; label: string}[]).find(p => p.id === loc.preset)?.label ?? loc.cell_label ?? loc.preset ?? '';
+    box.append(el('h4', '', `${loc.source === 'gps' ? 'GPS (phase 2)' : 'Virtual location (demo)'} · ${presetLabel}`));
     const dl = el('dl', 'facts');
     const f = (k: string, v: unknown) => { if (v !== undefined && v !== null && v !== '') dl.append(el('dt', '', k), el('dd', '', String(v))); };
-    f('Owner cell', loc.cellLabel ?? loc.cell); f("Muse's current place", placeName(loc.musePlace) || loc.musePlace); f('ETA', loc.etaMs ? Math.round(loc.etaMs / 60000) + ' min' : loc.eta);
+    const m = loc.muse ?? {};
+    f('Owner cell', `${loc.cell_label ?? ''} (${loc.cell ?? '?'})${loc.neighborhood_verified ? ' · neighborhood verified' : ''}`);
+    f("Muse's current place", m.place?.name ?? m.place?.id);
+    f('Muse is', m.travelling_to ? `walking to ${m.travelling_to.name ?? m.travelling_to.id} (${m.speed ?? 'walk'}), about ${Math.max(1, Math.round((m.eta_ms ?? 0) / 60000))} min` : m.at_owner_cell ? 'with the owner' : 'away from the owner cell');
     box.append(dl, el('p', 'muted', 'The owner cell is where the Muse walks to and what neighborhood verification checks. Discovery, trades and the MCP world state use the Muse\'s own current place, which changes only by travelling or a verified teleport. No device GPS spoofing or VPN.'));
     const presets = (loc.presets ?? []) as {id: string; label: string}[];
     if (presets.length) {
