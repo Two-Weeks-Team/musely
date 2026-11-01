@@ -27,10 +27,17 @@ async function call<T>(cfg: ThreadsConfig, method: 'GET' | 'POST', path: string,
     ? await (cfg.fetcher ?? fetch)(`${url}?${q(params)}`)
     : await (cfg.fetcher ?? fetch)(url, {method: 'POST', headers: {'content-type': 'application/x-www-form-urlencoded'}, body: q(params)});
   const body = await res.json().catch(() => ({})) as any;
-  if (!res.ok || body.error) throw new ThreadsError(body.error?.message ?? `HTTP ${res.status}`, res.status);
+  if (!res.ok || body.error) throw new ThreadsError(body.error?.message ?? `HTTP ${res.status}`, res.status, body.error?.code, body.error?.error_subcode, body.error?.type);
   return body as T;
 }
-export class ThreadsError extends Error { status: number; constructor(m: string, s: number) { super(m); this.status = s; } }
+export class ThreadsError extends Error {
+  status: number; code?: number; subcode?: number; type?: string;
+  constructor(m: string, s: number, code?: number, subcode?: number, type?: string) { super(m); this.status = s; this.code = code; this.subcode = subcode; this.type = type; }
+  /** Expired, invalid or revoked token (Graph error 190 / OAuthException): says nothing about the post. */
+  get isAuth() { return this.code === 190 || this.code === 102 || this.status === 401 || (this.type === 'OAuthException' && this.code !== 100); }
+  /** The post itself is gone: 404, or Graph "object does not exist" (code 100, subcode 33). */
+  get isMissingPost() { return !this.isAuth && (this.status === 404 || (this.code === 100 && this.subcode === 33)); }
+}
 
 export async function exchangeCode(cfg: ThreadsConfig, code: string) {
   const short = await call<{access_token: string; user_id: string | number}>(cfg, 'POST', '/oauth/access_token', {client_id: cfg.appId, client_secret: cfg.appSecret, grant_type: 'authorization_code', redirect_uri: cfg.redirectUri, code});
@@ -79,8 +86,10 @@ export async function recheck(cfg: ThreadsConfig, token: string, record: ClaimRe
     const m = matchClaim(post, {handle: record.handle, display: record.fingerprint});
     return {...record, status: m.ok ? 'claimed' : 'mismatch', checkedAt: now, machineVerified: m.ok};
   } catch (e) {
-    if (e instanceof ThreadsError && (e.status === 400 || e.status === 404)) return {...record, status: 'claim_revoked', checkedAt: now, machineVerified: false, note: 'post no longer readable'};
-    return {...record, note: 'recheck failed: ' + String((e as Error).message).slice(0, 80)};
+    // Only a confirmed missing post revokes the claim. Token problems keep the last verified state.
+    if (e instanceof ThreadsError && e.isMissingPost) return {...record, status: 'claim_revoked', checkedAt: now, machineVerified: false, note: 'post deleted'};
+    const auth = e instanceof ThreadsError && e.isAuth;
+    return {...record, checkedAt: now, note: (auth ? 'recheck paused: Threads token expired or invalid; last verified state kept' : 'recheck failed: ' + String((e as Error).message).slice(0, 80))};
   }
 }
 

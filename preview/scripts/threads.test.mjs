@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {authorizeUrl, claimViaWorker, recheck, matchClaim, ownerDirectRecord, ThreadsError} from '../worker/core/threads.ts';
 
 const display = 'dead ed5c 1e55 d7a3', text = `I am claiming my Muse on Musely. Fingerprint: ${display} · preview.musely.net`;
-function fakeGraph({username = 'centisgood', postedText = text, deleted = false} = {}) {
+function fakeGraph({username = 'centisgood', postedText = text, deleted = false, tokenExpired = false} = {}) {
   const calls = [];
   const fetcher = async (url, init) => {
     const u = new URL(url), body = init?.body ? Object.fromEntries(new URLSearchParams(init.body)) : Object.fromEntries(u.searchParams);
@@ -14,6 +14,8 @@ function fakeGraph({username = 'centisgood', postedText = text, deleted = false}
     if (u.pathname === '/v1.0/me') return ok({id: '42', username});
     if (u.pathname === '/v1.0/42/threads') return ok({id: 'container-1'});
     if (u.pathname === '/v1.0/42/threads_publish') return body.creation_id === 'container-1' ? ok({id: 'media-9'}) : new Response('{}', {status: 400});
+    if (u.pathname === '/v1.0/media-9' && tokenExpired) return new Response(JSON.stringify({error: {message: 'Error validating access token: Session has expired', type: 'OAuthException', code: 190}}), {status: 400});
+    if (u.pathname === '/v1.0/media-9' && deleted === 'graph') return new Response(JSON.stringify({error: {message: 'Unsupported get request. Object does not exist', type: 'GraphMethodException', code: 100, error_subcode: 33}}), {status: 400});
     if (u.pathname === '/v1.0/media-9') return deleted ? new Response(JSON.stringify({error: {message: 'not found'}}), {status: 404}) : ok({id: 'media-9', text: postedText, permalink: 'https://www.threads.com/@centisgood/post/ABC123', username});
     return new Response('{}', {status: 404});
   };
@@ -58,4 +60,14 @@ test('owner-direct path only accepts the owner\'s post URL and is never machine-
   assert.equal(r.machineVerified, false);
   assert.equal(r.status, 'pending_claim');
   assert.deepEqual(matchClaim({username: 'CentisGood', text: `x ${display} y`}, {handle: 'centisgood', display}), {ok: true, handleOk: true, textOk: true});
+});
+
+test('an expired token keeps the last verified claim; only a missing post revokes it', async () => {
+  const {record} = await claimViaWorker(fakeGraph().cfg, 'good', expected);
+  const expired = await recheck(fakeGraph({tokenExpired: true}).cfg, 'long', record);
+  assert.equal(expired.status, 'claimed');
+  assert.equal(expired.machineVerified, true);
+  assert.match(expired.note, /token expired/);
+  assert.equal((await recheck(fakeGraph({deleted: 'graph'}).cfg, 'long', record)).status, 'claim_revoked', 'Graph code 100/33 means the post is gone');
+  assert.equal((await recheck(fakeGraph({deleted: true}).cfg, 'long', record)).status, 'claim_revoked', '404 means the post is gone');
 });
