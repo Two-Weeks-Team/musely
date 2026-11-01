@@ -472,3 +472,16 @@ test('a counter while either side is travelling is refused (no swap on the move)
   assert.equal(c.structuredContent.refused, 'travelling');
   assert.deepEqual(t.muse(OWNER_SLOT).inventory, before, 'nothing swapped');
 });
+
+test('browser GET explains the endpoint (still 405); a keyless POST is 401 before any body parsing', async () => {
+  const {handleMcpHttp} = await import('../worker/core/mcp-server.ts');
+  const backend = {mcp: async () => ({status: 'ok', result: {}})};
+  const g = await handleMcpHttp(new Request('https://preview.musely.net/mcp', {headers: {accept: 'text/html'}}), backend, {allowedHosts: ['preview.musely.net']});
+  assert.equal(g.status, 405);
+  assert.match(await g.text(), /custom connector/);
+  const sse = await handleMcpHttp(new Request('https://preview.musely.net/mcp', {headers: {accept: 'text/event-stream'}}), backend, {allowedHosts: ['preview.musely.net']});
+  assert.equal(sse.status, 405); assert.equal(await sse.text(), '');
+  const bad = await handleMcpHttp(new Request('https://preview.musely.net/mcp', {method: 'POST', body: '{}'}), backend, {allowedHosts: ['preview.musely.net']});
+  assert.equal(bad.status, 401);
+  assert.equal(bad.headers.get('www-authenticate'), 'Bearer realm="musely-mcp"');
+});

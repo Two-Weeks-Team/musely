@@ -31,6 +31,14 @@ const rpcError = (id: unknown, code: number, message: string, status: number, he
 
 export const UNAUTHORIZED = -32001;
 
+const BROWSER_PAGE = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Musely MCP endpoint</title>
+<body style="font:15px/1.6 system-ui,sans-serif;background:#101623;color:#F2E9D8;max-width:560px;margin:10vh auto;padding:0 20px">
+<h1 style="font:400 26px Georgia,serif">Musely MCP endpoint</h1>
+<p>This address is for MCP clients, not browsers. Add it to your Muse as a custom connector:</p>
+<p><b>URL</b> https://preview.musely.net/mcp<br><b>Header</b> Authorization: Bearer msly_…</p>
+<p>Transport: Streamable HTTP (MCP 2025-06-18), JSON-RPC over POST. A browser visit gets HTTP 405 by design.</p>
+<p><a style="color:#FFD98A" href="/">Back to Musely</a></p></body>`;
+
 export async function handleMcpHttp(request: Request, backend: McpBackend, opts: {allowedHosts: string[]; rateLimit?: (key: string) => Promise<boolean>}): Promise<Response> {
   const origin = request.headers.get('origin');
   if (origin) {
@@ -38,12 +46,24 @@ export async function handleMcpHttp(request: Request, backend: McpBackend, opts:
     try { host = new URL(origin).host; } catch { /* invalid origin */ }
     if (!opts.allowedHosts.includes(host)) return rpcError(null, -32600, 'Origin not allowed', 403);
   }
-  if (request.method !== 'POST') return new Response(null, {status: 405, headers: {allow: 'POST', 'cache-control': 'no-store'}});
+  if (request.method !== 'POST') {
+    // The spec requires 405 for GET on a server without an SSE stream; a browser visitor gets a short explanation with it.
+    const wantsHtml = request.method === 'GET' && (request.headers.get('accept') ?? '').includes('text/html');
+    return new Response(wantsHtml ? BROWSER_PAGE : null, {status: 405, headers: {allow: 'POST', 'cache-control': 'no-store', ...(wantsHtml ? {'content-type': 'text/html; charset=utf-8'} : {})}});
+  }
+
   const version = request.headers.get('mcp-protocol-version');
   if (version && !SUPPORTED_PROTOCOLS.includes(version)) return rpcError(null, -32600, `Unsupported MCP-Protocol-Version: ${version.slice(0, 20)}`, 400, {}, {supported: SUPPORTED_PROTOCOLS});
 
   const text = await request.text();
   if (text.length > MAX_BODY) return rpcError(null, -32600, 'Request too large', 413);
+  // Authentication before any body validation: a caller without a key always learns that first
+  // (the request id is echoed when the body happens to be readable).
+  if (!looksLikeAgentKey(/^Bearer\s+(\S+)$/i.exec(request.headers.get('authorization') ?? '')?.[1] ?? '')) {
+    let id: unknown = null;
+    try { const j = JSON.parse(text); if (j && (typeof j.id === 'string' || typeof j.id === 'number')) id = j.id; } catch { /* unreadable body */ }
+    return rpcError(id as never, UNAUTHORIZED, 'Unauthorized: send Authorization: Bearer <Musely agent key>', 401, {'www-authenticate': 'Bearer realm="musely-mcp"'});
+  }
   let msg: unknown;
   try { msg = JSON.parse(text); } catch { return rpcError(null, -32700, 'Parse error', 400); }
   if (Array.isArray(msg)) return rpcError(null, -32600, 'JSON-RPC batching is not supported (removed in MCP 2025-06-18)', 400);
