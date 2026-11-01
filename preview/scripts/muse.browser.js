@@ -39,7 +39,7 @@ async(page)=>{
     if(t>=16&&!m.bubbles.speech)throw Error('Dialogue framing failed '+t);if(m.canvasCount!==1)throw Error('A second world canvas was substituted');
     if(m.characters.filter(c=>c.lod===0).length>2)throw Error('More than two LOD0 actors');
     scenes.push({time:t,actions:m.characters.map(c=>c.action),lods:m.characters.map(c=>c.lod),drawCalls:m.drawCalls});}
-   await p.evaluate(()=>{const w=window.__world,m=w.getMetrics().muses[3];w.select(3);w.map.jumpTo({center:w.alignmentAt(m.position[0],m.position[2]).geo,zoom:23.6,pitch:54,bearing:-18});});await p.waitForTimeout(1500);
+   await p.evaluate(()=>{const w=window.__world,m=w.getMetrics().muses[3];w.select(3);w.map.jumpTo({center:w.alignmentAt(m.position[0],m.position[2]).geo,zoom:23.6,pitch:54,bearing:12});});await p.waitForTimeout(1500);
    const close=await p.evaluate(()=>window.__world.getMetrics());if(close.characters[3].lod!==0)throw Error('Selected close Muse is not LOD0: '+close.characters[3].lod);
    results.push({viewport:mobile?'390x844 touch emulation':'1440x1000',viewer,scenes,closeLods:close.characters.map(c=>c.lod),fps:close.fps,errors:[...errors,...close.errors]});if(errors.length||close.errors.length)throw Error([...errors,...close.errors].join(';'));
   }finally{await ctx.close();}

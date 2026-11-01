@@ -17,7 +17,9 @@ declare global {interface Window {__world:any}}
 setWorkerUrl(location.protocol==='file:'?'data:text/javascript;charset=utf-8,'+encodeURIComponent(assetData.worker)+'#maplibre-worker.cjs':URL.createObjectURL(new Blob([assetData.worker],{type:'text/javascript'}))+'#maplibre-worker.cjs');setWorkerCount(2);
 const $=<T extends HTMLElement=HTMLElement>(id:string)=>document.getElementById(id) as T;
 const anchor=geography.commons as [number,number],origin=MercatorCoordinate.fromLngLat(anchor,0),unit=origin.meterInMercatorCoordinateUnits();
-const toGeo=(x:number,z:number)=>new MercatorCoordinate(origin.x+x*unit,origin.y+z*unit,0).toLngLat();
+// The authored commons is turned to the surrounding mapped road grid (local +x runs along the grid's 30° streets).
+const gridYaw=geography.gridBearingDeg*Math.PI/180,gridCos=Math.cos(gridYaw),gridSin=Math.sin(gridYaw),BEARING=geography.cameraBearingDeg;
+const toGeo=(x:number,z:number)=>new MercatorCoordinate(origin.x+(x*gridCos-z*gridSin)*unit,origin.y+(x*gridSin+z*gridCos)*unit,0).toLngLat();
 const autoplay=new URLSearchParams(location.search).get('autoplay')!=='0';
 // The rigged ten-character kit is the default; ?characters=legacy shows the earlier rigid preview characters.
 const useKit=new URLSearchParams(location.search).get('characters')!=='legacy';
@@ -26,7 +28,7 @@ let clock=makeClock(),lifeTime=0,last=performance.now(),selected=0,follow=false,
 const statuses:string[]=[],errors:string[]=[];let frame=0,drawCalls=0,triangles=0,fps=0,fpsFrames=0,fpsStart=performance.now();
 const initialStyle={...style,sources:{...style.sources,'arrival-overview':{type:'geojson',data:arrivalMap}},layers:[style.layers[0],{id:'arrival-water',type:'fill',source:'arrival-overview',maxzoom:14,filter:['==',['get','kind'],'water'],paint:{'fill-color':'#101623'}},{id:'arrival-roads',type:'line',source:'arrival-overview',maxzoom:14,filter:['==',['get','kind'],'transportation'],paint:{'line-color':'#35415A','line-width':1.2,'line-opacity':.6}},...style.layers.slice(1)]};
 let sceneReadyAtMs=0,onlineMapReadyAtMs=0,detailReadyAtMs=0;
-const map=new LibreMap({container:'map',style:initialStyle as unknown as StyleSpecification,center:anchor,zoom:innerWidth<700?9.6:10.25,pitch:54,bearing:-18,minZoom:8,maxZoom:23.8,maxPitch:65,attributionControl:false,canvasContextAttributes:{antialias:true,preserveDrawingBuffer:true},fadeDuration:200});
+const map=new LibreMap({container:'map',style:initialStyle as unknown as StyleSpecification,center:anchor,zoom:innerWidth<700?9.6:10.25,pitch:54,bearing:BEARING,minZoom:8,maxZoom:23.8,maxPitch:65,attributionControl:false,canvasContextAttributes:{antialias:true,preserveDrawingBuffer:true},fadeDuration:200});
 map.on('styleimagemissing',e=>{if(!map.hasImage(e.id))map.addImage(e.id,{width:1,height:1,data:new Uint8Array(4)});});
 map.dragRotate.disable();map.touchZoomRotate.disableRotation();
 function manual(){follow=false;tourCamera=false;$('tour').classList.remove('active');$('follow').classList.remove('active');if(!tour)$('tour').textContent='Play story · 3:30';}
@@ -37,12 +39,12 @@ map.on('dragstart',e=>{if(e.originalEvent)manual();});map.on('zoomstart',e=>{if(
 map.on('error',e=>{const text=String(e.error?.message||e.error);errors.push(text);$('network-note').hidden=false;$('network-note').textContent='Some map details could not load. Check your connection.';});
 const pin=document.createElement('button');pin.className='place-pin';pin.type='button';pin.innerHTML='<span class="pin-star">✳</span><span>The commons<small>8 Muses · an imagined place at HQ</small></span>';pin.setAttribute('aria-label','Visit the commons');pin.onclick=()=>visit(21.2);
 const marker=new Marker({element:pin,anchor:'bottom',offset:[0,-8]}).setLngLat(anchor).addTo(map);
-function visit(zoom=21.7){manual();map.flyTo({center:anchor,zoom,pitch:54,bearing:-18,duration:4500,essential:true});}
-$('visit').onclick=()=>visit();$('bay').onclick=()=>{manual();map.flyTo({center:anchor,zoom:10.25,pitch:42,bearing:-18,duration:5000,essential:true});};
+function visit(zoom=21.7){manual();map.flyTo({center:anchor,zoom,pitch:54,bearing:BEARING,duration:4500,essential:true});}
+$('visit').onclick=()=>visit();$('bay').onclick=()=>{manual();map.flyTo({center:anchor,zoom:10.25,pitch:42,bearing:BEARING,duration:5000,essential:true});};
 $('plus').onclick=()=>{manual();map.zoomIn({duration:500});};$('minus').onclick=()=>{manual();map.zoomOut({duration:500});};
-$('follow').onclick=()=>{manual();follow=true;$('follow').classList.add('active');const p=positionAt(selected,lifeTime);map.flyTo({center:toGeo(p.x,p.z),zoom:22.7,pitch:55,bearing:-18,duration:2300,essential:true});};
+$('follow').onclick=()=>{manual();follow=true;$('follow').classList.add('active');const p=positionAt(selected,lifeTime);map.flyTo({center:toGeo(p.x,p.z),zoom:22.7,pitch:55,bearing:BEARING,duration:2300,essential:true});};
 $('pause').onclick=()=>{clock.paused=!clock.paused;$('pause').textContent=clock.paused?'Resume world':'Pause world';$('pause').setAttribute('aria-pressed',String(clock.paused));if(clock.paused)map.stop();};
-function startStory(){follow=false;clock=makeClock();lifeTime=0;selected=0;ownerDecision='pending';$('decision-note').textContent='Local interaction only. Nothing is sent or booked.';tour=true;tourCamera=true;document.body.classList.add('story-mode');$('tour').classList.add('active');$('tour').textContent='Story · 0:00 / 3:30';$('pause').textContent='Pause world';$('pause').setAttribute('aria-pressed','false');map.jumpTo({center:anchor,zoom:innerWidth<700?9.6:10.25,pitch:54,bearing:-18});last=performance.now();}
+function startStory(){follow=false;clock=makeClock();lifeTime=0;selected=0;ownerDecision='pending';$('decision-note').textContent='Local interaction only. Nothing is sent or booked.';tour=true;tourCamera=true;document.body.classList.add('story-mode');$('tour').classList.add('active');$('tour').textContent='Story · 0:00 / 3:30';$('pause').textContent='Pause world';$('pause').setAttribute('aria-pressed','false');map.jumpTo({center:anchor,zoom:innerWidth<700?9.6:10.25,pitch:54,bearing:BEARING});last=performance.now();}
 $('tour').onclick=startStory;
 function seekStory(t:number){follow=false;$('follow').classList.remove('active');clock.elapsed=Math.max(0,Math.min(DURATION,t));clock.tourFinished=clock.elapsed>=DURATION;lifeTime=clock.elapsed;tour=!clock.tourFinished;tourCamera=true;bubbles?.invalidate();if(clock.tourFinished){$('tour').textContent='Replay story · 3:30';$('tour').classList.remove('active');}updateUI();}
 $('story-scrubber').oninput=()=>seekStory(Number(($('story-scrubber') as HTMLInputElement).value));
@@ -60,12 +62,12 @@ $('story-title').textContent=chapter.title;$('story-speaker').textContent=turn?P
 updateUI();
 let bubbles:ReturnType<typeof makeBubbles>;
 let world:Awaited<ReturnType<typeof makeWorld>>,renderer:T.WebGLRenderer,camera:T.Camera,projection=new T.Matrix4();
-const localMatrix=new T.Matrix4().makeTranslation(origin.x,origin.y,origin.z).multiply(new T.Matrix4().makeScale(unit,-unit,unit)).multiply(new T.Matrix4().makeRotationX(Math.PI/2));
+const localMatrix=new T.Matrix4().makeTranslation(origin.x,origin.y,origin.z).multiply(new T.Matrix4().makeScale(unit,-unit,unit)).multiply(new T.Matrix4().makeRotationX(Math.PI/2)).multiply(new T.Matrix4().makeRotationY(-gridYaw));
 const layer:CustomLayerInterface={id:'musely-world',type:'custom',renderingMode:'3d',onAdd(_map,gl){renderer=new T.WebGLRenderer({canvas:map.getCanvas(),context:gl as WebGL2RenderingContext,antialias:true});renderer.autoClear=false;renderer.outputColorSpace=T.SRGBColorSpace;renderer.toneMapping=T.NoToneMapping;renderer.toneMappingExposure=1.15;camera=new T.Camera();if(world?.actors){const pmrem=new T.PMREMGenerator(renderer),room=new RoomEnvironment();world.scene.environment=pmrem.fromScene(room,.04).texture;world.scene.environmentIntensity=.12;room.dispose();pmrem.dispose();renderer.resetState();}},render(gl,args){
  const now=performance.now(),rawDt=(now-last)/1000,dt=Math.min(rawDt,.1);last=now;if(!clock.paused){if(tour){clock=advance(clock,rawDt);lifeTime=clock.elapsed;}else lifeTime+=dt;}
  if(tourCamera){const c=tourCameraAt(clock.elapsed,selected,innerWidth<700),g=toGeo(c.x,c.z);
   const center:[number,number]=[g.lng,g.lat];
-  map.jumpTo({center,zoom:c.zoom,pitch:54,bearing:-18});
+  map.jumpTo({center,zoom:c.zoom,pitch:54,bearing:BEARING});
  }else if(follow&&!map.isMoving()){const p=positionAt(selected,lifeTime);map.setCenter(toGeo(p.x,p.z));}
  if(tour&&clock.tourFinished){tour=false;tourCamera=false;$('tour').textContent='Replay story · 3:30';$('tour').classList.remove('active');}
  world.update(lifeTime,selected);
