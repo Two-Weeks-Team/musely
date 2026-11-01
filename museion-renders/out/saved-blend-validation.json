@@ -1,0 +1,29 @@
+{
+  "status": "PASS",
+  "file": "/Users/kimsejun/museion-renders/out/museion-enhanced.blend",
+  "readback": "fresh Blender background process; no render or file mutation",
+  "scenes": [
+    "01 • Campfire",
+    "02 • Ember split",
+    "03 • Cold open",
+    "04 • Flame enhanced",
+    "05 • Avatar variants",
+    "06 • Cafe enhanced",
+    "07 • Ember split animation"
+  ],
+  "reference_scene_object_counts": {
+    "01 • Campfire": 233,
+    "02 • Ember split": 279,
+    "03 • Cold open": 249
+  },
+  "all_compositor_scene_references_correct": true,
+  "split_visibility_at_21": true,
+  "arrival_errors": [
+    0.0,
+    0.0
+  ],
+  "final_phone_emission": [
+    5.0,
+    5.0
+  ]
+}

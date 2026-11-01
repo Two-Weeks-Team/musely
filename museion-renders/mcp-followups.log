@@ -1,0 +1,55 @@
+──────────────────────────────────────────────────────────────
+  blender-mcp is now mcp-for-blender.
+
+  This package is a compatibility wrapper. Everything still
+  works and there is nothing you need to change today.
+
+  When convenient, update your MCP client config to:
+      uvx mcp-for-blender
+
+  https://github.com/ahujasid/mcp-for-blender
+──────────────────────────────────────────────────────────────
+
+2026-10-30 20:54:58,948 - BlenderMCPServer - INFO - BlenderMCP server starting up
+2026-10-30 20:54:58,948 - BlenderMCPServer - WARNING - MCP for Blender addon on disk is outdated (expected protocol 15): /Users/kimsejun/Library/Application Support/Blender/5.2/scripts/addons/blender_mcp.py. Run `uvx mcp-for-blender install-addon` to update it, then in Blender: Preferences → Add-ons → disable and re-enable 'Interface: MCP for Blender' (or restart Blender) and click Start MCP Server.
+2026-10-30 20:54:58,949 - blender-mcp-telemetry - WARNING - Telemetry disabled via environment variable
+2026-10-30 20:54:58,951 - BlenderMCPServer - INFO - Connected to Blender at localhost:9876
+2026-10-30 20:54:58,951 - BlenderMCPServer - INFO - Created new persistent connection to Blender
+2026-10-30 20:54:58,951 - BlenderMCPServer - INFO - Sending command: get_addon_info with params: None
+2026-10-30 20:54:58,951 - BlenderMCPServer - INFO - Command sent, waiting for response...
+2026-10-30 20:54:58,979 - BlenderMCPServer - INFO - Received complete response (358 bytes)
+2026-10-30 20:54:58,979 - BlenderMCPServer - INFO - Received 358 bytes of data
+2026-10-30 20:54:58,979 - BlenderMCPServer - INFO - Response parsed, status: success
+2026-10-30 20:54:58,979 - BlenderMCPServer - WARNING - Blender addon protocol 5 is behind expected 15. Run `uvx mcp-for-blender install-addon` to update it, then restart Blender or disable/enable 'Interface: MCP for Blender', then Start MCP Server. Trajectory still works via fallbacks.
+2026-10-30 20:54:58,979 - BlenderMCPServer - INFO - Successfully connected to Blender on startup
+2026-10-30 20:54:58,979 - BlenderMCPServer - WARNING - Blender addon protocol 5 is behind expected 15. Run `uvx mcp-for-blender install-addon` to update it, then restart Blender or disable/enable 'Interface: MCP for Blender', then Start MCP Server. Trajectory still works via fallbacks.
+2026-10-30 20:54:58,982 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-10-30 20:54:58,982 - BlenderMCPServer - INFO - MCP client mcp 0.1.0: extensions=[], apps=False, openai_forms=False
+2026-10-30 20:54:58,983 - BlenderMCPServer - INFO - Sending command: execute_code with params: {'code': '"""Create editable Ember Split and Cold Open variants from the approved hero.\nRun through mcp_client.py after visual inspection of the hero preview.\n"""\nimport bpy, math, random, json\nfrom pathlib import Path\nfrom mathutils import Vector\nOUT=Path(\'/Users/kimsejun/museion-renders\')\nhero=bpy.context.scene\nhero.render.resolution_percentage=100\nhero.render.filepath=str(OUT/\'diorama-hero.png\')\nhero.cycles.samples=160\nhero[\'Review\']=\'Hero preview inspected for full framing, three-color palette and specified object counts.\'\n\ndef clone(source,name):\n    bpy.context.window.scene=source\n    bpy.ops.scene.new(type=\'FULL_COPY\')\n    s=bpy.context.scene;s.name=name\n    if s.compositing_node_group:\n        # RLayers must point at this variant, not the source hero.\n        s.compositing_node_group=s.compositing_node_group.copy()\n        for n in s.compositing_node_group.nodes:\n            if n.bl_idname==\'CompositorNodeRLayers\':n.scene=s\n    return s\n\ndef material(name,color,strength):\n    m=bpy.data.materials.new(name);m.use_nodes=True\n    p=m.node_tree.nodes.get(\'Principled BSDF\')\n    p.inputs[\'Base Color\'].default_value=(*color,1)\n    p.inputs[\'Emission Color\'].default_value=(*color,1)\n    p.inputs[\'Emission Strength\'].default_value=strength\n    return m\n\ndef line(scene,name,points,radius,material):\n    c=bpy.data.curves.new(name,\'CURVE\');c.dimensions=\'3D\';c.resolution_u=1\n    s=c.splines.new(\'POLY\');s.points.add(len(points)-1)\n    for p,co in zip(s.points,points):p.co=(*co,1)\n    c.bevel_depth=radius;c.bevel_resolution=1\n    o=bpy.data.objects.new(name,c);scene.collection.objects.link(o);o.data.materials.append(material)\n    return o\n\nsplit=clone(hero,\'02 • Ember split\')\nsplit.render.filepath=str(OUT/\'ember-split.png\')\ntrailmat=material(\'Ember split • warm trails\',(1,.39,.075),1.6)\nheartmat=material(\'Ember split • hearts\',(1,.70,.28),1.7)\ntargets=[Vector(p) for p in json.loads(split[\'Phone targets\'])]\nR=Vector((9,-8,0)).normalized();B=Vector((-8,-9,0)).normalized()\nstart=Vector((0,0,1.63))\nrandom.seed(18)\nfor side,end in enumerate(targets,1):\n    sign=-1 if side==1 else 1\n    c1=start+R*(sign*.35)+Vector((0,0,.63))\n    c2=end+R*(-sign*.16)+Vector((0,0,.83))\n    def path(t):return (1-t)**3*start+3*(1-t)**2*t*c1+3*(1-t)*t*t*c2+t**3*end\n    for j in range(12):\n        a=j/12;b=min(a+.042,.99)\n        line(split,\'Ember %d • broken flight trail %02d\'%(side,j),[path(a+(b-a)*k/5) for k in range(6)],.009,trailmat)\n    for j in range(9):\n        t=.10+j*.095;pos=path(t)+(-B)*random.uniform(-.04,.04)\n        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1,radius=random.uniform(.014,.028),location=pos)\n        o=bpy.context.object;o.name=\'Ember %d • wake particle %02d\'%(side,j);o.data.materials.append(trailmat)\n    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1,radius=.077,location=path(.97))\n    orb=bpy.context.object;orb.name=\'Ember %d • arriving at phone\'%side;orb.data.materials.append(heartmat)\n    orb.location=path(.72);orb.keyframe_insert(\'location\',frame=1)\n    orb.location=path(.97);orb.keyframe_insert(\'location\',frame=48)\n    orb.location=end;orb.keyframe_insert(\'location\',frame=96)\n    # A small ember mark on the screen; it emits no extra light into the scene.\n    markmat=material(\'Phone %d • ember mark\'%side,(1,.45,.12),0)\n    p=markmat.node_tree.nodes.get(\'Principled BSDF\');lp=markmat.node_tree.nodes.new(\'ShaderNodeLightPath\')\n    markmat.node_tree.links.new(lp.outputs[\'Is Camera Ray\'],p.inputs[\'Emission Strength\'])\n    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1,radius=.036,location=end)\n    mark=bpy.context.object;mark.name=\'Phone %d • received ember\'%side;mark.scale.z=.18;mark.data.materials.append(markmat)\nsplit.frame_set(48)\nsplit[\'Moment\']=\'A single ember separates into two warm trails and reaches both unlit phones.\'\n\ncold=clone(hero,\'03 • Cold open\')\ncold.render.filepath=str(OUT/\'cold-open.png\')\ncold.camera.data.ortho_scale=25.2\ntarget=Vector((0,0,1.15))-R*6.3\ncold.camera.location=target+Vector((8,9,8))\ncold.camera.rotation_euler=(target-cold.camera.location).to_track_quat(\'-Z\',\'Y\').to_euler()\nrot=cold.camera.rotation_euler.to_matrix();right=rot@Vector((1,0,0));up=rot@Vector((0,1,0));forward=rot@Vector((0,0,-1))\norigin=target+forward*20\n# Restrained woodgrain / meeting-ring motif in the dark title-safe area.\npattern=bpy.data.materials.new(\'Cold open • camera-only grain #182235\');pattern.use_nodes=True\nn=pattern.node_tree.nodes;n.clear();links=pattern.node_tree.links\nout=n.new(\'ShaderNodeOutputMaterial\');mix=n.new(\'ShaderNodeMixShader\');lp=n.new(\'ShaderNodeLightPath\');trans=n.new(\'ShaderNodeBsdfTransparent\');em=n.new(\'ShaderNodeEmission\')\nem.inputs[\'Color\'].default_value=(.0091,.016,.033,1);em.inputs[\'Strength\'].default_value=1\nlinks.new(lp.outputs[\'Is Camera Ray\'],mix.inputs[0]);links.new(trans.outputs[0],mix.inputs[1]);links.new(em.outputs[0],mix.inputs[2]);links.new(mix.outputs[0],out.inputs[0])\nfor j in range(16):\n    points=[]\n    radius=.65+j*.29\n    for k in range(145):\n        a=k*math.tau/144\n        rr=radius*(1+.037*math.sin(3*a+j*.11)+.018*math.cos(7*a+j*.19))\n        x=-5.0+rr*math.cos(a)*.86;y=-.15+rr*math.sin(a)*1.24\n        points.append(origin+right*x+up*y)\n    o=line(cold,\'Cold open • grain contour %02d\'%j,points,.008,pattern)\n    o.visible_shadow=False\ncold[\'Title safe area\']=\'Left 55% reserved for title / grain motif; diorama anchored at right.\'\ncold[\'Pattern\']=\'Procedural concentric irregular woodgrain contours. Camera-only graphic; zero scene illumination.\'\n\nfor s in (hero,split,cold):\n    s.render.resolution_x=1920;s.render.resolution_y=1080;s.render.resolution_percentage=100\n    s.render.image_settings.file_format=\'PNG\'\n    s.render.image_settings.color_mode=\'RGBA\'\n    s[\'Output\']=s.render.filepath\nbpy.context.window.scene=hero\nbpy.ops.wm.save_as_mainfile(filepath=str(OUT/\'museion-cafe.blend\'))\nprint(json.dumps({\'scenes\':[s.name for s in (hero,split,cold)],\'outputs\':[s.render.filepath for s in (hero,split,cold)]}))\n'}
+2026-10-30 20:54:58,983 - BlenderMCPServer - INFO - Command sent, waiting for response...
+2026-10-30 20:54:59,362 - BlenderMCPServer - INFO - Received complete response (372 bytes)
+2026-10-30 20:54:59,363 - BlenderMCPServer - INFO - Received 372 bytes of data
+2026-10-30 20:54:59,363 - BlenderMCPServer - INFO - Response parsed, status: success
+2026-10-30 20:54:59,363 - BlenderMCPServer - INFO - Sending command: get_telemetry_consent with params: None
+2026-10-30 20:54:59,364 - BlenderMCPServer - INFO - Command sent, waiting for response...
+2026-10-30 20:54:59,376 - BlenderMCPServer - INFO - Received complete response (50 bytes)
+2026-10-30 20:54:59,376 - BlenderMCPServer - INFO - Received 50 bytes of data
+2026-10-30 20:54:59,376 - BlenderMCPServer - INFO - Response parsed, status: success
+2026-10-30 20:54:59,389 - mcp.server.lowlevel.server - INFO - Processing request of type ListToolsRequest
+2026-10-30 20:54:59,408 - BlenderMCPServer - INFO - Disconnecting from Blender on shutdown
+2026-10-30 20:54:59,408 - BlenderMCPServer - INFO - BlenderMCP server shut down
+{
+  "meta": null,
+  "content": [
+    {
+      "type": "text",
+      "text": "Code executed successfully: Info: Saved as \"museion-cafe.blend\"\n{\"scenes\": [\"01 \\u2022 Campfire\", \"02 \\u2022 Ember split\", \"03 \\u2022 Cold open\"], \"outputs\": [\"/Users/kimsejun/museion-renders/diorama-hero.png\", \"/Users/kimsejun/museion-renders/ember-split.png\", \"/Users/kimsejun/museion-renders/cold-open.png\"]}\n",
+      "annotations": null,
+      "meta": null
+    }
+  ],
+  "structuredContent": {
+    "result": "Code executed successfully: Info: Saved as \"museion-cafe.blend\"\n{\"scenes\": [\"01 \\u2022 Campfire\", \"02 \\u2022 Ember split\", \"03 \\u2022 Cold open\"], \"outputs\": [\"/Users/kimsejun/museion-renders/diorama-hero.png\", \"/Users/kimsejun/museion-renders/ember-split.png\", \"/Users/kimsejun/museion-renders/cold-open.png\"]}\n"
+  },
+  "isError": false
+}

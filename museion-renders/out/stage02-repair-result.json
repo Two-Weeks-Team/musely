@@ -1,0 +1,8 @@
+{
+  "status": "ok",
+  "result": {
+    "scene": "05 • Avatar variants",
+    "repair": "Evaluate dependency graph after local pose changes before copying world matrices; move captions away from feet."
+  },
+  "stdout": "Info: Saved copy as \"stage-02-avatars.blend\"\n"
+}

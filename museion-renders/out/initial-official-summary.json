@@ -1,0 +1,2127 @@
+{
+  "status": "ok",
+  "result": {
+    "status": "ok",
+    "scene_name": "01 • Campfire",
+    "active_workspace": "Layout",
+    "active_object": "Ember particle • 33",
+    "object_mode": "OBJECT",
+    "camera_object": "Camera • hero",
+    "collections": [
+      {
+        "name": "Scene Collection",
+        "exclude": false,
+        "hide_viewport": false,
+        "objects": [
+          {
+            "name": "Avatar 1 • cream hood",
+            "type": "EMPTY",
+            "parent": null,
+            "data_name": null,
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Avatar 1 • hood seam",
+            "type": "CURVE",
+            "parent": "Avatar 1 • cream hood",
+            "data_name": "Avatar 1 • hood seam.001",
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Avatar 2 • cream hood",
+            "type": "EMPTY",
+            "parent": null,
+            "data_name": null,
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Avatar 2 • hood seam",
+            "type": "CURVE",
+            "parent": "Avatar 2 • cream hood",
+            "data_name": "Avatar 2 • hood seam.001",
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Camera • hero",
+            "type": "CAMERA",
+            "parent": null,
+            "data_name": "Hero • orthographic (8,9,8).001",
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Campfire • ONLY light",
+            "type": "LIGHT",
+            "parent": null,
+            "data_name": "Campfire • ONLY light.001",
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Chair 01",
+            "type": "EMPTY",
+            "parent": null,
+            "data_name": null,
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Chair 02",
+            "type": "EMPTY",
+            "parent": null,
+            "data_name": null,
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Chair 03",
+            "type": "EMPTY",
+            "parent": null,
+            "data_name": null,
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Chair 04",
+            "type": "EMPTY",
+            "parent": null,
+            "data_name": null,
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Chair 05",
+            "type": "EMPTY",
+            "parent": null,
+            "data_name": null,
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Chair 06",
+            "type": "EMPTY",
+            "parent": null,
+            "data_name": null,
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Fire • central orange tongue",
+            "type": "MESH",
+            "parent": null,
+            "data_name": "Fire • central orange tongue.001",
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Fire • left tongue",
+            "type": "MESH",
+            "parent": null,
+            "data_name": "Fire • left tongue.001",
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Fire • right tongue",
+            "type": "MESH",
+            "parent": null,
+            "data_name": "Fire • right tongue.001",
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Fire • yellow heart",
+            "type": "MESH",
+            "parent": null,
+            "data_name": "Fire • yellow heart.001",
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Plaza rim",
+            "type": "CURVE",
+            "parent": null,
+            "data_name": "Plaza rim.002",
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          },
+          {
+            "name": "Plaza rim.001",
+            "type": "CURVE",
+            "parent": null,
+            "data_name": "Plaza rim.003",
+            "selected": false,
+            "visible": true,
+            "hide_viewport": false
+          }
+        ],
+        "children": [
+          {
+            "name": "Collection",
+            "exclude": false,
+            "hide_viewport": false,
+            "objects": [
+              {
+                "name": "Avatar 1 • coat hem",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Cylinder.174",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • dark face",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Sphere.043",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • eye",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Sphere.044",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • eye.001",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Sphere.045",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • hood",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Sphere.042",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • mitten",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Sphere.047",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • mitten.001",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Sphere.049",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • phone",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Cube.059",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • phone glass",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Cube.060",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • rounded coat",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Sphere.041",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • shin",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Cylinder.176",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • shin.001",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Cylinder.179",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • shoe",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Sphere.046",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • shoe.001",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Sphere.048",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • sleeve",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Cylinder.177",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • sleeve.001",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Cylinder.180",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • trouser",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Cylinder.175",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 1 • trouser.001",
+                "type": "MESH",
+                "parent": "Avatar 1 • cream hood",
+                "data_name": "Cylinder.178",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • coat hem",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Cylinder.181",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • dark face",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Sphere.052",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • eye",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Sphere.053",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • eye.001",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Sphere.054",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • hood",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Sphere.051",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • mitten",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Sphere.056",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • mitten.001",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Sphere.058",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • phone",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Cube.061",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • phone glass",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Cube.062",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • rounded coat",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Sphere.050",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • shin",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Cylinder.183",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • shin.001",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Cylinder.186",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • shoe",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Sphere.055",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • shoe.001",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Sphere.057",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • sleeve",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Cylinder.184",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • sleeve.001",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Cylinder.187",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • trouser",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Cylinder.182",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Avatar 2 • trouser.001",
+                "type": "MESH",
+                "parent": "Avatar 2 • cream hood",
+                "data_name": "Cylinder.185",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Building 0 • parapet",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.034",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Building 0 • silhouette",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.033",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Building 0 • unlit window -1",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.035",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Building 0 • unlit window 1",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.036",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Building 1 • parapet",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.038",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Building 1 • silhouette",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.037",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Building 1 • unlit window -1",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.039",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Building 1 • unlit window 1",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.040",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Building 2 • parapet",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.044",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Building 2 • silhouette",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.043",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Building 2 • unlit window -1",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.045",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Building 2 • unlit window 1",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.046",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Cafe • MUSEION sign",
+                "type": "FONT",
+                "parent": null,
+                "data_name": "Text.001",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Cafe • awning",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.042",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Cafe • closed door",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.041",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Campfire • glowing coal 00",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.070",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Campfire • glowing coal 01",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.071",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Campfire • glowing coal 02",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.072",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Campfire • glowing coal 03",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.073",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Campfire • glowing coal 04",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.074",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Campfire • glowing coal 05",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.075",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Campfire • glowing coal 06",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.076",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Campfire • glowing coal 07",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.077",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Campfire • glowing coal 08",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.078",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Campfire • glowing coal 09",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.079",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Campfire • glowing coal 10",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.080",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Campfire • glowing coal 11",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.081",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Campfire • log 1",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.201",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Campfire • log 2",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.204",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Campfire • log 3",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.207",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Central circular plaza",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.107",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 01 • back post",
+                "type": "MESH",
+                "parent": "Chair 01",
+                "data_name": "Cylinder.140",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 01 • back post.001",
+                "type": "MESH",
+                "parent": "Chair 01",
+                "data_name": "Cylinder.143",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 01 • backrest",
+                "type": "MESH",
+                "parent": "Chair 01",
+                "data_name": "Cube.048",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 01 • leg",
+                "type": "MESH",
+                "parent": "Chair 01",
+                "data_name": "Cylinder.138",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 01 • leg.001",
+                "type": "MESH",
+                "parent": "Chair 01",
+                "data_name": "Cylinder.139",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 01 • leg.002",
+                "type": "MESH",
+                "parent": "Chair 01",
+                "data_name": "Cylinder.141",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 01 • leg.003",
+                "type": "MESH",
+                "parent": "Chair 01",
+                "data_name": "Cylinder.142",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 01 • seat",
+                "type": "MESH",
+                "parent": "Chair 01",
+                "data_name": "Cube.047",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 02 • back post",
+                "type": "MESH",
+                "parent": "Chair 02",
+                "data_name": "Cylinder.146",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 02 • back post.001",
+                "type": "MESH",
+                "parent": "Chair 02",
+                "data_name": "Cylinder.149",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 02 • backrest",
+                "type": "MESH",
+                "parent": "Chair 02",
+                "data_name": "Cube.050",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 02 • leg",
+                "type": "MESH",
+                "parent": "Chair 02",
+                "data_name": "Cylinder.144",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 02 • leg.001",
+                "type": "MESH",
+                "parent": "Chair 02",
+                "data_name": "Cylinder.145",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 02 • leg.002",
+                "type": "MESH",
+                "parent": "Chair 02",
+                "data_name": "Cylinder.147",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 02 • leg.003",
+                "type": "MESH",
+                "parent": "Chair 02",
+                "data_name": "Cylinder.148",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 02 • seat",
+                "type": "MESH",
+                "parent": "Chair 02",
+                "data_name": "Cube.049",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 03 • back post",
+                "type": "MESH",
+                "parent": "Chair 03",
+                "data_name": "Cylinder.152",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 03 • back post.001",
+                "type": "MESH",
+                "parent": "Chair 03",
+                "data_name": "Cylinder.155",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 03 • backrest",
+                "type": "MESH",
+                "parent": "Chair 03",
+                "data_name": "Cube.052",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 03 • leg",
+                "type": "MESH",
+                "parent": "Chair 03",
+                "data_name": "Cylinder.150",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 03 • leg.001",
+                "type": "MESH",
+                "parent": "Chair 03",
+                "data_name": "Cylinder.151",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 03 • leg.002",
+                "type": "MESH",
+                "parent": "Chair 03",
+                "data_name": "Cylinder.153",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 03 • leg.003",
+                "type": "MESH",
+                "parent": "Chair 03",
+                "data_name": "Cylinder.154",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 03 • seat",
+                "type": "MESH",
+                "parent": "Chair 03",
+                "data_name": "Cube.051",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 04 • back post",
+                "type": "MESH",
+                "parent": "Chair 04",
+                "data_name": "Cylinder.158",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 04 • back post.001",
+                "type": "MESH",
+                "parent": "Chair 04",
+                "data_name": "Cylinder.161",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 04 • backrest",
+                "type": "MESH",
+                "parent": "Chair 04",
+                "data_name": "Cube.054",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 04 • leg",
+                "type": "MESH",
+                "parent": "Chair 04",
+                "data_name": "Cylinder.156",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 04 • leg.001",
+                "type": "MESH",
+                "parent": "Chair 04",
+                "data_name": "Cylinder.157",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 04 • leg.002",
+                "type": "MESH",
+                "parent": "Chair 04",
+                "data_name": "Cylinder.159",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 04 • leg.003",
+                "type": "MESH",
+                "parent": "Chair 04",
+                "data_name": "Cylinder.160",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 04 • seat",
+                "type": "MESH",
+                "parent": "Chair 04",
+                "data_name": "Cube.053",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 05 • back post",
+                "type": "MESH",
+                "parent": "Chair 05",
+                "data_name": "Cylinder.164",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 05 • back post.001",
+                "type": "MESH",
+                "parent": "Chair 05",
+                "data_name": "Cylinder.167",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 05 • backrest",
+                "type": "MESH",
+                "parent": "Chair 05",
+                "data_name": "Cube.056",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 05 • leg",
+                "type": "MESH",
+                "parent": "Chair 05",
+                "data_name": "Cylinder.162",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 05 • leg.001",
+                "type": "MESH",
+                "parent": "Chair 05",
+                "data_name": "Cylinder.163",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 05 • leg.002",
+                "type": "MESH",
+                "parent": "Chair 05",
+                "data_name": "Cylinder.165",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 05 • leg.003",
+                "type": "MESH",
+                "parent": "Chair 05",
+                "data_name": "Cylinder.166",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 05 • seat",
+                "type": "MESH",
+                "parent": "Chair 05",
+                "data_name": "Cube.055",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 06 • back post",
+                "type": "MESH",
+                "parent": "Chair 06",
+                "data_name": "Cylinder.170",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 06 • back post.001",
+                "type": "MESH",
+                "parent": "Chair 06",
+                "data_name": "Cylinder.173",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 06 • backrest",
+                "type": "MESH",
+                "parent": "Chair 06",
+                "data_name": "Cube.058",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 06 • leg",
+                "type": "MESH",
+                "parent": "Chair 06",
+                "data_name": "Cylinder.168",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 06 • leg.001",
+                "type": "MESH",
+                "parent": "Chair 06",
+                "data_name": "Cylinder.169",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 06 • leg.002",
+                "type": "MESH",
+                "parent": "Chair 06",
+                "data_name": "Cylinder.171",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 06 • leg.003",
+                "type": "MESH",
+                "parent": "Chair 06",
+                "data_name": "Cylinder.172",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Chair 06 • seat",
+                "type": "MESH",
+                "parent": "Chair 06",
+                "data_name": "Cube.057",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Cup 1",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.192",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Cup 1 • coffee",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.193",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Cup 1 • handle",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Torus.002",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Cup 1 • saucer",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.191",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Cup 2",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.198",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Cup 2 • coffee",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.199",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Cup 2 • handle",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Torus.003",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Cup 2 • saucer",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.197",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 00",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.034",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 01",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.035",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 02",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.036",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 03",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.037",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 04",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.038",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 05",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.039",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 06",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.040",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 07",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.041",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 08",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.042",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 09",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.043",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 10",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.044",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 11",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.045",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 12",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.046",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 13",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.047",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 14",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.048",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 15",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.049",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 16",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.050",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 17",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.051",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 18",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.052",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 19",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.053",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 20",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.054",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 21",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.055",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 22",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.056",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 23",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.057",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 24",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.058",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 25",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.059",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 26",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.060",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 27",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.061",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 28",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.062",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 29",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.063",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 30",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.064",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 31",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.065",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 32",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.066",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ember particle • 33",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Icosphere.067",
+                "selected": true,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Ground",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.106",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Hearth • dark bed",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.200",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Hearth • stone 00",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.059",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Hearth • stone 01",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.060",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Hearth • stone 02",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.061",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Hearth • stone 03",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.062",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Hearth • stone 04",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.063",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Hearth • stone 05",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.064",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Hearth • stone 06",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.065",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Hearth • stone 07",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.066",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Hearth • stone 08",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.067",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Hearth • stone 09",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.068",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Hearth • stone 10",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Sphere.069",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Island • dark cut edge",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.105",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Log 1 • cut end -1",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.202",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Log 1 • cut end 1",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.203",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Log 2 • cut end -1",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.205",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Log 2 • cut end 1",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.206",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Log 3 • cut end -1",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.208",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Log 3 • cut end 1",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.209",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 00",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.108",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 01",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.109",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 02",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.110",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 03",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.111",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 04",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.112",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 05",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.113",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 06",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.114",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 07",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.115",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 08",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.116",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 09",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.117",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 10",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.118",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 11",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.119",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 12",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.120",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 13",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.121",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 14",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.122",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 15",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.123",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 16",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.124",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 17",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.125",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 18",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.126",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 19",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.127",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 20",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.128",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 21",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.129",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 22",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.130",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Paving • radial seam 23",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.131",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Table 1 • foot",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.190",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Table 1 • menu",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.063",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Table 1 • pedestal",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.189",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Table 1 • round top",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.188",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Table 2 • foot",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.196",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Table 2 • menu",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cube.064",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Table 2 • pedestal",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.195",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Table 2 • round top",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.194",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Window mullion",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.132",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Window mullion.001",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.133",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Window mullion.002",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.134",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Window mullion.003",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.135",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Window mullion.004",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.136",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              },
+              {
+                "name": "Window mullion.005",
+                "type": "MESH",
+                "parent": null,
+                "data_name": "Cylinder.137",
+                "selected": false,
+                "visible": true,
+                "hide_viewport": false
+              }
+            ],
+            "children": []
+          }
+        ]
+      }
+    ]
+  }
+}

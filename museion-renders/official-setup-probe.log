@@ -1,0 +1,55 @@
+──────────────────────────────────────────────────────────────
+  blender-mcp is now mcp-for-blender.
+
+  This package is a compatibility wrapper. Everything still
+  works and there is nothing you need to change today.
+
+  When convenient, update your MCP client config to:
+      uvx mcp-for-blender
+
+  https://github.com/ahujasid/mcp-for-blender
+──────────────────────────────────────────────────────────────
+
+2026-10-30 23:37:00,159 - BlenderMCPServer - INFO - BlenderMCP server starting up
+2026-10-30 23:37:00,160 - BlenderMCPServer - WARNING - MCP for Blender addon on disk is outdated (expected protocol 15): /Users/kimsejun/Library/Application Support/Blender/5.2/scripts/addons/blender_mcp.py. Run `uvx mcp-for-blender install-addon` to update it, then in Blender: Preferences → Add-ons → disable and re-enable 'Interface: MCP for Blender' (or restart Blender) and click Start MCP Server.
+2026-10-30 23:37:00,161 - blender-mcp-telemetry - WARNING - Telemetry disabled via environment variable
+2026-10-30 23:37:00,163 - BlenderMCPServer - INFO - Connected to Blender at localhost:9876
+2026-10-30 23:37:00,163 - BlenderMCPServer - INFO - Created new persistent connection to Blender
+2026-10-30 23:37:00,163 - BlenderMCPServer - INFO - Sending command: get_addon_info with params: None
+2026-10-30 23:37:00,163 - BlenderMCPServer - INFO - Command sent, waiting for response...
+2026-10-30 23:37:00,194 - BlenderMCPServer - INFO - Received complete response (358 bytes)
+2026-10-30 23:37:00,194 - BlenderMCPServer - INFO - Received 358 bytes of data
+2026-10-30 23:37:00,194 - BlenderMCPServer - INFO - Response parsed, status: success
+2026-10-30 23:37:00,194 - BlenderMCPServer - WARNING - Blender addon protocol 5 is behind expected 15. Run `uvx mcp-for-blender install-addon` to update it, then restart Blender or disable/enable 'Interface: MCP for Blender', then Start MCP Server. Trajectory still works via fallbacks.
+2026-10-30 23:37:00,194 - BlenderMCPServer - INFO - Successfully connected to Blender on startup
+2026-10-30 23:37:00,194 - BlenderMCPServer - WARNING - Blender addon protocol 5 is behind expected 15. Run `uvx mcp-for-blender install-addon` to update it, then restart Blender or disable/enable 'Interface: MCP for Blender', then Start MCP Server. Trajectory still works via fallbacks.
+2026-10-30 23:37:00,202 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
+2026-10-30 23:37:00,203 - BlenderMCPServer - INFO - MCP client mcp 0.1.0: extensions=[], apps=False, openai_forms=False
+2026-10-30 23:37:00,204 - BlenderMCPServer - INFO - Sending command: execute_code with params: {'code': "import bpy,json\nop=bpy.ops.extensions.package_install_files.get_rna_type()\nprint(json.dumps({'scene':bpy.context.scene.name,'filepath':bpy.data.filepath,'dirty':bpy.data.is_dirty,'online_access':bpy.app.online_access,'extension_repos':[{'name':r.name,'module':r.module,'directory':r.directory} for r in bpy.context.preferences.extensions.repos],'install_op':[(p.identifier,str(p.default) if hasattr(p,'default') else p.type) for p in op.properties]},ensure_ascii=False))\n"}
+2026-10-30 23:37:00,204 - BlenderMCPServer - INFO - Command sent, waiting for response...
+2026-10-30 23:37:00,248 - BlenderMCPServer - INFO - Received complete response (975 bytes)
+2026-10-30 23:37:00,248 - BlenderMCPServer - INFO - Received 975 bytes of data
+2026-10-30 23:37:00,248 - BlenderMCPServer - INFO - Response parsed, status: success
+2026-10-30 23:37:00,248 - BlenderMCPServer - INFO - Sending command: get_telemetry_consent with params: None
+2026-10-30 23:37:00,248 - BlenderMCPServer - INFO - Command sent, waiting for response...
+2026-10-30 23:37:00,299 - BlenderMCPServer - INFO - Received complete response (50 bytes)
+2026-10-30 23:37:00,299 - BlenderMCPServer - INFO - Received 50 bytes of data
+2026-10-30 23:37:00,299 - BlenderMCPServer - INFO - Response parsed, status: success
+2026-10-30 23:37:00,302 - mcp.server.lowlevel.server - INFO - Processing request of type ListToolsRequest
+2026-10-30 23:37:00,306 - BlenderMCPServer - INFO - Disconnecting from Blender on shutdown
+2026-10-30 23:37:00,306 - BlenderMCPServer - INFO - BlenderMCP server shut down
+{
+  "meta": null,
+  "content": [
+    {
+      "type": "text",
+      "text": "Code executed successfully: {\"scene\": \"01 • Campfire\", \"filepath\": \"/Users/kimsejun/museion-renders/museion-cafe.blend\", \"dirty\": false, \"online_access\": false, \"extension_repos\": [{\"name\": \"extensions.blender.org\", \"module\": \"blender_org\", \"directory\": \"/Users/kimsejun/Library/Application Support/Blender/5.2/extensions/blender_org\"}, {\"name\": \"User Default\", \"module\": \"user_default\", \"directory\": \"/Users/kimsejun/Library/Application Support/Blender/5.2/extensions/user_default\"}, {\"name\": \"System\", \"module\": \"system\", \"directory\": \"/Applications/Blender.app/Contents/Resources/5.2/extensions/system\"}], \"install_op\": [[\"rna_type\", \"POINTER\"], [\"filter_glob\", \"*.zip;*.py\"], [\"directory\", \"\"], [\"files\", \"COLLECTION\"], [\"filepath\", \"\"], [\"repo\", \"\"], [\"enable_on_install\", \"True\"], [\"target\", \"\"], [\"overwrite\", \"True\"], [\"url\", \"\"]]}\n",
+      "annotations": null,
+      "meta": null
+    }
+  ],
+  "structuredContent": {
+    "result": "Code executed successfully: {\"scene\": \"01 • Campfire\", \"filepath\": \"/Users/kimsejun/museion-renders/museion-cafe.blend\", \"dirty\": false, \"online_access\": false, \"extension_repos\": [{\"name\": \"extensions.blender.org\", \"module\": \"blender_org\", \"directory\": \"/Users/kimsejun/Library/Application Support/Blender/5.2/extensions/blender_org\"}, {\"name\": \"User Default\", \"module\": \"user_default\", \"directory\": \"/Users/kimsejun/Library/Application Support/Blender/5.2/extensions/user_default\"}, {\"name\": \"System\", \"module\": \"system\", \"directory\": \"/Applications/Blender.app/Contents/Resources/5.2/extensions/system\"}], \"install_op\": [[\"rna_type\", \"POINTER\"], [\"filter_glob\", \"*.zip;*.py\"], [\"directory\", \"\"], [\"files\", \"COLLECTION\"], [\"filepath\", \"\"], [\"repo\", \"\"], [\"enable_on_install\", \"True\"], [\"target\", \"\"], [\"overwrite\", \"True\"], [\"url\", \"\"]]}\n"
+  },
+  "isError": false
+}

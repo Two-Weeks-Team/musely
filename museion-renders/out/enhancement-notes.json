@@ -1,0 +1,23 @@
+{
+  "source": "/Users/kimsejun/museion-renders/museion-cafe.blend",
+  "execution_order": [
+    "01 flame",
+    "02 avatar",
+    "03 cafe",
+    "04 map prerequisite check: held",
+    "05 ember animation"
+  ],
+  "backend": "Blender Lab official MCP 1.0.3, loopback port 9877",
+  "rendering": "Metal GPU Cycles; 80 sample 1920x1080 stills; 32 sample 1280x720 animation",
+  "preservation": "Canonical .blend and three original stills were SHA-256 snapshotted before work and verified unchanged. No canonical still was regenerated.",
+  "source_policy": "Changes are derived from the existing canonical scenes, not from the parallel VM build_scene.py or map_scene.py implementations.",
+  "art_adjustments": {
+    "flame": "Seeded wavy layer profile plus curling side tongues; 48 spiral ember particles, radius 0.012-0.05; coal disc radius 0.5.",
+    "identity": "Simplified visual motif only: 2 concentric rings, 6 rays, 3 dots. This is not an implementation of the actual 11-layer identity algorithm.",
+    "avatars": "Existing canonical avatar parts copied into seated, standing and 6 degree walking poses. World transforms evaluated after local pose edits.",
+    "cafe": "Two-pole Museion sign; A-frame menu; 4 pots; subtle steam; two muted green chairs. VM sign coordinate replaced by actual canonical rear basis to preserve the hero camera.",
+    "animation": "Lift frames 1-20, split 21, Bezier flight 21-58 with 4 trailing spheres per branch, phone emission 2.6 at 58 to 5.0 at 67, hold to 72."
+  },
+  "map_04": "Held because INDEX has no ComBba map still completion entry and no canonical map .blend was present. VM data validation in tasks/06 is not a delivered map still. No map rebuild or duplicate still work performed.",
+  "unindexed_task_06": "Read for context; not executed as it is not listed in the INDEX execution sequence."
+}

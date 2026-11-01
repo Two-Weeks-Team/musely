@@ -1,0 +1,13 @@
+{
+  "status": "ok",
+  "result": {
+    "scene": "05 • Avatar variants",
+    "poses": [
+      "SEATED",
+      "STANDING",
+      "WALKING"
+    ],
+    "point_lights": 2
+  },
+  "stdout": "Info: Saved copy as \"stage-02-avatars.blend\"\n"
+}
