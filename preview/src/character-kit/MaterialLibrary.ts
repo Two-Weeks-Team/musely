@@ -37,3 +37,25 @@ export async function loadMuse(id:MuseVariantId,library:MaterialLibrary,lods:rea
  const [l0,l1,l2,attachment]=await Promise.all([library.load(lodUrl(0,library.base)),lods.includes(1)?library.load(lodUrl(1,library.base)):undefined,lods.includes(2)?library.load(lodUrl(2,library.base)):undefined,att?library.load(att):null]);
  return new MuseActor([l0,l1,l2],attachment,id,library);
 }
+
+/** Rig + clips derived at build time from base/lod0.glb (scripts/clips-glb.mjs). */
+export const clipsUrl=(base:string)=>`${base}base/clips.glb`;
+
+/**
+ * Light first view: an actor from LOD2 (~0.45 MB) and the shared clips (~0.27 MB) only. Returns once
+ * those load; `upgrade()` then adds the attachment, LOD1 and LOD0 in that order without replacing the
+ * actor. A failed attachment leaves the plain base Muse; a failed LOD keeps the closest loaded LOD.
+ */
+export async function loadMuseLight(id:MuseVariantId,library:MaterialLibrary){
+ const [l2,clips]=await Promise.all([library.load(lodUrl(2,library.base)),library.load(clipsUrl(library.base))]);
+ const actor=new MuseActor({gltf:l2,lod:2,clips:clips.animations},null,id,library);
+ const upgrade=async(steps:readonly ('attachment'|Lod)[]=['attachment',1,0])=>{
+  for(const step of steps){
+   try{
+    if(step==='attachment'){const url=attachmentUrl(id,library.base);if(url)actor.addAttachment(await library.load(url));}
+    else actor.addLod(await library.load(lodUrl(step,library.base)),step);
+   }catch(e){console.warn('Muse upgrade step unavailable, keeping current detail:',id,step,e);}
+  }
+ };
+ return {actor,upgrade};
+}

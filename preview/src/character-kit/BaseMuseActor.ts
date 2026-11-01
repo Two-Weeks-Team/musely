@@ -12,10 +12,11 @@ export class BaseMuseActor{
  private actions=new Map<string,T.AnimationAction>();
  protected current='idle_breathe';
  private expression='Neutral';
- constructor(source:GLTF){
+ /** `clips` defaults to the source's own animations; the light first view passes clips from base/clips.glb. */
+ constructor(source:GLTF,clips:readonly T.AnimationClip[]=source.animations){
   this.root=clone(source.scene) as T.Group;this.root.name='Jolly_actor';this.mixer=new T.AnimationMixer(this.root);
   this.root.traverse(o=>{if(o instanceof T.SkinnedMesh){o.frustumCulled=false;this.meshes.push(o);}});
-  for(const clip of source.animations){const a=this.mixer.clipAction(clip);if(singlePlay.has(clip.name)){a.setLoop(T.LoopOnce,1);a.clampWhenFinished=true;}this.actions.set(clip.name,a);}
+  for(const clip of clips){const a=this.mixer.clipAction(clip);if(singlePlay.has(clip.name)){a.setLoop(T.LoopOnce,1);a.clampWhenFinished=true;}this.actions.set(clip.name,a);}
   this.setAction('idle_breathe');
  }
  setAction(name:string){if(!this.actions.has(name))throw Error('Missing Muse action: '+name);if(name!==this.current){this.mixer.stopAllAction();this.current=name;}this.actions.get(name)!.play();}
