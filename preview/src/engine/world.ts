@@ -23,7 +23,7 @@ export type MuseState = {
   memory: string[];
   reflection: string;
   lastMet: Record<string, number>;
-  intent: {kind: 'greet' | 'trade'; target: string} | null;
+  intent: {kind: 'greet' | 'trade'; target: string; give?: string | null; want?: string | null} | null;
 };
 export type WorldEvent = {id: string; tick: number; at: number; source: Source; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data?: Record<string, unknown>; tags: string[]};
 export type WorldState = {worldId: string; day: string; seed: string; tick: number; version: number; muses: MuseState[]; spotlight: {cursor: number; visitorQueue: string[]}; lastTickAt: number};
@@ -33,6 +33,8 @@ export type Hooks = {
   onArrive?: (s: WorldState, m: MuseState, place: Place, rand: () => number, at: number) => Omit<WorldEvent, 'id' | 'tick'>[];
   /** Speed a Muse may use for a trip (items change abilities; task 4). */
   speedFor?: (m: MuseState, from: Place, to: Place) => Speed;
+  /** Trades, gifts and help when two Muses meet (task 4 rules). */
+  onEncounter?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, rand: () => number, at: number) => Omit<WorldEvent, 'id' | 'tick'>[];
 };
 
 const fmt = new Intl.DateTimeFormat('en-CA', {timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
@@ -156,6 +158,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       const initiator = a.intent?.target === b.id ? a : b.intent?.target === a.id ? b : (rngFor(s.seed, s.tick, a.id, b.id)() < .5 ? a : b);
       const other = initiator === a ? b : a;
       emit({at: now, source: 'rule', kind: 'encounter', muse: initiator.id, other: other.id, place: placeId, data: {initiatedByIntent: !!initiator.intent, stage: 'recognize'}, tags: []});
+      for (const e of hooks.onEncounter?.(s, initiator, other, placeById(placeId), rngFor(s.seed, s.tick, initiator.id, other.id, 'meet'), now) ?? []) emit(e);
       if (initiator.intent?.target === other.id) initiator.intent = null;
       remember(a, `Met ${harnessById(b.id).name} at ${placeById(placeId).name}`);
       remember(b, `Met ${harnessById(a.id).name} at ${placeById(placeId).name}`);
@@ -239,7 +242,9 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   if (o.offer_item && !m.inventory.includes(o.offer_item)) return reject('offered item not held: ' + o.offer_item.slice(0, 40));
   const other = findMuse(s, o.target_agent);
   if (!other || other.id === m.id) return reject('offer needs another Muse');
-  m.intent = {kind: 'trade', target: other.id};
+  m.intent = {kind: 'trade', target: other.id, give: o.offer_item || null, want: o.want_item || null};
+  const there = placeById(other.travel?.to ?? other.place);
+  if (there.id !== here.id) startTrip(m, here, there, now, d.source, emit, hooks);
   emit({...base, kind: 'trade_intent', place: here.id, other: other.id, line: o.line || null, data: {...base.data, give: o.offer_item || null, want: o.want_item || null, live: true}, tags: ['off_script']});
 }
 
