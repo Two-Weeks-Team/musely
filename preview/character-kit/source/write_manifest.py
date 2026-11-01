@@ -4,7 +4,7 @@ Plain Python (no Blender). Run after export_kit.py.
 """
 from pathlib import Path
 import hashlib, json, struct
-from variant_spec import VARIANTS, SIGNATURE_CLIPS, ACTION_CLIPS
+from variant_spec import VARIANTS, SIGNATURE_CLIPS, ACTION_CLIPS, PARTNER_DISTANCE_M
 import fix_tangents
 
 KIT = Path(__file__).resolve().parent.parent
@@ -65,11 +65,24 @@ if mismatch:
 
 shared = json.loads((RT / 'animations/manifest.json').read_text())
 shared_clips = [c for c in shared['clips'] if c['name'] not in SIGNATURE_CLIPS and c['name'] not in ACTION_CLIPS]
+exported = files['base/lod0.glb']['clips']
+
+
+def action_entry(n, spec):
+    e = {'name': n, 'seconds': spec['frames'] / 24, 'loop': spec['loop'], 'action': True}
+    if 'contact' in spec:
+        e.update(contactSeconds=spec['contact'] / 24, partnerClip=spec['partner'], partnerDistanceMeters=PARTNER_DISTANCE_M)
+    if 'stride' in spec:
+        e['strideMeters'] = spec['stride']
+    if 'prop' in spec:
+        e['prop'] = spec['prop']
+    return e
+
+
 shared['clips'] = shared_clips + [{'name': n, 'seconds': f / 24, 'loop': loop, 'signature': True} for n, (f, loop) in SIGNATURE_CLIPS.items()] + [
-    {'name': n, 'seconds': spec[0] / 24, 'loop': spec[1], 'action': True, **({'contactSeconds': spec[2] / 24, 'partnerDistanceMeters': 0.9} if len(spec) > 2 else {})}
-    for n, spec in ACTION_CLIPS.items() if n in files['base/lod0.glb']['clips']]  # only clips actually exported
+    action_entry(n, spec) for n, spec in ACTION_CLIPS.items() if n in exported]  # only clips actually exported
 shared['schema'] = 'musely.muse-clips.v3'
-shared['actionSockets'] = {k: v for k, v in {'drink': 'Socket_Hand_R'}.items() if k in files['base/lod0.glb']['clips']}
+shared['actionSockets'] = {k: v for k, v in {'drink': 'Socket_Hand_R'}.items() if k in exported}
 (RT / 'animations/manifest.json').write_text(json.dumps(shared, indent=2) + '\n')
 
 manifest = {

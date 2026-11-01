@@ -1,7 +1,7 @@
 import{test}from'node:test';import assert from'node:assert/strict';import{readFile}from'node:fs/promises';import{readFileSync}from'node:fs';import{createHash}from'node:crypto';
 import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';import{SkinnedMesh,Vector3,Box3,Mesh}from'three';
 import{MuseActor}from'../src/character-kit/MuseActor.ts';import{MaterialLibrary}from'../src/character-kit/MaterialLibrary.ts';
-import{MUSE_VARIANTS,RESIDENT_VARIANTS,SIGNATURE_CLIPS,SHARED_CLIPS,ACTION_CLIPS,SINGLE_PLAY,fleeceFactor}from'../src/character-kit/catalog.ts';import{residentBehavior,chooseLods,ResidentClock}from'../src/character-kit/residents.ts';import{positionAt}from'../src/activity.ts';import{conversationAt,DURATION}from'../src/story.ts';
+import{MUSE_VARIANTS,RESIDENT_VARIANTS,SIGNATURE_CLIPS,SHARED_CLIPS,ACTION_CLIPS,PARTNER_DISTANCE,SINGLE_PLAY,fleeceFactor}from'../src/character-kit/catalog.ts';import{residentBehavior,chooseLods,ResidentClock}from'../src/character-kit/residents.ts';import{positionAt}from'../src/activity.ts';import{conversationAt,DURATION}from'../src/story.ts';
 import manifest from'../character-kit/manifest.json' with{type:'json'};import clips from'../character-kit/runtime/animations/manifest.json' with{type:'json'};
 const RT='character-kit/runtime/';
 const cache=new Map();
@@ -24,7 +24,9 @@ test('every runtime file matches its recorded hash and the single shared rig dig
 
 test('the base carries all 21 shared/signature body clips and the action clips at their manifest durations, starting at zero',async()=>{
  const g=await gltf('base/lod0.glb');assert.equal(clips.clips.length,21+Object.keys(ACTION_CLIPS).length);assert.equal(g.animations.length,clips.clips.length);
- for(const[name,s]of Object.entries(ACTION_CLIPS)){const spec=clips.clips.find(c=>c.name===name);assert.ok(spec?.action,name);assert.equal(spec.loop,s.loop,name);assert.ok(Math.abs(spec.seconds-s.frames/24)<1e-9,name);assert.equal(SINGLE_PLAY.has(name),!s.loop,`${name} single play`);if('contactFrame'in s)assert.ok(Math.abs(spec.contactSeconds-s.contactFrame/24)<1e-9&&spec.partnerDistanceMeters===s.partner,name);}
+ assert.deepEqual(clips.clips.filter(c=>c.action).map(c=>c.name).sort(),Object.keys(ACTION_CLIPS).sort(),'catalog and kit manifest list the same action clips');
+ for(const[name,s]of Object.entries(ACTION_CLIPS)){const spec=clips.clips.find(c=>c.name===name);assert.ok(spec?.action,name);assert.equal(spec.loop,s.loop,name);assert.ok(Math.abs(spec.seconds-s.frames/24)<1e-9,name);assert.equal(SINGLE_PLAY.has(name),!s.loop,`${name} single play`);
+  assert.equal(spec.partnerClip,s.partner,name);if(s.contact!==undefined)assert.ok(Math.abs(spec.contactSeconds-s.contact/24)<1e-9&&spec.partnerDistanceMeters===PARTNER_DISTANCE,name);assert.equal(spec.strideMeters,s.stride,name);assert.equal(spec.prop,s.prop,name);}
  for(const name of[...SHARED_CLIPS,...Object.keys(SIGNATURE_CLIPS),...Object.keys(ACTION_CLIPS)]){const spec=clips.clips.find(c=>c.name===name),clip=g.animations.find(a=>a.name===name);assert.ok(spec&&clip,name);assert.ok(Math.abs(clip.duration-spec.seconds)<1e-5,`${name} ${clip.duration}`);for(const t of clip.tracks)assert.ok(Math.abs(t.times[0])<1e-6,`${name} leading hold`);}
  for(const[name,s]of Object.entries(SIGNATURE_CLIPS))assert.equal(clips.clips.find(c=>c.name===name).loop,s.loop,name);
 });
@@ -98,6 +100,7 @@ test('the world LOD selector keeps at most two LOD0 actors, prefers the selected
 test('walking phase follows traveled distance and resets after a seek',()=>{
  const c=new ResidentClock(),walk={action:'walk',expression:'Neutral',timed:false};c.time(walk,10,0,0);const a=c.time(walk,10.1,.27,0);assert.ok(Math.abs(a-32/24)<1e-9,`one stride = one cycle: ${a}`);
  assert.equal(c.time(walk,50,5,5),0,'seek resets the stride clock');
+ for(const[name,s]of Object.entries(ACTION_CLIPS).filter(([,s])=>s.stride)){const k=new ResidentClock(),b={action:name,expression:'Neutral',timed:false};k.time(b,10,0,0);const x=k.time(b,10.1,s.stride,0);assert.ok(Math.abs(x-s.frames/24)<1e-9,`${name}: one declared stride = one cycle (${x})`);}
 });
 import{surfaceHeightAt}from'../src/surfaces.ts';
 // Same furniture volumes as base-world-clearance.test.mjs, applied to every equipped resident.

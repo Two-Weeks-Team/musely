@@ -1,5 +1,6 @@
 // Derives a small "rig + clips" GLB from the verified base LOD0: the node hierarchy (names and rest
-// transforms) and every animation, without meshes, skins, materials or images. The light first view
+// transforms) and every animation, without meshes, skins, materials or images, and without channels that
+// only restate a node's rest transform. The light first view
 // plays these clips on the LOD2 body, whose rig is identical (same rig digest), before LOD0 arrives.
 // Deterministic: the same input bytes always give the same output bytes.
 
@@ -35,11 +36,29 @@ export function deriveClipsGlb(glb) {
     accessorMap.set(index, accessors.length - 1);
     return accessors.length - 1;
   };
-  const animations = json.animations.map(a => ({
-    name: a.name,
-    channels: a.channels,
-    samplers: a.samplers.map(s => ({...s, input: keepAccessor(s.input), output: keepAccessor(s.output)})),
-  }));
+  // Channels whose every sample equals the node's rest TRS are dropped: they only restate the rest pose, which
+  // three.js restores when the previous action stops (BaseMuseActor.setAction stops all actions first).
+  const readFloats = index => {
+    const a = json.accessors[index], v = json.bufferViews[a.bufferView];
+    if (a.componentType !== 5126 || a.sparse) return null;
+    const n = {SCALAR: 1, VEC3: 3, VEC4: 4}[a.type], stride = v.byteStride ?? n * 4, start = (v.byteOffset ?? 0) + (a.byteOffset ?? 0), out = [];
+    for (let i = 0; i < a.count; i++) for (let c = 0; c < n; c++) out.push(bin.readFloatLE(start + i * stride + c * 4));
+    return {values: out, n};
+  };
+  const REST = {translation: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1]};
+  const restating = (a, c) => {
+    if (c.target.path === 'weights') return false;
+    const s = a.samplers[c.sampler], data = readFloats(s.output); if (!data) return false;
+    const node = json.nodes[c.target.node], rest = node[c.target.path] ?? REST[c.target.path];
+    return data.values.every((x, i) => Math.abs(x - rest[i % data.n]) < 1e-6);
+  };
+  const animations = json.animations.map(a => {
+    const kept = a.channels.filter(c => !restating(a, c));
+    const samplerMap = new Map();
+    const samplers = [];
+    for (const c of kept) if (!samplerMap.has(c.sampler)) { const s = a.samplers[c.sampler]; samplerMap.set(c.sampler, samplers.length); samplers.push({...s, input: keepAccessor(s.input), output: keepAccessor(s.output)}); }
+    return {name: a.name, channels: kept.map(c => ({...c, sampler: samplerMap.get(c.sampler)})), samplers};
+  });
   const nodes = json.nodes.map(({mesh, skin, ...node}) => node);
   const out = {
     asset: {version: '2.0', generator: 'musely clips-glb (derived from base/lod0.glb)'},

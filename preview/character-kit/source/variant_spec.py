@@ -40,12 +40,24 @@ SIGNATURE_CLIPS = {
     'inspect_gadget': (96, True),
 }
 
-# Chapter-10 action body clips on the shared rig (in place, 24 fps): frames, loop flag and, for
-# two-actor clips, the contact frame (authored for an identical partner 0.9 m in front, facing back).
+# Chapter-10 action body clips on the shared rig (in place, 24 fps; Root never moves).
+#   frames, loop  clip length and loop flag (single-play clips hold their last frame)
+#   contact, partner  two-actor clips: contact frame and the clip the partner plays, authored for an
+#                     identical partner 0.9 m in front, facing back (PARTNER_DISTANCE_M)
+#   stride        locomotion clips: metres travelled per cycle; the world drives their phase by distance
+#   prop          shared prop shown on its socket while the clip plays (attachments/props.glb)
+PARTNER_DISTANCE_M = 0.9
 ACTION_CLIPS = {
-    'drink': (96, True),        # cup on Socket_Hand_R, raised to the mouth
-    'plant': (96, False),       # kneel and plant; holds the last frame
-    'high_five': (60, False, 24),
+    'drink': {'frames': 96, 'loop': True},
+    'plant': {'frames': 96, 'loop': False},
+    'high_five': {'frames': 60, 'loop': False, 'contact': 24, 'partner': 'high_five'},
+    'nod': {'frames': 36, 'loop': False},
+    'head_shake': {'frames': 48, 'loop': False},
+    'point_way': {'frames': 60, 'loop': False},
+    'clap': {'frames': 48, 'loop': True},
+    'fist_bump': {'frames': 48, 'loop': False, 'contact': 20, 'partner': 'fist_bump'},
+    'handoff_give': {'frames': 72, 'loop': False, 'contact': 32, 'partner': 'handoff_receive'},
+    'handoff_receive': {'frames': 72, 'loop': False, 'contact': 32, 'partner': 'handoff_give'},
 }
 
 # Accessory materials: texture family, tint (sRGB or 'accent'/'body'), roughness/metal hints.
