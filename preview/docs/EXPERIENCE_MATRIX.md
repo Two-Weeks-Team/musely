@@ -422,7 +422,7 @@ Every action named in direction chapter 10 has an id here. `reuse` lists the cli
 
 Run from `preview/`: `node scripts/experience-matrix-check.mjs`. It compares every `item:`, `beat:`, `clip:` and `place:` id in this file with the source catalogs and reports duplicates and missing ids.
 
-It also checks the traceability (section 9): every requirement has exactly one primary S2 owner, every task id exists in [`docs/roadmap/execution-tasks.json`](../../docs/roadmap/execution-tasks.json), every requirement reaches an S3 verification task, every S2 (`I-*`) and S3 (`D-*`) task is reached by at least one requirement, the primary owner matches the experience row above, and every open decision (section 10) has an owner and a release condition.
+It also checks the traceability (section 9): the required requirement set is present once each (eight experiences, AUTONOMY, OPS-BOUNDARY), every row fills every cell, every requirement has exactly one primary S2 owner (`I-*`), contributing tasks are `I-*` only and S3 tasks `D-*` only, every S2 task assigned to that requirement anywhere in sections 1–6 is the primary or a contributor, every task id exists in [`docs/roadmap/execution-tasks.json`](../../docs/roadmap/execution-tasks.json), every requirement reaches an S3 verification task, every S2 (`I-*`) and S3 (`D-*`) task is reached by at least one requirement, the primary owner matches the experience row above, the four stage gates are present, and the decision table is non-empty with unique ids, each with an owner task, a release condition and what it blocks.
 
 ## 9. Traceability: preview → S2 implementation → S3 verification (P-04)
 
@@ -432,12 +432,12 @@ One primary S2 owner per requirement; contributing tasks build parts of it. "Out
 |---|---|---|---|---|---|
 | EXP-ENTRY | P-02 entry panel (#41): watch, local harness trial, staged connection | I-04 | I-03A, I-12 | D-01, D-06 | Public directory listing (G-02, S4); general-user OAuth onboarding (G-01, S4) |
 | EXP-WORLD | P-05 map-to-close-up scene (#44); live spotlight (#17); 3:30 story | I-05 | I-09 | D-01, D-03, D-04 | New 3D regions beyond the commons; real GPS |
-| EXP-IDENTITY | P-03 `p0-delegation`, `visitor-unclaimed` (#42); live claim, checks and ritual (#15, #20, #29) | I-02 | I-01 | D-02, D-03 | A second real person's Meta claim (the peer is a system demo principal); legal proof of identity |
-| EXP-REWARD | P-03 `p1-transit` (#42); rule engine (#18) | I-06 | I-08 | D-02 | Selling stamps or relics; real payments |
+| EXP-IDENTITY | P-03 `p0-delegation`, `visitor-unclaimed` (#42); live claim, checks and ritual (#15, #20, #29) | I-02 | I-01, I-09 | D-02, D-03 | A second real person's Meta claim (the peer is a system demo principal); legal proof of identity |
+| EXP-REWARD | P-03 `p1-transit` (#42); rule engine (#18) | I-06 | I-07, I-08, I-09 | D-02 | Selling stamps or relics; real payments |
 | EXP-MEETUP | P-03 `meetup-agree`, `meetup-no-overlap` (#42) | I-07 | I-03B | D-01, D-03 | Real bookings, external invitations, sharing a raw calendar |
 | EXP-LOCATION | P-06 location view (#45); owner location (#26) | I-08 | I-05 | D-01 | Device GPS, VPN or location spoofing (G-01) |
 | EXP-REPLAY | P-06 replay and evidence (#45); evidence panel (#25) | I-11 | I-10 | D-02, D-05 | Editing or re-running a recorded world |
-| EXP-COMMS | P-03 `comms-day` (#42); greet, gift, postcard (#26) | I-13 | I-03B | D-01 | Messages outside Musely |
+| EXP-COMMS | P-03 `comms-day` (#42); greet, gift, postcard (#26) | I-13 | I-01, I-02, I-03B, I-07, I-09 | D-01 | Messages outside Musely |
 | AUTONOMY | P-06 autonomy view (#45); section 2 definitions (C09) | I-10 | I-05, I-07, I-13 | D-02 | Calling it autonomy without the six numbers beside it |
 | OPS-BOUNDARY | Trial proxy, quota and budget (#13) | I-12 | — | D-03 | Fault injection on the production demo URL |
 
@@ -457,7 +457,8 @@ Open decisions. Undecided facts are not invented as values; a task that needs on
 | decisionId | open question | owner | release condition | blocks |
 |---|---|---|---|---|
 | DEC-01 | Does the preview experience hold as the product scope for S2? | P-07 | P-07 evidence on #46 and the review result recorded | All I-* tasks |
-| DEC-02 | Can Muse call the connector on a schedule or unattended, and does a write wait for approval? | I-04 | Tested on the real account; if unsupported, shown as unsupported with a manual path (C12), never staged as working | I-04, D-01 |
+| DEC-02 | Can the owner's real Muse account add Musely as a custom connector, take the agent key and call a Musely tool at all? | I-04 | A connection receipt on the real account: connector added, credential accepted, one tool call correlated to a world event (secrets removed). If the connection itself fails, I-04 stays blocked with the cause; it is never staged as working | I-04, D-01 |
+| DEC-11 | Can Muse call the connector on a schedule or unattended, and does a write wait for approval? | I-04 | Tested on the real account after DEC-02. If unsupported, shown as unsupported and the manual (owner-started) run is verified instead (C12); this does not block the basic connection | Claims of unattended operation in D-01 and D-05 |
 | DEC-03 | Is Muse Spark vision good enough to judge the welcome ritual? | I-02 | Real ritual runs with per-step results; if not, a judging method is chosen (direction 17) | I-02 |
 | DEC-04 | Target phones, memory budget and default DPR cap | D-04 | Device and budget table fixed before the test, using the owner's `?perf=1` phone runs | D-04 |
 | DEC-05 | Judges are not Threads app testers, so they cannot run the machine-verified claim themselves | I-02 | Judging guide offers the owner-direct path (visual check, not machine-verified), or the app passes review | D-06 |
