@@ -83,7 +83,10 @@ export class WorldRuntime {
   }
 
   private async liveSpotlight(s: WorldState, muse: string, freedom: Decision['freedom'], now: number): Promise<{decision: Decision | null; info: {source: string; reason?: string; requestId?: string | null}}> {
-    const input = validate('spotlight', spotlightInput(s, muse, freedom, now));
+    // The world must never stop on one bad input: if the spotlight input cannot be built, the scenario continues.
+    let input;
+    try { input = validate('spotlight', spotlightInput(s, muse, freedom, now)); }
+    catch (e) { return {decision: null, info: {source: 'scripted', reason: 'input_invalid: ' + String((e as Error).message).slice(0, 80)}}; }
     const fallback = (reason: string) => {
       const r = replayFor('spotlight', input);
       const out = r.output as Decision['output'] & {freedom?: string};

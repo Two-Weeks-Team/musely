@@ -110,7 +110,8 @@ export function spotlightInput(s: WorldState, museId: string, freedom: Freedom, 
     muse: museId, freedom, localTime: localClock(now).hhmm, place: safeName(here.name),
     places: pick.map(x => ({name: safeName(x.p.name), kind: x.p.kind, distanceM: Math.round(x.d)})),
     muses: s.muses.filter(o => o.id !== museId).map(o => ({o, d: distanceM(here, placeById(o.place))})).sort((a, b) => a.d - b.d).slice(0, 6).map(x => ({muse: x.o.id, place: safeName(placeById(x.o.place).name), distanceM: Math.round(x.d)})),
-    items: m.inventory.slice(0, 12), memory: [m.reflection, ...m.memory].filter(Boolean).slice(0, 5).map(t => t.slice(0, 100)),
+    // Postcards carry their place id (postcard:osm:node/123); the model only needs to know it holds postcards.
+    items: [...new Set(m.inventory.map(i => (i.startsWith('postcard:') ? 'postcard' : i)))].slice(0, 12), memory: [m.reflection, ...m.memory].filter(Boolean).slice(0, 5).map(t => t.slice(0, 100)),
   };
 }
 
