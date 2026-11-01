@@ -8,6 +8,8 @@ import {HARNESSES, harnessById} from './harness.ts';
 import {ITEM_BY_ID} from './items.ts';
 import {rngFor, weightedPick, daySeed} from './rng.ts';
 import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
+import {defaultOwner, tagLocation, placeCell, type OwnerLocation} from './location.ts';
+import {emptyInbox, expireTasks, deliverMessage, type Inbox} from './inbox.ts';
 
 export const ENGINE_VERSION = 'engine-1';
 export const TICK_MS = 60_000;
@@ -28,12 +30,18 @@ export type MuseState = {
   intent: {kind: 'greet' | 'trade'; target: string; give?: string | null; want?: string | null} | null;
   /** Public wants (7, 9.1): starts from the harness; Spark or the owner's connected Muse can update it. */
   wants: Wants;
+  /** Owner-location cell this Muse follows (13.1): scripted wandering stays inside it. */
+  anchor?: string | null;
 };
 export type Wants = {goal: string; items: string[]; source: 'harness' | 'spark' | 'connected'; updatedAt: number};
 export type WorldEvent = {id: string; tick: number; at: number; source: Source; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data?: Record<string, unknown>; tags: string[]};
 export type WorldState = {worldId: string; day: string; seed: string; tick: number; version: number; muses: MuseState[]; spotlight: {cursor: number; visitorQueue: string[]}; lastTickAt: number;
   /** Item rule counters (daily limits, pair trades). The append-only item history is the run log. */
-  items: ItemLedger};
+  items: ItemLedger;
+  /** Owner location source and cell (13.1). Older stored states get the default on the next tick. */
+  owner?: OwnerLocation;
+  /** Agent inbox, mail in transit and owner notifications (7.2, 12.3). */
+  inbox?: Inbox};
 export type Decision = {muse: string; freedom: Freedom; source: 'live' | 'replay'; output: {decision: string; target_place: string; target_agent: string; offer_item: string; want_item: string; public_reason: string; line: string}; evidence?: Record<string, unknown>};
 export type Hooks = {
   /** Item discovery etc. when a Muse arrives somewhere (task 4 rules). */
@@ -65,6 +73,9 @@ const START_ITEMS: Record<string, string[]> = {
   '05-bloom': ['petal_patch', 'tea'], '06-ink': ['book_glasses'], '07-tempo': ['headphones', 'snack_box'], '08-orbit': ['star_pin'], '09-copper': ['pocket_gadget', 'coffee'],
 };
 
+/** The owner's Muse slot (the Muse a connected owner drives through MCP). */
+export const OWNER_MUSE = '00-jolly';
+
 export const harnessWants = (museId: string, now: number): Wants => ({goal: harnessById(museId).wants.goal, items: [...harnessById(museId).wants.items], source: 'harness', updatedAt: now});
 
 /**
@@ -87,6 +98,8 @@ export function createWorld(worldId: string, now: number): WorldState {
     muses: HARNESSES.map(h => ({id: h.id, place: START_PLACES[h.id], travel: null, beat: null, inventory: [...START_ITEMS[h.id]], memory: [], reflection: '', lastMet: {}, intent: null, wants: harnessWants(h.id, now)})),
     spotlight: {cursor: 0, visitorQueue: []},
     items: emptyLedger(),
+    owner: defaultOwner(OWNER_MUSE, now),
+    inbox: emptyInbox(),
   };
 }
 
@@ -136,8 +149,10 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   const now = input.now, clock = localClock(now);
   const s: WorldState = structuredClone(prev);
   const events: WorldEvent[] = [];
-  const emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => events.push({...e, id: `${s.day}:${s.tick}:${events.length}`, tick: s.tick});
   s.items ??= emptyLedger();
+  s.owner ??= defaultOwner(OWNER_MUSE, now);
+  s.inbox ??= emptyInbox();
+  const emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => events.push({...tagLocation(s.owner, e), id: `${s.day}:${s.tick}:${events.length}`, tick: s.tick});
   for (const m of s.muses) m.wants ??= harnessWants(m.id, now);
   if (clock.date !== s.day) {
     s.day = clock.date; s.seed = daySeed(s.worldId, s.day);
@@ -147,6 +162,15 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     emit({at: now, source: 'rule', kind: 'new_day', muse: null, data: {day: s.day}, tags: []});
   }
   if (s.items.history.length > 200) s.items.history = s.items.history.slice(-200);
+  // Inbox upkeep: overdue Tasks expire; postcards in transit arrive on the real clock.
+  for (const t of expireTasks(s.inbox, now)) emit({at: now, source: 'rule', kind: 'task_expired', muse: t.awaiting, other: t.awaiting === t.from ? t.to : t.from, data: {task_id: t.id, task: t.kind}, tags: []});
+  for (const mail of s.inbox.mail.filter(x => x.deliverAt <= now)) {
+    const to = s.muses.find(m => m.id === mail.to);
+    if (to) to.inventory.push(mail.item);
+    deliverMessage(s.inbox, {from: mail.from, to: mail.to, kind: 'postcard', at: now, text: mail.text, item: mail.item});
+    emit({at: now, source: 'rule', kind: 'postcard_delivered', muse: mail.to, other: mail.from, data: {item: mail.item, mail_id: mail.id, sentAt: mail.sentAt}, tags: mail.crossRegion ? ['cross_region_postcard'] : []});
+  }
+  s.inbox.mail = s.inbox.mail.filter(x => x.deliverAt > now);
 
   const spot = spotlightFor(s, now);
   // 1. Spotlight: a recorded live/replay decision for this turn, or the scenario's own choice.
@@ -175,7 +199,9 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     // Intent from a spotlight decision takes priority over wandering.
     const goTravel = !m.intent && (stay.length === 0 || rand() < (place.zone === 'commons' ? .22 : .45));
     if (goTravel) {
-      const dest = chooseDestination(s, m, rand, clock.hour);
+      const picked = chooseDestination(s, m, rand, clock.hour);
+      // A Muse following its owner (13.1) wanders only inside the owner's cell.
+      const dest = picked && m.anchor && placeCell(picked) !== m.anchor ? null : picked;
       if (dest) { startTrip(m, place, dest, now, 'scripted', emit, hooks); continue; }
     }
     const beat = weightedPick(rand, stay, b => beatWeight(b, m.id));
