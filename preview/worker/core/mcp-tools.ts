@@ -129,6 +129,14 @@ type Apply = (st: WorldState, live: Emit, rule: Emit, at: number) => Outcome;
 async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | null, content: Record<string, unknown>, apply: Apply): Promise<ToolResult> {
   const me = c.key.muse, at = c.now();
   const exec = await c.trust.custodialExecutor(me, c.ownerRoot);
+  if (!exec) {
+    // Revoked before any custodial delegation existed: nothing may sign for this Muse; refuse without an envelope.
+    c.runtime.commitExternal(at, `mcp-${tool.name}-revoked-${Math.random().toString(36).slice(2, 10)}`, (st, emit) => {
+      emit(tagLocation(st.owner, {at, source: 'live', kind: 'a2a_refused', muse: me, other: recipientMuse, line: 'Refused: delegation revoked', data: {step: 'delegation', reason: 'delegation_revoked', actor: 'your Muse', tool: tool.name, key_id: c.key.id, envelope: null, content}, tags: ['p0_refused']}));
+      notifyOwner(inboxOf(st), {kind: 'blocked', at, line: `Blocked: your Muse's ${tool.name.replace(/_/g, ' ')} was refused (delegation revoked)`, ref: null, other: recipientMuse});
+    });
+    return refused('delegation_revoked', {step: 'delegation', envelope: null});
+  }
   const recipient = recipientMuse ? c.trust.agentByMuse(recipientMuse)?.agentId ?? 'musely:world' : 'musely:world';
   const signed = await signEnvelope(exec.key, exec.delegation, exec.d, {recipient, action: tool.name, scope: tool.write!.scope, content, ownerClaimed: c.ownerClaimed, now: at});
   const verdict = await verifyEnvelope(signed, c.trust, at);

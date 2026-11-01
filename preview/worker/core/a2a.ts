@@ -57,13 +57,16 @@ export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; 
 
 /** P0 (direction 2.1): valid delegation → trade commits; owner revokes; the same request → refused. */
 export async function runP0(c: Ctx) {
+  // Running P0 is an owner action: if a previous run stopped between revoke and re-delegation, delegate first.
+  if (c.trust.suspended(OWNER_SLOT)) c.trust.redelegate(OWNER_SLOT);
   const first = await ownerTrade(c, {label: 'p0-valid'});
   if (!('plan' in first)) return {ok: false, reason: first.reason};
   const version = await c.trust.revoke(OWNER_SLOT);
   c.runtime.commitExternal(nowOf(c), 'p0-revoke', (_s, emit) => emit({at: nowOf(c), source: 'live', kind: 'delegation_revoked', muse: OWNER_SLOT, line: 'Owner revoked the delegation', data: {newVersion: version}, tags: ['revocation']}));
   // The same request content, re-signed with the delegation that was just revoked.
   const second = await ownerTrade(c, {stale: true, label: 'p0-after-revoke', plan: first.plan});
-  // The owner delegates again so the Muse can keep living in the world; a new version, a new executor.
+  // The owner delegates again (explicitly) so the Muse can keep living in the world; a new version, a new executor.
+  c.trust.redelegate(OWNER_SLOT);
   const fresh = await c.trust.executor(OWNER_SLOT, 'server_custodial', c.ownerRoot);
   c.runtime.commitExternal(nowOf(c), 'p0-redelegate', (_s, emit) => emit({at: nowOf(c), source: 'live', kind: 'delegation_issued', muse: OWNER_SLOT, line: 'Owner delegated again', data: {version: fresh.d.version, signer_kind: fresh.d.signer_kind, executor_kid: fresh.d.executor_kid}, tags: []}));
   return {ok: true, before: first.verdict, afterRevoke: 'verdict' in second ? second.verdict : second.reason};

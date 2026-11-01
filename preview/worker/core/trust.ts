@@ -15,6 +15,10 @@ const SCOPE_SUMMARY = {allowed: [...SCOPES.allowed], approval: [...SCOPES.approv
 export type AgentRow = {agentId: string; museId: string; rootJwk: EcPublicJwk; kind: 'owner' | 'resident'; label: string};
 export type Executor = {key: KeyPair; delegation: string; d: Delegation};
 
+export class DelegationRevoked extends Error {
+  constructor(museId: string) { super(`Delegation for ${museId} is revoked; the owner must delegate again`); }
+}
+
 export class Trust implements TrustRegistry {
   private sql: Sql;
   constructor(sql: Sql) { this.sql = sql; }
@@ -25,6 +29,9 @@ export class Trust implements TrustRegistry {
     this.sql.exec('CREATE TABLE IF NOT EXISTS delegation_versions (agent_id TEXT PRIMARY KEY, version INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS executors (agent_id TEXT NOT NULL, signer_kind TEXT NOT NULL, kid TEXT NOT NULL, delegation TEXT NOT NULL, version INTEGER NOT NULL, PRIMARY KEY (agent_id, signer_kind))');
     this.sql.exec('CREATE TABLE IF NOT EXISTS revoked (ref TEXT PRIMARY KEY, at INTEGER NOT NULL)');
+    // The version the owner last delegated. Below the current version = revoked and not yet re-delegated.
+    // Kept per agent, independent of executor rows, so a revocation holds even before any executor exists.
+    this.sql.exec('CREATE TABLE IF NOT EXISTS delegated (agent_id TEXT PRIMARY KEY, version INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS nonces (key TEXT PRIMARY KEY, exp INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS approvals (ref TEXT PRIMARY KEY, content_hash TEXT NOT NULL, agent_id TEXT NOT NULL, at INTEGER NOT NULL)');
   }
@@ -76,10 +83,17 @@ export class Trust implements TrustRegistry {
     this.sql.exec('INSERT OR REPLACE INTO approvals (ref, content_hash, agent_id, at) VALUES (?, ?, ?, ?)', ref, contentHash, agentId, Date.now());
   }
 
-  /** The executor for an agent and signer kind; (re)issued when missing, expired, or after a revocation. */
+  /** The version the owner last delegated (defaults to the current version: never revoked). */
+  delegatedVersion(agentId: string) { const r = this.sql.exec('SELECT version FROM delegated WHERE agent_id = ?', agentId).toArray()[0]; return r ? Number(r.version) : this.delegationVersion(agentId); }
+
+  /**
+   * The executor for an agent and signer kind; (re)issued when missing or expired. While the agent is
+   * revoked and the owner has not delegated again, no new delegation is issued (throws DelegationRevoked).
+   */
   async executor(museId: string, signerKind: SignerKind, ownerRootJwk: JsonWebKey | null): Promise<Executor> {
     const agent = this.agentByMuse(museId);
     if (!agent) throw new Error('Unknown Muse ' + museId);
+    if (this.suspended(museId)) throw new DelegationRevoked(museId);
     const version = this.delegationVersion(agent.agentId);
     const row = this.sql.exec('SELECT kid, delegation, version FROM executors WHERE agent_id = ? AND signer_kind = ?', agent.agentId, signerKind).toArray()[0];
     // Reuse the stored executor while its delegation is current; an expired one (24 h TTL) is re-issued at the same version.
@@ -105,26 +119,34 @@ export class Trust implements TrustRegistry {
     return {key, delegation: String(row.delegation), d: peekDelegation(String(row.delegation))!};
   }
   /**
-   * Executor for writes made on behalf of a connected Muse (MCP). Unlike executor(), it never re-issues a
-   * delegation after the owner revoked: the stale executor is returned, so its envelope fails verification
-   * at the delegation step until the owner delegates again.
+   * Executor for writes made on behalf of a connected Muse (MCP). While revoked it never issues a new
+   * delegation: it returns the stored (revoked) executor so the envelope fails verification at the
+   * delegation step, or null when none was ever issued (the caller refuses without signing).
    */
-  async custodialExecutor(museId: string, ownerRootJwk: JsonWebKey | null): Promise<Executor> {
-    const agent = this.agentByMuse(museId);
-    if (!agent) throw new Error('Unknown Muse ' + museId);
-    const row = this.sql.exec('SELECT version FROM executors WHERE agent_id = ? AND signer_kind = ?', agent.agentId, 'server_custodial').toArray()[0];
-    if (row && Number(row.version) < this.delegationVersion(agent.agentId)) return (await this.storedExecutor(museId, 'server_custodial'))!;
+  async custodialExecutor(museId: string, ownerRootJwk: JsonWebKey | null): Promise<Executor | null> {
+    if (this.suspended(museId)) return this.storedExecutor(museId, 'server_custodial');
     return this.executor(museId, 'server_custodial', ownerRootJwk);
   }
 
-  /** While suspended (after a revocation, before the owner delegates again) the Muse takes no live decisions. */
-  suspended(museId: string) { const a = this.agentByMuse(museId); return !!a && this.sql.exec('SELECT 1 FROM executors WHERE agent_id = ? AND version < ?', a.agentId, this.delegationVersion(a.agentId)).toArray().length > 0; }
+  /** While suspended (revoked, before the owner delegates again) the Muse takes no live decisions and gets no new delegation. */
+  suspended(museId: string) { const a = this.agentByMuse(museId); return !!a && this.delegatedVersion(a.agentId) < this.delegationVersion(a.agentId); }
+
+  /** The owner's explicit re-delegation after a revocation: new executors may be issued at the current version. */
+  redelegate(museId: string) {
+    const agent = this.agentByMuse(museId);
+    if (!agent) throw new Error('Unknown Muse ' + museId);
+    const version = this.delegationVersion(agent.agentId);
+    this.sql.exec('INSERT INTO delegated (agent_id, version) VALUES (?, ?) ON CONFLICT(agent_id) DO UPDATE SET version = excluded.version', agent.agentId, version);
+    return version;
+  }
 
   /** Owner revocation (7, "철회"): bump the version and revoke every issued delegation at once. */
   async revoke(museId: string) {
     const agent = this.agentByMuse(museId);
     if (!agent) throw new Error('Unknown Muse ' + museId);
     for (const r of this.sql.exec('SELECT delegation FROM executors WHERE agent_id = ?', agent.agentId).toArray()) this.sql.exec('INSERT OR IGNORE INTO revoked (ref, at) VALUES (?, ?)', await delegationRef(String(r.delegation)), Date.now());
+    // Remember the last delegated version first, so the revocation holds with or without executor rows.
+    this.sql.exec('INSERT INTO delegated (agent_id, version) VALUES (?, ?) ON CONFLICT(agent_id) DO UPDATE SET version = MIN(delegated.version, excluded.version)', agent.agentId, this.delegatedVersion(agent.agentId));
     const next = this.delegationVersion(agent.agentId) + 1;
     this.sql.exec('INSERT INTO delegation_versions (agent_id, version) VALUES (?, ?) ON CONFLICT(agent_id) DO UPDATE SET version = excluded.version', agent.agentId, next);
     return next;
