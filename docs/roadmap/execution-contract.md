@@ -111,3 +111,18 @@
 - 실제 결제·예약·외부 초대·일정 원본 공유는 금지. 일반 사용자 OAuth/GPS/운영 수습은 G-01, Gadget M8·추가 3D 지역·온도/현장 SAM 원장은 현행 데모 필수가 아니다. 과거 기획의 항목은 자동 부활시키지 않는다.
 - D-06의 done은 제출 준비 검증 완료다. 실제 제출은 별도 execution 상태(not-authorized / authorized / submitted / confirmed)와 receipt로 추적하며 준비 이슈를 닫았다고 제출 완료로 표시하지 않는다. G-02의 done은 요건 확인과 신청 패키지 준비 완료이며 신청/심사/승인 상태와 receipt는 별도 추적 필드다.
 - 제출/공개 전환/디렉터리 신청은 별도 실행 권한과 실제 receipt가 필요하다. 계획/이슈 등록은 해당 외부 실행의 승인으로 확대하지 않는다.
+
+## C13 — 추적 표·단계 게이트·미결정 결정 (P-04, 2026-11-01 추가)
+
+- 이 절은 P-04 #43에서 추가했다. 이슈들이 고정 참조하는 `9d5332a`의 C01~C12 원문과 줄 범위는 바꾸지 않는다.
+- 경험 요구 → S2 구현 → S3 검증의 추적 표는 [`preview/docs/EXPERIENCE_MATRIX.md` 9절](../../preview/docs/EXPERIENCE_MATRIX.md#9-traceability-preview--s2-implementation--s3-verification-p-04)이 소유한다.
+  - 요구 ID마다 주 담당 S2 태스크는 정확히 하나다. 기여 태스크는 따로 적는다.
+  - 모든 요구는 S3 검증 태스크(D-*)에 닿아야 한다.
+  - 모든 I-*·D-* 태스크는 최소 한 요구에서 도달해야 한다.
+  - 범위 밖은 행마다 명시한다.
+  - `node scripts/experience-matrix-check.mjs`(cwd `preview/`)가 위 조건을 전수 검사한다. 실패는 PASS가 아니다.
+- 단계 게이트와 미결정 결정(DEC-*)은 같은 문서 10절이 소유한다. 결정마다 담당 태스크·해제 조건·막는 대상을 적는다.
+  - 미정인 사실은 값으로 발명하지 않는다. 그 값이 필요한 태스크는 해제 조건이 충족될 때까지 blocked다.
+  - 결정을 바꾸면 10절과 영향받는 이슈를 함께 갱신한다.
+- 과거 PRD의 M0~M8 순서는 착수 조건으로 쓰지 않는다. 순서는 [`execution-tasks.json`](execution-tasks.json)의 의존성만 따른다.
+- S1 경험의 승인(DEC-01, P-07) 없이 제품 방향을 확정하지 않는다. 제출·공개 전환(DEC-06·DEC-07)은 C12의 별도 실행 권한과 receipt를 따른다.

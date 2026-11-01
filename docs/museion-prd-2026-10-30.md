@@ -1,6 +1,6 @@
 # Musely — PRD (마일스톤 기반, 세계: Museion)
 
-> **과거 설계 기록:** 이 문서의 M0~M8·POC·Docker/Colyseus·SAM/온도·기기 전용 개인키·제출 범위 절단 선언은 현행 실행 요구/착수 순서가 아니다. 활성 요구·태스크·검증은 [실행 명세](roadmap/task-execution.md)와 [공통 계약](roadmap/execution-contract.md)을 따른다. 현행 범위로 다시 채택할 때는 별도 요구 ID와 이슈를 추가한다.
+> **과거 설계 기록:** 이 문서의 M0~M8·POC·Docker/Colyseus·SAM/온도·기기 전용 개인키·제출 범위 절단 선언은 현행 실행 요구/착수 순서가 아니다. 활성 요구·태스크·검증은 [실행 명세](roadmap/task-execution.md)와 [공통 계약](roadmap/execution-contract.md)을 따른다. 현행 범위로 다시 채택할 때는 별도 요구 ID와 이슈를 추가한다. 경험별 S2 담당·S3 검증·범위 밖·미결정 결정은 [경험 대응표 9·10절](../preview/docs/EXPERIENCE_MATRIX.md#9-traceability-preview--s2-implementation--s3-verification-p-04)을 따른다(P-04).
 
 > **진행 단계 개정 (2026-11-01):** 프리뷰 → 구현 → 데모(개발 완료) → GTM의 구분은 [4단계 로드맵](roadmap/2026-11-01-four-stage-roadmap.md)을 우선한다. 이 문서의 기존 “프리뷰 데모”, “1단계/2단계” 표현과 과거 상태표는 그대로 최신 단계·완료 상태를 뜻하지 않는다. 제품 세부 요구사항은 유지하며, 단계별 배정과 에픽·태스크는 로드맵과 실행 명세에서 확인한다.
 
