@@ -1,9 +1,8 @@
-import {RESIDENT_VARIANTS,variantById,SINGLE_PLAY} from './catalog.ts';
+import {RESIDENT_VARIANTS,variantById,SINGLE_PLAY,strideOf} from './catalog.ts';
 import type {Lod} from './MuseActor.ts';
 
 type Turn={id:number;start:number;person:number;listener:number}|null;
 export type Behavior={action:string;expression:string;timed:boolean};
-const STRIDE_M=.27,WALK_SECONDS=32/24;
 
 /** Everyday behavior for resident i: route-owned walking, dialogue roles, then the variant's own activity. */
 export function residentBehavior(i:number,t:number,moving:boolean,turn:Turn):Behavior{
@@ -26,16 +25,18 @@ export function residentBehavior(i:number,t:number,moving:boolean,turn:Turn):Beh
  return sig?{action:sig,expression:face[sig]??'Neutral',timed:SINGLE_PLAY.has(sig)}:{action:'idle_breathe',expression:'Neutral',timed:false};
 }
 
-/** Per-resident action clock: walking phase follows traveled distance, single-play clips start when chosen. */
+/** Per-resident action clock: locomotion phase follows traveled distance, single-play clips start when chosen. */
 export class ResidentClock{
  private distance=0;private last:{x:number;z:number;t:number}|null=null;private action='';private started=0;
  time(b:Behavior,t:number,x:number,z:number,tempo=1){
   const seek=!!this.last&&(t<this.last.t||t-this.last.t>.25);
+  const stride=strideOf(b.action);
   if(seek)this.distance=0;
-  else if(b.action==='walk'&&this.last)this.distance+=Math.hypot(x-this.last.x,z-this.last.z);
+  else if(stride&&this.last)this.distance+=Math.hypot(x-this.last.x,z-this.last.z);
   this.last={x,z,t};
   if(seek||b.action!==this.action){this.action=b.action;this.started=t;}
-  if(b.action==='walk')return this.distance/STRIDE_M*WALK_SECONDS;
+  // Locomotion (walk, carry_walk, run): one declared stride of route travel plays one clip cycle.
+  if(stride)return this.distance/stride.meters*stride.seconds;
   return b.timed?t-this.started:t*tempo;
  }
 }

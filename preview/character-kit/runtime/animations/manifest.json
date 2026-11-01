@@ -123,13 +123,15 @@
       "name": "drink",
       "seconds": 4.0,
       "loop": true,
-      "action": true
+      "action": true,
+      "prop": "cup"
     },
     {
       "name": "plant",
       "seconds": 4.0,
       "loop": false,
-      "action": true
+      "action": true,
+      "prop": "seedling"
     },
     {
       "name": "high_five",
@@ -137,7 +139,149 @@
       "loop": false,
       "action": true,
       "contactSeconds": 1.0,
+      "partnerClip": "high_five",
       "partnerDistanceMeters": 0.9
+    },
+    {
+      "name": "nod",
+      "seconds": 1.5,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "head_shake",
+      "seconds": 2.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "point_way",
+      "seconds": 2.5,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "clap",
+      "seconds": 2.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "fist_bump",
+      "seconds": 2.0,
+      "loop": false,
+      "action": true,
+      "contactSeconds": 0.8333333333333334,
+      "partnerClip": "fist_bump",
+      "partnerDistanceMeters": 0.9
+    },
+    {
+      "name": "handoff_give",
+      "seconds": 3.0,
+      "loop": false,
+      "action": true,
+      "contactSeconds": 1.3333333333333333,
+      "partnerClip": "handoff_receive",
+      "partnerDistanceMeters": 0.9
+    },
+    {
+      "name": "handoff_receive",
+      "seconds": 3.0,
+      "loop": false,
+      "action": true,
+      "contactSeconds": 1.3333333333333333,
+      "partnerClip": "handoff_give",
+      "partnerDistanceMeters": 0.9
+    },
+    {
+      "name": "eat",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true,
+      "prop": "plate"
+    },
+    {
+      "name": "board",
+      "seconds": 2.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "bus_sway",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "stretch",
+      "seconds": 4.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "feed_birds",
+      "seconds": 3.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "pick_up",
+      "seconds": 3.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "write_note",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true,
+      "prop": "notepad"
+    },
+    {
+      "name": "photo",
+      "seconds": 3.0,
+      "loop": false,
+      "action": true,
+      "prop": "camera"
+    },
+    {
+      "name": "yawn",
+      "seconds": 3.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "hammer",
+      "seconds": 2.0,
+      "loop": true,
+      "action": true,
+      "prop": "hammer"
+    },
+    {
+      "name": "lantern_hold",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "dance",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "carry_walk",
+      "seconds": 1.3333333333333333,
+      "loop": true,
+      "action": true,
+      "strideMeters": 0.27
+    },
+    {
+      "name": "run",
+      "seconds": 0.6666666666666666,
+      "loop": true,
+      "action": true,
+      "strideMeters": 0.222
     }
   ],
   "sockets": {

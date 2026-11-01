@@ -34,13 +34,23 @@ body, face = scene.objects['Jolly_Base'], scene.objects['Jolly_Face']
 camera, floor = scene.camera, scene.objects['Studio ground']
 for c in bpy.data.collections:
     if c.get('musely_variant'):
-        c.hide_render = True
+        c.hide_render = c['musely_variant'] != 'props'  # shared action props stay visible
+props = {o.get('musely_clip'): o for o in bpy.data.objects if o.get('musely_kind') == 'prop' and o.get('musely_clip')}
 
 FRAMES = {'drink': [0, 30, 48], 'plant': [0, 36, 66, 96], 'high_five': [0, 12, 24, 40]}
+for _n, _s in ACTION_CLIPS.items():
+    FRAMES.setdefault(_n, [_s['contact']] if 'contact' in _s else [_s['frames'] // 4, _s['frames'] // 2, 3 * _s['frames'] // 4])
+if globals().get('MID_ONLY'):
+    FRAMES = {n: [f[len(f) // 2]] for n, f in FRAMES.items()}
 VIEWS = {'drink': {'side': (2.6, -1.2, .7), 'front': (.9, -2.8, .7)},
          'plant': {'side': (2.8, -.9, .6), 'front': (.9, -2.8, .7)},
          'high_five': {'side': (5.2, -.45, .8), 'above': (3.4, 2.2, 2.6)}}
-TARGET = {'high_five': Vector((0, -.45, .45))}
+TWO = {n for n, s in ACTION_CLIPS.items() if 'partner' in s}
+for _n in TWO:
+    VIEWS.setdefault(_n, VIEWS['high_five'])
+for _n in ACTION_CLIPS:
+    VIEWS.setdefault(_n, {'front': (1.2, -2.8, .75)})
+TARGET = {n: Vector((0, -.45, .45)) for n in TWO}
 
 
 def shot(path, loc, target):
@@ -68,9 +78,13 @@ def partner():
 done = []
 for name in ONLY:
     a = bpy.data.actions[name]
-    extra = partner() if name == 'high_five' else []
-    for ob in [rig] + [o for o in extra if o.type == 'ARMATURE']:
-        ob.animation_data.action = a; ob.animation_data.action_slot = a.slots[0]
+    extra = partner() if name in TWO else []
+    rig.animation_data.action = a; rig.animation_data.action_slot = a.slots[0]
+    for ob in [o for o in extra if o.type == 'ARMATURE']:
+        pa = bpy.data.actions[ACTION_CLIPS[name]['partner']]
+        ob.animation_data.action = pa; ob.animation_data.action_slot = pa.slots[0]
+    for clip, o in props.items():
+        o.hide_render = clip != name  # a prop shows only during its own clip, as at runtime
     for f in FRAMES[name]:
         scene.frame_set(f + 1)
         for view, loc in VIEWS[name].items():

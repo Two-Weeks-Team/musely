@@ -1,0 +1,561 @@
+{
+ "note": "Task 5b final: scripts/actions.browser.js on the final build (all 24 action clips, LOD2 and LOD0, props loaded).",
+ "results": [
+  {
+   "clip": "drink",
+   "lod": 2,
+   "frames": 96,
+   "moved": 4.302,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 1.027,
+   "socketToHandSurfaceMaxMm": -7.01,
+   "socketToHandCentroidMaxMm": 24.619,
+   "propShown": [
+    "prop__cup__lod2@Hand_R"
+   ],
+   "otherPropsShown": []
+  },
+  {
+   "clip": "plant",
+   "lod": 2,
+   "frames": 96,
+   "moved": 13.776,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -5.814,
+   "propShown": [
+    "prop__seedling__lod2@Hand_R"
+   ],
+   "otherPropsShown": []
+  },
+  {
+   "clip": "high_five",
+   "lod": 2,
+   "frames": 60,
+   "moved": 12.817,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -8.163,
+   "partnerClip": "high_five",
+   "partnerDistanceM": 0.9,
+   "minHandToPartnerTorsoMm": 102.563,
+   "minHandToPartnerHandMm": 10.006,
+   "contactFrame": 24,
+   "palmDistanceMm": 39.727,
+   "actorDistanceM": 0.9
+  },
+  {
+   "clip": "nod",
+   "lod": 2,
+   "frames": 36,
+   "moved": 0.115,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 1.027
+  },
+  {
+   "clip": "head_shake",
+   "lod": 2,
+   "frames": 48,
+   "moved": 0.239,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 1.027
+  },
+  {
+   "clip": "point_way",
+   "lod": 2,
+   "frames": 60,
+   "moved": 4.12,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 1.027
+  },
+  {
+   "clip": "clap",
+   "lod": 2,
+   "frames": 48,
+   "moved": 4.421,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 1.027
+  },
+  {
+   "clip": "fist_bump",
+   "lod": 2,
+   "frames": 48,
+   "moved": 11.854,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0.741,
+   "partnerClip": "fist_bump",
+   "partnerDistanceM": 0.9,
+   "minHandToPartnerTorsoMm": 179.206,
+   "minHandToPartnerHandMm": 17.856,
+   "contactFrame": 20,
+   "palmDistanceMm": 39.446,
+   "actorDistanceM": 0.9
+  },
+  {
+   "clip": "handoff_give",
+   "lod": 2,
+   "frames": 72,
+   "moved": 11.902,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0.642,
+   "partnerClip": "handoff_receive",
+   "partnerDistanceM": 0.9,
+   "minHandToPartnerTorsoMm": 163.94,
+   "minHandToPartnerHandMm": 27.573,
+   "contactFrame": 32,
+   "palmDistanceMm": 53.387,
+   "actorDistanceM": 0.9
+  },
+  {
+   "clip": "handoff_receive",
+   "lod": 2,
+   "frames": 72,
+   "moved": 11.897,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0.738,
+   "partnerClip": "handoff_give",
+   "partnerDistanceM": 0.9,
+   "minHandToPartnerTorsoMm": 163.94,
+   "minHandToPartnerHandMm": 27.573,
+   "contactFrame": 32,
+   "palmDistanceMm": 53.387,
+   "actorDistanceM": 0.9
+  },
+  {
+   "clip": "eat",
+   "lod": 2,
+   "frames": 96,
+   "moved": 5.014,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 1.027,
+   "propShown": [
+    "prop__plate__lod2@Hand_L"
+   ],
+   "otherPropsShown": []
+  },
+  {
+   "clip": "board",
+   "lod": 2,
+   "frames": 48,
+   "moved": 11.718,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -6.902
+  },
+  {
+   "clip": "bus_sway",
+   "lod": 2,
+   "frames": 96,
+   "moved": 3.262,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 1.027
+  },
+  {
+   "clip": "stretch",
+   "lod": 2,
+   "frames": 96,
+   "moved": 4.289,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 1.027
+  },
+  {
+   "clip": "feed_birds",
+   "lod": 2,
+   "frames": 72,
+   "moved": 4.267,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 1.027
+  },
+  {
+   "clip": "pick_up",
+   "lod": 2,
+   "frames": 72,
+   "moved": 9.342,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0.13
+  },
+  {
+   "clip": "write_note",
+   "lod": 2,
+   "frames": 96,
+   "moved": 7.745,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 1.027,
+   "propShown": [
+    "prop__notepad__lod2@Hand_L"
+   ],
+   "otherPropsShown": []
+  },
+  {
+   "clip": "photo",
+   "lod": 2,
+   "frames": 72,
+   "moved": 7.493,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 1.027,
+   "propShown": [
+    "prop__camera__lod2@Hand_R"
+   ],
+   "otherPropsShown": []
+  },
+  {
+   "clip": "yawn",
+   "lod": 2,
+   "frames": 72,
+   "moved": 6.919,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 1.027
+  },
+  {
+   "clip": "hammer",
+   "lod": 2,
+   "frames": 48,
+   "moved": 3.836,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 1.027,
+   "propShown": [
+    "prop__hammer__lod2@Hand_R"
+   ],
+   "otherPropsShown": []
+  },
+  {
+   "clip": "lantern_hold",
+   "lod": 2,
+   "frames": 96,
+   "moved": 1.816,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 1.027
+  },
+  {
+   "clip": "dance",
+   "lod": 2,
+   "frames": 96,
+   "moved": 7.118,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0.177
+  },
+  {
+   "clip": "carry_walk",
+   "lod": 2,
+   "frames": 32,
+   "moved": 5.84,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -5.516,
+   "footSweepPerCycleM": 0.141,
+   "strideM": 0.27,
+   "slipRatio": 0.523,
+   "walkRatio": 0.515
+  },
+  {
+   "clip": "run",
+   "lod": 2,
+   "frames": 16,
+   "moved": 6.47,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -11.523,
+   "footSweepPerCycleM": 0.218,
+   "strideM": 0.222,
+   "slipRatio": 0.98,
+   "walkRatio": 0.515
+  },
+  {
+   "clip": "drink",
+   "lod": 0,
+   "frames": 96,
+   "moved": 4.302,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0,
+   "socketToHandSurfaceMaxMm": -5.608,
+   "socketToHandCentroidMaxMm": 21.803,
+   "propShown": [
+    "prop__cup@Hand_R"
+   ],
+   "otherPropsShown": []
+  },
+  {
+   "clip": "plant",
+   "lod": 0,
+   "frames": 96,
+   "moved": 13.776,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -10.017,
+   "propShown": [
+    "prop__seedling@Hand_R"
+   ],
+   "otherPropsShown": []
+  },
+  {
+   "clip": "high_five",
+   "lod": 0,
+   "frames": 60,
+   "moved": 12.817,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -11.748,
+   "partnerClip": "high_five",
+   "partnerDistanceM": 0.9,
+   "minHandToPartnerTorsoMm": 100.971,
+   "minHandToPartnerHandMm": 7.355,
+   "contactFrame": 24,
+   "palmDistanceMm": 39.727,
+   "actorDistanceM": 0.9
+  },
+  {
+   "clip": "nod",
+   "lod": 0,
+   "frames": 36,
+   "moved": 0.115,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0
+  },
+  {
+   "clip": "head_shake",
+   "lod": 0,
+   "frames": 48,
+   "moved": 0.239,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0
+  },
+  {
+   "clip": "point_way",
+   "lod": 0,
+   "frames": 60,
+   "moved": 4.12,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0
+  },
+  {
+   "clip": "clap",
+   "lod": 0,
+   "frames": 48,
+   "moved": 4.421,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0
+  },
+  {
+   "clip": "fist_bump",
+   "lod": 0,
+   "frames": 48,
+   "moved": 11.854,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -0.236,
+   "partnerClip": "fist_bump",
+   "partnerDistanceM": 0.9,
+   "minHandToPartnerTorsoMm": 175.435,
+   "minHandToPartnerHandMm": 18.879,
+   "contactFrame": 20,
+   "palmDistanceMm": 39.446,
+   "actorDistanceM": 0.9
+  },
+  {
+   "clip": "handoff_give",
+   "lod": 0,
+   "frames": 72,
+   "moved": 11.902,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -0.284,
+   "partnerClip": "handoff_receive",
+   "partnerDistanceM": 0.9,
+   "minHandToPartnerTorsoMm": 160.209,
+   "minHandToPartnerHandMm": 27.753,
+   "contactFrame": 32,
+   "palmDistanceMm": 53.387,
+   "actorDistanceM": 0.9
+  },
+  {
+   "clip": "handoff_receive",
+   "lod": 0,
+   "frames": 72,
+   "moved": 11.897,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -0.232,
+   "partnerClip": "handoff_give",
+   "partnerDistanceM": 0.9,
+   "minHandToPartnerTorsoMm": 160.209,
+   "minHandToPartnerHandMm": 27.753,
+   "contactFrame": 32,
+   "palmDistanceMm": 53.387,
+   "actorDistanceM": 0.9
+  },
+  {
+   "clip": "eat",
+   "lod": 0,
+   "frames": 96,
+   "moved": 5.014,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0,
+   "propShown": [
+    "prop__plate@Hand_L"
+   ],
+   "otherPropsShown": []
+  },
+  {
+   "clip": "board",
+   "lod": 0,
+   "frames": 48,
+   "moved": 11.718,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -6.532
+  },
+  {
+   "clip": "bus_sway",
+   "lod": 0,
+   "frames": 96,
+   "moved": 3.262,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0
+  },
+  {
+   "clip": "stretch",
+   "lod": 0,
+   "frames": 96,
+   "moved": 4.289,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0
+  },
+  {
+   "clip": "feed_birds",
+   "lod": 0,
+   "frames": 72,
+   "moved": 4.267,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0
+  },
+  {
+   "clip": "pick_up",
+   "lod": 0,
+   "frames": 72,
+   "moved": 9.342,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -0.902
+  },
+  {
+   "clip": "write_note",
+   "lod": 0,
+   "frames": 96,
+   "moved": 7.745,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0,
+   "propShown": [
+    "prop__notepad@Hand_L"
+   ],
+   "otherPropsShown": []
+  },
+  {
+   "clip": "photo",
+   "lod": 0,
+   "frames": 72,
+   "moved": 7.493,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0,
+   "propShown": [
+    "prop__camera@Hand_R"
+   ],
+   "otherPropsShown": []
+  },
+  {
+   "clip": "yawn",
+   "lod": 0,
+   "frames": 72,
+   "moved": 6.919,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0
+  },
+  {
+   "clip": "hammer",
+   "lod": 0,
+   "frames": 48,
+   "moved": 3.836,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0,
+   "propShown": [
+    "prop__hammer@Hand_R"
+   ],
+   "otherPropsShown": []
+  },
+  {
+   "clip": "lantern_hold",
+   "lod": 0,
+   "frames": 96,
+   "moved": 1.816,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": 0
+  },
+  {
+   "clip": "dance",
+   "lod": 0,
+   "frames": 96,
+   "moved": 7.118,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -0.85
+  },
+  {
+   "clip": "carry_walk",
+   "lod": 0,
+   "frames": 32,
+   "moved": 5.84,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -8.134,
+   "footSweepPerCycleM": 0.141,
+   "strideM": 0.27,
+   "slipRatio": 0.523,
+   "walkRatio": 0.515
+  },
+  {
+   "clip": "run",
+   "lod": 0,
+   "frames": 16,
+   "moved": 6.47,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -17.512,
+   "footSweepPerCycleM": 0.218,
+   "strideM": 0.222,
+   "slipRatio": 0.98,
+   "walkRatio": 0.515
+  }
+ ]
+}

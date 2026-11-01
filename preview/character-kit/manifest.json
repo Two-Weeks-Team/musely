@@ -34,7 +34,7 @@
       ],
       "attachment": null,
       "actions": {
-        "bodyClips": 15,
+        "bodyClips": 36,
         "signature": null,
         "propClip": null
       }
@@ -55,7 +55,7 @@
       ],
       "attachment": "attachments/01-sunny.glb",
       "actions": {
-        "bodyClips": 16,
+        "bodyClips": 37,
         "signature": "welcome_neighbors",
         "propClip": null
       }
@@ -76,7 +76,7 @@
       ],
       "attachment": "attachments/02-moss.glb",
       "actions": {
-        "bodyClips": 16,
+        "bodyClips": 37,
         "signature": "water_plants",
         "propClip": null
       }
@@ -97,7 +97,7 @@
       ],
       "attachment": "attachments/03-ripple.glb",
       "actions": {
-        "bodyClips": 16,
+        "bodyClips": 37,
         "signature": "inspect_map",
         "propClip": null
       }
@@ -118,7 +118,7 @@
       ],
       "attachment": "attachments/04-ember.glb",
       "actions": {
-        "bodyClips": 16,
+        "bodyClips": 37,
         "signature": "tell_story",
         "propClip": null
       }
@@ -139,7 +139,7 @@
       ],
       "attachment": "attachments/05-bloom.glb",
       "actions": {
-        "bodyClips": 16,
+        "bodyClips": 37,
         "signature": "reassure",
         "propClip": null
       }
@@ -160,7 +160,7 @@
       ],
       "attachment": "attachments/06-ink.glb",
       "actions": {
-        "bodyClips": 16,
+        "bodyClips": 37,
         "signature": "read_book",
         "propClip": "read_book"
       }
@@ -181,7 +181,7 @@
       ],
       "attachment": "attachments/07-tempo.glb",
       "actions": {
-        "bodyClips": 16,
+        "bodyClips": 37,
         "signature": "music_bounce",
         "propClip": null
       }
@@ -202,7 +202,7 @@
       ],
       "attachment": "attachments/08-orbit.glb",
       "actions": {
-        "bodyClips": 16,
+        "bodyClips": 37,
         "signature": "observe_sky",
         "propClip": null
       }
@@ -223,42 +223,92 @@
       ],
       "attachment": "attachments/09-copper.glb",
       "actions": {
-        "bodyClips": 16,
+        "bodyClips": 37,
         "signature": "inspect_gadget",
         "propClip": null
       }
     }
   ],
+  "props": {
+    "file": "attachments/props.glb",
+    "byClip": {
+      "write_note": {
+        "prop": "prop__notepad",
+        "socket": "Socket_Hand_L"
+      },
+      "eat": {
+        "prop": "prop__plate",
+        "socket": "Socket_Hand_L"
+      },
+      "photo": {
+        "prop": "prop__camera",
+        "socket": "Socket_Hand_R"
+      },
+      "drink": {
+        "prop": "prop__cup",
+        "socket": "Socket_Hand_R"
+      },
+      "hammer": {
+        "prop": "prop__hammer",
+        "socket": "Socket_Hand_R"
+      },
+      "plant": {
+        "prop": "prop__seedling",
+        "socket": "Socket_Hand_R"
+      }
+    }
+  },
   "files": {
     "base/lod0.glb": {
-      "bytes": 6107800,
-      "sha256": "687d9b33dacc20ed8ee7271970464d1e4a697e62477a28269a965454c0929973",
+      "bytes": 6489092,
+      "sha256": "037390c1e5852e6effcc992c6ee91d935c79f54e17217150f630b846babb26bf",
       "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
       "clips": [
+        "board",
+        "bus_sway",
+        "carry_walk",
         "celebrate",
+        "clap",
+        "dance",
         "drink",
+        "eat",
+        "feed_birds",
+        "fist_bump",
+        "hammer",
+        "handoff_give",
+        "handoff_receive",
+        "head_shake",
         "high_five",
         "idle_breathe",
         "inspect_gadget",
         "inspect_map",
+        "lantern_hold",
         "listen",
         "look_around",
         "music_bounce",
+        "nod",
         "observe_sky",
         "offer_item",
+        "photo",
+        "pick_up",
         "plant",
+        "point_way",
         "read_book",
         "reassure",
+        "run",
         "sit_down",
         "sit_idle",
         "stand_up",
+        "stretch",
         "talk",
         "tell_story",
         "think",
         "walk",
         "water_plants",
         "wave",
-        "welcome_neighbors"
+        "welcome_neighbors",
+        "write_note",
+        "yawn"
       ]
     },
     "base/lod1.glb": {
@@ -396,6 +446,35 @@
         "09-copper__gadget": "Socket_Hand_R"
       },
       "clips": []
+    },
+    "attachments/props.glb": {
+      "bytes": 145244,
+      "sha256": "8aec6040cbe56bf703c7a9f1389118947e953cb23f48d7223942523ad3cd2355",
+      "rigDigest": "c7d3f4999c08e657b81c14297e83482ca8b752af900a7715d1dc773d554cd5fa",
+      "parts": [
+        "prop__camera",
+        "prop__cup",
+        "prop__hammer",
+        "prop__notepad",
+        "prop__plate",
+        "prop__seedling"
+      ],
+      "propClips": {
+        "prop__notepad": "write_note",
+        "prop__plate": "eat",
+        "prop__camera": "photo",
+        "prop__cup": "drink",
+        "prop__hammer": "hammer",
+        "prop__seedling": "plant"
+      },
+      "propSockets": {
+        "prop__notepad": "Socket_Hand_L",
+        "prop__plate": "Socket_Hand_L",
+        "prop__camera": "Socket_Hand_R",
+        "prop__cup": "Socket_Hand_R",
+        "prop__hammer": "Socket_Hand_R",
+        "prop__seedling": "Socket_Hand_R"
+      }
     }
   }
 }

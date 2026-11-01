@@ -72,6 +72,12 @@
       "warnings": 0,
       "infos": 6,
       "codes": []
+    },
+    "attachments/props.glb": {
+      "errors": 0,
+      "warnings": 0,
+      "infos": 50,
+      "codes": []
     }
   }
 }

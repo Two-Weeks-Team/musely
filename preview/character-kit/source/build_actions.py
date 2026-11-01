@@ -23,7 +23,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import importlib, variant_spec
 importlib.reload(variant_spec)
-from variant_spec import ACTION_CLIPS
+from variant_spec import ACTION_CLIPS, PARTNER_DISTANCE_M
 
 ONLY = globals().get('ONLY') or list(ACTION_CLIPS)
 scene = bpy.data.scenes['Jolly • Base character studio']
@@ -38,7 +38,7 @@ SOCKET_R = REST['Hand_R'].inverted() @ Vector((-.355, -.023, .17))
 SOCKET_L = REST['Hand_L'].inverted() @ Vector((.355, -.023, .17))
 MOUTH = Vector((0.0005, -0.168, 0.6461))  # Soft smile centroid (rest), rides on Head
 MOUTH_LOCAL = REST['Head'].inverted() @ MOUTH
-PARTNER_DISTANCE = .9
+PARTNER_DISTANCE = PARTNER_DISTANCE_M
 
 # ---------------------------------------------------------------- pose model
 
@@ -235,13 +235,17 @@ def plant(t):
     return pose, free, goals
 
 
-HIGH_FIVE_CONTACT = ACTION_CLIPS['high_five'][2] if len(ACTION_CLIPS['high_five']) > 2 else 24
+def bezier(a, c, b, u):
+    return a * (1 - u) ** 2 + c * (2 * u * (1 - u)) + b * u * u
+
+
+HIGH_FIVE_CONTACT = ACTION_CLIPS['high_five']['contact']
 
 
 def high_five(t):
     """Single play: lean in and wind up, strike the right palm forward to a partner 0.9 m in front, hold the touch,
     pull the hand back and out (so the two hands separate instead of sliding through each other), settle."""
-    frames = ACTION_CLIPS['high_five'][0]
+    frames = ACTION_CLIPS['high_five']['frames']
     tc = HIGH_FIVE_CONTACT / frames
     ready = smooth(t / (tc * .7)) * (1 - smooth((t - (tc + .18)) / .3))
     strike_in = smooth((t - tc * .55) / (tc * .45))
@@ -265,14 +269,332 @@ def high_five(t):
         contact = Vector((0, -(PARTNER_DISTANCE / 2 - .019), .66))
         m0 = fk(pose)
         start = bone_point(m0, 'Hand_R', SOCKET_R)
-        target = start.lerp(contact, strike_in) if t <= tc else (contact + Vector((-.16, .17, -.04)) * recoil).lerp(start, release)
+        pre = contact + Vector((0, .11, 0))  # task 5b: arrive along the midline so the two hands never graze in passing
+        if t <= tc:
+            target = bezier(start, pre + Vector((-.12, .04, -.06)), pre, min(1, strike_in / .7)) if strike_in < .7 else pre.lerp(contact, (strike_in - .7) / .3)
+        else:
+            target = (contact + Vector((-.16, .17, -.04)) * recoil).lerp(start, release)
         goals += [('pos', 30 * weight, lambda m: bone_point(m, 'Hand_R', SOCKET_R), target),
                   ('dir', 2 * weight, lambda m: axis_y(m, 'Hand_R'), Vector((0, -1, .25)).normalized())]
         free += [('Spine', 0), ('Spine', 2), ('Chest', 0), ('Chest', 2)] + ARM_R + [('Hand_R', 0), ('Hand_R', 1)]
     return pose, free, goals
 
 
-AUTHORS = {'drink': drink, 'plant': plant, 'high_five': high_five}
+
+# ---------------------------------------------------------------- task 5b: interaction and greeting clips
+
+def hand_goal(side, target, w=30):
+    sock = SOCKET_R if side == 'R' else SOCKET_L
+    return ('pos', w, lambda m, s=side, k=sock: bone_point(m, 'Hand_' + s, k), Vector(target))
+
+
+def hand_dir(side, direction, w=2):
+    return ('dir', w, lambda m, s=side: axis_y(m, 'Hand_' + s), Vector(direction).normalized())
+
+
+def arm_free(side):
+    return ARM_R + [('Hand_R', 0)] if side == 'R' else ARM_L + [('Hand_L', 0)]
+
+
+def env(t, a, b, c, d):
+    """0 before a, smooth rise to 1 at b, hold, smooth fall to 0 from c to d."""
+    return smooth((t - a) / (b - a)) * (1 - smooth((t - c) / (d - c)))
+
+
+def nod(t):
+    e = math.sin(math.pi * t)
+    dip = .5 - .5 * math.cos(4 * math.pi * t)  # two nods
+    return Pose({'Head': (.22 * e * dip, 0, 0), 'Neck': (.06 * e * dip, 0, 0), 'Chest': (.02 * e, 0, 0)}), [], []
+
+
+def head_shake(t):
+    e = math.sin(math.pi * t) ** .7
+    sh = math.sin(6 * math.pi * t)  # three shakes
+    return Pose({'Head': (.04 * e, 0, .32 * e * sh), 'Neck': (0, 0, .08 * e * sh), 'Chest': (0, 0, .02 * e * sh)}), [], []
+
+
+def point_way(t):
+    e = env(t, .08, .3, .78, .97)
+    angles = {'UpperArm_R': (-1.3 * e, .55 * e, 0), 'Forearm_R': (-.1 * e, 0, 0), 'Head': (-.04 * e, 0, -.32 * e),
+              'Neck': (0, 0, -.08 * e), 'Chest': (0, 0, -.12 * e), 'UpperArm_L': (-.05 * e, -.05 * e, 0)}
+    pose = Pose(angles)
+    if e < 1e-3:
+        return pose, [], []
+    start = bone_point(fk(pose), 'Hand_R', SOCKET_R)
+    target = start.lerp(Vector((-.36, -.34, .58)), e)
+    return pose, arm_free('R') + [('Hand_R', 1)], [hand_goal('R', target, 30 * e), hand_dir('R', (-.55, -.83, .1), 3 * e)]
+
+
+def clap(t):
+    """Loop: four claps in front of the chest, slight bounce."""
+    s = abs(math.sin(4 * math.pi * t))
+    gap = .036 + .1 * s
+    angles = {'UpperArm_R': (-.75, -.2, 0), 'Forearm_R': (-1.1, 0, 0), 'UpperArm_L': (-.75, .2, 0), 'Forearm_L': (-1.1, 0, 0),
+              'Head': (-.04, 0, .03 * math.sin(2 * math.pi * t)), 'Chest': (-.02 + .015 * (1 - s), 0, 0)}
+    goals = [hand_goal('R', (-gap, -.30, .42)), hand_goal('L', (gap, -.30, .42)), hand_dir('R', (.75, -.65, .1)), hand_dir('L', (-.75, -.65, .1))]
+    return Pose(angles), arm_free('R') + arm_free('L') + [('Hand_R', 1), ('Hand_L', 1)], goals
+
+
+def contact_clip(t, frames, contact_frame, contact_point, contact_dir, recoil, windup_angles=None, lift=1.0):
+    """Shared shape of a single-play right-hand contact with a partner: approach, touch at the contact frame, recoil, settle."""
+    tc = contact_frame / frames
+    ready = smooth(t / (tc * .7)) * (1 - smooth((t - (tc + .2)) / .3))
+    strike_in = smooth((t - tc * .35) / (tc * .65))
+    rec = smooth((t - tc - .04) / .16)
+    release = smooth((t - tc - .2) / .22)
+    reach = strike_in * (1 - smooth((t - tc - .1) / .3))
+    angles = {
+        'Spine': (.12 * ready, 0, .12 * ready), 'Chest': (.08 * ready, 0, .16 * ready), 'Head': (-.06 * ready, 0, -.14 * ready),
+        'UpperArm_R': (-1.2 * reach * lift, -.3 * reach, 0), 'Forearm_R': (-.4 * reach, 0, 0),
+        'UpperArm_L': (-.1 * ready, -.12 * ready, 0), 'Forearm_L': (-.3 * ready, 0, 0),
+    }
+    pose = Pose(angles, (0, -.03 * ready, -.008 * ready))
+    goals = foot_goals({'L': FOOT_REST['L'], 'R': (FOOT_REST['R'][0] + Vector((0, -.04, 0)) * ready, FOOT_REST['R'][1])})
+    free = LEG_FREE + [('hips', 1)]
+    weight = strike_in * (1 - release)
+    if weight > 1e-3:
+        start = bone_point(fk(pose), 'Hand_R', SOCKET_R)
+        cp = Vector(contact_point)
+        pre = cp + Vector((0, .11, 0))  # line up on the midline first, then move straight in, so the hands never slide past each other
+        back = cp + Vector(recoil) * rec
+        if t <= tc:
+            target = bezier(start, pre + Vector((-.12, .04, -.06)), pre, min(1, strike_in / .7)) if strike_in < .7 else pre.lerp(cp, (strike_in - .7) / .3)
+        else:
+            target = bezier(back, Vector((-.42, -.24, .30)), start, release)
+        goals += [('pos', 30 * weight, lambda m: bone_point(m, 'Hand_R', SOCKET_R), target), hand_dir('R', contact_dir, 2 * weight)]
+        free += [('Spine', 0), ('Spine', 2), ('Chest', 0), ('Chest', 2)] + ARM_R + [('Hand_R', 0), ('Hand_R', 1)]
+    return pose, free, goals
+
+
+def fist_bump(t):
+    spec = ACTION_CLIPS['fist_bump']
+    return contact_clip(t, spec['frames'], spec['contact'], (0, -(PARTNER_DISTANCE / 2 - .019), .46), (0, -1, 0), (-.16, .14, -.02))
+
+
+def handoff_give(t):
+    """Giver: offer the item forward at chest height, hold while the receiver takes it, withdraw the empty hand."""
+    spec = ACTION_CLIPS['handoff_give']
+    return contact_clip(t, spec['frames'], spec['contact'], (0, -(PARTNER_DISTANCE / 2 - .024), .44), (0, -1, -.15), (-.16, .14, -.02), lift=.8)
+
+
+def handoff_receive(t):
+    """Receiver: reach under the offered item, take it at the contact frame, bring it to the chest and keep it."""
+    spec = ACTION_CLIPS['handoff_receive']
+    tc = spec['contact'] / spec['frames']
+    ready = smooth(t / (tc * .7)) * (1 - smooth((t - (tc + .25)) / .3))
+    reach = smooth((t - tc * .45) / (tc * .55))
+    keep = smooth((t - tc - .04) / .3)       # bring the item to the chest and hold it there
+    angles = {
+        'Spine': (.1 * ready, 0, .12 * ready), 'Chest': (.06 * ready, 0, .14 * ready), 'Head': (.04 * ready, 0, -.12 * ready),
+        'UpperArm_R': (-1.0 * reach, -.3 * reach, 0), 'Forearm_R': (-.5 * reach - .6 * keep, 0, 0),
+        'UpperArm_L': (-.4 * keep, -.15 * keep, 0), 'Forearm_L': (-.8 * keep, 0, 0),
+    }
+    pose = Pose(angles, (0, -.025 * ready, -.006 * ready))
+    goals = foot_goals({'L': FOOT_REST['L'], 'R': (FOOT_REST['R'][0] + Vector((0, -.035, 0)) * ready, FOOT_REST['R'][1])})
+    free = LEG_FREE + [('hips', 1)] + [('Spine', 0), ('Spine', 2), ('Chest', 0), ('Chest', 2)] + ARM_R + [('Hand_R', 0), ('Hand_R', 1)] + ARM_L
+    m0 = fk(Pose(angles))
+    start, start_l = bone_point(m0, 'Hand_R', SOCKET_R), bone_point(m0, 'Hand_L', SOCKET_L)
+    contact = Vector((0, -(PARTNER_DISTANCE / 2 - .024), .42))
+    pre = contact + Vector((0, .11, 0))
+    chest = Vector((-.06, -.28, .42))
+    if t <= tc:
+        target = bezier(start, pre + Vector((-.12, .04, -.06)), pre, min(1, reach / .7)) if reach < .7 else pre.lerp(contact, (reach - .7) / .3)
+    else:
+        target = contact.lerp(chest, keep)
+    goals += [hand_goal('R', target, 30), hand_dir('R', (0, -1, .15), 2 * (1 - keep))]
+    if keep > 0:
+        # Left hand comes round the outside of the belly to steady the item at the chest.
+        goals.append(hand_goal('L', bezier(start_l, Vector((.40, -.34, .26)), chest + Vector((.12, -.01, -.02)), keep), 20))
+    return pose, free, goals
+
+
+# ---------------------------------------------------------------- task 5b: place clips
+
+def planted(hips=(0, 0, 0)):
+    """Feet stay at rest while the hips move: leg IK goals and free leg joints."""
+    return foot_goals({'L': FOOT_REST['L'], 'R': FOOT_REST['R']}), LEG_FREE
+
+
+def mouth_of(pose):
+    return bone_point(fk(pose), 'Head', MOUTH_LOCAL)
+
+
+def eat(t):
+    """Loop: plate held low in the left hand; the right hand scoops and brings food to the mouth, twice."""
+    u = (2 * t) % 1
+    w = keyed([(0, 0.0), (.18, 0.0), (.42, 1.0), (.58, 1.0), (.85, 0.0), (1, 0.0)], u)
+    angles = {'UpperArm_L': (-.55, .3, 0), 'Forearm_L': (-1.0, 0, 0), 'UpperArm_R': (-.6 - .3 * w, -.35, 0), 'Forearm_R': (-1.1 - .45 * w, 0, 0),
+              'Head': (.14 * (1 - w) - .05 * w, 0, 0), 'Neck': (.04 * (1 - w), 0, 0), 'Chest': (.03, 0, 0)}
+    pose = Pose(angles)
+    plate = Vector((.10, -.27, .36))
+    scoop = Vector((.04, -.30, .40)) + Vector((0, 0, .015 * math.sin(math.pi * min(1, u / .18))))
+    target = scoop.lerp(mouth_of(pose) + Vector((.012, -.07, -.035)), w)
+    return pose, arm_free('R') + arm_free('L'), [hand_goal('L', plate), hand_goal('R', target), hand_dir('L', (-.6, -.8, .1), 2)]
+
+
+def board(t):
+    """Single play: crouch on the support leg, lift the right foot high onto a step, reach up for the rail, settle."""
+    lift = env(t, .08, .35, .55, .85)
+    grab = env(t, .05, .3, .75, .97)
+    angles = {'Spine': (.12 * lift, 0, 0), 'Chest': (.06 * lift, 0, -.06 * grab), 'Head': (-.08 * grab, 0, .05 * grab),
+              'UpperArm_L': (-1.6 * grab, -.25 * grab, 0), 'Forearm_L': (-.5 * grab, 0, 0), 'UpperArm_R': (-.2 * lift, 0, 0)}
+    pose = Pose(angles, (0, 0, -.03 * lift))
+    goals = foot_goals({'L': FOOT_REST['L'], 'R': (FOOT_REST['R'][0] + Vector((0, -.10, .12)) * lift, FOOT_REST['R'][1])})
+    return pose, LEG_FREE + [('hips', 2)], goals
+
+
+def bus_sway(t):
+    """Loop: right hand on an overhead strap while the bus rocks the body side to side."""
+    ph = 2 * math.pi * t
+    angles = {'Spine': (.015 * math.sin(2 * ph), .05 * math.sin(ph), 0), 'Chest': (0, .035 * math.sin(ph + .6), 0), 'Head': (0, -.05 * math.sin(ph + 1.2), .04 * math.sin(ph)),
+              'UpperArm_R': (-.2, 2.3, 0), 'Forearm_R': (0, .2, 0), 'UpperArm_L': (-.05, -.06 * math.sin(ph + .8), 0), 'Forearm_L': (-.15, 0, 0)}
+    pose = Pose(angles)
+    strap = Vector((-.31, -.06, .81))  # beside, not inside, the hood
+    return pose, arm_free('R'), [hand_goal('R', strap, 20), hand_dir('R', (0, 0, 1), 2)]
+
+
+def stretch(t):
+    """Single play: both arms up in a V, lean left and right, lower."""
+    up = env(t, .05, .28, .78, .97)
+    bend = math.sin(2 * math.pi * (t - .32) / .44) if .32 <= t <= .76 else 0
+    angles = {'UpperArm_R': (-.1 * up, 2.45 * up, 0), 'Forearm_R': (0, .25 * up, 0), 'UpperArm_L': (-.1 * up, -2.45 * up, 0), 'Forearm_L': (0, -.25 * up, 0),
+              'Spine': (-.04 * up, .16 * bend, 0), 'Chest': (-.05 * up, .12 * bend, 0), 'Head': (-.12 * up, -.06 * bend, 0)}
+    return Pose(angles), [], []
+
+
+def feed_birds(t):
+    """Loop: slight bow, the left hand holds the seed pouch, the right hand takes seed and tosses it forward, twice."""
+    u = (2 * t) % 1
+    angles = {'Spine': (.12, 0, 0), 'Chest': (.08, 0, 0), 'Head': (.18, 0, -.05), 'UpperArm_L': (-.5, .3, 0), 'Forearm_L': (-.9, 0, 0),
+              'UpperArm_R': (-.6, -.3, 0), 'Forearm_R': (-.9, 0, 0)}
+    pose = Pose(angles)
+    pouch = Vector((.08, -.27, .33))
+    target = keyed([(0, (.02, -.30, .35)), (.3, (.02, -.30, .35)), (.5, (-.18, -.42, .30)), (.6, (-.20, -.43, .29)), (.85, (.02, -.30, .35)), (1, (.02, -.30, .35))], u)
+    return pose, arm_free('R') + arm_free('L'), [hand_goal('L', pouch), hand_goal('R', target)]
+
+
+def pick_up(t):
+    """Single play: squat and bow, take something from the ground with the right hand, stand and hold it at the chest."""
+    down = env(t, .05, .32, .55, .82)
+    angles = {'Spine': (.55 * down, 0, 0), 'Chest': (.35 * down, 0, 0), 'Head': (-.1 * down, 0, 0), 'UpperArm_L': (-.4 * down, .2 * down, 0), 'Forearm_L': (-.3 * down, 0, 0),
+              'UpperArm_R': (-.6, -.3, 0), 'Forearm_R': (-.6, 0, 0)}
+    pose = Pose(angles, (0, 0, -.075 * down))
+    goals, free = planted()
+    m0 = fk(Pose({k: v for k, v in angles.items() if not k.endswith('_R')}, pose.hips))
+    rest_hand = bone_point(m0, 'Hand_R', SOCKET_R)
+    ground, chest = Vector((-.08, -.29, .05)), Vector((-.08, -.27, .42))
+    reach = smooth((t - .1) / .25)
+    # Down and up in front of the body (control points ahead of the belly), not through it.
+    target = bezier(rest_hand, Vector((-.30, -.36, .16)), ground, reach) if t < .55 else bezier(ground, Vector((-.12, -.42, .25)), chest, smooth((t - .55) / .3))
+    goals = goals + [hand_goal('R', target, 30)]
+    return pose, free + [('hips', 2), ('Spine', 0), ('Chest', 0)] + arm_free('R'), goals
+
+
+def write_note(t):
+    """Loop: notepad in the left hand, the right hand writes three short lines; head down."""
+    line = int(3 * t) % 3; u = (3 * t) % 1
+    x = -.05 + .07 * smooth(u / .8) - .07 * smooth((u - .8) / .2)
+    angles = {'Head': (.24, 0, .04 * (u - .5)), 'Neck': (.06, 0, 0), 'Chest': (.04, 0, 0),
+              'UpperArm_L': (-.6, .3, 0), 'Forearm_L': (-1.0, 0, 0), 'UpperArm_R': (-.65, -.35, 0), 'Forearm_R': (-1.1, 0, 0)}
+    pad = Vector((.06, -.29, .40))
+    pen = Vector((x, -.315, .44 - .014 * line + .006 * math.sin(2 * math.pi * 10 * u) * (u < .8)))
+    return Pose(angles), arm_free('R') + arm_free('L'), [hand_goal('L', pad), hand_goal('R', pen), hand_dir('L', (-.5, -.8, .3), 2)]
+
+
+def photo(t):
+    """Single play: raise the camera to the eyes with both hands, hold, click, lower."""
+    up = env(t, .06, .3, .74, .95)
+    click = math.sin(math.pi * min(1, max(0, (t - .52) / .05)))
+    angles = {'UpperArm_R': (-1.0 * up, -.3 * up, 0), 'Forearm_R': (-1.3 * up, 0, 0), 'UpperArm_L': (-1.0 * up, .3 * up, 0), 'Forearm_L': (-1.3 * up, 0, 0),
+              'Head': (.04 * up + .04 * click, 0, 0), 'Chest': (-.02 * up, 0, 0)}
+    pose = Pose(angles)
+    if up < 1e-3:
+        return pose, [], []
+    m0 = fk(Pose({}))
+    # Raise along an arc in front of the belly so the hands never pass through it.
+    r = bezier(bone_point(m0, 'Hand_R', SOCKET_R), Vector((-.24, -.46, .30)), Vector((-.07, -.27, .66 - .01 * click)), up)
+    l = bezier(bone_point(m0, 'Hand_L', SOCKET_L), Vector((.24, -.46, .30)), Vector((.07, -.27, .66)), up)
+    return pose, arm_free('R') + arm_free('L'), [hand_goal('R', r, 30 * up), hand_goal('L', l, 30 * up)]
+
+
+def yawn(t):
+    """Single play: arms half up and out, head tipped back, chest open; then relax."""
+    a = env(t, .1, .42, .6, .92)
+    angles = {'UpperArm_R': (-.35 * a, 1.35 * a, 0), 'Forearm_R': (-.5 * a, 0, 0), 'UpperArm_L': (-.35 * a, -1.35 * a, 0), 'Forearm_L': (-.5 * a, 0, 0),
+              'Head': (-.3 * a, 0, .04 * a), 'Neck': (-.06 * a, 0, 0), 'Chest': (-.08 * a, 0, 0), 'Spine': (-.04 * a, 0, 0)}
+    return Pose(angles), [], []
+
+
+def hammer(t):
+    """Loop: two strikes; the right hand lifts the hammer slowly and brings it down fast; the left hand steadies the nail."""
+    u = (2 * t) % 1
+    angles = {'Head': (.2, 0, -.04), 'Neck': (.05, 0, 0), 'Spine': (.06, 0, 0), 'UpperArm_L': (-.6, .25, 0), 'Forearm_L': (-.6, 0, 0),
+              'UpperArm_R': (-.9, -.2, 0), 'Forearm_R': (-1.0, 0, 0)}
+    target = keyed([(0, (-.11, -.32, .33)), (.15, (-.11, -.32, .33)), (.55, (-.18, -.24, .62)), (.68, (-.10, -.33, .30)), (.75, (-.11, -.32, .32)), (1, (-.11, -.32, .33))], u)
+    return Pose(angles), arm_free('R') + arm_free('L'), [hand_goal('R', target), hand_goal('L', (.03, -.33, .29))]
+
+
+def lantern_hold(t):
+    """Loop: the left hand holds a lantern up in front; it bobs and sways gently; the head watches it."""
+    ph = 2 * math.pi * t
+    angles = {'UpperArm_L': (-1.1, .3, 0), 'Forearm_L': (-.4, 0, 0), 'Head': (-.04, 0, .1 + .03 * math.sin(ph)), 'Chest': (0, 0, .04),
+              'UpperArm_R': (-.06, -.04, 0), 'Forearm_R': (-.15, 0, 0)}
+    lantern = Vector((.13 + .015 * math.sin(ph), -.31, .55 + .012 * math.sin(2 * ph)))
+    return Pose(angles), arm_free('L'), [hand_goal('L', lantern)]
+
+
+def dance(t):
+    """Loop: bounce on the beat (two per second), hips sway, arms take turns going up."""
+    beat = abs(math.sin(math.pi * 8 * t))
+    s = math.sin(2 * math.pi * 2 * t)
+    up_r, up_l = max(0, s), max(0, -s)
+    angles = {'Spine': (0, .09 * s, .06 * s), 'Chest': (0, .05 * s, .12 * s), 'Head': (.06 * beat, -.05 * s, .1 * s),
+              'UpperArm_R': (-.3 - .6 * up_r, .2 + 1.1 * up_r, 0), 'Forearm_R': (-.6 - .3 * up_r, 0, 0),
+              'UpperArm_L': (-.3 - .6 * up_l, -.2 - 1.1 * up_l, 0), 'Forearm_L': (-.6 - .3 * up_l, 0, 0)}
+    pose = Pose(angles, (0, 0, -.022 * (1 - beat)))
+    goals, free = planted()
+    return pose, free, goals
+
+
+# ---------------------------------------------------------------- task 5b: locomotion-coupled clips
+# In place like `walk`: Root never moves, the route owns translation, and the world drives the phase by
+# travelled distance (variant_spec stride, metres per cycle). The measured foot sweep is reported.
+
+def walk_legs(ph, amp=.32, knee=.5, foot=.18):
+    """The shared walk's leg cycle (rig_base.py), parameterised."""
+    out = {}
+    for side, shift in (('L', 0), ('R', math.pi)):
+        v = math.sin(ph + shift)
+        out['UpperLeg_' + side] = (-amp * v, 0, 0); out['LowerLeg_' + side] = (max(0, v) * knee, 0, 0); out['Foot_' + side] = (-max(0, v) * foot, 0, 0)
+    return out
+
+
+def carry_walk(t):
+    """Loop (32 frames, same legs and stride as walk): both hands carry a box in front of the chest, slight lean back."""
+    ph = 2 * math.pi * t
+    angles = walk_legs(ph)
+    angles.update({'Hips': (0, .018 * math.sin(ph), .02 * math.sin(ph)), 'Spine': (-.04, 0, 0), 'Chest': (-.03, 0, -.02 * math.sin(ph)), 'Head': (.03, 0, 0),
+                   'UpperArm_R': (-.75, -.25, 0), 'Forearm_R': (-.75, 0, 0), 'UpperArm_L': (-.75, .25, 0), 'Forearm_L': (-.75, 0, 0)})
+    bob = .006 * math.sin(2 * ph)
+    pose = Pose(angles, (0, 0, .002 * (1 - math.cos(2 * ph))))
+    goals = [hand_goal('R', (-.13, -.28, .38 + bob)), hand_goal('L', (.13, -.28, .38 + bob)), hand_dir('R', (.7, -.7, 0)), hand_dir('L', (-.7, -.7, 0))]
+    return pose, arm_free('R') + arm_free('L'), goals
+
+
+def run(t):
+    """Loop (16 frames): longer leg swing with a tucked knee, pumping bent arms, forward lean, a small bounce."""
+    ph = 2 * math.pi * t
+    angles = walk_legs(ph, amp=.55, knee=.95, foot=.3)
+    s = math.sin(ph)
+    angles.update({'Hips': (0, .025 * s, .035 * s), 'Spine': (.14, 0, 0), 'Chest': (.06, 0, -.05 * s), 'Head': (-.1, 0, .03 * s),
+                   'UpperArm_R': (.5 * s - .1, -.08, 0), 'Forearm_R': (-1.25, 0, 0), 'UpperArm_L': (-.5 * s - .1, .08, 0), 'Forearm_L': (-1.25, 0, 0)})
+    return Pose(angles, (0, 0, .012 * abs(math.sin(2 * ph)) - .004)), [], []
+
+AUTHORS = {'drink': drink, 'plant': plant, 'high_five': high_five, 'nod': nod, 'head_shake': head_shake, 'point_way': point_way,
+           'clap': clap, 'fist_bump': fist_bump, 'handoff_give': handoff_give, 'handoff_receive': handoff_receive,
+           'eat': eat, 'board': board, 'bus_sway': bus_sway, 'stretch': stretch, 'feed_birds': feed_birds, 'pick_up': pick_up,
+           'write_note': write_note, 'photo': photo, 'yawn': yawn, 'hammer': hammer, 'lantern_hold': lantern_hold, 'dance': dance,
+           'carry_walk': carry_walk, 'run': run}
 
 # ---------------------------------------------------------------- bake
 
@@ -287,7 +609,7 @@ for pb in rig.pose.bones:
 
 solved = {}
 for name in ONLY:
-    frames, loop = ACTION_CLIPS[name][:2]
+    frames, loop = ACTION_CLIPS[name]['frames'], ACTION_CLIPS[name]['loop']
     action = bpy.data.actions.new(name); action.use_fake_user = True
     slot = action.slots.new('OBJECT', rig.name)
     rig.animation_data.action = action; rig.animation_data.action_slot = slot
@@ -325,7 +647,14 @@ TORSO = {'Hips', 'Spine', 'Chest', 'Neck', 'Head'}
 body_groups = groups_of(body)
 
 
-def evaluated(frame):
+_eval_cache = {}
+def evaluated(name, frame):
+    """Skinned body+face vertices (group, position, normal) and both hand sockets for clip `name` at `frame`."""
+    key = (name, frame)
+    if key in _eval_cache:
+        return _eval_cache[key]
+    a = bpy.data.actions[name]
+    rig.animation_data.action = a; rig.animation_data.action_slot = a.slots[0]
     scene.frame_set(frame)
     dg = bpy.context.evaluated_depsgraph_get()
     pts = []
@@ -335,62 +664,80 @@ def evaluated(frame):
         for i, v in enumerate(me.vertices):
             pts.append((groups[i] if groups else 'Head', mw @ v.co, (nm @ v.normal).normalized()))
         ev.to_mesh_clear()
-    sock = scene.objects['Socket_Hand_R'].evaluated_get(dg).matrix_world.translation.copy()
-    return pts, sock
+    socks = {s: scene.objects['Socket_Hand_' + s].evaluated_get(dg).matrix_world.translation.copy() for s in 'RL'}
+    feet = {s: rig.pose.bones['Foot_' + s].head.copy() for s in 'LR'}
+    _eval_cache[key] = (pts, socks, feet)
+    return _eval_cache[key]
 
 
-def clearance(points, surface):
-    """Min signed distance of points from a surface given as (pos, normal) list (nearest-vertex test)."""
+def clearance(points, surface, far=None):
+    """Min signed distance of points from a surface given as (pos, normal) list (nearest-vertex test).
+    With `far`, a point farther than `far` from its nearest vertex counts as outside (unsigned): for small
+    closed parts such as a hand, a far nearest vertex on the back side would otherwise flip the sign."""
     tree = kdtree.KDTree(len(surface))
     for i, (p, _) in enumerate(surface):
         tree.insert(p, i)
     tree.balance()
     worst = 1e9
     for p in points:
-        _, i, _ = tree.find(p)
+        _, i, d = tree.find(p)
         q, n = surface[i]
-        worst = min(worst, (p - q).dot(n))
+        worst = min(worst, d if far is not None and d > far else (p - q).dot(n))
     return worst
 
 
 R180 = Matrix.Rotation(math.pi, 3, 'Z')
 OFFSET = Vector((0, -PARTNER_DISTANCE, 0))
+mirror = lambda p: R180 @ p + OFFSET
 report = {}
 for name in ONLY:
-    frames, loop = ACTION_CLIPS[name][:2]
-    action = bpy.data.actions[name]
-    rig.animation_data.action = action; rig.animation_data.action_slot = action.slots[0]
+    spec = ACTION_CLIPS[name]
+    frames, loop = spec['frames'], spec['loop']
     info = {'frames': frames, 'loop': loop, 'samples': []}
-    sample_frames = sorted(set(list(range(1, frames + 2, 4)) + ([HIGH_FIVE_CONTACT + 1] if name == 'high_five' else [])))
+    sample_frames = sorted(set(list(range(1, frames + 2, 4)) + ([spec['contact'] + 1] if 'contact' in spec else [])))
     worst = {'lowest': 1e9, 'highestLow': -1e9, 'socketToHand': 0, 'ownHandClearance': 1e9}
     for frame in sample_frames:
-        pts, sock = evaluated(frame)
+        pts, socks, _ = evaluated(name, frame)
+        sock = socks['R']
         low_g, low_p, _ = min(pts, key=lambda x: x[1].z); low = low_p.z
         hand = [p for g, p, _ in pts if g == 'Hand_R']
         centroid = sum(hand, Vector()) / len(hand)
         torso = [(p, n) for g, p, n in pts if g in TORSO]
-        own = clearance(hand, torso)
-        s = {'frame': frame - 1, 'lowest': round(low, 4), 'lowestPart': low_g, 'socketR': [round(x, 3) for x in sock], 'socketToHandCentroid': round((sock - centroid).length, 4), 'ownHandClearance': round(own, 4)}
+        own_r, own_l = clearance(hand, torso), clearance([p for g, p, _ in pts if g == 'Hand_L'], torso)
+        own = min(own_r, own_l)
+        s = {'frame': frame - 1, 'lowest': round(low, 4), 'lowestPart': low_g, 'socketR': [round(x, 3) for x in sock],
+             'socketToHandCentroid': round((sock - centroid).length, 4), 'ownHandClearance': round(own, 4), 'ownR': round(own_r, 4), 'ownL': round(own_l, 4)}
         sp = solved[name][frame]
         m = fk(sp)
-        s['hips'] = [round(x, 3) for x in sp.hips]
-        s['spineChest'] = [round(x, 2) for x in sp.angles.get('Spine', (0, 0, 0)) + sp.angles.get('Chest', (0, 0, 0))]
         s['fkSocketError'] = round((bone_point(m, 'Hand_R', SOCKET_R) - sock).length, 5)
         if name == 'drink':
-            mouth = bone_point(m, 'Head', MOUTH_LOCAL)
-            s['socketToMouth'] = round((sock - mouth).length, 4)
-        if name == 'high_five':
-            partner_sock = R180 @ sock + OFFSET
-            s['palmDistance'] = round((sock - partner_sock).length, 4)
-            partner_torso = [(R180 @ p + OFFSET, R180 @ n) for p, n in torso]
+            s['socketToMouth'] = round((sock - bone_point(m, 'Head', MOUTH_LOCAL)).length, 4)
+        if name == 'clap':
+            s['handGap'] = round(clearance(hand, [(p, n) for g, p, n in pts if g == 'Hand_L'], far=.05), 4)
+            s['socketGap'] = round((socks['R'] - socks['L']).length, 4)
+        if 'partner' in spec:
+            ppts, psocks, _ = evaluated(spec['partner'], frame)
+            s['palmDistance'] = round((sock - mirror(psocks['R'])).length, 4)
+            partner_torso = [(mirror(p), R180 @ n) for g, p, n in ppts if g in TORSO]
             arm = [p for g, p, _ in pts if g in ('Hand_R', 'Forearm_R', 'Hand_L', 'Forearm_L')]
             s['handToPartnerTorso'] = round(clearance(arm, partner_torso), 4)
-            partner_hand = [(R180 @ p + OFFSET, R180 @ n) for g, p, n in pts if g == 'Hand_R']
-            s['handToPartnerHand'] = round(clearance(hand, partner_hand), 4)
+            partner_hand = [(mirror(p), R180 @ n) for g, p, n in ppts if g == 'Hand_R']
+            s['handToPartnerHand'] = round(clearance(hand, partner_hand, far=.05), 4)
         info['samples'].append(s)
         worst['lowest'] = min(worst['lowest'], low); worst['highestLow'] = max(worst['highestLow'], low)
         worst['socketToHand'] = max(worst['socketToHand'], s['socketToHandCentroid'])
         worst['ownHandClearance'] = min(worst['ownHandClearance'], own)
+    if 'partner' in spec:
+        c = next(x for x in info['samples'] if x['frame'] == spec['contact'])
+        worst['palmDistanceAtContact'] = c['palmDistance']
+        worst['handToPartnerTorso'] = min(x['handToPartnerTorso'] for x in info['samples'])
+        worst['handToPartnerHand'] = min(x['handToPartnerHand'] for x in info['samples'])
+    if 'stride' in spec:
+        ys = [evaluated(name, f)[2]['L'].y for f in range(1, frames + 2)]
+        worst['footSweep'] = max(ys) - min(ys)
+        worst['footSweepPerCycleX2'] = 2 * (max(ys) - min(ys))
+    if name == 'clap':
+        worst['handGapMin'] = min(x['handGap'] for x in info['samples'])
     info['worst'] = {k: round(v, 4) for k, v in worst.items()}
     report[name] = info
 

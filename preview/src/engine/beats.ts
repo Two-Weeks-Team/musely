@@ -76,11 +76,12 @@ export const BEATS: readonly Beat[] = [
   {id: 'bay_activity', kinds: ['region'], clips: ['celebrate'], minutes: 40, line: 'Exploring {place}.'},
 ];
 
-/** Clips the shared rig ships today; new clips fall back to the closest shared one until task 5 adds them. */
-export const CLIP_FALLBACK: Record<string, string> = {
-  drink: 'sit_idle', board: 'walk', plant: 'water_plants', stretch: 'idle_breathe', feed_birds: 'offer_item', pick_up: 'think', eat: 'talk',
-  carry_walk: 'walk', write_note: 'think', dance: 'music_bounce', photo: 'celebrate', lantern_hold: 'tell_story', yawn: 'idle_breathe', hammer: 'inspect_gadget',
-};
+/**
+ * Fallbacks for beat clips the shared rig does not ship yet: clip -> closest shipped clip.
+ * Since task 5b every beat clip exists in character-kit/runtime/base/lod0.glb, so this is empty;
+ * scripts/beat-clips.test.mjs fails if a beat names a clip that is neither shipped nor mapped here.
+ */
+export const CLIP_FALLBACK: Record<string, string> = {};
 
 export const inHours = (b: Beat, hour: number) => {
   if (!b.hours) return true;

@@ -5,7 +5,7 @@ import {fleeceFactor,variantById,type MuseVariantId} from './catalog.ts';
 import type {MaterialLibrary} from './MaterialLibrary.ts';
 
 export type Lod=0|1|2;
-type Tagged=T.Object3D&{userData:{museLod?:Lod}};
+type Tagged=T.Object3D&{userData:{museLod?:Lod;museClip?:string}};
 
 /**
  * One world/viewer Muse: a shared rig and clips, body meshes for each loaded LOD bound to the same
@@ -23,6 +23,8 @@ export class MuseActor extends BaseMuseActor{
  wanted:Lod;
  readonly loaded=new Set<Lod>();
  attachmentLoaded=false;
+ /** Shared action props (attachments/props.glb) are bound; each shows only while its clip plays. */
+ propsLoaded=false;
  readonly skeleton:T.Skeleton;
  private tagged:Tagged[]=[];
  private bones=new Map<string,T.Bone>();
@@ -77,6 +79,19 @@ export class MuseActor extends BaseMuseActor{
   this.attachmentLoaded=true;this.setLod(this.wanted);
  }
 
+ /** Bind the shared action props (cup, plate, seedling, notepad, camera, hammer): each rides its socket bone and is
+  * visible only while its own clip (`musely_clip`) plays, at the rendered LOD. */
+ addProps(props:GLTF){
+  if(this.propsLoaded)return;
+  const nodes:T.Object3D[]=[];props.scene.traverse(o=>{if(o.userData.musely_kind==='prop'&&o.userData.musely_clip)nodes.push(o);});
+  for(const node of nodes){
+   const bone=this.bones.get(node.parent?.name??'');if(!bone)throw Error(`Prop ${node.name} has no matching bone ${node.parent?.name}`);
+   const c=node.clone(true);c.traverse(o=>{if(o instanceof T.Mesh)o.frustumCulled=false;});bone.add(c);this.tag(c,(node.userData.musely_lod??0) as Lod);
+   (c as Tagged).userData.museClip=node.userData.musely_clip;
+  }
+  this.propsLoaded=true;this.setLod(this.wanted);
+ }
+ setAction(name:string){super.setAction(name);this.showLod();}
  private tint(meshes:readonly T.SkinnedMesh[]){
   if(!this.library||this.variant==='00-jolly')return;
   for(const m of meshes){const mat=m.material as T.MeshStandardMaterial;if(mat.name.startsWith('Fleece'))m.material=this.library.fleece(this.variant,mat);}
@@ -104,8 +119,9 @@ export class MuseActor extends BaseMuseActor{
  setLod(lod:Lod){
   this.wanted=lod;this.lod=this.nearest(lod);
   // Garments/props for a LOD whose file has not arrived fall back to the closest attachment LOD (0..2 all ship together).
-  for(const o of this.tagged)o.visible=o.userData.museLod===this.lod;
+  this.showLod();
  }
+ private showLod(){for(const o of this.tagged??[])o.visible=o.userData.museLod===this.lod&&(o.userData.museClip===undefined||o.userData.museClip===this.current);}
  update(time:number,pose:import('./BaseMuseActor.ts').RoutePose,actionTime=time){
   super.update(time,pose,actionTime);
   if(this.propMixer){const a=this.propActions.get(this.current);if(a){a.reset().play();this.propMixer.setTime(Math.max(0,actionTime)%a.getClip().duration);}else this.propMixer.stopAllAction();this.root.updateMatrixWorld(true);}
