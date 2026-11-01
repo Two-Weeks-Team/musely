@@ -1,0 +1,853 @@
+{
+ "info": {
+  "url": "https://preview.musely.net/",
+  "startedAt": "2026-11-01T16:19:56.083Z",
+  "finishedAt": "2026-11-01T16:22:45.025Z",
+  "browser": "156.0.8078.76",
+  "node": "v24.22.2",
+  "platform": "darwin arm64"
+ },
+ "ok": true,
+ "cases": [
+  {
+   "vp": "desktop",
+   "name": "spotlight chip names who is next and which freedom",
+   "ok": true,
+   "detail": "Spotlight · Ink next · where · last: LIVE"
+  },
+  {
+   "vp": "desktop",
+   "name": "ten Muse pins on the map",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "the panel stays inside the viewport",
+   "ok": true,
+   "detail": "{\"x\":780,\"y\":20,\"width\":640,\"height\":860}"
+  },
+  {
+   "vp": "desktop",
+   "name": "connection line says the world answers; Retry hidden",
+   "ok": true,
+   "detail": "[\"ready\",\"Connected · live data from the shared world\"]"
+  },
+  {
+   "vp": "desktop",
+   "name": "PLANNED is in the legend and on no event row",
+   "ok": true,
+   "detail": "LIVE · Muse Spark | LIVE · verified | RULE | SCRIPTED | REPLAY | PLANNED"
+  },
+  {
+   "vp": "desktop",
+   "name": "live model evidence shows a request id",
+   "ok": true,
+   "detail": "×EVIDENCEBloom decides (where): walk_and_greet → Commons CafeLIVE · Muse SparkWhen (Menlo Park)08:19 · tick 485 · event "
+  },
+  {
+   "vp": "desktop",
+   "name": "its agent-card links still go to the real API (not a fixture)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "evidence close button has a name",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "highlights: no email address on screen",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "p1: no email address on screen",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "autonomy: no email address on screen",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "identity: no email address on screen",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "location: no email address on screen",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "a slow Highlights render does not leak into Feed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "autonomy: six rows, each with a value and a sample",
+   "ok": true,
+   "detail": "starts,interventions,signatures,models,abilities,blocks"
+  },
+  {
+   "vp": "desktop",
+   "name": "autonomy: columns Measure · Value · Sample · Note, period names day, world and run",
+   "ok": true,
+   "detail": "Measure|Value|Sample|Note"
+  },
+  {
+   "vp": "desktop",
+   "name": "autonomy: what is not measured says so, never a 0% of 0",
+   "ok": true,
+   "detail": "[\"abilities\"]"
+  },
+  {
+   "vp": "desktop",
+   "name": "highlights: a tag chip narrows the list and is pressed",
+   "ok": true,
+   "detail": "200 -> 5"
+  },
+  {
+   "vp": "desktop",
+   "name": "highlights: Muse filter keeps only that Muse's moments (by tag or by Muse)",
+   "ok": true,
+   "detail": "200 -> 0"
+  },
+  {
+   "vp": "desktop",
+   "name": "highlights: Clear filters restores the full list",
+   "ok": true,
+   "detail": "200"
+  },
+  {
+   "vp": "desktop",
+   "name": "replay runs at 1×, 10× and 60× of real time (±40%)",
+   "ok": true,
+   "detail": "1×: 1.00 s · 10×: 10.0 s · 60×: 66.0 s per second"
+  },
+  {
+   "vp": "desktop",
+   "name": "the chosen speed is pressed, shown in the time line and announced",
+   "ok": true,
+   "detail": "{\"pressed\":[\"10×\",\"all\"],\"time\":\"1:40 / 30:00 · 10× · 09:01 Menlo Park\",\"status\":\"Paused at 1:40 · 10×\"}"
+  },
+  {
+   "vp": "desktop",
+   "name": "paused replay does not move",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "seeking back removes moments that have not happened yet; no model call or reward is made",
+   "ok": true,
+   "detail": "25 -> 5 moments"
+  },
+  {
+   "vp": "desktop",
+   "name": "the end is reached once: stops, says so",
+   "ok": true,
+   "detail": "{\"s\":{\"cursor\":1800,\"playing\":false,\"speed\":60,\"durationSec\":1800,\"ended\":true},\"status\":\"Reached the end\"}"
+  },
+  {
+   "vp": "desktop",
+   "name": "Restart goes back to 0:00 and waits",
+   "ok": true,
+   "detail": "{\"cursor\":0,\"playing\":false,\"speed\":60,\"durationSec\":1800,\"ended\":false}"
+  },
+  {
+   "vp": "desktop",
+   "name": "replay: a filter with no match says so and offers Clear filters",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "Clear filters brings the moments back and focus lands on a filter",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "replay evidence: one replayed answer has no original request id and says \"Missing evidence\"",
+   "ok": true,
+   "detail": "[{\"missing\":true,\"na\":false,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":false,\"from\":true,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":false,\"from\":true,\"fixture\":true,\"card\":0}]"
+  },
+  {
+   "vp": "desktop",
+   "name": "replay evidence: recorded answers show \"Replayed from\"; rule events say \"Not applicable\"",
+   "ok": true,
+   "detail": "{\"REPLAY\":[{\"missing\":true,\"na\":false,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":false,\"from\":true,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":false,\"from\":true,\"fixture\":true,\"card\":0}],\"RULE\":[{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0}]}"
+  },
+  {
+   "vp": "desktop",
+   "name": "replay evidence is marked as a preview fixture and has no link to the API",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "evidence opens focused on its heading",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "Escape returns to the Replay tab, the same row has focus, scroll is kept",
+   "ok": true,
+   "detail": "{\"back\":{\"tab\":\"replay\",\"focus\":\"fx-0023\",\"scroll\":360},\"triggerId\":\"fx-0023\",\"scroll0\":360}"
+  },
+  {
+   "vp": "desktop",
+   "name": "opening evidence pauses the replay and closing it resumes what was playing",
+   "ok": true,
+   "detail": "[false,true]"
+  },
+  {
+   "vp": "desktop",
+   "name": "no request to /api or /.well-known while the replay played, seeked, filtered and opened evidence",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "vp": "desktop",
+   "name": "clicking the active Replay tab again keeps the replay playing",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "a request chain started before the replay opened makes no request after it, no POST either",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "vp": "desktop",
+   "name": "an answer that arrives while the replay is open changes nothing: no new request, header not \"not updating\"",
+   "ok": true,
+   "detail": "[[],\"Spotlight · Ink next · where · last: LIVE\"]"
+  },
+  {
+   "vp": "desktop",
+   "name": "Tab reaches the replay controls with a visible focus ring",
+   "ok": true,
+   "detail": "{\"text\":\"Play\",\"ring\":\"solid\",\"visible\":true}"
+  },
+  {
+   "vp": "desktop",
+   "name": "Enter on a speed button selects it",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "Space toggles play and pause",
+   "ok": true,
+   "detail": "[true,false]"
+  },
+  {
+   "vp": "desktop",
+   "name": "leaving the replay tab resumes the live polling",
+   "ok": true,
+   "detail": "[\"/api/world\",\"/api/world/events\"]"
+  },
+  {
+   "vp": "desktop",
+   "name": "the only non-GET request to /api in this whole run is the one mocked POST of the in-flight chain case",
+   "ok": true,
+   "detail": "[{\"m\":\"POST\",\"p\":\"/api/demo/impostor\"}]"
+  },
+  {
+   "vp": "desktop",
+   "name": "feed: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":16}"
+  },
+  {
+   "vp": "desktop",
+   "name": "highlights: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":16}"
+  },
+  {
+   "vp": "desktop",
+   "name": "p1: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":11}"
+  },
+  {
+   "vp": "desktop",
+   "name": "autonomy: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":11}"
+  },
+  {
+   "vp": "desktop",
+   "name": "autonomy: table text is at least 11 px",
+   "ok": true,
+   "detail": "11"
+  },
+  {
+   "vp": "desktop",
+   "name": "identity: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":16}"
+  },
+  {
+   "vp": "desktop",
+   "name": "location: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":16}"
+  },
+  {
+   "vp": "desktop",
+   "name": "replay: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":11}"
+  },
+  {
+   "vp": "desktop",
+   "name": "replay: table text is at least 11 px",
+   "ok": true,
+   "detail": "11"
+  },
+  {
+   "vp": "desktop",
+   "name": "flows: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":16}"
+  },
+  {
+   "vp": "desktop",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "viewport": "1440x900",
+   "chip": "Spotlight · Ink next · where · last: LIVE",
+   "errors": []
+  },
+  {
+   "vp": "desktop",
+   "name": "A1 first request fails: connection line says unavailable with Retry, header says world offline",
+   "ok": true,
+   "detail": "{\"state\":\"error\",\"text\":\"Unavailable (HTTP 503) · there is no live data to show yet\",\"retry\":true,\"chip\":\"Spotlight · world offline\",\"feed\":\"Feed unavailableHTTP 503 · there are no events to show yet.Retry\"}"
+  },
+  {
+   "vp": "desktop",
+   "name": "A1 the feed says it is unavailable instead of \"Waiting for the next heartbeat\"",
+   "ok": true,
+   "detail": "Feed unavailableHTTP 503 · there are no events to show yet.Retry"
+  },
+  {
+   "vp": "desktop",
+   "name": "A1 autonomy: a failed run log shows an error card, not six zeros",
+   "ok": true,
+   "detail": "Run log unavailableHTTP 503 · the six numbers are not shown, because a failed request is not a measurement of zero.Retry"
+  },
+  {
+   "vp": "desktop",
+   "name": "A5 location: failure says \"Location unavailable\" and does not claim the HQ commons",
+   "ok": true,
+   "detail": "OWNER LOCATION · 13.1Location unavailableThe owner location could not be read (HTTP 503), so it is unknown right now. It is not assumed to b"
+  },
+  {
+   "vp": "desktop",
+   "name": "A1 identity: an unreadable claim is \"Claim status unavailable\", not pending_claim",
+   "ok": true,
+   "detail": "KIM SEJUN'S MUSE · OWNER CLAIMClaim status unavailableThe claim record could not be read (HTTP 503), so its status is unknown. This is not the same as pending_c"
+  },
+  {
+   "vp": "desktop",
+   "name": "A2 success then failure: \"Not responding\", last data kept, Retry offered, header says not updating",
+   "ok": true,
+   "detail": "{\"text\":\"Not responding (HTTP 503) · showing the last data we received · last good answer 08:21\",\"retry\":true,\"chip\":\"Spotlight · Tempo next · where · last: LIVE · not updating\",\"rows\":80,\"badges\":\"LIVE · verified|RULE|RULE|SCRIPTED|RULE|RULE|SCRIPTED|LIVE · verified|LIVE · Muse Spark|RULE|RULE|LIVE"
+  },
+  {
+   "vp": "desktop",
+   "name": "A3 a failing connection does not change any event's source badge",
+   "ok": true,
+   "detail": "LIVE · verified|RULE|RULE|SCRIPTED|RULE|RULE|SCRIPTED|LIVE · → LIVE · verified|RULE|RULE|SCRIPTED|RULE|RULE|SCRIPTED|LIVE ·"
+  },
+  {
+   "vp": "desktop",
+   "name": "A2 recovery: Retry brings back \"Connected\" and hides Retry",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "A5 highlights fail alone: error card with Retry; the connection line still says Connected",
+   "ok": true,
+   "detail": "Highlights unavailableHTTP 503 · there is nothing to show yet.Retry"
+  },
+  {
+   "vp": "desktop",
+   "name": "A5 Retry loads the highlights once the service answers",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "a session request refused by the replay keeps the judge token in the address bar",
+   "ok": true,
+   "detail": "[\"?autoplay=0&judge=TESTTOKEN\",\"?autoplay=0&judge=TESTTOKEN\"]"
+  },
+  {
+   "vp": "mobile",
+   "name": "spotlight chip names who is next and which freedom",
+   "ok": true,
+   "detail": "Spotlight · Tempo next · where · last: LIVE"
+  },
+  {
+   "vp": "mobile",
+   "name": "ten Muse pins on the map",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "the panel stays inside the viewport",
+   "ok": true,
+   "detail": "{\"x\":8,\"y\":10,\"width\":374,\"height\":804}"
+  },
+  {
+   "vp": "mobile",
+   "name": "connection line says the world answers; Retry hidden",
+   "ok": true,
+   "detail": "[\"ready\",\"Connected · live data from the shared world\"]"
+  },
+  {
+   "vp": "mobile",
+   "name": "PLANNED is in the legend and on no event row",
+   "ok": true,
+   "detail": "LIVE · Muse Spark | LIVE · verified | RULE | SCRIPTED | REPLAY | PLANNED"
+  },
+  {
+   "vp": "mobile",
+   "name": "live model evidence shows a request id",
+   "ok": true,
+   "detail": "×EVIDENCEInk decides (where): walk to Commons Cafe to read and recommend → Commons CafeLIVE · Muse SparkWhen (Menlo Park"
+  },
+  {
+   "vp": "mobile",
+   "name": "its agent-card links still go to the real API (not a fixture)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "evidence close button has a name",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "highlights: no email address on screen",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "p1: no email address on screen",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "autonomy: no email address on screen",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "identity: no email address on screen",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "location: no email address on screen",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "a slow Highlights render does not leak into Feed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "autonomy: six rows, each with a value and a sample",
+   "ok": true,
+   "detail": "starts,interventions,signatures,models,abilities,blocks"
+  },
+  {
+   "vp": "mobile",
+   "name": "autonomy: columns Measure · Value · Sample · Note, period names day, world and run",
+   "ok": true,
+   "detail": "Measure|Value|Sample|Note"
+  },
+  {
+   "vp": "mobile",
+   "name": "autonomy: what is not measured says so, never a 0% of 0",
+   "ok": true,
+   "detail": "[\"abilities\"]"
+  },
+  {
+   "vp": "mobile",
+   "name": "highlights: a tag chip narrows the list and is pressed",
+   "ok": true,
+   "detail": "200 -> 5"
+  },
+  {
+   "vp": "mobile",
+   "name": "highlights: Muse filter keeps only that Muse's moments (by tag or by Muse)",
+   "ok": true,
+   "detail": "200 -> 0"
+  },
+  {
+   "vp": "mobile",
+   "name": "highlights: Clear filters restores the full list",
+   "ok": true,
+   "detail": "200"
+  },
+  {
+   "vp": "mobile",
+   "name": "replay runs at 1×, 10× and 60× of real time (±40%)",
+   "ok": true,
+   "detail": "1×: 1.00 s · 10×: 11.0 s · 60×: 60.0 s per second"
+  },
+  {
+   "vp": "mobile",
+   "name": "the chosen speed is pressed, shown in the time line and announced",
+   "ok": true,
+   "detail": "{\"pressed\":[\"10×\",\"all\"],\"time\":\"1:40 / 30:00 · 10× · 09:01 Menlo Park\",\"status\":\"Paused at 1:40 · 10×\"}"
+  },
+  {
+   "vp": "mobile",
+   "name": "paused replay does not move",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "seeking back removes moments that have not happened yet; no model call or reward is made",
+   "ok": true,
+   "detail": "25 -> 5 moments"
+  },
+  {
+   "vp": "mobile",
+   "name": "the end is reached once: stops, says so",
+   "ok": true,
+   "detail": "{\"s\":{\"cursor\":1800,\"playing\":false,\"speed\":60,\"durationSec\":1800,\"ended\":true},\"status\":\"Reached the end\"}"
+  },
+  {
+   "vp": "mobile",
+   "name": "Restart goes back to 0:00 and waits",
+   "ok": true,
+   "detail": "{\"cursor\":0,\"playing\":false,\"speed\":60,\"durationSec\":1800,\"ended\":false}"
+  },
+  {
+   "vp": "mobile",
+   "name": "replay: a filter with no match says so and offers Clear filters",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "Clear filters brings the moments back and focus lands on a filter",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "replay evidence: one replayed answer has no original request id and says \"Missing evidence\"",
+   "ok": true,
+   "detail": "[{\"missing\":true,\"na\":false,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":false,\"from\":true,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":false,\"from\":true,\"fixture\":true,\"card\":0}]"
+  },
+  {
+   "vp": "mobile",
+   "name": "replay evidence: recorded answers show \"Replayed from\"; rule events say \"Not applicable\"",
+   "ok": true,
+   "detail": "{\"REPLAY\":[{\"missing\":true,\"na\":false,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":false,\"from\":true,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":false,\"from\":true,\"fixture\":true,\"card\":0}],\"RULE\":[{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0},{\"missing\":false,\"na\":true,\"from\":false,\"fixture\":true,\"card\":0}]}"
+  },
+  {
+   "vp": "mobile",
+   "name": "replay evidence is marked as a preview fixture and has no link to the API",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "evidence opens focused on its heading",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "Escape returns to the Replay tab, the same row has focus, scroll is kept",
+   "ok": true,
+   "detail": "{\"back\":{\"tab\":\"replay\",\"focus\":\"fx-0023\",\"scroll\":882},\"triggerId\":\"fx-0023\",\"scroll0\":882}"
+  },
+  {
+   "vp": "mobile",
+   "name": "opening evidence pauses the replay and closing it resumes what was playing",
+   "ok": true,
+   "detail": "[false,true]"
+  },
+  {
+   "vp": "mobile",
+   "name": "no request to /api or /.well-known while the replay played, seeked, filtered and opened evidence",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "vp": "mobile",
+   "name": "clicking the active Replay tab again keeps the replay playing",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "a request chain started before the replay opened makes no request after it, no POST either",
+   "ok": true,
+   "detail": "[]"
+  },
+  {
+   "vp": "mobile",
+   "name": "an answer that arrives while the replay is open changes nothing: no new request, header not \"not updating\"",
+   "ok": true,
+   "detail": "[[],\"Spotlight · Tempo next · where · last: LIVE\"]"
+  },
+  {
+   "vp": "mobile",
+   "name": "Tab reaches the replay controls with a visible focus ring",
+   "ok": true,
+   "detail": "{\"text\":\"Play\",\"ring\":\"solid\",\"visible\":true}"
+  },
+  {
+   "vp": "mobile",
+   "name": "Enter on a speed button selects it",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "Space toggles play and pause",
+   "ok": true,
+   "detail": "[true,false]"
+  },
+  {
+   "vp": "mobile",
+   "name": "leaving the replay tab resumes the live polling",
+   "ok": true,
+   "detail": "[\"/api/world\",\"/api/world/events\"]"
+  },
+  {
+   "vp": "mobile",
+   "name": "the only non-GET request to /api in this whole run is the one mocked POST of the in-flight chain case",
+   "ok": true,
+   "detail": "[{\"m\":\"POST\",\"p\":\"/api/demo/impostor\"}]"
+  },
+  {
+   "vp": "mobile",
+   "name": "feed: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":16}"
+  },
+  {
+   "vp": "mobile",
+   "name": "feed: every button, select and slider is at least 44 px tall (390 px)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "highlights: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":16}"
+  },
+  {
+   "vp": "mobile",
+   "name": "highlights: every button, select and slider is at least 44 px tall (390 px)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "p1: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":11}"
+  },
+  {
+   "vp": "mobile",
+   "name": "p1: every button, select and slider is at least 44 px tall (390 px)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "autonomy: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":11}"
+  },
+  {
+   "vp": "mobile",
+   "name": "autonomy: every button, select and slider is at least 44 px tall (390 px)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "autonomy: table text is at least 11 px",
+   "ok": true,
+   "detail": "11"
+  },
+  {
+   "vp": "mobile",
+   "name": "identity: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":16}"
+  },
+  {
+   "vp": "mobile",
+   "name": "identity: every button, select and slider is at least 44 px tall (390 px)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "location: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":16}"
+  },
+  {
+   "vp": "mobile",
+   "name": "location: every button, select and slider is at least 44 px tall (390 px)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "replay: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":11}"
+  },
+  {
+   "vp": "mobile",
+   "name": "replay: every button, select and slider is at least 44 px tall (390 px)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "replay: table text is at least 11 px",
+   "ok": true,
+   "detail": "11"
+  },
+  {
+   "vp": "mobile",
+   "name": "flows: panel has no horizontal overflow and exactly one tab pressed",
+   "ok": true,
+   "detail": "{\"overflow\":0,\"small\":[],\"wide\":[],\"pressed\":1,\"cell\":16}"
+  },
+  {
+   "vp": "mobile",
+   "name": "flows: every button, select and slider is at least 44 px tall (390 px)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "viewport": "390x844 touch emulation",
+   "chip": "Spotlight · Tempo next · where · last: LIVE",
+   "errors": []
+  },
+  {
+   "vp": "mobile",
+   "name": "A1 first request fails: connection line says unavailable with Retry, header says world offline",
+   "ok": true,
+   "detail": "{\"state\":\"error\",\"text\":\"Unavailable (HTTP 503) · there is no live data to show yet\",\"retry\":true,\"chip\":\"Spotlight · world offline\",\"feed\":\"Feed unavailableHTTP 503 · there are no events to show yet.Retry\"}"
+  },
+  {
+   "vp": "mobile",
+   "name": "A1 the feed says it is unavailable instead of \"Waiting for the next heartbeat\"",
+   "ok": true,
+   "detail": "Feed unavailableHTTP 503 · there are no events to show yet.Retry"
+  },
+  {
+   "vp": "mobile",
+   "name": "A1 autonomy: a failed run log shows an error card, not six zeros",
+   "ok": true,
+   "detail": "Run log unavailableHTTP 503 · the six numbers are not shown, because a failed request is not a measurement of zero.Retry"
+  },
+  {
+   "vp": "mobile",
+   "name": "A5 location: failure says \"Location unavailable\" and does not claim the HQ commons",
+   "ok": true,
+   "detail": "OWNER LOCATION · 13.1Location unavailableThe owner location could not be read (HTTP 503), so it is unknown right now. It is not assumed to b"
+  },
+  {
+   "vp": "mobile",
+   "name": "A1 identity: an unreadable claim is \"Claim status unavailable\", not pending_claim",
+   "ok": true,
+   "detail": "KIM SEJUN'S MUSE · OWNER CLAIMClaim status unavailableThe claim record could not be read (HTTP 503), so its status is unknown. This is not the same as pending_c"
+  },
+  {
+   "vp": "mobile",
+   "name": "A2 success then failure: \"Not responding\", last data kept, Retry offered, header says not updating",
+   "ok": true,
+   "detail": "{\"text\":\"Not responding (HTTP 503) · showing the last data we received · last good answer 08:22\",\"retry\":true,\"chip\":\"Spotlight · Orbit next · where · last: LIVE · not updating\",\"rows\":80,\"badges\":\"LIVE · verified|RULE|RULE|RULE|RULE|RULE|RULE|LIVE · verified|LIVE · Muse Spark|LIVE · verified|RULE|R"
+  },
+  {
+   "vp": "mobile",
+   "name": "A3 a failing connection does not change any event's source badge",
+   "ok": true,
+   "detail": "LIVE · verified|RULE|RULE|RULE|RULE|RULE|RULE|LIVE · verifie → LIVE · verified|RULE|RULE|RULE|RULE|RULE|RULE|LIVE · verifie"
+  },
+  {
+   "vp": "mobile",
+   "name": "A2 recovery: Retry brings back \"Connected\" and hides Retry",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "A5 highlights fail alone: error card with Retry; the connection line still says Connected",
+   "ok": true,
+   "detail": "Highlights unavailableHTTP 503 · there is nothing to show yet.Retry"
+  },
+  {
+   "vp": "mobile",
+   "name": "A5 Retry loads the highlights once the service answers",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "a session request refused by the replay keeps the judge token in the address bar",
+   "ok": true,
+   "detail": "[\"?autoplay=0&judge=TESTTOKEN\",\"?autoplay=0&judge=TESTTOKEN\"]"
+  }
+ ]
+}
