@@ -3,9 +3,9 @@
 Status: S1 preview, issue #40. Generated from the source catalogs on `main` at `7d4a696` (`src/engine/items.ts`, `src/engine/beats.ts`, `src/engine/places.ts`, `character-kit/runtime/animations/manifest.json`, `worker/core/mcp-tools.ts`). Row schema follows contract C02.
 
 How to read this file:
-- **sourceMode** is the current state on production: `live` (real call or real verification), `rule` (engine rule), `scripted` (the 3:30 story), `replay` (recorded output), `planned` (not built yet; shown only as guidance, never emitted as a live event).
+- **sourceMode** records each feature's source as of the catalog snapshot at `7d4a696` and the later P-02–P-04 row updates; it does not prove that the whole experience passed S2/S3 acceptance: `live` (real call or real verification), `rule` (engine rule), `scripted` (the 3:30 story), `replay` (recorded output), `planned` (not built yet; shown only as guidance, never emitted as a live event).
 - **visualStatus**: `complete`, `fallback` (a substitute clip or icon is shown and labelled), `missing`.
-- **ownerTask**: the S1 task that fixes the preview experience, then the S2 task that implements it. S2/S3 are context for the preview, not part of this execution.
+- **ownerTask**: the S1 task that fixes the preview experience, then the S2 task that implements it. After P-07 passes, S2 and S3 continue without a planned stop; each stage keeps its own acceptance evidence. S3 verification tasks are listed in section 9.
 - The preview never promotes fixture state to a real claim, delegation or reward (C02).
 
 ## 1. Experiences
