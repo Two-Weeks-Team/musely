@@ -9,7 +9,7 @@ import {ITEM_BY_ID} from './items.ts';
 import {rngFor, weightedPick, daySeed} from './rng.ts';
 import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, placeCell, type OwnerLocation} from './location.ts';
-import {emptyInbox, expireTasks, deliverMessage, type Inbox} from './inbox.ts';
+import {emptyInbox, expireTasks, deliverMessage, isConnected, type Inbox} from './inbox.ts';
 
 export const ENGINE_VERSION = 'engine-1';
 export const TICK_MS = 60_000;
@@ -182,18 +182,22 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   // 2. Every Muse advances: arrivals, then a new beat or a trip when the current beat ends.
   for (const m of s.muses) {
     const rand = rngFor(s.seed, s.tick, m.id);
+    // A connected Muse (8.8) decides in its owner's runtime: requested trips still arrive and running beats
+    // still finish, but the scenario never picks a trip or a beat for it.
+    const connected = isConnected(s.inbox, m.id, now);
     if (m.travel && m.travel.arriveAt <= now) {
       const place = placeById(m.travel.to);
       const speed = m.travel.speed, chosen = !!m.travel.chosen;
       m.place = place.id; m.travel = null;
       // A Muse that chose this place itself stays for a beat instead of wandering off at once.
-      if (chosen) { const b = weightedPick(rand, eligibleBeats(m, place, clock.hour), x => beatWeight(x, m.id)); if (b) { emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed, chosen}, tags: speed === 'taxi' ? ['teleport'] : []}); for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e); startBeat(m, b, place, now, 'rule', emit, s); continue; } }
+      if (chosen && !connected) { const b = weightedPick(rand, eligibleBeats(m, place, clock.hour), x => beatWeight(x, m.id)); if (b) { emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed, chosen}, tags: speed === 'taxi' ? ['teleport'] : []}); for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e); startBeat(m, b, place, now, 'rule', emit, s); continue; } }
       emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed}, tags: speed === 'taxi' ? ['teleport'] : []});
       for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e);
     }
     if (m.travel) continue;
     if (m.beat && m.beat.endsAt > now) continue;
     if (m.beat) finishBeat(m, now, emit);
+    if (connected) continue;
     const place = placeById(m.place);
     const stay = eligibleBeats(m, place, clock.hour);
     // Intent from a spotlight decision takes priority over wandering.
