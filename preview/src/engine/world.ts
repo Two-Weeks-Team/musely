@@ -6,6 +6,7 @@ import {BEATS, CLIP_FALLBACK, inHours, type Beat} from './beats.ts';
 import {PLACES, PLACE_BY_ID, placeById, distanceM, WALK_MPS, type Place} from './places.ts';
 import {HARNESSES, harnessById} from './harness.ts';
 import {rngFor, weightedPick, daySeed} from './rng.ts';
+import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 
 export const ENGINE_VERSION = 'engine-1';
 export const TICK_MS = 60_000;
@@ -26,7 +27,9 @@ export type MuseState = {
   intent: {kind: 'greet' | 'trade'; target: string; give?: string | null; want?: string | null} | null;
 };
 export type WorldEvent = {id: string; tick: number; at: number; source: Source; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data?: Record<string, unknown>; tags: string[]};
-export type WorldState = {worldId: string; day: string; seed: string; tick: number; version: number; muses: MuseState[]; spotlight: {cursor: number; visitorQueue: string[]}; lastTickAt: number};
+export type WorldState = {worldId: string; day: string; seed: string; tick: number; version: number; muses: MuseState[]; spotlight: {cursor: number; visitorQueue: string[]}; lastTickAt: number;
+  /** Item rule counters (daily limits, pair trades). The append-only item history is the run log. */
+  items: ItemLedger};
 export type Decision = {muse: string; freedom: Freedom; source: 'live' | 'replay'; output: {decision: string; target_place: string; target_agent: string; offer_item: string; want_item: string; public_reason: string; line: string}; evidence?: Record<string, unknown>};
 export type Hooks = {
   /** Item discovery etc. when a Muse arrives somewhere (task 4 rules). */
@@ -64,6 +67,7 @@ export function createWorld(worldId: string, now: number): WorldState {
     worldId, day, seed: daySeed(worldId, day), tick: 0, version: 0, lastTickAt: now,
     muses: HARNESSES.map(h => ({id: h.id, place: START_PLACES[h.id], travel: null, beat: null, inventory: [...START_ITEMS[h.id]], memory: [], reflection: '', lastMet: {}, intent: null})),
     spotlight: {cursor: 0, visitorQueue: []},
+    items: emptyLedger(),
   };
 }
 
@@ -113,7 +117,15 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   const s: WorldState = structuredClone(prev);
   const events: WorldEvent[] = [];
   const emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => events.push({...e, id: `${s.day}:${s.tick}:${events.length}`, tick: s.tick});
-  if (clock.date !== s.day) { s.day = clock.date; s.seed = daySeed(s.worldId, s.day); emit({at: now, source: 'rule', kind: 'new_day', muse: null, data: {day: s.day}, tags: []}); }
+  s.items ??= emptyLedger();
+  if (clock.date !== s.day) {
+    s.day = clock.date; s.seed = daySeed(s.worldId, s.day);
+    // Daily limits reset; older counters are dropped so the state stays small.
+    for (const d of Object.keys(s.items.finds)) if (d !== s.day) delete s.items.finds[d];
+    for (const d of Object.keys(s.items.trades)) if (d !== s.day) delete s.items.trades[d];
+    emit({at: now, source: 'rule', kind: 'new_day', muse: null, data: {day: s.day}, tags: []});
+  }
+  if (s.items.history.length > 200) s.items.history = s.items.history.slice(-200);
 
   const spot = spotlightFor(s, now);
   // 1. Spotlight: a recorded live/replay decision for this turn, or the scenario's own choice.
@@ -196,6 +208,8 @@ function finishBeat(m: MuseState, now: number, emit: (e: Omit<WorldEvent, 'id' |
 function startTrip(m: MuseState, from: Place, to: Place, now: number, source: Source, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void, hooks: Hooks) {
   const speed = hooks.speedFor?.(m, from, to) ?? 'walk';
   const ms = tripMs(from, to, speed);
+  // A Taxi Token is spent when the in-world teleport starts (not a payment, not a booking).
+  if (speed === 'taxi') { const k = m.inventory.indexOf('taxi_token'); if (k >= 0) m.inventory.splice(k, 1); }
   m.travel = {to: to.id, departAt: now, arriveAt: now + ms, speed};
   m.beat = null;
   emit({at: now, source, kind: 'depart', muse: m.id, place: from.id, data: {to: to.id, speed, etaMs: Math.round(ms), distanceM: Math.round(distanceM(from, to))}, tags: []});

@@ -68,7 +68,7 @@ function runWith(give) {
   let s = createWorld('p1-world', T0); const log = [];
   if (give) for (const [muse, item] of give) s.muses.find(m => m.id === muse).inventory.push(item);
   for (let i = 0; i < 360; i++) { const r = tick(s, {now: T0 + i * TICK_MS}, hooks); s = r.state; log.push(...r.events); }
-  return {s, log, hooks};
+  return {s, log};
 }
 test('P1: the same start with and without a Transit Pass / Garden Pass diverges in movement and outcomes', () => {
   const base = runWith(null), boosted = runWith([['03-ripple', 'transit_pass'], ['02-moss', 'garden_pass']]);
@@ -81,4 +81,22 @@ test('P1: the same start with and without a Transit Pass / Garden Pass diverges 
   const blooms = r => r.log.filter(e => e.kind === 'craft' && e.data.item === 'bloom').length;
   assert.ok(blooms(boosted) >= blooms(base), 'Garden Pass + Clover Seed lets Moss grow a Bloom');
   console.log(JSON.stringify({rippleTrips: [trips(base).length, trips(boosted).length], busRides: bus.length, maxReachM: [reach(base), reach(boosted)], blooms: [blooms(base), blooms(boosted)], trades: [base.log.filter(e => e.kind === 'trade_completed').length, boosted.log.filter(e => e.kind === 'trade_completed').length], discoveries: [base.log.filter(e => e.kind === 'discover').length, boosted.log.filter(e => e.kind === 'discover').length]}));
+});
+
+test('a Taxi Token is consumed by the teleport it enables', () => {
+  const hooks = makeHooks();
+  let s = createWorld('taxi', T0);
+  const ripple = s.muses.find(m => m.id === '03-ripple');
+  ripple.inventory.push('taxi_token');
+  const decision = n => ({muse: '03-ripple', freedom: 'where', source: 'live', output: {decision: 'go', target_place: 'Stanford', target_agent: '', offer_item: '', want_item: '', public_reason: 'reading', line: ''}});
+  // advance until Ripple holds the spotlight
+  for (let i = 0; i < 20; i++) {
+    const now = T0 + i * TICK_MS, sp = (s.muses[s.spotlight.cursor % 10]).id;
+    const r = tick(s, {now, decision: sp === '03-ripple' ? decision() : null}, hooks); s = r.state;
+    if (r.events.some(e => e.kind === 'depart' && e.muse === '03-ripple' && e.data.speed === 'taxi')) {
+      assert.ok(!s.muses.find(m => m.id === '03-ripple').inventory.includes('taxi_token'));
+      return;
+    }
+  }
+  assert.fail('Ripple never took the taxi');
 });

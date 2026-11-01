@@ -2,7 +2,7 @@
 // Offline the engine resolves trades with a simple rule (accept when the item changes the receiver's
 // abilities); the world Durable Object replaces this with a live Muse Spark negotiation when budget allows.
 import type {Hooks, MuseState, WorldEvent, WorldState} from './world.ts';
-import {discover, checkTrade, commitTrade, speedFor, abilityGain, itemName, emptyLedger, canCraftTransitPass, type Ledger} from './items.ts';
+import {discover, checkTrade, commitTrade, speedFor, abilityGain, itemName, canCraftTransitPass, type Ledger} from './items.ts';
 import {harnessById} from './harness.ts';
 import type {Place} from './places.ts';
 
@@ -15,15 +15,13 @@ export const DESIRES: Record<string, string[]> = {
   '04-ember': ['invite_token', 'story_scroll', 'pastry'], '05-bloom': ['tea', 'wildflower', 'comfort_note'], '09-copper': ['pocket_gadget', 'coffee', 'repaired_gadget'], '00-jolly': ['coffee', 'postcard'],
 };
 
-export function makeHooks(ledger: Ledger = emptyLedger()): Hooks & {ledger: Ledger} {
+/** Hooks read the item ledger from the world state, so it persists with every committed tick. */
+export function makeHooks(): Hooks {
   return {
-    ledger,
     speedFor: (m, from, to) => speedFor(m.inventory, from, to),
     onArrive: (s, m, place, rand, at) => {
       const out: E[] = [];
-      // Taxi Tokens are spent on arrival (in-world teleport after neighborhood verification; not a payment).
-      const last = m.travel === null ? null : m.travel;
-      void last;
+      const ledger = s.items;
       const d = discover(ledger, s.day, m.id, place, m.inventory, rand, at);
       if (!d.ok) return out;
       for (const got of [d.item, d.stamp, d.postcard, d.relic]) if (got && !(m.inventory.includes(got) && !got.startsWith('postcard:') && got !== d.item)) m.inventory.push(got);
@@ -36,7 +34,7 @@ export function makeHooks(ledger: Ledger = emptyLedger()): Hooks & {ledger: Ledg
       }
       return out;
     },
-    onEncounter: (s, a, b, place, rand, at) => resolveMeeting(ledger, s, a, b, place, rand, at),
+    onEncounter: (s, a, b, place, rand, at) => resolveMeeting(s.items, s, a, b, place, rand, at),
   };
 }
 

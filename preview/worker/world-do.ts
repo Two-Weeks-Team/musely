@@ -6,6 +6,7 @@ import type {Env} from './env.ts';
 import type {ClaimRecord} from './core/threads.ts';
 import {WorldRuntime} from './core/world-runtime.ts';
 import {TICK_MS} from '../src/engine/world.ts';
+import {makeHooks} from '../src/engine/rules.ts';
 
 export class WorldDO extends DurableObject<Env> {
   private ledger: Ledger;
@@ -16,6 +17,7 @@ export class WorldDO extends DurableObject<Env> {
     this.runtime = new WorldRuntime(ctx.storage.sql, {
       worldId: 'musely-preview',
       ledger: this.ledger,
+      hooks: makeHooks(),
       model: {base: env.MODEL_BASE, key: env.MODEL_API_KEY, model: env.MODEL_ID, timeoutMs: 8000},
     });
     ctx.blockConcurrencyWhile(async () => {
