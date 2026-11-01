@@ -1,5 +1,5 @@
 {
- "note": "Task 5b through group 2, scripts/actions.browser.js on the group-2 build (LOD2 and LOD0).",
+ "note": "Task 5b through group 3, scripts/actions.browser.js on the group-3 build (LOD2 and LOD0).",
  "results": [
   {
    "clip": "drink",
@@ -230,6 +230,32 @@
    "lowestMm": 0.177
   },
   {
+   "clip": "carry_walk",
+   "lod": 2,
+   "frames": 32,
+   "moved": 5.84,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -5.516,
+   "footSweepPerCycleM": 0.141,
+   "strideM": 0.27,
+   "slipRatio": 0.523,
+   "walkRatio": 0.515
+  },
+  {
+   "clip": "run",
+   "lod": 2,
+   "frames": 16,
+   "moved": 6.47,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -11.523,
+   "footSweepPerCycleM": 0.218,
+   "strideM": 0.222,
+   "slipRatio": 0.98,
+   "walkRatio": 0.515
+  },
+  {
    "clip": "drink",
    "lod": 0,
    "frames": 96,
@@ -456,6 +482,32 @@
    "finite": true,
    "rootDrift": 0,
    "lowestMm": -0.85
+  },
+  {
+   "clip": "carry_walk",
+   "lod": 0,
+   "frames": 32,
+   "moved": 5.84,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -8.134,
+   "footSweepPerCycleM": 0.141,
+   "strideM": 0.27,
+   "slipRatio": 0.523,
+   "walkRatio": 0.515
+  },
+  {
+   "clip": "run",
+   "lod": 0,
+   "frames": 16,
+   "moved": 6.47,
+   "finite": true,
+   "rootDrift": 0,
+   "lowestMm": -17.512,
+   "footSweepPerCycleM": 0.218,
+   "strideM": 0.222,
+   "slipRatio": 0.98,
+   "walkRatio": 0.515
   }
  ]
 }

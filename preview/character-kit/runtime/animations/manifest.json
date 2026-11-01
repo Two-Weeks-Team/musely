@@ -262,6 +262,20 @@
       "seconds": 4.0,
       "loop": true,
       "action": true
+    },
+    {
+      "name": "carry_walk",
+      "seconds": 1.3333333333333333,
+      "loop": true,
+      "action": true,
+      "strideMeters": 0.27
+    },
+    {
+      "name": "run",
+      "seconds": 0.6666666666666666,
+      "loop": true,
+      "action": true,
+      "strideMeters": 0.222
     }
   ],
   "sockets": {

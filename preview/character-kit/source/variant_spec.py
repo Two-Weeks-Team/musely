@@ -70,6 +70,8 @@ ACTION_CLIPS = {
     'hammer': {'frames': 48, 'loop': True},
     'lantern_hold': {'frames': 96, 'loop': True},
     'dance': {'frames': 96, 'loop': True},
+    'carry_walk': {'frames': 32, 'loop': True, 'stride': 0.27},  # walk's legs and stride contract
+    'run': {'frames': 16, 'loop': True, 'stride': 0.222},         # measured foot sweep x2, no slip (walk slips ~49%)
 }
 
 # Accessory materials: texture family, tint (sRGB or 'accent'/'body'), roughness/metal hints.
