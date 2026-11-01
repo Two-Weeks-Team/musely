@@ -34,7 +34,13 @@ Findings that change the design:
 - **Muse Spark is a reasoning model.** With `max_tokens: 300` and default effort, 298 of 300 output tokens were reasoning and the content was empty. `reasoning_effort` accepts `minimal, low, medium, high, xhigh, max` (`none` returns 400). Same prompt, `max_tokens` 1500: `minimal` 2.0 s / 252 tokens, `low` 3.8 s / 406, default 5.7 s / 843. The proxy uses `minimal` for spotlight/encounter and `low` for negotiation, with `max_tokens` sized for reasoning plus output, to stay inside the 8-second timeout.
 - **Request id exists**: responses carry `x-request-id` (not in the docs) plus `x-ratelimit-*` headers (3,000 requests, 4M tokens per minute for the team). Evidence views use `x-request-id` as the model request id.
 - Cost at `minimal`: about 170 input + 250 output tokens → about $0.0013 per call (official $1.25 / $4.25 per 1M).
-- **Liveness judging quality is not yet confirmed.** Image input works; judging real challenge frames needs the owner's webcam run (task 2). A synthetic-frame proxy test is recorded below when complete.
+- **Liveness judging quality on real frames is not yet confirmed.** Image input works; judging real challenge frames needs the owner's webcam run (task 2).
+- **Synthetic-frame proxy (not a real person).** About eight photorealistic webcam-style frames generated with Codex image generation were judged with the challenge schema (36 calls):
+  - `minimal`: 24/24 unambiguous judgments correct, including left/right hand 10/10 and date-on-paper match/mismatch. Median latency 2.5 s.
+  - `low`: left/right 5/8. Two calls spent the token budget on reasoning, and one wrong pass came from wrong thumb-position reasoning. Up to 14.8 s.
+  - A mirrored selfie frame without a hint was read as the opposite hand in 4/4 calls (pixel-identical to the other hand). With "this frame is mirrored" in the prompt, 6/6 were correct.
+  - Design consequence: the ritual sends raw (non-mirrored) frames, says so in the prompt, and uses `minimal` effort.
+  - Clean staged images, one frame per category: directional only. Blur, partial hands and spoofing were not tested.
 
 ## 3. Map data: OpenMapTiles `poi` classes (2026-11-01)
 

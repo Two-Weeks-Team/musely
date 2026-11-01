@@ -10,13 +10,20 @@ import {claimFingerprint, ownerHash, claimText, jwkThumbprint} from '../src/iden
 const args = process.argv.slice(2);
 const dir = join(homedir(), '.config', 'musely'), file = join(dir, 'owner-root.jwk');
 let privateJwk;
+let text = null;
 try {
-  privateJwk = JSON.parse(await readFile(file, 'utf8'));
-} catch {
+  text = await readFile(file, 'utf8');
+} catch (e) {
+  if (e.code !== 'ENOENT') throw e; // never replace a key we failed to read
+}
+if (text !== null) {
+  privateJwk = JSON.parse(text); // malformed JSON stops here instead of minting a new identity
+  if (privateJwk.kty !== 'EC' || privateJwk.crv !== 'P-256' || !privateJwk.d) throw new Error('Root key file is not a P-256 private JWK: ' + file);
+} else {
   const pair = await crypto.subtle.generateKey({name: 'ECDSA', namedCurve: 'P-256'}, true, ['sign', 'verify']);
   privateJwk = await crypto.subtle.exportKey('jwk', pair.privateKey);
   await mkdir(dir, {recursive: true});
-  await writeFile(file, JSON.stringify(privateJwk), {mode: 0o600});
+  await writeFile(file, JSON.stringify(privateJwk), {mode: 0o600, flag: 'wx'}); // exclusive: a concurrent run cannot overwrite
   await chmod(file, 0o600);
   console.error('Created a new root key at ' + file);
 }
