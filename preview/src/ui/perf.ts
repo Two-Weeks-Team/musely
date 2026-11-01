@@ -11,7 +11,13 @@ export function pixelRatioFor(search = location.search, device = window.devicePi
   return {device, cap, applied: cap === null ? device : Math.min(device, cap), source: q ? 'url' : 'default'};
 }
 
-type Sample = {fps: number; worstMs: number; drawCalls: number; triangles: number};
+type Sample = {at: number; frames: number; ms: number; fps: number; worstMs: number; drawCalls: number; triangles: number};
+/** Frame-weighted fps over the samples from the last `windowMs` (a stalled window counts for its real length). */
+export function fpsOver(samples: readonly Pick<Sample, 'at' | 'frames' | 'ms'>[], now: number, windowMs: number) {
+  const recent = samples.filter(s => now - s.at <= windowMs);
+  const frames = recent.reduce((a, s) => a + s.frames, 0), ms = recent.reduce((a, s) => a + s.ms, 0);
+  return ms > 0 ? Math.round(frames * 1000 / ms) : null;
+}
 export function mountPerf(getSample: () => {drawCalls: number; triangles: number; canvas: HTMLCanvasElement}, ratio: ReturnType<typeof pixelRatioFor>) {
   if (!new URLSearchParams(location.search).has('perf')) return null;
   const box = document.createElement('div');
@@ -19,7 +25,9 @@ export function mountPerf(getSample: () => {drawCalls: number; triangles: number
   const text = document.createElement('pre');
   const copy = document.createElement('button');
   copy.type = 'button'; copy.textContent = 'Copy measurement';
-  box.append(text, copy);
+  const saved = document.createElement('textarea');
+  saved.readOnly = true; saved.hidden = true; saved.setAttribute('aria-label', 'Measurement JSON');
+  box.append(text, copy, saved);
   document.body.append(box);
   let frames = 0, worst = 0, last = performance.now(), windowStart = last;
   const history: Sample[] = [];
@@ -27,10 +35,10 @@ export function mountPerf(getSample: () => {drawCalls: number; triangles: number
   const loop = (now: number) => {
     const dt = now - last; last = now; frames++; worst = Math.max(worst, dt);
     if (now - windowStart >= 1000) {
-      const s = getSample();
-      history.push({fps: Math.round(frames * 1000 / (now - windowStart)), worstMs: Math.round(worst), drawCalls: s.drawCalls, triangles: s.triangles});
-      if (history.length > 60) history.shift();
-      const recent = history.slice(-10), avg = Math.round(recent.reduce((a, b) => a + b.fps, 0) / recent.length);
+      const s = getSample(), ms = now - windowStart;
+      history.push({at: now, frames, ms, fps: Math.round(frames * 1000 / ms), worstMs: Math.round(worst), drawCalls: s.drawCalls, triangles: s.triangles});
+      while (history.length && now - history[0].at > 120_000) history.shift();
+      const avg = fpsOver(history, now, 10_000);
       text.textContent = [
         `fps ${history.at(-1)!.fps} (10 s avg ${avg}) · worst frame ${history.at(-1)!.worstMs} ms`,
         `DPR device ${ratio.device} · applied ${ratio.applied} (${ratio.cap === null ? 'no cap' : 'cap ' + ratio.cap}, ${ratio.source})`,
@@ -44,10 +52,10 @@ export function mountPerf(getSample: () => {drawCalls: number; triangles: number
   };
   requestAnimationFrame(loop);
   const report = () => {
-    const recent = history.slice(-30);
+    const now = performance.now(), recent = history.filter(h => now - h.at <= 30_000);
     return {
       at: new Date().toISOString(), ua: navigator.userAgent, viewport: [innerWidth, innerHeight], dpr: ratio,
-      fpsAvg30s: recent.length ? Math.round(recent.reduce((a, b) => a + b.fps, 0) / recent.length) : null,
+      fpsAvg30s: fpsOver(history, now, 30_000),
       fpsMin30s: recent.length ? Math.min(...recent.map(r => r.fps)) : null,
       worstFrameMs30s: recent.length ? Math.max(...recent.map(r => r.worstMs)) : null,
       buffer: (() => { const s = getSample(); return [s.canvas.width, s.canvas.height]; })(),
@@ -56,7 +64,8 @@ export function mountPerf(getSample: () => {drawCalls: number; triangles: number
   };
   copy.onclick = async () => {
     const r = JSON.stringify(report());
-    try { await navigator.clipboard.writeText(r); copy.textContent = 'Copied'; } catch { text.textContent += '\n' + r; copy.textContent = 'Shown above'; }
+    try { await navigator.clipboard.writeText(r); copy.textContent = 'Copied'; }
+    catch { saved.value = r; saved.hidden = false; saved.select(); copy.textContent = 'Shown below — select and copy'; }
     setTimeout(() => (copy.textContent = 'Copy measurement'), 2000);
   };
   return {report};
