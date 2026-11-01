@@ -74,7 +74,7 @@ export class WorldDO extends DurableObject<Env> {
   }
   jwks(kid: string) { const a = this.trust.agentById(kid); return a ? {keys: [{...a.rootJwk, kid: a.agentId, alg: 'ES256', use: 'sig'}]} : null; }
   worldView() { return this.runtime.view(Date.now()); }
-  worldEvents(since: number, limit: number) { return this.runtime.events(since, Math.min(500, Math.max(1, limit))); }
+  worldEvents(since: number, limit: number, opts: {day?: string; tail?: number} = {}) { return this.runtime.events(since, Math.min(2000, Math.max(1, limit)), opts); }
   worldHighlights(limit: number) { return this.runtime.highlights(Math.min(300, Math.max(1, limit))); }
   getClaim(agent: string): ClaimRecord | null {
     const r = this.ctx.storage.sql.exec('SELECT record FROM claims WHERE agent = ?', agent).toArray()[0];

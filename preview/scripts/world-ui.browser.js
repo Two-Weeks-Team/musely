@@ -43,6 +43,11 @@ async (page) => {
     if (tab === 'autonomy' && (await p.locator('.world-body table.data tr').count()) !== 6) throw Error('Autonomy table must have 6 rows');
     await p.screenshot({path: `output/world-ui-${tab}-${mobile ? 'mobile' : 'desktop'}.png`});
    }
+   // A slow tab render must not leak into the tab selected after it (generation guard).
+   await p.locator('#world-panel .tab[data-tab="highlights"]').click();
+   await p.locator('#world-panel .tab[data-tab="feed"]').click();
+   await p.waitForTimeout(2500);
+   if (await p.locator('.world-body .filter').count()) throw Error('Highlights content leaked into Feed');
    cases.push({...out, errors});
    if (errors.length) throw Error('Page errors: ' + errors.join('; '));
   } finally { await ctx.close(); }

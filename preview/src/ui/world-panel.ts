@@ -71,16 +71,20 @@ async function getJson<T>(path: string): Promise<T | null> {
   try { const r = await fetch(path, {cache: 'no-store'}); return r.ok ? (await r.json()) as T : null; } catch { return null; }
 }
 
-/** Reads the whole append-only run log in pages (500 per call). */
-async function allEvents(max = 6000): Promise<Ev[]> {
+/** One world day of the append-only run log, paged (2,000 per call), cached for a minute. */
+const dayCache = new Map<string, {at: number; events: Ev[]}>();
+async function dayEvents(day: string): Promise<Ev[]> {
+  const hit = dayCache.get(day);
+  if (hit && Date.now() - hit.at < 60_000) return hit.events;
   const out: Ev[] = [];
   let since = 0;
-  while (out.length < max) {
-    const page = await getJson<Ev[]>(`/api/world/events?since=${since}&limit=500`);
-    if (!page?.length) break;
-    out.push(...page); since = page[page.length - 1].seq;
-    if (page.length < 500) break;
+  for (let page = 0; page < 40; page++) {
+    const rows = await getJson<Ev[]>(`/api/world/events?day=${day}&since=${since}&limit=2000`);
+    if (!rows?.length) break;
+    out.push(...rows); since = rows[rows.length - 1].seq;
+    if (rows.length < 2000) break;
   }
+  dayCache.set(day, {at: Date.now(), events: out});
   return out;
 }
 
@@ -233,7 +237,11 @@ export function mountWorldPanel(map: LibreMap) {
   const TABS: [string, string][] = [['feed', 'Feed'], ['highlights', 'Highlights'], ['p1', 'P1 · items change plans'], ['autonomy', 'Autonomy'], ['identity', 'Identity'], ['location', 'Location']];
   for (const [id, label] of TABS) { const t = el('button', 'tab', label); t.type = 'button'; t.dataset.tab = id; t.onclick = () => { tab = id; render(); }; tabs.append(t); }
 
+  let generation = 0;
   async function render() {
+    // Each render owns a generation; a slower render for a previous tab never writes into the current one.
+    const mine = ++generation, stale = () => mine !== generation;
+    const day = world?.day ?? new Date().toISOString().slice(0, 10);
     tabs.querySelectorAll('button').forEach(b => b.classList.toggle('active', (b as HTMLElement).dataset.tab === tab));
     body.replaceChildren();
     if (tab === 'feed') {
@@ -241,6 +249,7 @@ export function mountWorldPanel(map: LibreMap) {
       body.append(ul.childNodes.length ? ul : el('p', 'muted', 'Waiting for the next heartbeat…'));
     } else if (tab === 'highlights') {
       const hl = await getJson<Ev[]>('/api/world/highlights?limit=200') ?? [];
+      if (stale()) return;
       const tags = [...new Set(hl.flatMap(e => e.tags))].sort();
       const bar = el('div', 'filter'); const all = el('button', 'tag' + (filter ? '' : ' on'), 'all'); all.onclick = () => { filter = ''; render(); }; bar.append(all);
       for (const t of tags) { const b = el('button', 'tag' + (filter === t ? ' on' : ''), t.replace(/_/g, ' ')); b.onclick = () => { filter = t; render(); }; bar.append(b); }
@@ -248,30 +257,33 @@ export function mountWorldPanel(map: LibreMap) {
       body.append(el('p', 'muted', 'Moments tagged by rule: first trade, refusals, impostors, blocked instructions, off-script choices, teleports, relics, gatherings, P0. Open one to see its evidence.'), bar, ul);
     } else if (tab === 'p1') {
       const p = el('p', 'muted', 'Does a reward change what a Muse does next? Two views: the same Muse before and after it gained an ability item in the live log, and the real engine run twice in your browser from the same seed and start, once with the item.');
-      const live = liveP1(await allEvents());
+      const live = liveP1(await dayEvents(day));
+      if (stale()) return;
       const t1 = el('table', 'data');
       t1.append(trow(['Muse · item', 'how', 'trips', 'farthest', 'bus/taxi', 'trades', 'places'], 'th'));
       for (const r of live) { t1.append(trow([`${shortName(r.muse)} · ${itemName(r.item)} (before)`, '', r.before.trips, r.before.farthestM + ' m', `${r.before.bus}/${r.before.taxi}`, r.before.trades, r.before.places])); t1.append(trow([`${shortName(r.muse)} · ${itemName(r.item)} (after)`, r.via.replace(/_/g, ' '), r.after.trips, r.after.farthestM + ' m', `${r.after.bus}/${r.after.taxi}`, r.after.trades, r.after.places], 'td', 'after')); }
-      const sim = engineP1(world?.day ?? new Date().toISOString().slice(0, 10));
+      const sim = engineP1(day);
       const t2 = el('table', 'data');
       t2.append(trow(['Ripple, same seed and start', 'trips', 'bus rides', 'farthest', 'first destinations'], 'th'));
       t2.append(trow(['without Transit Pass', sim.without.trips, sim.without.bus, sim.without.farthestM + ' m', sim.without.firstDestinations.join(' → ')]));
       t2.append(trow(['with Transit Pass', sim.with.trips, sim.with.bus, sim.with.farthestM + ' m', sim.with.firstDestinations.join(' → ')], 'td', 'after'));
       body.append(p, el('h4', '', 'Live log (production)'), live.length ? t1 : el('p', 'muted', 'No Muse has gained an ability item in the live log yet. This table fills in as the world runs.'), el('h4', '', `Engine, run in this browser (${sim.ticks} minutes, rule source)`), t2);
     } else if (tab === 'autonomy') {
-      const evs = await allEvents();
+      const evs = await dayEvents(day);
+      if (stale()) return;
       const t = el('table', 'data'); for (const [k, v] of autonomy(evs)) t.append(trow([k, v]));
-      body.append(el('p', 'muted', `From ${evs.length} events in today's run log. We call it autonomy only with this table beside it.`), t);
+      body.append(el('p', 'muted', `From ${evs.length} events in the run log for ${day} (Menlo Park day). We call it autonomy only with this table beside it.`), t);
     } else if (tab === 'identity') {
-      await renderIdentity();
+      await renderIdentity(stale);
     } else if (tab === 'location') {
-      await renderLocation();
+      await renderLocation(stale);
     }
   }
   function trow(cells: (string | number)[], tag: 'td' | 'th' = 'td', cls = '') { const tr = el('tr', cls); for (const c of cells) tr.append(el(tag, '', String(c))); return tr; }
 
-  async function renderIdentity() {
+  async function renderIdentity(stale: () => boolean) {
     const claim = await getJson<any>('/api/claim/owner-muse');
+    if (stale()) return;
     const card = el('div', 'id-card');
     const status = claim?.record?.status ?? 'pending_claim';
     card.append(el('span', 'eyebrow', "KIM SEJUN'S MUSE · OWNER CLAIM"), el('h4', '', status === 'claimed' ? 'Claimed' : status === 'claim_revoked' ? 'Claim revoked' : 'pending_claim'));
@@ -293,8 +305,9 @@ export function mountWorldPanel(map: LibreMap) {
     body.append(card, el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it.'), actions, result);
   }
 
-  async function renderLocation() {
+  async function renderLocation(stale: () => boolean) {
     const loc = await getJson<any>('/api/owner/location');
+    if (stale()) return;
     const box = el('div', 'id-card');
     box.append(el('span', 'eyebrow', 'OWNER LOCATION · 13.1'));
     if (!loc) { box.append(el('h4', '', 'Virtual location (demo) · HQ commons'), el('p', 'muted', 'Location switching is being connected (MCP server PR). Until then the owner location is the HQ commons preset.')); body.append(box); return; }
@@ -317,7 +330,8 @@ export function mountWorldPanel(map: LibreMap) {
 
   let lastSeq = 0;
   async function refresh() {
-    const [w, fresh] = await Promise.all([getJson<WorldView>('/api/world'), getJson<Ev[]>(`/api/world/events?since=${lastSeq}&limit=500`)]);
+    // First load takes the newest events (the live tail); later polls fetch only what is new since then.
+    const [w, fresh] = await Promise.all([getJson<WorldView>('/api/world'), getJson<Ev[]>(lastSeq ? `/api/world/events?since=${lastSeq}&limit=500` : '/api/world/events?tail=200')]);
     if (w) world = w;
     if (fresh?.length) { events.push(...fresh); events = events.slice(-1500); lastSeq = fresh[fresh.length - 1].seq; }
     pins.update(world);

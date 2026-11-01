@@ -96,3 +96,15 @@ test('a Muse holding a postcard (or any odd item id) never stops the heartbeat',
   assert.equal(r2.status, 'committed');
   assert.match(r2.spotlight.reason, /^input_invalid/);
 });
+
+test('event queries: newest tail in order, and one world day only', async () => {
+  const s = setup({key: null, fetcher: async () => new Response('{}')});
+  for (let i = 0; i < 6; i++) await s.rt.heartbeat(T0 + i * TICK_MS);
+  const all = s.rt.events(0, 5000);
+  const tail = s.rt.events(0, 0, {tail: 5});
+  assert.deepEqual(tail.map(e => e.seq), all.slice(-5).map(e => e.seq), 'newest five, ascending');
+  const day = all[0].id.slice(0, 10);
+  assert.equal(s.rt.events(0, 5000, {day}).length, all.filter(e => e.id.startsWith(day + ':')).length);
+  assert.equal(s.rt.events(0, 5000, {day: '1999-01-01'}).length, 0);
+  assert.equal(s.rt.events(0, 5000, {day: "x' OR 1=1 --"}).length, all.length, 'bad day values are ignored, not injected');
+});

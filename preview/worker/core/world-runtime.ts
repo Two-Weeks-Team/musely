@@ -122,8 +122,14 @@ export class WorldRuntime {
     return out;
   }
 
-  events(sinceSeq = 0, limit = 200) {
-    return this.sql.exec('SELECT seq, id, tick, at, source, kind, muse, other, place, line, data, tags FROM events WHERE seq > ? ORDER BY seq LIMIT ?', sinceSeq, limit).toArray()
+  /** Events after `sinceSeq` in order; with `day` only that world day (ids start with the day); with `tail` the newest N. */
+  events(sinceSeq = 0, limit = 200, opts: {day?: string; tail?: number} = {}) {
+    if (opts.tail) {
+      return this.sql.exec('SELECT seq, id, tick, at, source, kind, muse, other, place, line, data, tags FROM events ORDER BY seq DESC LIMIT ?', Math.min(500, opts.tail)).toArray().reverse()
+        .map(r => ({...r, data: JSON.parse(String(r.data)), tags: JSON.parse(String(r.tags))}) as WorldEvent & {seq: number});
+    }
+    const day = opts.day && /^\d{4}-\d{2}-\d{2}$/.test(opts.day) ? opts.day + ':%' : '%';
+    return this.sql.exec('SELECT seq, id, tick, at, source, kind, muse, other, place, line, data, tags FROM events WHERE seq > ? AND id LIKE ? ORDER BY seq LIMIT ?', sinceSeq, day, limit).toArray()
       .map(r => ({...r, data: JSON.parse(String(r.data)), tags: JSON.parse(String(r.tags))}) as WorldEvent & {seq: number});
   }
   eventsOfKind(tick: number, kind: string) {
