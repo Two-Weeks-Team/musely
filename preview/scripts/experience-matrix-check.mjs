@@ -29,7 +29,7 @@ const dupActions = actionIds.filter((id, i) => actionIds.indexOf(id) !== i);
 let badRefs = 0;
 for (const l of actionRows) {
   for (const [, c] of l.matchAll(/clip:([a-z_]+)/g)) if (!clips.includes(c)) { badRefs++; console.log('  unknown clip in action row: ' + c); }
-  const beatList = l.match(/; beats ([a-z_, ]+?)(?: ;[^|]*)? \|/);
+  const beatList = l.match(/runs via beats ([a-z_, ]+?)(?: ;[^|]*)? \|/);
   if (beatList) for (const b of beatList[1].split(',').map(x => x.trim()).filter(Boolean)) if (!source.beat.includes(b)) { badRefs++; console.log('  unknown beat in action row: ' + b); }
 }
 failures += dupActions.length + badRefs;
