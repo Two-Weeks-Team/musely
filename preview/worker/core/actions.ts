@@ -140,6 +140,17 @@ export function maxCostUsd(action: Action, messages: unknown[]) {
   const inputTokens = Math.ceil(text / 3) + images * 1600 + 50;
   return inputTokens * PRICE.inputPerToken + ACTION_LIMITS[action].maxTokens * PRICE.outputPerToken;
 }
+/**
+ * Cost to settle for a failed call. Known usage is charged as reported. A request the API refused before
+ * generating (429, other 4xx) costs nothing. Anything else with unknown usage (unparseable 200, dropped
+ * connection, 5xx, timeout) may have been billed, so the full reservation is kept (NaN = unknown).
+ */
+export function failureCostUsd(failure: {kind: string; status?: number; usage?: {prompt_tokens?: number; completion_tokens?: number}}) {
+  const known = actualCostUsd(failure.usage);
+  if (Number.isFinite(known)) return known;
+  if (failure.kind === 'rate_limited' || (failure.kind === 'upstream' && failure.status !== undefined && failure.status >= 400 && failure.status < 500)) return 0;
+  return Number.NaN;
+}
 export const actualCostUsd = (usage: {prompt_tokens?: number; completion_tokens?: number} | undefined) =>
   usage ? (usage.prompt_tokens ?? 0) * PRICE.inputPerToken + (usage.completion_tokens ?? 0) * PRICE.outputPerToken : Number.NaN;
 

@@ -195,3 +195,21 @@ test('schema-violating model output is rejected with a reason and falls back, ne
   assert.match(r.body.reason, /^output_rejected:/);
   assert.equal(l.status().reservedUsd, 0, 'settled');
 });
+
+test('failures with unknown usage keep the full reservation; refusals before generation cost nothing', async () => {
+  const {failureCostUsd} = await import('../worker/core/actions.ts');
+  assert.equal(failureCostUsd({kind: 'rate_limited', status: 429}), 0);
+  assert.equal(failureCostUsd({kind: 'upstream', status: 400}), 0);
+  assert.ok(Number.isNaN(failureCostUsd({kind: 'upstream', status: 503})));
+  assert.ok(Number.isNaN(failureCostUsd({kind: 'bad_output', status: 200})));
+  assert.ok(Number.isNaN(failureCostUsd({kind: 'network'})));
+  assert.equal(failureCostUsd({kind: 'bad_output', usage: {prompt_tokens: 100, completion_tokens: 0}}), 100 * 1.25e-6);
+  const l = ledger();
+  await call(l, async () => new Response('{"choices":[{"message":{"content":"not json"}}]', {status: 200}));
+  const s = l.status();
+  assert.equal(s.reservedUsd, 0);
+  assert.ok(s.spentUsd > 0, 'an unparseable 200 is charged at the reserved amount, not zero');
+  const l2 = ledger();
+  await call(l2, modelFetch(429, {}));
+  assert.equal(l2.status().spentUsd, 0);
+});

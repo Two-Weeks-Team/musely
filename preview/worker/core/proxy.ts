@@ -1,6 +1,6 @@
 // POST /api/muse: session → burst limit → atomic reservation → live call (8 s) → settle, or replay.
 // 429, quota or budget exhaustion, 5xx, timeouts and malformed output all fall back to replay and say so.
-import {ACTIONS, InputError, validate, buildMessages, maxCostUsd, actualCostUsd, checkOutput, type Action} from './actions.ts';
+import {ACTIONS, InputError, validate, buildMessages, maxCostUsd, actualCostUsd, failureCostUsd, checkOutput, type Action} from './actions.ts';
 import {callModel, type ModelConfig} from './model.ts';
 import {replayFor} from './replay.ts';
 import type {ReserveRequest, ReserveResult, Outcome, Tier} from './ledger.ts';
@@ -53,8 +53,8 @@ export async function handleMuse(body: unknown, session: Session | null, ipHash:
 
   const result = await callModel({...deps.model, key: deps.model.key, noBodyLogging: action === 'challenge' || action === 'negotiate'}, action, messages);
   if (!result.ok) {
-    // A timed-out call may still be billed: charge the full reservation. Other failures charge what was reported.
-    await deps.ledger.settle(id, result.kind === 'timeout' ? Number.NaN : actualCostUsd(result.usage) || 0, result.kind === 'timeout' ? 'timeout' : 'error');
+    // Possibly billed failures with unknown usage keep the full reservation (see failureCostUsd).
+    await deps.ledger.settle(id, failureCostUsd(result), result.kind === 'timeout' ? 'timeout' : 'error');
     return fallback(result.kind, {evidence: undefined});
   }
   const cost = actualCostUsd(result.usage);
