@@ -168,3 +168,13 @@ test('no Model API key appears in tracked sources or the built client', async ()
     assert.ok(!pattern.test(await readFile(file, 'utf8')), 'key-like string in ' + file);
   }
 });
+
+test('the liveness challenge has its own allowance, separate from the 3-per-hour trial', () => {
+  const l = ledger();
+  const r = (id, action) => l.reserve({id, tier: 'visitor', session: 'v', ip: 'i', action, maxCostUsd: 0.001});
+  for (let i = 0; i < 3; i++) assert.equal(r('t' + i, 'spotlight').ok, true);
+  assert.deepEqual(r('t3', 'encounter'), {ok: false, reason: 'session_quota'});
+  for (let i = 0; i < 3; i++) assert.equal(r('c' + i, 'challenge').ok, true, 'ritual still allowed after the trial is used');
+  assert.deepEqual(r('c3', 'challenge'), {ok: false, reason: 'session_quota'});
+  assert.equal(l.quotaFor('v', 'visitor').usedThisHour, 3);
+});

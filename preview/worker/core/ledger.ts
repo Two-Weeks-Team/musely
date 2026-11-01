@@ -13,7 +13,10 @@ export type ReserveRequest = {id: string; tier: Tier; session: string; ip: strin
 export type ReserveResult = {ok: true; id: string} | {ok: false; reason: DenyReason};
 export type Outcome = 'live' | 'timeout' | 'error' | 'rejected';
 
-export const HOURLY_LIMITS: Record<Tier, number> = {visitor: 6, judge: 120, world: Number.POSITIVE_INFINITY};
+// Unconnected visitors get a 3-per-hour trial of their harness run by the team key (direction v2, 8.8/15).
+// The liveness challenge is a system use and is counted separately so a trial does not block the ritual.
+export const HOURLY_LIMITS: Record<Tier, number> = {visitor: 3, judge: 120, world: Number.POSITIVE_INFINITY};
+export const CHALLENGE_HOURLY_LIMIT = 3;
 export const IP_HOURLY_LIMIT = 40;
 // A reservation that is never settled (crashed request) counts at its full amount after this long.
 export const STALE_RESERVATION_MS = 60_000;
@@ -58,8 +61,9 @@ export class Ledger {
     const b = this.row(day);
     if (b.spent + b.reserved + req.maxCostUsd > this.opts.dailyCapUsd) return {ok: false, reason: 'budget'};
     if (req.tier !== 'world') {
-      const perSession = Number(this.sql.exec('SELECT count(*) AS n FROM reservations WHERE session = ? AND created > ? AND (outcome IS NULL OR outcome != ?)', req.session, now - HOUR, 'rejected').toArray()[0].n);
-      if (perSession >= HOURLY_LIMITS[req.tier]) return {ok: false, reason: 'session_quota'};
+      const challenge = req.action === 'challenge';
+      const perSession = Number(this.sql.exec(`SELECT count(*) AS n FROM reservations WHERE session = ? AND created > ? AND (outcome IS NULL OR outcome != ?) AND action ${challenge ? '=' : '!='} 'challenge'`, req.session, now - HOUR, 'rejected').toArray()[0].n);
+      if (perSession >= (challenge && req.tier === 'visitor' ? CHALLENGE_HOURLY_LIMIT : HOURLY_LIMITS[req.tier])) return {ok: false, reason: 'session_quota'};
       if (req.tier === 'visitor') {
         const perIp = Number(this.sql.exec('SELECT count(*) AS n FROM reservations WHERE ip = ? AND created > ? AND tier = ?', req.ip, now - HOUR, 'visitor').toArray()[0].n);
         if (perIp >= IP_HOURLY_LIMIT) return {ok: false, reason: 'ip_quota'};
@@ -87,7 +91,7 @@ export class Ledger {
   }
 
   quotaFor(session: string, tier: Tier) {
-    const used = Number(this.sql.exec('SELECT count(*) AS n FROM reservations WHERE session = ? AND created > ? AND (outcome IS NULL OR outcome != ?)', session, this.now() - HOUR, 'rejected').toArray()[0].n);
+    const used = Number(this.sql.exec("SELECT count(*) AS n FROM reservations WHERE session = ? AND created > ? AND (outcome IS NULL OR outcome != ?) AND action != 'challenge'", session, this.now() - HOUR, 'rejected').toArray()[0].n);
     return {perHour: HOURLY_LIMITS[tier], usedThisHour: used};
   }
 
