@@ -7,7 +7,8 @@
 //   layout: at 390 px the header rows do not cover the time caption or the story heading, and in Live world the story
 //     heading and time caption stay off the welcome card
 //   review regressions (PR #76): a cue never overrides a mode change; the pause button matches a cue-held world; a new
-//     cue releases the previous character; a prop that did not load is not claimed; ?entry=watch boots cleanly
+//     cue releases the previous character; a prop that did not load is not claimed (and is requested by the cue itself,
+//     so a slow link upgrades the card when it arrives); ?entry=watch boots cleanly
 //   isolation: no non-GET request to /api while doing any of this; no page errors
 // Returns {ok, cases}; screenshots go to output/preview-flows-*.png.
 async (page) => {
@@ -22,7 +23,7 @@ async (page) => {
     p.on('pageerror', e => errors.push(e.message));
     p.on('request', r => { if (r.method() !== 'GET' && r.url().includes('/api/')) writes.push(r.method() + ' ' + r.url()); });
     try {
-      await p.goto(base.href, {waitUntil: 'domcontentloaded'});
+      await p.goto(base.href, {waitUntil: 'domcontentloaded', timeout: 90000});
       await p.waitForFunction(() => window.__world?.getMetrics().ready && window.__world.getMetrics().characterKit, null, {timeout: 60000});
       await p.waitForTimeout(1500);
       const m = () => p.evaluate(() => { const w = window.__world, g = w.getMetrics(); return {mode: w.mode, tour: g.tour, elapsed: g.elapsed, paused: g.paused, selected: g.selected, zoom: g.zoom, tourText: document.getElementById('tour').textContent}; });
@@ -78,9 +79,10 @@ async (page) => {
       check(vp, 'a Muse outside the commons gets a stated fallback; the one inside plays', fb.result.includes('Copper: not in the commons') && fb.result.includes('Ink: clip') && fb.cues.length === 1, fb.result);
       await p.waitForTimeout(6500);
       await p.click('.flow-list button[data-flow="comms-day"]'); await p.click('.flow-controls button[data-goto="gift"]'); await p.click('.flow-controls button[data-goto="postcard"]');
-      await p.click('.flow-show'); await p.waitForTimeout(1500);
-      const prop = await p.evaluate(() => ({result: document.querySelector('.flow-cue-result').textContent, held: window.__world.actor(3)?.getMetrics().held, visible: window.__world.actor(3)?.visibleMaterials().length}));
-      check(vp, 'a clip with a 3D prop shows the prop (Moss writes the postcard on a notepad)', prop.held === 'write_note' && prop.result.includes('Moss: clip with its 3D notepad'), prop.result);
+      await p.click('.flow-show'); await p.waitForTimeout(600);
+      await p.waitForFunction(() => document.querySelector('.preview-cue')?.dataset.visual === 'complete', null, {timeout: 5000}).catch(() => {});
+      const prop = await p.evaluate(() => ({result: document.querySelector('.flow-cue-result').textContent, card: document.querySelector('.preview-cue')?.textContent, visual: document.querySelector('.preview-cue')?.dataset.visual, held: window.__world.actor(3)?.getMetrics().held, shown: window.__world.actor(3)?.propShown()}));
+      check(vp, 'a clip with a 3D prop shows the prop (Moss writes the postcard on a notepad)', prop.held === 'write_note' && prop.visual === 'complete' && prop.shown === true && /3D prop notepad/.test(prop.card), JSON.stringify(prop));
       await p.evaluate(() => document.getElementById('world-panel').hidePopover()); await p.waitForTimeout(300);
       await p.screenshot({path: `output/preview-flows-${vp}-cue-prop.png`});
 
@@ -119,7 +121,7 @@ async (page) => {
       const wp = await ctx.newPage(), werr = [];
       wp.on('pageerror', e => werr.push(e.message));
       const wurl = new URL(base.href); wurl.search = '?autoplay=0&entry=watch';
-      await wp.goto(wurl.href, {waitUntil: 'domcontentloaded'});
+      await wp.goto(wurl.href, {waitUntil: 'domcontentloaded', timeout: 90000});
       const wup = await wp.waitForFunction(() => window.__world?.getMetrics().ready && window.__world.getMetrics().characterKit, null, {timeout: 30000}).then(() => true, () => false);
       const w = wup ? await wp.evaluate(() => ({mode: window.__world.mode, tour: window.__world.getMetrics().tour, cue: typeof window.__world.previewCue, pressed: document.getElementById('mode-story').getAttribute('aria-pressed')})) : null;
       check(vp, '?entry=watch boots: the story plays, mode controls and cues exist, no errors', wup && w.mode === 'story' && w.tour && w.cue === 'function' && w.pressed === 'true' && werr.length === 0, JSON.stringify({w, werr}));
@@ -129,13 +131,29 @@ async (page) => {
       await bctx.route('**/attachments/props.glb', r => r.abort());
       const bp = await bctx.newPage(), berr = [];
       bp.on('pageerror', e => berr.push(e.message));
-      await bp.goto(base.href, {waitUntil: 'domcontentloaded'});
+      await bp.goto(base.href, {waitUntil: 'domcontentloaded', timeout: 90000});
       await bp.waitForFunction(() => window.__world?.getMetrics().ready && window.__world.getMetrics().characterKit, null, {timeout: 60000});
       await bp.waitForTimeout(2500);
       const np = await bp.evaluate(() => { const wd = window.__world, out = wd.previewCue([{variant: wd.actor(3).variant, clip: 'write_note', item: 'notepad', label: 'no props'}], 3), el = document.querySelector('.preview-cue'); return {result: out.results[0], visual: el?.dataset.visual, text: el?.textContent, propsLoaded: wd.actor(3).propsLoaded}; });
       check(vp, 'props file missing: the cue says fallback and does not claim a 3D prop', np.propsLoaded === false && np.visual === 'fallback' && !/3D prop notepad/.test(np.text) && np.result.prop === null && np.result.visual === 'fallback' && berr.length === 0, JSON.stringify(np));
       await bp.screenshot({path: `output/preview-flows-${vp}-cue-no-prop.png`});
+      await bp.waitForTimeout(2000);
+      const still = await bp.evaluate(() => { const el = document.querySelector('.preview-cue'); return {visual: el?.dataset.visual, text: el?.textContent}; });
+      check(vp, 'props file missing: the card stays a fallback after the on-demand load fails', still.visual === 'fallback' && !/3D prop notepad/.test(still.text ?? '') && berr.length === 0, JSON.stringify(still));
       await bctx.close();
+      // A slow props file (the last background step; minutes on a slow link) is requested by the cue itself and the card upgrades when it arrives.
+      const sctx = await browser.newContext({viewport: mobile ? {width: 390, height: 844} : {width: 1440, height: 900}, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1});
+      await sctx.route('**/attachments/props.glb', async r => { await new Promise(done => setTimeout(done, 3000)); await r.continue().catch(() => {}); });
+      const sp = await sctx.newPage(), serr = [];
+      sp.on('pageerror', e => serr.push(e.message));
+      await sp.goto(base.href, {waitUntil: 'domcontentloaded', timeout: 90000});
+      await sp.waitForFunction(() => window.__world?.getMetrics().ready && window.__world.getMetrics().characterKit, null, {timeout: 60000});
+      await sp.waitForTimeout(300);
+      const first = await sp.evaluate(() => { const wd = window.__world, out = wd.previewCue([{variant: wd.actor(3).variant, clip: 'write_note', item: 'notepad', label: 'slow props'}], 8), el = document.querySelector('.preview-cue'); return {result: out.results[0], visual: el?.dataset.visual, propsLoaded: wd.actor(3).propsLoaded}; });
+      await sp.waitForFunction(() => document.querySelector('.preview-cue')?.dataset.visual === 'complete', null, {timeout: 7000}).catch(() => {});
+      const later = await sp.evaluate(() => { const el = document.querySelector('.preview-cue'); return {visual: el?.dataset.visual, text: el?.textContent, shown: window.__world.actor(3).propShown()}; });
+      check(vp, 'slow props file: the cue starts as a fallback and the card becomes the 3D prop when it arrives', first.propsLoaded === false && first.visual === 'fallback' && first.result.reason === 'prop_unavailable' && later.visual === 'complete' && later.shown === true && /3D prop notepad/.test(later.text) && serr.length === 0, JSON.stringify({first, later, serr}));
+      await sctx.close();
       check(vp, 'no /api writes', writes.length === 0, writes.join(' '));
       check(vp, 'no page errors', errors.length === 0, errors.join(' / '));
     } catch (e) { check(vp, 'run', false, String(e).slice(0, 300)); }

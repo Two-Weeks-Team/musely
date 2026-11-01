@@ -31,7 +31,7 @@ const button = (text: string, cls: string, onClick: () => void) => { const b = e
 
 function cueText(r: CueResult) {
   if (!r.shown) return r.reason === 'not_in_commons' ? 'Fallback: this Muse does not live in the commons scene, so the change is shown on this card only.' : r.reason === 'characters_loading' ? 'The commons characters are still loading. Try again in a moment.' : 'The 3D scene is not available here.';
-  return r.results.map(x => `${harnessName(x.variant)}: ${x.shown ? (x.visual === 'complete' ? (x.prop ? `clip with its 3D ${x.prop}` : 'clip, item shown as a card') : x.reason === 'prop_unavailable' ? 'clip plays, its 3D prop is not available here · item card shown' : 'fallback item card shown') : 'not in the commons (card only)'}`).join(' · ') + '. The world is paused while it plays.';
+  return r.results.map(x => `${harnessName(x.variant)}: ${x.shown ? (x.visual === 'complete' ? (x.prop ? `clip with its 3D ${x.prop}` : 'clip, item shown as a card') : x.reason === 'prop_unavailable' ? 'clip plays, its 3D prop is still loading or unavailable · item card shown' : 'fallback item card shown') : 'not in the commons (card only)'}`).join(' · ') + '. The world is paused while it plays.';
 }
 
 /** Inventories carried forward: a step without an inventory shows the latest one before it on the visited path. */
