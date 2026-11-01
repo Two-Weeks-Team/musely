@@ -1,9 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {authorizeUrl, claimViaWorker, recheck, matchClaim, ownerDirectRecord, ThreadsError} from '../worker/core/threads.ts';
+import {authorizeUrl, claimViaWorker, recheck, matchClaim, ownerDirectRecord, ThreadsError, ClaimStepError} from '../worker/core/threads.ts';
 
 const display = 'dead ed5c 1e55 d7a3', text = `I am claiming my Muse on Musely. Fingerprint: ${display} · preview.musely.net`;
-function fakeGraph({username = 'centisgood', postedText = text, deleted = false, tokenExpired = false} = {}) {
+function fakeGraph({username = 'centisgood', postedText = text, deleted = false, tokenExpired = false, existing = null, readFailures = 0, publishMissing = false} = {}) {
+  let reads = 0;
   const calls = [];
   const fetcher = async (url, init) => {
     const u = new URL(url), body = init?.body ? Object.fromEntries(new URLSearchParams(init.body)) : Object.fromEntries(u.searchParams);
@@ -12,8 +13,11 @@ function fakeGraph({username = 'centisgood', postedText = text, deleted = false,
     if (u.pathname === '/oauth/access_token') return body.client_secret === 'secret' && body.code === 'good' ? ok({access_token: 'short', user_id: 42}) : new Response(JSON.stringify({error: {message: 'bad code'}}), {status: 400});
     if (u.pathname === '/access_token') return ok({access_token: 'long', expires_in: 5184000});
     if (u.pathname === '/v1.0/me') return ok({id: '42', username});
+    if (u.pathname === '/v1.0/me/threads') return ok({data: existing ? [existing] : []});
+    if (u.pathname === '/v1.0/42/threads' && publishMissing) return new Response(JSON.stringify({error: {message: 'The requested resource does not exist', type: 'OAuthException', code: 24}}), {status: 400});
     if (u.pathname === '/v1.0/42/threads') return ok({id: 'container-1'});
     if (u.pathname === '/v1.0/42/threads_publish') return body.creation_id === 'container-1' ? ok({id: 'media-9'}) : new Response('{}', {status: 400});
+    if (u.pathname === '/v1.0/media-9' && reads++ < readFailures) return new Response(JSON.stringify({error: {message: 'The requested resource does not exist', type: 'GraphMethodException', code: 100, error_subcode: 33}}), {status: 400});
     if (u.pathname === '/v1.0/media-9' && tokenExpired) return new Response(JSON.stringify({error: {message: 'Error validating access token: Session has expired', type: 'OAuthException', code: 190}}), {status: 400});
     if (u.pathname === '/v1.0/media-9' && deleted === 'graph') return new Response(JSON.stringify({error: {message: 'Unsupported get request. Object does not exist', type: 'GraphMethodException', code: 100, error_subcode: 33}}), {status: 400});
     if (u.pathname === '/v1.0/media-9') return deleted ? new Response(JSON.stringify({error: {message: 'not found'}}), {status: 404}) : ok({id: 'media-9', text: postedText, permalink: 'https://www.threads.com/@centisgood/post/ABC123', username});
@@ -41,8 +45,8 @@ test('worker path: code exchange, owner check, publish approved text, read back,
 });
 
 test('worker path refuses another account and a bad code', async () => {
-  await assert.rejects(claimViaWorker(fakeGraph({username: 'someone'}).cfg, 'good', expected), e => e instanceof ThreadsError && e.status === 403);
-  await assert.rejects(claimViaWorker(fakeGraph().cfg, 'bad', expected), ThreadsError);
+  await assert.rejects(claimViaWorker(fakeGraph({username: 'someone'}).cfg, 'good', expected), e => e instanceof ClaimStepError && e.step === 'identity' && e.cause.status === 403);
+  await assert.rejects(claimViaWorker(fakeGraph().cfg, 'bad', expected), e => e instanceof ClaimStepError && e.step === 'exchange');
 });
 
 test('an edited post is a mismatch; a deleted post revokes the claim', async () => {
@@ -70,4 +74,28 @@ test('an expired token keeps the last verified claim; only a missing post revoke
   assert.match(expired.note, /token expired/);
   assert.equal((await recheck(fakeGraph({deleted: 'graph'}).cfg, 'long', record)).status, 'claim_revoked', 'Graph code 100/33 means the post is gone');
   assert.equal((await recheck(fakeGraph({deleted: true}).cfg, 'long', record)).status, 'claim_revoked', '404 means the post is gone');
+});
+
+test('a read-back that is not ready yet is retried; the post id is saved before reading', async () => {
+  const g = fakeGraph({readFailures: 2});
+  const saved = [];
+  const r = await claimViaWorker(g.cfg, 'good', expected, 1, {onPublished: id => saved.push(id), readDelayMs: 5});
+  assert.equal(r.record.status, 'claimed');
+  assert.deepEqual(saved, ['media-9']);
+  assert.equal(g.calls.filter(c => c.path === '/v1.0/42/threads_publish').length, 1, 'published once');
+});
+
+test('an existing claim post is reused instead of posting again', async () => {
+  const g = fakeGraph({existing: {id: 'media-9', text, permalink: 'https://www.threads.com/@centisgood/post/OLD1', username: 'centisgood'}});
+  const r = await claimViaWorker(g.cfg, 'good', expected, 1);
+  assert.equal(r.reused, true);
+  assert.equal(r.record.status, 'claimed');
+  assert.equal(g.calls.filter(c => c.path.endsWith('/threads_publish') || c.path === '/v1.0/42/threads').length, 0, 'no new post');
+});
+
+test('failures name their step', async () => {
+  await assert.rejects(claimViaWorker(fakeGraph({publishMissing: true}).cfg, 'good', expected), e => e.step === 'publish' && e.cause.code === 24);
+  const saved = [];
+  await assert.rejects(claimViaWorker(fakeGraph({readFailures: 9}).cfg, 'good', expected, 1, {onPublished: id => saved.push(id), readDelayMs: 1}), e => e.step === 'read_back');
+  assert.deepEqual(saved, ['media-9'], 'post id kept even when the read-back fails');
 });
