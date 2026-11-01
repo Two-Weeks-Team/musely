@@ -1,0 +1,1177 @@
+{
+ "info": {
+  "url": "https://preview.musely.net/",
+  "startedAt": "2026-11-01T15:58:03.966Z",
+  "finishedAt": "2026-11-01T16:01:03.153Z",
+  "browser": "156.0.8078.76",
+  "node": "v24.22.2",
+  "platform": "darwin arm64"
+ },
+ "ok": true,
+ "cases": [
+  {
+   "vp": "D",
+   "name": "EXP-ENTRY/entry",
+   "ok": true,
+   "detail": "{\"paths\":3,\"view\":\"choose\"}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-ENTRY/cancel · leave without choosing",
+   "ok": true,
+   "detail": "{\"path\":null,\"chip\":\"Enter\"}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-ENTRY/action · choose a harness job",
+   "ok": true,
+   "detail": "harnesses 10"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-ENTRY/success · harness worn",
+   "ok": true,
+   "detail": "{\"chip\":\"Trial · Copper · local\",\"steps\":3}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-ENTRY/retry · re-entry keeps the trial",
+   "ok": true,
+   "detail": "view trial-card trial 09-copper"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-ENTRY/cancel · end trial",
+   "ok": true,
+   "detail": "{\"trial\":null,\"resume\":1}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-ENTRY/reject · staged connection error",
+   "ok": true,
+   "detail": "{\"state\":\"STAGED · ERROR EXAMPLE\",\"failed\":1}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-ENTRY/retry · connection retry",
+   "ok": true,
+   "detail": "connecting"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-ENTRY/cancel · cancel the connection",
+   "ok": true,
+   "detail": "{\"c\":\"cancelled\",\"t\":\"CANCELLED · NOTHING CONNECTED\"}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-ENTRY/success · staged connection",
+   "ok": true,
+   "detail": "{\"done\":4,\"chip\":\"Connect · staged\"}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-ENTRY/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-ENTRY/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-WORLD/entry · map to the commons",
+   "ok": true,
+   "detail": "{\"zoom\":21.7,\"muses\":8,\"h\":89}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-WORLD/action · spotlight turn",
+   "ok": true,
+   "detail": "Spotlight · Bloom next · where · last: LIVE · 18 spotlight rows"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-WORLD/success · decision shown LIVE with its model (live world)",
+   "ok": true,
+   "detail": "×EVIDENCEEmber decides (where): walk to The Campfire to gather and share stories → The CampfireLIVE "
+  },
+  {
+   "vp": "D",
+   "name": "EXP-WORLD/reject · out-of-scope decision refused (scripted fixture)",
+   "ok": true,
+   "detail": "×EVIDENCECopper's decision was refused: out_of_scopeRULERecordPreview fixture (SCRIPTED) — not a live recordWhen (Menlo "
+  },
+  {
+   "vp": "D",
+   "name": "EXP-WORLD/cancel · pause, leave follow",
+   "ok": true,
+   "detail": "{\"a\":{\"paused\":true,\"label\":\"Resume world\"},\"f1\":true,\"f2\":false} · real drag"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-WORLD/retry · resume the world",
+   "ok": true,
+   "detail": "{\"paused\":false,\"label\":\"Pause world\",\"chip\":\"Spotlight · Bloom next · where · last: LIVE\"}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-WORLD/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-WORLD/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-IDENTITY/entry",
+   "ok": true,
+   "detail": "claim: claimedtask: submitteddeadline: 30 min"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-IDENTITY/action",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-IDENTITY/success",
+   "ok": true,
+   "detail": "[\"complete\",\"complete\"]"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-IDENTITY/cancel · revoke",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-IDENTITY/reject · refused after revoking",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-IDENTITY/retry · standby, then run 1 again",
+   "ok": true,
+   "detail": "standby → run 1"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-IDENTITY/retry · Restart returns to the first step",
+   "ok": true,
+   "detail": "propose"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-IDENTITY/entry · visitor",
+   "ok": true,
+   "detail": "visitor-unclaimed"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-IDENTITY/reject · visitor trade refused",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-IDENTITY/retry · a recorded ritual changes nothing",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-IDENTITY/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-IDENTITY/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REWARD/entry",
+   "ok": true,
+   "detail": "p1-transit"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REWARD/action · stamps and craft",
+   "ok": true,
+   "detail": "[\"complete\"]"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REWARD/success · after",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REWARD/reject · no ability change",
+   "ok": true,
+   "detail": "reward-trade-limits"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REWARD/reject · too far",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REWARD/reject · pair limit",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REWARD/reject · repeat find",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REWARD/reject · daily cap",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REWARD/cancel · withdrawn",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REWARD/cancel · expired",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REWARD/retry · next day, offer again",
+   "ok": true,
+   "detail": "back to the offer, inventories as at the start: SparkPaper Map | Snack BoxBus Stop Stamp"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REWARD/retry · another place, offer again",
+   "ok": true,
+   "detail": "inventories as at the start"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REWARD/retry · another partner, offer again",
+   "ok": true,
+   "detail": "inventories as at the start"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REWARD/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REWARD/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-MEETUP/entry",
+   "ok": true,
+   "detail": "meetup-agree"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-MEETUP/action",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-MEETUP/success · both approve",
+   "ok": true,
+   "detail": "[\"complete\",\"complete\"]"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-MEETUP/reject · one owner declines",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-MEETUP/reject · the approval target changed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-MEETUP/reject · no shared time, private reasons stay private",
+   "ok": true,
+   "detail": "public / owner A / owner B views"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-MEETUP/cancel · the window expires",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-MEETUP/cancel · an owner revokes",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-MEETUP/retry · back to normal life",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-MEETUP/retry · the next candidate",
+   "ok": true,
+   "detail": "a different time and place"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-MEETUP/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-MEETUP/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-LOCATION/entry",
+   "ok": true,
+   "detail": "location-walk"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-LOCATION/entry · GPS permission states, no prompt",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-LOCATION/action · owner moves the cell, walk with ETA",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-LOCATION/reject · not arrived yet",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-LOCATION/reject · no Taxi Token",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-LOCATION/action · verified teleport",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-LOCATION/success · arrived",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-LOCATION/cancel · after arrival, the owner switches back",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-LOCATION/cancel · mid-walk, the owner switches back",
+   "ok": true,
+   "detail": "from the walk"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-LOCATION/retry · verify the neighborhood again",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-LOCATION/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-LOCATION/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REPLAY/entry · open highlights",
+   "ok": true,
+   "detail": "200 moments"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REPLAY/entry · the replay says what it is",
+   "ok": true,
+   "detail": "0:00 / 30:00 · 1× · 09:00 Menlo Park"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REPLAY/action · play at 1×, 10×, 60×",
+   "ok": true,
+   "detail": "1.0 / 10.0 / 60.1 virtual s per real s"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REPLAY/action · find a moment with the filters",
+   "ok": true,
+   "detail": "26 → 1 → none"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REPLAY/success · evidence shows signer and verified steps",
+   "ok": true,
+   "detail": "×EVIDENCEJolly's signed request passed every checkLIVE · verifiedRecordPreview fixture (SCRIPTED) — "
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REPLAY/reject · missing evidence shown as such",
+   "ok": true,
+   "detail": "3 replay rows: 1 missing, 2 replayed from a recorded request (no /api request: see the no-writes case)"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REPLAY/cancel · close evidence by button and by Escape, focus returns",
+   "ok": true,
+   "detail": "opened fx-0024, focus after button fx-0024, after Escape fx-0024"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REPLAY/retry · restart the replay",
+   "ok": true,
+   "detail": "end 1800 → restart 0"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REPLAY/retry · reload newest events after a failure (failure injected in the browser)",
+   "ok": true,
+   "detail": "Not responding (HTTP 503) · showing  → Connected · live data from · events fetched again, 80 feed rows"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REPLAY/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-REPLAY/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-COMMS/entry · greet",
+   "ok": true,
+   "detail": "comms-day"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-COMMS/action · gift",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-COMMS/action · postcard",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-COMMS/action · campfire invite (planned tool)",
+   "ok": true,
+   "detail": "[\"complete\"]"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-COMMS/action · help request (planned tool)",
+   "ok": true,
+   "detail": "[\"complete\"]"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-COMMS/reject · injected instruction refused",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-COMMS/success · postcard on the commons character",
+   "ok": true,
+   "detail": "[\"complete\"]"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-COMMS/success · answered, recorded with its source",
+   "ok": true,
+   "detail": "comms-task-expiry"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-COMMS/reject · declined",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-COMMS/reject · out of scope",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-COMMS/reject · gift limit",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-COMMS/cancel · the request expires",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-COMMS/retry · next encounter",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "D",
+   "name": "EXP-COMMS/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "D",
+   "name": "EXP-COMMS/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-ENTRY/entry",
+   "ok": true,
+   "detail": "{\"paths\":3,\"view\":\"choose\"}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-ENTRY/cancel · leave without choosing",
+   "ok": true,
+   "detail": "{\"path\":null,\"chip\":\"Enter\"}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-ENTRY/action · choose a harness job",
+   "ok": true,
+   "detail": "harnesses 10"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-ENTRY/success · harness worn",
+   "ok": true,
+   "detail": "{\"chip\":\"Trial · Copper · local\",\"steps\":3}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-ENTRY/retry · re-entry keeps the trial",
+   "ok": true,
+   "detail": "view trial-card trial 09-copper"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-ENTRY/cancel · end trial",
+   "ok": true,
+   "detail": "{\"trial\":null,\"resume\":1}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-ENTRY/reject · staged connection error",
+   "ok": true,
+   "detail": "{\"state\":\"STAGED · ERROR EXAMPLE\",\"failed\":1}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-ENTRY/retry · connection retry",
+   "ok": true,
+   "detail": "connecting"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-ENTRY/cancel · cancel the connection",
+   "ok": true,
+   "detail": "{\"c\":\"cancelled\",\"t\":\"CANCELLED · NOTHING CONNECTED\"}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-ENTRY/success · staged connection",
+   "ok": true,
+   "detail": "{\"done\":4,\"chip\":\"Connect · staged\"}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-ENTRY/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-ENTRY/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-WORLD/entry · map to the commons",
+   "ok": true,
+   "detail": "{\"zoom\":21.7,\"muses\":8,\"h\":89}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-WORLD/action · spotlight turn",
+   "ok": true,
+   "detail": "Spotlight · Ink next · where · last: LIVE · 15 spotlight rows"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-WORLD/success · decision shown LIVE with its model (live world)",
+   "ok": true,
+   "detail": "×EVIDENCEBloom decides (where): walk_and_greet → Commons CafeLIVE · Muse SparkWhen (Menlo Park)07:59"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-WORLD/reject · out-of-scope decision refused (scripted fixture)",
+   "ok": true,
+   "detail": "×EVIDENCECopper's decision was refused: out_of_scopeRULERecordPreview fixture (SCRIPTED) — not a live recordWhen (Menlo "
+  },
+  {
+   "vp": "M",
+   "name": "EXP-WORLD/cancel · pause, leave follow",
+   "ok": true,
+   "detail": "{\"a\":{\"paused\":true,\"label\":\"Resume world\"},\"f1\":true,\"f2\":false} · synthetic touch"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-WORLD/retry · resume the world",
+   "ok": true,
+   "detail": "{\"paused\":false,\"label\":\"Pause world\",\"chip\":\"Spotlight · Ink next · where · last: LIVE\"}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-WORLD/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-WORLD/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-IDENTITY/entry",
+   "ok": true,
+   "detail": "claim: claimedtask: submitteddeadline: 30 min"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-IDENTITY/action",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-IDENTITY/success",
+   "ok": true,
+   "detail": "[\"complete\",\"complete\"]"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-IDENTITY/cancel · revoke",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-IDENTITY/reject · refused after revoking",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-IDENTITY/retry · standby, then run 1 again",
+   "ok": true,
+   "detail": "standby → run 1"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-IDENTITY/retry · Restart returns to the first step",
+   "ok": true,
+   "detail": "propose"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-IDENTITY/entry · visitor",
+   "ok": true,
+   "detail": "visitor-unclaimed"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-IDENTITY/reject · visitor trade refused",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-IDENTITY/retry · a recorded ritual changes nothing",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-IDENTITY/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-IDENTITY/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REWARD/entry",
+   "ok": true,
+   "detail": "p1-transit"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REWARD/action · stamps and craft",
+   "ok": true,
+   "detail": "[\"complete\"]"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REWARD/success · after",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REWARD/reject · no ability change",
+   "ok": true,
+   "detail": "reward-trade-limits"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REWARD/reject · too far",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REWARD/reject · pair limit",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REWARD/reject · repeat find",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REWARD/reject · daily cap",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REWARD/cancel · withdrawn",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REWARD/cancel · expired",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REWARD/retry · next day, offer again",
+   "ok": true,
+   "detail": "back to the offer, inventories as at the start: SparkPaper Map | Snack BoxBus Stop Stamp"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REWARD/retry · another place, offer again",
+   "ok": true,
+   "detail": "inventories as at the start"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REWARD/retry · another partner, offer again",
+   "ok": true,
+   "detail": "inventories as at the start"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REWARD/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REWARD/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-MEETUP/entry",
+   "ok": true,
+   "detail": "meetup-agree"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-MEETUP/action",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-MEETUP/success · both approve",
+   "ok": true,
+   "detail": "[\"complete\",\"complete\"]"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-MEETUP/reject · one owner declines",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-MEETUP/reject · the approval target changed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-MEETUP/reject · no shared time, private reasons stay private",
+   "ok": true,
+   "detail": "public / owner A / owner B views"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-MEETUP/cancel · the window expires",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-MEETUP/cancel · an owner revokes",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-MEETUP/retry · back to normal life",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-MEETUP/retry · the next candidate",
+   "ok": true,
+   "detail": "a different time and place"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-MEETUP/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-MEETUP/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-LOCATION/entry",
+   "ok": true,
+   "detail": "location-walk"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-LOCATION/entry · GPS permission states, no prompt",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-LOCATION/action · owner moves the cell, walk with ETA",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-LOCATION/reject · not arrived yet",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-LOCATION/reject · no Taxi Token",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-LOCATION/action · verified teleport",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-LOCATION/success · arrived",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-LOCATION/cancel · after arrival, the owner switches back",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-LOCATION/cancel · mid-walk, the owner switches back",
+   "ok": true,
+   "detail": "from the walk"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-LOCATION/retry · verify the neighborhood again",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-LOCATION/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-LOCATION/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REPLAY/entry · open highlights",
+   "ok": true,
+   "detail": "200 moments"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REPLAY/entry · the replay says what it is",
+   "ok": true,
+   "detail": "0:00 / 30:00 · 1× · 09:00 Menlo Park"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REPLAY/action · play at 1×, 10×, 60×",
+   "ok": true,
+   "detail": "1.0 / 10.0 / 60.1 virtual s per real s"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REPLAY/action · find a moment with the filters",
+   "ok": true,
+   "detail": "26 → 1 → none"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REPLAY/success · evidence shows signer and verified steps",
+   "ok": true,
+   "detail": "×EVIDENCEJolly's signed request passed every checkLIVE · verifiedRecordPreview fixture (SCRIPTED) — "
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REPLAY/reject · missing evidence shown as such",
+   "ok": true,
+   "detail": "3 replay rows: 1 missing, 2 replayed from a recorded request (no /api request: see the no-writes case)"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REPLAY/cancel · close evidence by button and by Escape, focus returns",
+   "ok": true,
+   "detail": "opened fx-0024, focus after button fx-0024, after Escape fx-0024"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REPLAY/retry · restart the replay",
+   "ok": true,
+   "detail": "end 1800 → restart 0"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REPLAY/retry · reload newest events after a failure (failure injected in the browser)",
+   "ok": true,
+   "detail": "Not responding (HTTP 503) · showing  → Connected · live data from · events fetched again, 80 feed rows"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REPLAY/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-REPLAY/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-COMMS/entry · greet",
+   "ok": true,
+   "detail": "comms-day"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-COMMS/action · gift",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-COMMS/action · postcard",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-COMMS/action · campfire invite (planned tool)",
+   "ok": true,
+   "detail": "[\"complete\"]"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-COMMS/action · help request (planned tool)",
+   "ok": true,
+   "detail": "[\"complete\"]"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-COMMS/reject · injected instruction refused",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-COMMS/success · postcard on the commons character",
+   "ok": true,
+   "detail": "[\"complete\"]"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-COMMS/success · answered, recorded with its source",
+   "ok": true,
+   "detail": "comms-task-expiry"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-COMMS/reject · declined",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-COMMS/reject · out of scope",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-COMMS/reject · gift limit",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-COMMS/cancel · the request expires",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-COMMS/retry · next encounter",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "M",
+   "name": "EXP-COMMS/the browser was never asked for a position",
+   "ok": true,
+   "detail": "geolocation calls 0"
+  },
+  {
+   "vp": "M",
+   "name": "EXP-COMMS/no /api writes, no page errors",
+   "ok": true,
+   "detail": "{\"writes\":[],\"errors\":[]}"
+  }
+ ]
+}

@@ -5,7 +5,7 @@
 // Scenario cells click a scenario's own buttons and then require the card to be on the expected step (data-step) and read only that
 // card's step title, text, status chips, metrics, checks, inventory and inbox, never the scenario list, the visited path or button labels.
 // Visitor controls are used wherever the screen has one: Replay uses its speed buttons, its position slider (End / Home keys) and its
-// Restart button. The two internal reads are the replay clock (cursor / playing) and the world metrics (zoom, follow, pause); the one
+// Restart button. The internal reads are the replay clock (cursor / playing), the world metrics (zoom, follow, pause), the onboarding state and the map zoom; the one
 // synthetic input is the map touch that leaves Follow on mobile (a real drag on desktop). Failures are injected in the browser only.
 // A cell that cannot be reached is a FAIL, never a skip. Case names are `EXP-X/state`; a suffix after the state names the branch.
 // Each experience starts in a fresh page; screenshots go to output/wt-<vp>-<exp>-<state>.png.

@@ -7,7 +7,7 @@ Status: **evidence complete on one build; owner sign-off pending.** Records the 
 | field | value |
 |---|---|
 | issueId | #46 (P-07, epic #33) |
-| owner | @ComBba (executed by the museion-renders receiving Claude tab) |
+| owner | @ComBba (implementation and walkthrough by the preview's coding agent; the walkthrough plan and the reviews by separate agent sessions) |
 | build under test | main `5546113` (merge of PR #79; includes #76, #77, #78 and the matrix at that commit) |
 | deployment | Workers Builds `musely-preview` success, build `ef3a2abb-ec56-47a4-a3e4-8dca7b873518`, finished 2026-11-01 15:54 UTC |
 | URL | https://preview.musely.net/ (`?autoplay=0`; Story · scripted, Live world, Preview flows, Replay tabs) |
@@ -18,33 +18,45 @@ Status: **evidence complete on one build; owner sign-off pending.** Records the 
 | modes | fixtures (Preview flows, Replay) are SCRIPTED; the Live world feed, header chip and evidence for LIVE rows are real GETs from the deployed Worker; failures are injected in the browser only, never in the service |
 | secrets | none used or recorded; no judge token, no agent key, no camera |
 
+### 1.1 Prerequisite acceptance
+
+| issue | task | state | C10 record | accepted at | relation to the tested build |
+|---|---|---|---|---|---|
+| #43 | P-04 traceability | CLOSED | comment on #43 | `c93b314` (PR #73) | an earlier docs-only change, carried unchanged into the tested build |
+| #44 | P-05 one continuous scene | CLOSED | https://github.com/Two-Weeks-Team/musely/issues/44#issuecomment-6558746164 | `0a60183` (PR #76 `6641d22`, PR #77) | an ancestor of `5546113`; exercised again by this walkthrough |
+| #45 | P-06 source, replay, evidence UI | CLOSED | https://github.com/Two-Weeks-Team/musely/issues/45#issuecomment-6559785434 | `d918e0d` (PR #78) | an ancestor of `5546113`; exercised again by this walkthrough |
+
+Evidence files for this record are in `preview/docs/acceptance-evidence/` (§3). A closed issue does not by itself pass its content here: each criterion below was observed again on the tested build.
+
 ## 2. Verdict
 
 | criterion (issue #46) | result | where |
 |---|---|---|
-| Every experience: entry, action, success, reject, cancel, retry on desktop and mobile | **PASS** | §4: 8 experiences × 6 states, 81 cells per viewport, D 81/81 and M 81/81 |
-| Blocked paths and missing visual items resolved or an allowed, labelled fallback | **PASS, with owner acceptance of the fallbacks** | §5: 0 missing items (2 promoted to labelled fallback), every fallback has an on-screen label and an owner task |
-| Product experience review and agreed changes recorded; undecided core experiences = 0 | **recorded; owner sign-off pending** | §6 and §7: 0 undecided core experiences, 6 recorded decisions |
-| `npm run check` and the related browser regressions on the same build | **PASS** | §3 |
+| Every experience: entry, action, success, reject, cancel, retry on desktop and mobile | **PASS** (browser emulation, scripted fixtures) | §4: 8 experiences × 6 states, 81 cells per viewport, D 81/81 and M 81/81 |
+| Blocked paths and missing visual items resolved or an allowed, labelled fallback | **evidence ready; owner acceptance pending (§8)** | §5: 0 missing items (2 promoted to labelled fallback, pending acceptance), every fallback has an on-screen label and an owner task |
+| Product experience review and agreed changes recorded; undecided core experiences = 0 | **not done: a person's product review is pending (§8)** | §6 records what the walkthrough and the reviews found; §7 lists 0 undecided core experiences and 6 decisions, subject to that review |
+| `npm run check` and the related browser regressions on the same build | **PASS** (browser emulation, scripted fixtures) | §3 |
 
-**Decision DEC-01 (S1 → S2).** The evidence criteria are met on build `5546113`. The gate opens when the owner records the product experience review sign-off in §8. Until then S2 does not start. This is an S1 scope and experience gate only: real connector (DEC-02, DEC-11), webcam ritual (DEC-03), real phones (DEC-04) and the later stages stay with their own tasks and decisions.
+**Decision DEC-01 (S1 → S2).** On build `5546113` the evidence criteria 1 and 4 are met, criterion 2 is ready for the owner's acceptance, and criterion 3 (a person's product experience review, which code review and test counts cannot replace) is not done. The gate opens when the owner records the review and the fallback acceptance in §8. Until then S2 does not start. This is an S1 scope and experience gate only: real connector (DEC-02, DEC-11), webcam ritual (DEC-03), real phones (DEC-04) and the later stages stay with their own tasks and decisions.
 
 ## 3. Same-build checks
 
-| check | command | result |
-|---|---|---|
-| unit, types, build, deploy dry-run | `npm run check` (cwd `preview/`, main `5546113`) | **171/171 tests**, typecheck, build, dry-run pass |
-| experience matrix | `node scripts/experience-matrix-check.mjs` | PASS: ids match the catalogs; 10 requirements, S2 14/14, S3 6/6, gates 4, decisions 11, problems 0 |
-| walkthrough | `scripts/walkthrough.browser.js` on production | **194/194** (97 per viewport: 81 walkthrough cells + 16 isolation cases) |
-| flows and cues | `scripts/preview-flows.browser.js` on production | **66/66** |
-| live world, replay, evidence, failures, accessibility | `scripts/world-ui.browser.js` on production | **140/140** |
-| entry and first paint | `scripts/entry.browser.js` on production | **2/2** |
+| check | command | result | artifact |
+|---|---|---|---|
+| unit, types, build, deploy dry-run | `npm run check` (cwd `preview/`, main `5546113`) | **171/171 tests**, typecheck, build, dry-run pass (231.55 KiB, gzip 63.96 KiB) | executor's command output (not stored as a file) |
+| experience matrix | `node scripts/experience-matrix-check.mjs` | PASS: ids match the catalogs; 10 requirements, S2 14/14, S3 6/6, gates 4, decisions 11, problems 0 | executor's command output |
+| walkthrough | `scripts/walkthrough.browser.js` on production | **194/194** (97 per viewport: 81 walkthrough cells + 16 isolation cases) | `acceptance-evidence/walkthrough.json` |
+| flows and cues | `scripts/preview-flows.browser.js` on production | **66/66** | `acceptance-evidence/preview-flows.json` |
+| live world, replay, evidence, failures, accessibility | `scripts/world-ui.browser.js` on production | **140/140** | `acceptance-evidence/world-ui.json` |
+| entry and first paint | `scripts/entry.browser.js` on production | **2/2** | `acceptance-evidence/entry.json` |
+
+The saved result files keep every case with its viewport, name, result and detail, plus the run's start and end time, URL, browser and Node versions. The 162 screenshots of the walkthrough (45 MB) are not stored in the repository; the script writes them to `output/wt-<viewport>-<experience>-<state>.png`. The deploy build id was read from the GitHub check run of `5546113`.
 
 The isolation cases in the walkthrough (one pair per experience page) require **no `/api` write, no page error, and no request for the browser's position**.
 
 ## 4. Walkthrough: 8 experiences × 6 states × 2 viewports
 
-How to read it: each row is one cell, a visitor path on the screen with an assertion on what is visible. Scenario cells click the scenario's own buttons, require the card to reach the expected step (`data-step`), and read only that step's title, text, status chips, metrics, checks, inventory and inbox. Replay uses its speed buttons, its position slider (End / Home) and its Restart button. Internal reads are limited to the replay clock and world metrics; the one synthetic input is the map touch that leaves Follow on mobile (a real drag on desktop). A cell that cannot be reached would be FAIL, never skipped. The branch after the state name says which of several paths a state is shown by (for example reject has several causes).
+How to read it: each row is one cell, a visitor path on the screen with an assertion on what is visible. Scenario cells click the scenario's own buttons, require the card to reach the expected step (`data-step`), and read only that step's title, text, status chips, metrics, checks, inventory and inbox. Replay uses its speed buttons, its position slider (End / Home) and its Restart button. Internal reads are limited to the replay clock, the world metrics (zoom, follow, pause), the onboarding state and the map zoom; the one synthetic input is the map touch that leaves Follow on mobile (a real drag on desktop). A cell that cannot be reached would be FAIL, never skipped. The branch after the state name says which of several paths a state is shown by (for example reject has several causes).
 
 ### EXP-ENTRY
 
@@ -188,7 +200,7 @@ Isolation checks: the browser was never asked for a position — D PASS, M PASS;
 
 ## 5. Allowed fallback register
 
-Statuses in `EXPERIENCE_MATRIX.md` after this change: experiences 6 complete / 2 fallback; actions (beats, body clips, meaningful actions) 93 complete / 55 fallback; items 58/58 and places 93/93 complete; communication 6 complete / 2 fallback; **missing 0**. A fallback is a substitute the viewer can see and that is labelled on screen; it is not a claim that the real behaviour works.
+Statuses in `EXPERIENCE_MATRIX.md` after this change: experiences 6 complete / 2 fallback; actions (beats + body clips + meaningful actions) 93 complete / 55 fallback; items 58/58 and places 93/93 complete; communication 6 complete / 2 fallback; **missing 0** (two items promoted from missing to labelled fallback; the promotion is pending the owner's acceptance, §8). The matrix counts visuals; this register lists every substitute, so an entry can also sit under an experience that the matrix counts as `complete`. A fallback is a substitute the viewer can see and that is labelled on screen; it is not a claim that the real behaviour works.
 
 | fallbackId | what is shown instead | where | label the viewer sees | real thing, owner |
 |---|---|---|---|---|
@@ -196,10 +208,11 @@ Statuses in `EXPERIENCE_MATRIX.md` after this change: experiences 6 complete / 2
 | FB-COMMS-PLANNED | invite and help as staged cards and task states | EXP-COMMS | `Campfire invite (planned tool)`, `Help request (planned tool)` | I-13 |
 | FB-TELEPORT-CARD | teleport arrival as a labelled card, no 3D effect (was missing) | `action:move_teleport_arrive`, EXP-LOCATION | `Verified teleport with a Taxi Token` card | I-09 |
 | FB-HELP-CARD | `comm:help` as the staged card (was missing) | `comm:help` | `Help request (planned tool)` | I-13 |
-| FB-WITHDRAW | a withdrawn offer as a scripted preview of the planned `cancelled` Task state | EXP-REWARD | "A scripted preview of the planned cancelled Task state: today's engine has no withdraw action yet" | I-07 (C06) |
+| FB-WITHDRAW | a withdrawn offer as a scripted preview of the planned `cancelled` Task state (EXP-REWARD stays `complete` in the matrix; its source mode says scripted) | EXP-REWARD | "A scripted preview of the planned cancelled Task state: today's engine has no withdraw action yet" | I-07 (C06) |
 | FB-CUE-PROP | an item card instead of a 3D prop that is not loaded yet or missing | Preview flows cues | `… is not loaded yet · item shown as a card` | I-09 |
 | FB-CUE-ABSENT | "not in the commons (card only)" for a Muse that is not one of the eight commons characters | Preview flows cues | `not in the commons (card only)` | I-09 |
-| FB-BEATS-ACTIONS | 26 beats and 29 meaningful actions use a substitute clip or a card | EXP-WORLD and the matrix §4 | the clip or card is labelled in the matrix; compound beats play their first clip | I-09 |
+| FB-BEATS-ACTIONS | 26 beats and 29 meaningful actions use a substitute clip or a card | EXP-WORLD and the matrix §4 | the clip or card is labelled in the matrix; compound beats play their first clip | I-05 and I-09 (beats), I-09 with I-02 / I-07 / I-13 (actions) |
+| FB-MEETUP-CONTRACT | "the approval target changed" and "next candidate, at most five rounds" are scripted contract behaviour (C07), not engine behaviour yet | EXP-MEETUP | task states shown on SCRIPTED · PREVIEW FIXTURE cards | I-07 |
 
 ## 6. Product experience review and agreed changes
 
@@ -246,7 +259,7 @@ Not closed by this document (see `EXPERIENCE_MATRIX.md` §9 for the per-experien
 
 - S2 builds the real connection, claim and ritual, rewards, meet-ups, location, replay record player and communication tools (I-* tasks). DEC-02 and DEC-11 (real connector, unattended calls), DEC-03 (webcam ritual), DEC-08 (printed agent key to rotate) must be resolved with the owner's real account.
 - S3 integrates and verifies on one deployment (D-* tasks), including DEC-04 (target phones, memory, DPR), DEC-05 (judges are not Threads testers), DEC-06 (submission authority) and DEC-07 (public-switch cleanup).
-- **DEC-10** (390 px header overlap) is released by this build: the mobile header and Live-world layout cases pass in `preview-flows.browser.js` (66/66 on production).
+- **DEC-10** (390 px header overlap): the release condition (no overlap at 390×844) is met on this build by the mobile header and Live-world layout cases in `preview-flows.browser.js` (66/66, `acceptance-evidence/preview-flows.json`); the owner closes it with the sign-off in §8.
 
 ## 10. Repeat the checks
 

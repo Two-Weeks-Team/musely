@@ -1,0 +1,84 @@
+{
+ "info": {
+  "url": "https://preview.musely.net/",
+  "startedAt": "2026-11-01T16:22:47.517Z",
+  "finishedAt": "2026-11-01T16:23:52.183Z",
+  "browser": "156.0.8078.76",
+  "node": "v24.22.2",
+  "platform": "darwin arm64"
+ },
+ "cases": [
+  {
+   "viewport": "1440x900",
+   "early": {
+    "ready": true,
+    "time": 5176.399999856949,
+    "startup": {
+     "sceneReadyAtMs": 5133.200000047684,
+     "onlineMapReadyAtMs": 0,
+     "onlineMapAddedAtMs": 4985.299999952316,
+     "detailReadyAtMs": 0,
+     "overviewVisible": true
+    },
+    "features": 657
+   },
+   "arrived": {
+    "elapsed": 8.686099999904641,
+    "zoom": 21.45,
+    "height": 73.08577271421393,
+    "sceneId": "9860a07e-25b6-4e01-960b-c839022354b4",
+    "museIds": [
+     "75a70c7a-6044-4428-8a4e-620b265322af",
+     "320ddf49-fcb2-4391-ab8e-f9d15cb636c6",
+     "27061916-e0ee-49e5-aa4b-16e33b186a73",
+     "16cbafbc-96e2-46a4-8986-cd63f110de7b",
+     "b6cc4d00-e1ce-43fa-982f-405d9eef5915",
+     "40e08969-9c73-457b-beef-3ff3a4a7d386",
+     "cb4cd446-4bce-4a03-8a09-4c672923e28e",
+     "bdb643a5-1b1d-499d-91d1-11932ddbfe93"
+    ]
+   },
+   "returned": {
+    "zoom": 10.25,
+    "features": 551
+   },
+   "errors": []
+  },
+  {
+   "viewport": "390x844 touch emulation",
+   "early": {
+    "ready": true,
+    "time": 1800.6000001430511,
+    "startup": {
+     "sceneReadyAtMs": 1769.5,
+     "onlineMapReadyAtMs": 0,
+     "onlineMapAddedAtMs": 1613.6000001430511,
+     "detailReadyAtMs": 0,
+     "overviewVisible": true
+    },
+    "features": 223
+   },
+   "arrived": {
+    "elapsed": 8.658799999952315,
+    "zoom": 20.8,
+    "height": 45.09049077249938,
+    "sceneId": "e5c14847-f857-4e99-a970-11a7de1f0a01",
+    "museIds": [
+     "053f6a87-61ee-4048-9c41-7b407faaefc8",
+     "da9e2a1d-37ed-4727-b3c6-2ebdf80fa6ff",
+     "db56607b-5867-488e-a881-3da1536317e4",
+     "7bdf9528-6dff-4907-a275-3325730398e0",
+     "d9dd2ff4-456e-4068-bea5-ca67a4660c92",
+     "6d8fe9b1-3682-4ed8-846f-f9ddf7f2ab29",
+     "8d379a5a-a5cc-4ae9-a165-a355eae181c5",
+     "3b3ea42b-5695-4a9d-a1ca-2e9076e87446"
+    ]
+   },
+   "returned": {
+    "zoom": 10.25,
+    "features": 180
+   },
+   "errors": []
+  }
+ ]
+}
