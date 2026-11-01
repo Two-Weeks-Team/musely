@@ -1,6 +1,6 @@
 # V2 verification record
 
-The direction document (`docs/musely-direction-v2-2026-11-01.md`, PR #10) asks task 0 to record results in its chapter 17. That file is maintained in PR #10, so the results live here and a summary is posted on PR #10. Later PRs update this file as items are confirmed.
+This is a dated verification record, not a statement that all S2/S3 acceptance criteria passed. The adopted direction and its original discussion are linked in [the decision record](../../docs/roadmap/decision-alignment.md). Later results retain their environment and limits. Real Muse connection, real webcam judging and physical-device performance still need their own evidence.
 
 Status words: **Confirmed** = seen on an official page or in a real call/measurement recorded here. **Unconfirmed** = not seen; the reason is given.
 
@@ -17,7 +17,8 @@ Source: the event page https://cerebralvalley.ai/e/meta-ai-developer-hackathon, 
 | Original work | The submission must be the participant's original work product; open source is allowed if licenses are followed and the submission builds on it. No explicit "started during the event" clause was found | Confirmed (wording) |
 | Third-party IP | Must not violate others' IP rights, including copyright and trademark. No character-specific clause. See `character-kit/NOTICE.md` for the Jolly attribution | Confirmed (wording) |
 | Credits | $150 Meta Model API credits for a 10-day development window. The Credit Terms PDF returned 403 | Confirmed (amount); terms unread |
-| Video length, public repository, submission fields | The submit page (`/hackathon/submit`) needs sign-in | **Unconfirmed** — owner to check in the signed-in form |
+| Public repository field | Sangeun reported checking the signed-in form and its screenshot in [PR #10](https://github.com/Two-Weeks-Team/musely/pull/10#issuecomment-6554726827); the [adoption reply](https://github.com/Two-Weeks-Team/musely/pull/10#issuecomment-6554848292) records the update | Required in that source record; no new signed-in check in this edit |
+| Video length and remaining submission fields | The cited comments do not record the video-length value or enumerate every form field. The product plan uses a 3-minute video | Not established by that comment; D-06 rechecks the final signed-in form and video requirements |
 
 Budget consequence: the planned $20/day cap over the 10-day window would exceed $150. The proxy keeps the daily cap configurable and the measured spend decides the setting (see 2).
 

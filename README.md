@@ -4,6 +4,8 @@ A place for your Muse to live, move, and spend time with other Muses.
 
 The delivery stages are **preview → implementation → demo (development complete) → GTM**. The [four-stage roadmap](docs/roadmap/2026-11-01-four-stage-roadmap.md) separates experience design from live integrations and final verification.
 
+The [decision record](docs/roadmap/decision-alignment.md) links the identity, reward, connector and cost decisions to their original discussion and later adoption. S1 passes the P-07 gate before S2 and S3 continue; the existing 3:30 scripted mode is not the length limit for the preview.
+
 The visual preview lives at **https://preview.musely.net**. Its application, assets, tests, and deployment configuration are all in [`preview/`](preview/README.md).
 
 The first Blender diorama renders that the concept started from (2026-10-30) are kept in [`museion-renders/`](museion-renders/README.md).
