@@ -190,6 +190,14 @@ const PROBES = {
   night_sky: () => nightRun({pass: true}).stargaze > 0 && nightRun({pass: false}).stargaze === 0,
   extra_activity: () => { const r = tenFinds(['recharge_ticket']); return r.eleventh.ok && r.eleventh.spent === 'recharge_ticket' && !tenFinds([]).eleventh.ok; },
   extra_spotlight: () => spotlightTurns(true) === spotlightTurns(false) + 1,
+  // The invite rule lives in the MCP tool (I-13): without a token the invite is refused, with one it is sent and the token spent.
+  campfire_invite: async () => {
+    const t = await toolWorld();
+    const without = await t.call('invite_campfire', {to: ['01-sunny', '04-ember']});
+    t.edit(st => st.muses.find(m => m.id === OWNER_SLOT).inventory.push('invite_token'));
+    const sent = await t.call('invite_campfire', {to: ['01-sunny', '04-ember']});
+    return without.structuredContent.refused === 'needs_invite_token' && sent.isError === false && !t.muse(OWNER_SLOT).inventory.includes('invite_token') && t.events('campfire_invite').length === 1;
+  },
 };
 // The MCP tools over the same Trust + WorldRuntime + ConnectedHost the world Durable Object uses (node:sqlite).
 // Delegations carry a real 24 h expiry, so this clock starts at the real time.
@@ -304,29 +312,30 @@ test('AC1 coverage: every catalog id carries an effect rule or an explicit none 
 for (const [rule, probe] of Object.entries(PROBES)) test(`AC1 effect probe: ${rule} changes what the holder does`, async () => assert.equal(await probe(), true, rule));
 
 test('AC1 effect: items without a rule change no ability, so trading only them is no trade', () => {
-  const l = emptyLedger(), a = muse('01-sunny', 'commons:cafe', ['invite_token']), b = muse('04-ember', 'commons:cafe', ['event_pass']);
-  assert.equal(abilityGain('invite_token', []), false);
+  const l = emptyLedger(), a = muse('01-sunny', 'commons:cafe', ['spark']), b = muse('04-ember', 'commons:cafe', ['event_pass']);
+  assert.equal(abilityGain('spark', []), false);
   assert.equal(abilityGain('event_pass', []), false);
-  assert.deepEqual(checkTrade(l, DAY, a, b, 'invite_token', 'event_pass', 0, T0), {ok: false, reason: 'no_ability_change'});
+  assert.deepEqual(checkTrade(l, DAY, a, b, 'spark', 'event_pass', 0, T0), {ok: false, reason: 'no_ability_change'});
   assert.equal(abilityGain('night_pass', []), true, 'a rule item does change abilities');
+  assert.equal(abilityGain('invite_token', []), true, 'the Invite Token carries the campfire_invite rule (I-13)');
 });
 
-test('AC1 effect: an item the receiver publicly wants opens its goal, so it trades even without a rule (Invite Token, Event Pass)', () => {
-  const l = emptyLedger(), ripple = muse('03-ripple', 'commons:cafe', ['invite_token', 'event_pass']);
-  const sunny = {...muse('01-sunny', 'commons:cafe', ['pastry']), wants: {items: ['fruit', 'invite_token', 'coffee']}};
+test('AC1 effect: an item the receiver publicly wants opens its goal, so it trades even without a rule (Spark, Event Pass)', () => {
+  const l = emptyLedger(), ripple = muse('03-ripple', 'commons:cafe', ['spark', 'event_pass']);
+  const sunny = {...muse('01-sunny', 'commons:cafe', ['pastry']), wants: {items: ['fruit', 'spark', 'coffee']}};
   const tempo = {...muse('07-tempo', 'commons:cafe', ['pastry']), wants: {items: ['mixtape', 'event_pass', 'snack_box']}};
-  assert.equal(abilityGain('invite_token', [], ['invite_token']), true);
-  assert.equal(abilityGain('invite_token', ['invite_token'], ['invite_token']), true, 'stackable: a second one still serves the goal');
+  assert.equal(abilityGain('spark', [], ['spark']), true);
+  assert.equal(abilityGain('spark', ['spark'], ['spark']), true, 'stackable: a second one still serves the goal');
   assert.equal(abilityGain('event_pass', ['event_pass'], ['event_pass']), false, 'a pass already held opens nothing');
-  assert.deepEqual(checkTrade(l, DAY, ripple, sunny, 'invite_token', 'pastry', 0, T0), {ok: true});
+  assert.deepEqual(checkTrade(l, DAY, ripple, sunny, 'spark', 'pastry', 0, T0), {ok: true});
   assert.deepEqual(checkTrade(l, DAY, ripple, tempo, 'event_pass', 'pastry', 0, T0), {ok: true});
-  assert.deepEqual(checkTrade(l, DAY, ripple, {...sunny, wants: {items: []}}, 'invite_token', 'pastry', 0, T0), {ok: false, reason: 'no_ability_change'}, 'without the want it is no trade');
+  assert.deepEqual(checkTrade(l, DAY, ripple, {...sunny, wants: {items: []}}, 'spark', 'pastry', 0, T0), {ok: false, reason: 'no_ability_change'}, 'without the want it is no trade');
   // The offline rule path: the resident accepts what it wants.
   let s = createWorld('wants', T0);
   const a = at(s, '03-ripple'), b = at(s, '01-sunny');
-  a.place = b.place = 'commons:cafe'; a.inventory = ['invite_token']; b.inventory = ['pastry']; a.intent = {kind: 'trade', target: b.id, give: 'invite_token', want: 'pastry'};
+  a.place = b.place = 'commons:cafe'; a.inventory = ['spark']; b.inventory = ['pastry']; b.wants = {...b.wants, items: ['fruit', 'spark', 'coffee']}; a.intent = {kind: 'trade', target: b.id, give: 'spark', want: 'pastry'};
   const out = resolveMeeting(s.items, s, a, b, placeById('commons:cafe'), () => .99, T0);
-  assert.ok(out.some(e => e.kind === 'trade_completed'), 'Sunny takes the Invite Token she wants');
+  assert.ok(out.some(e => e.kind === 'trade_completed'), 'Sunny takes the Spark she wants');
 });
 
 test('AC1 night_sky: the Night Pass beat only opens at night, only while the pass is valid', () => {
@@ -554,7 +563,7 @@ test('AC4 relics never move; repeat curiosity gives 0; exchanges that change not
   assert.deepEqual(checkTrade(l, DAY, a, b, 'transit_pass', 'transit_pass'), {ok: false, reason: 'same_item'});
   const c = muse('09-copper', 'commons:hq', ['transit_pass', 'trade_receipt']);
   assert.deepEqual(checkTrade(l, DAY, {...a, inventory: ['transit_pass']}, {...c, inventory: ['transit_pass']}, 'transit_pass', 'transit_pass'), {ok: false, reason: 'same_item'});
-  assert.deepEqual(checkTrade(l, DAY, muse('01-sunny', 'commons:hq', ['invite_token']), muse('07-tempo', 'commons:hq', ['event_pass']), 'invite_token', 'event_pass'), {ok: false, reason: 'no_ability_change'});
+  assert.deepEqual(checkTrade(l, DAY, muse('01-sunny', 'commons:hq', ['spark']), muse('07-tempo', 'commons:hq', ['event_pass']), 'spark', 'event_pass'), {ok: false, reason: 'no_ability_change'});
 });
 
 function chained(n = 6) {

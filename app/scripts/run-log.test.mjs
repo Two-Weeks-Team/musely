@@ -550,6 +550,9 @@ test('review 5: the snapshot is an allow-list; every field of a lived-in world s
     st.inbox.messages.push({id: 'm1', from: '01-sunny', to: '00-jolly', kind: 'greet', at: T0, text: 'hi', item: null, blocked: ['x'], read: false});
     st.inbox.mail.push({id: 'p1', from: '00-jolly', to: '02-moss', item: 'postcard:x', text: 'from here', sentAt: T0, deliverAt: T0 + 1, crossRegion: false, timed: {item: 'x', at: T0, expiresAt: T0 + 1}});
     st.inbox.notifications.push({id: 'n1', kind: 'meetup_candidate', at: T0, line: 'needs approval', ref: 't1', other: '01-sunny', muse: '00-jolly', detail: {time: 'x'}});
+    // I-13: a help Task and a campfire invite, each with its free-text line.
+    st.inbox.tasks.push({id: 't2', kind: 'help', from: '00-jolly', to: '09-copper', status: 'pending', awaiting: '00-jolly', createdAt: T0, deadline: T0, updatedAt: T0, round: 0, help: {service: 'repair', item: 'bloom', part: null, asked: 'spark', result: null, note: 'fix it please'}, history: [{by: '00-jolly', action: 'propose', at: T0}]});
+    st.inbox.invites = [{id: 'invite_1', from: '00-jolly', to: ['01-sunny'], place: 'commons:campfire', note: 'come by tonight', at: T0, expiresAt: T0 + 1, status: 'gathered', answers: {'01-sunny': {answer: 'accept', via: 'rule', at: T0}}, closedAt: T0, gathered: ['00-jolly', '01-sunny']}];
   });
   const st = rt.state();
   assert.deepEqual(unlistedFields(st), [], 'every field is named in SNAPSHOT_FIELDS (add a new one there with its rule)');
@@ -559,7 +562,9 @@ test('review 5: the snapshot is an allow-list; every field of a lived-in world s
   assert.equal('secretField' in pub, false); assert.equal('diary' in pub.muses[0], false, 'and left out of the snapshot');
   // Free text in the state is a hash in the snapshot.
   const body = snapshotBody(st);
-  for (const t of ['hi', 'from here', 'needs approval', 'thinking']) assert.equal(body.includes(JSON.stringify(t)), false, t);
+  for (const t of ['hi', 'from here', 'needs approval', 'thinking', 'fix it please', 'come by tonight']) assert.equal(body.includes(JSON.stringify(t)), false, t);
+  assert.equal(pub.inbox.invites[0].note, textHash('come by tonight'));
+  assert.deepEqual(pub.inbox.tasks.at(-1).help, {service: 'repair', item: 'bloom', part: null, asked: 'spark', result: null, note: textHash('fix it please')});
   assert.equal(pub.inbox.messages.at(-1).text, textHash('hi'));
   assert.ok(st.muses.some(x => x.memory.length || x.reflection), 'the lived-in state has memories or reflections');
   for (const x of pub.muses) { for (const t of x.memory) assert.match(t, /^text-sha256:/); if (x.reflection) assert.match(x.reflection, /^text-sha256:/); assert.match(x.wants.goal, /^text-sha256:/); }

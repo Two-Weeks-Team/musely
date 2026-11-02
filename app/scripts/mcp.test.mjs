@@ -783,89 +783,65 @@ test('I-03A auth: missing, malformed, unknown and revoked keys get 401 with a Be
   } finally { Object.assign(console, orig); }
 });
 
-test('I-03A tools: invite_campfire, propose_help and answer_help are listed with fixed schemas and refused as capability_not_ready with zero side effects', async () => {
+test('I-13 tools: invite_campfire, propose_help and answer_help are listed with their schemas and run a real backend (none is capability_not_ready)', async () => {
   const t = await setup();
   const list = (await t.rpc('tools/list')).body.result.tools;
   const byName = Object.fromEntries(list.map(x => [x.name, x]));
-  assert.deepEqual(NOT_READY_TOOLS, {invite_campfire: '#57', propose_help: '#57', answer_help: '#57'});
+  assert.deepEqual(NOT_READY_TOOLS, {}, 'every listed tool has a backend');
   const writeAnnotations = {readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false};
   const command = {
     command_id: {type: 'string', pattern: '^[A-Za-z0-9_-]{8,64}$', description: byName.greet.inputSchema.properties.command_id.description},
     expected_version: {type: 'integer', minimum: 0, description: byName.greet.inputSchema.properties.expected_version.description},
   };
   const residents = ['01-sunny', '02-moss', '03-ripple', '04-ember', '05-bloom', '06-ink', '07-tempo', '08-orbit', '09-copper'];
+  const item = description => ({type: 'string', pattern: '^([a-z0-9_]{1,40}|postcard:[A-Za-z0-9:/_.-]{1,80})$', maxLength: 90, description});
   assert.deepEqual(byName.invite_campfire.inputSchema, {type: 'object', additionalProperties: false, required: ['to'], properties: {
-    to: {type: 'array', items: {type: 'string', enum: residents}, minItems: 1, maxItems: 8, uniqueItems: true, description: 'Muses to invite (1 to 8, no repeats)'},
+    to: {type: 'array', items: {type: 'string', enum: ['00-jolly', ...residents]}, minItems: 1, maxItems: 8, uniqueItems: true, description: 'Muses to invite (1 to 8, no repeats)'},
     text: {type: 'string', minLength: 1, maxLength: 140, description: 'Optional short public invitation line'}, ...command}});
   assert.deepEqual(byName.propose_help.inputSchema, {type: 'object', additionalProperties: false, required: ['to', 'item'], properties: {
-    to: {type: 'string', enum: residents, description: 'Nearby Muse to ask'},
-    item: {type: 'string', pattern: '^([a-z0-9_]{1,40}|postcard:[A-Za-z0-9:/_.-]{1,80})$', maxLength: 90, description: 'Item you hold that the help is about'},
+    to: {type: 'string', enum: ['00-jolly', ...residents], description: 'Nearby Muse to ask'},
+    item: item('Item you hold that the help is about (you keep it)'),
+    needs: item('Optional part you supply for the work (you hold it; spent when the help completes)'),
     text: {type: 'string', minLength: 1, maxLength: 140, description: 'Optional short public request line'}, ...command}});
   assert.deepEqual(byName.answer_help.inputSchema, {type: 'object', additionalProperties: false, required: ['task_id', 'answer'], properties: {
     task_id: {type: 'string', pattern: '^task_[0-9a-z]{1,10}$', description: 'Task id from heartbeat_check'},
-    answer: {type: 'string', enum: ['accept', 'reject']}, ...command}});
-  for (const n of Object.keys(NOT_READY_TOOLS)) {
+    answer: {type: 'string', enum: ['accept', 'reject', 'need_item']}, item: item('With need_item: the item you need from the requester'), ...command}});
+  for (const n of ['invite_campfire', 'propose_help', 'answer_help']) {
     assert.deepEqual(byName[n].annotations, writeAnnotations, n);
-    assert.match(byName[n].description, /capability_not_ready/, `${n} says it is not ready`);
+    assert.doesNotMatch(byName[n].description, /capability_not_ready|not available yet/, `${n} no longer says it is not ready`);
     assert.equal(byName[n].notReady, undefined, 'internal fields are not published');
   }
-
-  // The Muse holds an Invite Token and a Task waits for it, so "nothing changed" is checked against a world with something to change.
-  const taskId = 'task_h1';
-  t.edit(st => {
-    st.muses.find(m => m.id === OWNER_SLOT).inventory.push('invite_token');
-    st.inbox.tasks.push({id: taskId, kind: 'meetup', from: '09-copper', to: OWNER_SLOT, status: 'pending', awaiting: OWNER_SLOT, createdAt: t.clock.now, deadline: t.clock.now + 30 * 60_000, updatedAt: t.clock.now, round: 0, candidate: {time: '18:00', place: 'Campfire', public_basis: 'test'}, answers: {}, history: [{by: '09-copper', action: 'propose', at: t.clock.now}]});
-  });
-  await t.call('get_world_state'); // connector use (connected flag, last use) happens before the snapshot
+  // A real call is signed and committed (envelope and command evidence), never capability_not_ready.
+  t.edit(st => { st.muses.find(m => m.id === OWNER_SLOT).inventory.push('invite_token'); place(st, OWNER_SLOT, 'commons:campfire'); });
+  const sent = await t.call('invite_campfire', {to: ['01-sunny', '04-ember']});
+  assert.equal(sent.isError, false, JSON.stringify(sent.structuredContent));
+  assert.equal(sent.structuredContent.envelope.verified, true);
+  assert.equal(typeof sent.structuredContent.command.command_id, 'string');
+  // Invalid arguments are -32602 against the schema, before anything is signed.
   const before = dbSnapshot(t.sql);
-  const calls = [
-    ['invite_campfire', {to: ['01-sunny', '02-moss', '04-ember'], text: 'Campfire at dusk?'}],
-    ['invite_campfire', {to: ['09-copper'], command_id: 'campfire-cmd-0001', expected_version: t.state().version}],
-    ['invite_campfire', {to: ['09-copper'], command_id: 'campfire-cmd-0001', expected_version: t.state().version}],
-    ['propose_help', {to: '09-copper', item: 'coffee', text: 'Could you fix my map?'}],
-    ['answer_help', {task_id: taskId, answer: 'accept'}],
-    ['answer_help', {task_id: 'task_zz', answer: 'reject'}],
-  ];
-  for (const [name, args] of calls) {
-    for (const r of [await t.call(name, args), (await modern(t, 'tools/call', {name, arguments: args})).body.result]) {
-      assert.equal(r.isError, true, name);
-      assert.deepEqual(r.structuredContent, {ok: false, refused: 'capability_not_ready', owner_issue: '#57', tool: name, retryable: false, detail: `${name} is not available yet (I-13, #57). Nothing was signed, changed or logged.`}, name);
-      assert.match(r.content[0].text, /^Refused: capability not ready\n/, name);
-      assert.equal(JSON.parse(r.content[0].text.split('\n')[1]).refused, 'capability_not_ready');
-      assert.ok(!('envelope' in r.structuredContent) && !('command' in r.structuredContent), 'nothing was signed or committed');
-    }
-  }
-  // Invalid arguments are still -32602 against the fixed schema.
   for (const [name, args] of [
     ['invite_campfire', {}], ['invite_campfire', {to: []}], ['invite_campfire', {to: ['01-sunny', '01-sunny']}], ['invite_campfire', {to: ['nobody']}],
     ['invite_campfire', {to: residents}], ['invite_campfire', {to: ['01-sunny'], place: 'commons:campfire'}], ['invite_campfire', {to: '01-sunny'}],
-    ['propose_help', {to: '09-copper'}], ['propose_help', {to: '09-copper', item: 'not_an_item'}], ['propose_help', {to: '09-copper', item: 'coffee', text: ''}],
-    ['answer_help', {task_id: taskId, answer: 'maybe'}], ['answer_help', {task_id: 'bad', answer: 'accept'}],
+    ['propose_help', {to: '09-copper'}], ['propose_help', {to: '09-copper', item: 'not_an_item'}], ['propose_help', {to: '09-copper', item: 'coffee', needs: 'nope_nope'}], ['propose_help', {to: '09-copper', item: 'coffee', text: ''}],
+    ['answer_help', {task_id: 'task_h1', answer: 'maybe'}], ['answer_help', {task_id: 'bad', answer: 'accept'}],
+    ['answer_help', {task_id: 'task_h1', answer: 'need_item'}], ['answer_help', {task_id: 'task_h1', answer: 'accept', item: 'spark'}], ['answer_help', {task_id: 'task_h1', answer: 'need_item', item: 'not_an_item'}],
   ]) {
     const r = await t.rpc('tools/call', {name, arguments: args});
     assert.equal(r.body.error?.code, -32602, `${name} ${JSON.stringify(args)}`);
   }
-  // No spotlight request, event, Task, inventory change, daily counter, nonce, command row, refusal row or world version bump:
-  // every row of every table equals the snapshot taken after the warm-up read.
-  assert.deepEqual(dbSnapshot(t.sql), before);
-  assert.ok(t.muse(OWNER_SLOT).inventory.includes('invite_token'), 'the Invite Token was not spent');
-  assert.equal(t.state().inbox.tasks.find(x => x.id === taskId).status, 'pending', 'answer_help did not touch the Task');
-
-  // Under a revoked delegation the answer is the same and still changes nothing: nothing is signed, so there is no
-  // delegation_revoked event or Blocked notice for a tool that is not built.
-  await t.trust.revoke(OWNER_SLOT);
-  const revokedBefore = dbSnapshot(t.sql);
-  for (const [name, args] of calls) assert.equal((await t.call(name, args)).structuredContent.refused, 'capability_not_ready', name);
-  assert.deepEqual(dbSnapshot(t.sql), revokedBefore);
+  assert.deepEqual(dbSnapshot(t.sql), before, 'invalid arguments change nothing');
 });
 
-test('I-03A tools: capability_not_ready also holds without an owner claim (no pending_claim, no event)', async () => {
+test('I-13 tools need the owner claim like gifts and trades: pending_claim, nothing spent or opened', async () => {
   const t = await setup({claimed: false});
-  await t.call('get_world_state');
-  const before = dbSnapshot(t.sql);
-  const r = await t.call('propose_help', {to: '09-copper', item: 'coffee'});
-  assert.equal(r.structuredContent.refused, 'capability_not_ready');
-  assert.deepEqual(dbSnapshot(t.sql), before);
+  t.edit(st => { const me = st.muses.find(m => m.id === OWNER_SLOT); me.inventory.push('invite_token', 'repaired_gadget', 'spark'); place(st, OWNER_SLOT, 'commons:workbench'); });
+  for (const [name, args] of [['invite_campfire', {to: ['01-sunny']}], ['propose_help', {to: '09-copper', item: 'repaired_gadget', needs: 'spark'}], ['answer_help', {task_id: 'task_zz', answer: 'accept'}]]) {
+    const r = await t.call(name, args);
+    assert.equal(r.structuredContent.refused, 'pending_claim', name);
+  }
+  assert.ok(t.muse(OWNER_SLOT).inventory.includes('invite_token'), 'the Invite Token was not spent');
+  assert.equal(t.state().inbox.tasks.filter(x => x.kind === 'help').length, 0, 'no help Task opened');
+  assert.equal((t.state().inbox.invites ?? []).length, 0, 'no invite sent');
 });
 
 test('I-03A register_agent stays read only: no arguments, no key issued, no secret returned (keys come only from the owner session)', async () => {
@@ -1008,7 +984,9 @@ test('I-03A #94 a message without an id runs nothing but notifications: tools/ca
   assert.equal((await t.http({jsonrpc: '2.0', method: 'notifications/x', params: {_meta: META()}}, {headers: {'mcp-protocol-version': MODERN}})).status, 202);
 });
 
-test('I-03A #94 cold call: a not-ready tool after more than 24 h refreshes the connection in one commit (one agent_connected); the tool itself changes nothing', async () => {
+// The three tools that were not ready have a backend since I-13 (their success, refusal and idempotency are in
+// scripts/messages.test.mjs), so a read tool now carries this connection check: the tool itself changes nothing.
+test('I-03A #94 cold call: a read tool after more than 24 h refreshes the connection in one commit (one agent_connected); the tool itself changes nothing', async () => {
   const t = await setup();
   await t.call('get_world_state');
   const norm = st => { const c = structuredClone(st); delete c.version; delete c.inbox.connected[OWNER_SLOT]; return c; };
@@ -1017,8 +995,8 @@ test('I-03A #94 cold call: a not-ready tool after more than 24 h refreshes the c
   const rest = snap => { const {events: _e, sqlite_sequence: _q, world: _w, agent_keys: _k, run_inputs: _i, run_counts: _c, ...others} = snap; return others; };
   t.clock.now += 25 * 3_600_000;
   const before = dbSnapshot(t.sql), state0 = t.state(), events0 = t.events().length;
-  const r = await t.call('invite_campfire', {to: ['01-sunny']});
-  assert.equal(r.structuredContent.refused, 'capability_not_ready');
+  const r = await t.call('register_agent');
+  assert.equal(r.isError, false);
   const after = dbSnapshot(t.sql), state1 = t.state();
   const added = t.events().slice(events0);
   assert.deepEqual(added.map(e => e.kind), ['agent_connected'], 'exactly one event, and it is the connection, not the tool');
@@ -1034,12 +1012,12 @@ test('I-03A #94 cold call: a not-ready tool after more than 24 h refreshes the c
   assert.deepEqual(after.run_counts.map(r => [r.events, r.inputs]), before.run_counts.map(r => [r.events + 1, r.inputs + 1]));
   // Warm right after: nothing at all.
   const warm = dbSnapshot(t.sql);
-  await t.call('propose_help', {to: '09-copper', item: 'coffee'});
+  await t.call('get_world_state');
   assert.deepEqual(dbSnapshot(t.sql), warm);
   // After the 10-minute refresh window: one commit that moves the connected time, no event.
   t.clock.now += 11 * 60_000;
   const v0 = t.state().version, n0 = t.events().length;
-  await t.call('answer_help', {task_id: 'task_1', answer: 'reject'});
+  await t.call('get_agent_card', {muse: '02-moss'});
   assert.equal(t.state().version - v0, 1); assert.equal(t.events().length, n0);
   assert.equal(t.state().inbox.connected[OWNER_SLOT], t.clock.now);
 });
