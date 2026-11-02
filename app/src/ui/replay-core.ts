@@ -26,12 +26,21 @@ export function createPlayer(durationSec: number, _now?: () => number) {
   };
 }
 
-export type Filter = {tag: string; muse: string; place: string; part: '' | 'night' | 'morning' | 'afternoon' | 'evening'};
-export const EMPTY_FILTER: Filter = Object.freeze({tag: '', muse: '', place: '', part: ''});
+/** `from`/`to`: the period (event time in ms, `to` exclusive); null = open. */
+export type Filter = {tag: string; muse: string; place: string; part: '' | 'night' | 'morning' | 'afternoon' | 'evening'; from?: number | null; to?: number | null};
+export const EMPTY_FILTER: Filter = Object.freeze({tag: '', muse: '', place: '', part: '', from: null, to: null});
+/** A date input value (YYYY-MM-DD) as the start of that day in the viewer's zone; `end` gives the start of the next day. */
+export function dayBound(value: string, end = false): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return null;
+  const t = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + (end ? 1 : 0)).getTime();
+  return Number.isFinite(t) ? t : null;
+}
 /** Hour of the day as the viewer sees it: their own time zone unless one is given (tests pass one). */
 const hourIn = (tz?: string) => new Intl.DateTimeFormat('en-US', {...(tz ? {timeZone: tz} : {}), hour: 'numeric', hourCycle: 'h23'});
 export function matchFilter(e: Pick<ReplayEvent, 'tags' | 'muse' | 'other' | 'place' | 'at'>, f: Filter, tz?: string): boolean {
   if (f.tag && !e.tags.includes(f.tag) || f.muse && e.muse !== f.muse && e.other !== f.muse || f.place && e.place !== f.place) return false;
+  if (f.from != null && e.at < f.from || f.to != null && e.at >= f.to) return false;
   if (f.part) {
     const h = Number(hourIn(tz).format(e.at));
     const part = h < 6 ? 'night' : h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';

@@ -142,7 +142,7 @@ export async function executeCommand<T>(c: CommandCtx, cmd: WorldCommand, h: Com
       record: (version, events) => {
         const a = box.applied;
         const result: CommandResult = {ok: a.ok, commandId: cmd.commandId, worldVersion: version, eventIds: events.map(x => x.id), ...(a.ok ? {} : {error: {code: a.code, retryable: false}})};
-        return {actorId: cmd.actorId, commandId: cmd.commandId, action: cmd.action, row: {payloadHash: hash, result, output: a.output ?? null}};
+        return {actorId: cmd.actorId, commandId: cmd.commandId, action: cmd.action, payload: cmd.payload, row: {payloadHash: hash, result, output: a.output ?? null}};
       },
     });
     if (done.aborted === 'duplicate') return stored(c.runtime.commandRow(cmd.actorId, cmd.commandId)!);

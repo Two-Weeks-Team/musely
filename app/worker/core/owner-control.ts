@@ -27,6 +27,13 @@ const needsStop = (s: State, museId: string) => !s.paused?.[museId] || hasPendin
  * The world side of a revocation, idempotent: every pending Task of the Muse closes as cancelled, and the Muse is paused
  * once (a Muse already paused keeps its pause record and place). Runs inside one world commit.
  */
+/**
+ * Events of the owner's own act (revoke, re-delegate and what they stop or resume). C03 has no actorOrigin for an owner
+ * (system / connected / trial are a resident, a person's Muse, a visitor), so these keep `data.actor: 'owner'` and no
+ * actorOrigin; the run log does not fill one in.
+ */
+const byOwner = (emit: Emit): Emit => e => emit({...e, data: {...(e.data ?? {}), actor: 'owner'}});
+
 function stopInWorld(st: State, emit: Emit, museId: string, version: number, by: string, now: number, repaired: boolean) {
   const cancelled: string[] = [];
   for (const t of cancelTasksFor((st.inbox ??= emptyInbox()), museId, now, by)) {
@@ -55,7 +62,7 @@ export async function revokeMuse(c: ControlCtx, museId: string, by: string): Pro
     if (!needsStop(c.runtime.state(), museId)) return {ok: true, muse: museId, already: true, repaired: false, version, cancelledTasks: [], stopped: null};
     const now = nowOf(c);
     let out = {cancelled: [] as string[], stopped: null as ReturnType<typeof pauseMuse>};
-    c.runtime.commitExternal(now, `owner-revoke-repair-${museId}-${uniq()}`, (st, emit) => { out = stopInWorld(st, emit, museId, version, by, now, true); });
+    c.runtime.commitExternal(now, `owner-revoke-repair-${museId}-${uniq()}`, (st, emit) => { out = stopInWorld(st, byOwner(emit), museId, version, by, now, true); });
     return {ok: true, muse: museId, already: true, repaired: true, version, cancelledTasks: out.cancelled, stopped: out.stopped};
   }
   busy.add(museId);
@@ -64,7 +71,8 @@ export async function revokeMuse(c: ControlCtx, museId: string, by: string): Pro
   // Synchronous from here: the revocation and its world effects are committed together, before any other request runs.
   const now = nowOf(c);
   let out = {cancelled: [] as string[], stopped: null as ReturnType<typeof pauseMuse>};
-  c.runtime.commitExternal(now, `owner-revoke-${museId}-${uniq()}`, (st, emit) => {
+  c.runtime.commitExternal(now, `owner-revoke-${museId}-${uniq()}`, (st, put) => {
+    const emit = byOwner(put);
     emit({at: now, source: 'live', kind: 'delegation_revoked', muse: museId, line: 'Owner revoked the delegation', data: {newVersion: version, by}, tags: ['revocation']});
     out = stopInWorld(st, emit, museId, version, by, now, false);
   });
@@ -79,7 +87,8 @@ export function redelegateMuse(c: ControlCtx, museId: string, by: string): Redel
     const version = c.trust.delegationVersion(agent.agentId);
     if (!c.runtime.state().paused?.[museId]) return {ok: true, muse: museId, already: true, repaired: false, version};
     const now = nowOf(c);
-    c.runtime.commitExternal(now, `owner-redelegate-repair-${museId}-${uniq()}`, (st, emit) => {
+    c.runtime.commitExternal(now, `owner-redelegate-repair-${museId}-${uniq()}`, (st, put) => {
+      const emit = byOwner(put);
       resumeMuse(st, museId);
       emit({at: now, source: 'live', kind: 'muse_resumed', muse: museId, line: 'Resumed: the owner\'s re-delegation is now applied to the world', data: {reason: 'redelegation_completed', version, by}, tags: []});
     });
@@ -87,7 +96,8 @@ export function redelegateMuse(c: ControlCtx, museId: string, by: string): Redel
   }
   const version = c.trust.redelegate(museId);
   const now = nowOf(c);
-  c.runtime.commitExternal(now, `owner-redelegate-${museId}-${uniq()}`, (st, emit) => {
+  c.runtime.commitExternal(now, `owner-redelegate-${museId}-${uniq()}`, (st, put) => {
+    const emit = byOwner(put);
     resumeMuse(st, museId);
     emit({at: now, source: 'live', kind: 'delegation_issued', muse: museId, line: 'Owner delegated again', data: {version, by}, tags: []});
   });

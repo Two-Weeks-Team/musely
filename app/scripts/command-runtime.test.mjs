@@ -322,11 +322,13 @@ test('review 1: verification spends no nonce; the commit claims it — retry aft
   const g = gated();
   const cmd = await mossCommand(t);
   const c0 = coffeeOf(t);
-  const both = Promise.all([executeCommand(t, cmd, {recipient: worldHandler('w'), think: g.think, apply: giveCoffee}, T0), (async () => { await until(g.waiting); return executeCommand(t, cmd, {recipient: worldHandler('w'), think: g.think, apply: giveCoffee}, T0); })()]);
+  // Deterministic order: the first call holds the command (waiting in think); the duplicate is answered while it is
+  // held; only then is the first released. (A fixed sleep here raced under a loaded full run.)
+  const first = executeCommand(t, cmd, {recipient: worldHandler('w'), think: g.think, apply: giveCoffee}, T0);
   await until(g.waiting);
-  await sleep(20);
+  const b = await Promise.race([executeCommand(t, cmd, {recipient: worldHandler('w'), think: g.think, apply: giveCoffee}, T0), sleep(3000).then(() => ({result: {error: 'the duplicate waited instead of answering in_progress'}}))]);
   g.release();
-  const [a, b] = await both;
+  const a = await first;
   assert.deepEqual([a.result.ok, b.result.error], [true, {code: 'in_progress', retryable: true}]);
   assert.equal(coffeeOf(t), c0 + 1, 'one commit');
   const later = await executeCommand(t, cmd, {recipient: worldHandler('w'), apply: giveCoffee}, T0);

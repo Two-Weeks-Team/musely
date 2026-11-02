@@ -13,7 +13,11 @@ import {Trust, OWNER_SLOT, type Executor} from './trust.ts';
 import type {WorldState, Hooks} from '../../src/engine/world.ts';
 import {executeCommand, signCommand, quietRefusal, type PeerCheck} from './commands.ts';
 
-export type Ctx = {trust: Trust; runtime: WorldRuntime; ownerRoot: JsonWebKey | null; ownerClaimed: boolean; baseUrl: string; now?: () => number};
+export type Ctx = {trust: Trust; runtime: WorldRuntime; ownerRoot: JsonWebKey | null; ownerClaimed: boolean; baseUrl: string; now?: () => number;
+  /** Who asked for a P0 run: a judge link session (C03 actorOrigin trial) or the owner (no C03 value; `data.actor` only). */
+  requestedBy?: 'judge' | 'owner'};
+/** The actor fields of a request a session asked for (P0, demo checks); a resident's rule answer carries none (system). */
+export const requester = (by: 'judge' | 'owner' | 'visitor' | undefined) => (by === 'owner' ? {actor: 'owner (P0 run)'} : by === 'judge' ? {actorOrigin: 'trial', actor: 'judge link (P0 run)'} : by === 'visitor' ? {actorOrigin: 'trial', actor: 'visitor or judge session (demo button)'} : {});
 const nowOf = (c: Ctx) => (c.now ? c.now() : Date.now());
 
 export const envelopeEvidence = (s: Signed) => ({message_id: s.envelope.message_id, agent_id: s.envelope.agent_id, delegation_ref: s.envelope.delegation_ref, signer_kind: s.envelope.signer_kind, scope: s.envelope.scope, scope_hash: s.envelope.scope_hash, content_hash: s.envelope.content_hash, nonce: s.envelope.nonce, expires_at: s.envelope.expires_at, owner_claimed: s.envelope.owner_claimed});
@@ -40,7 +44,7 @@ export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; 
   if (!exec) {
     // Revoked before any executor was issued: nothing can be signed, so the request is refused at the delegation step.
     if (!opts.stale || !c.trust.suspended(OWNER_SLOT)) return {ok: false as const, reason: 'no_executor'};
-    const events = c.runtime.commitRefusal(nowOf(c), `p0-refused-${Math.random().toString(36).slice(2, 8)}`, `${OWNER_SLOT}>${plan.partner}:delegation_revoked:delegation`, (_st, emit) => emit({at: nowOf(c), source: 'live', kind: 'a2a_refused', muse: OWNER_SLOT, other: plan.partner, line: 'Refused: delegation revoked', data: {step: 'delegation', reason: 'delegation_revoked', envelope: null, content, label: opts.label}, tags: ['p0_refused']}), false);
+    const events = c.runtime.commitRefusal(nowOf(c), `p0-refused-${Math.random().toString(36).slice(2, 8)}`, `${OWNER_SLOT}>${plan.partner}:delegation_revoked:delegation`, (_st, emit) => emit({at: nowOf(c), source: 'live', kind: 'a2a_refused', muse: OWNER_SLOT, other: plan.partner, line: 'Refused: delegation revoked', data: {step: 'delegation', reason: 'delegation_revoked', envelope: null, content, label: opts.label, ...requester(c.requestedBy)}, tags: ['p0_refused']}), false);
     return {ok: false, verdict: 'delegation_revoked', events: events.map(e => e.id), command: null, plan};
   }
   const partner = c.trust.agentByMuse(plan.partner)!;
@@ -52,7 +56,7 @@ export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; 
     dedup: false,
     counterparty: () => peerCheck(c, plan.partner, nowOf(c)),
     apply: (st, emit, at) => {
-      emit({at, source: 'live', kind: 'a2a_verified', muse: OWNER_SLOT, other: plan.partner, line: 'Signature, delegation, scope, expiry, nonce: verified', data: {steps: ['signature', 'recipient', 'delegation', 'scope', 'expiry', 'content', 'replay', 'counterparty'], envelope: evidence, content, label: opts.label}, tags: ['p0_valid']});
+      emit({at, source: 'live', kind: 'a2a_verified', muse: OWNER_SLOT, other: plan.partner, line: 'Signature, delegation, scope, expiry, nonce: verified', data: {steps: ['signature', 'recipient', 'delegation', 'scope', 'expiry', 'content', 'replay', 'counterparty'], envelope: evidence, content, label: opts.label, ...requester(c.requestedBy)}, tags: ['p0_valid']});
       const a = st.muses.find(m => m.id === OWNER_SLOT)!, b = st.muses.find(m => m.id === plan.partner)!;
       // A tampered item history refuses the swap (I-06) instead of throwing inside the commit.
       const check = historyFault(st.items, false, at) ? {ok: false as const, reason: 'history_tamper'} : checkTrade(st.items, st.day, a, b, plan.give, plan.want, 0, at);
@@ -62,7 +66,7 @@ export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; 
       emit({at, source: 'rule', kind: 'trade_completed', muse: OWNER_SLOT, other: plan.partner, place: a.place, line: `Traded ${itemName(plan.give)} ↔ ${itemName(plan.want)}`, data: {give: plan.give, want: plan.want, receipt: true, envelope: evidence, accepted_by: plan.partner, accepted_via: 'rule'}, tags: ['ability_change', 'p0_trade']});
       return {ok: true};
     },
-    refused: (_st, emit, r, at) => emit({at, source: 'live', kind: quietRefusal(r.code) ? 'command_refused' : 'a2a_refused', muse: OWNER_SLOT, other: plan.partner, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, envelope: evidence, content, label: opts.label}, tags: quietRefusal(r.code) ? [] : ['p0_refused']}),
+    refused: (_st, emit, r, at) => emit({at, source: 'live', kind: quietRefusal(r.code) ? 'command_refused' : 'a2a_refused', muse: OWNER_SLOT, other: plan.partner, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, envelope: evidence, content, label: opts.label, ...requester(c.requestedBy)}, tags: quietRefusal(r.code) ? [] : ['p0_refused']}),
   }, nowOf(c));
   // ok means the trade really committed; a verified request the rules turned down is `rejected:<rule>`.
   const committed = out.result.ok && !out.refused;
@@ -179,7 +183,7 @@ export async function impostorCheck(c: Ctx, target: string) {
   const scopes = {allowed: [...SCOPES.allowed], approval: [...SCOPES.approval], forbidden: [...SCOPES.forbidden]};
   const card = await signCard(buildCard(harnessById(target), fake, {ownerClaimed: true, fingerprint: null, scopes, baseUrl: 'https://impostor.example', ownerLabel: 'Musely resident'}), fake, 'https://impostor.example/jwks.json');
   const v = await verifyCard(card, c.trust.agentByMuse(target)!.rootJwk);
-  return c.runtime.commitExternal(nowOf(c), 'impostor', (_s, emit) => emit({at: nowOf(c), source: 'live', kind: 'impostor_rejected', muse: target, line: `A look-alike "${harnessById(target).name}" was refused before greeting`, data: {verdict: v, presentedKid: fake.kid, trustedKid: c.trust.agentByMuse(target)!.agentId, trigger: 'demo_button'}, tags: ['impostor_rejected']}));
+  return c.runtime.commitExternal(nowOf(c), 'impostor', (_s, emit) => emit({at: nowOf(c), source: 'live', kind: 'impostor_rejected', muse: target, line: `A look-alike "${harnessById(target).name}" was refused before greeting`, data: {verdict: v, presentedKid: fake.kid, trustedKid: c.trust.agentByMuse(target)!.agentId, trigger: 'demo_button', ...requester('visitor')}, tags: ['impostor_rejected']}));
 }
 
 const ATTACKS = [
@@ -191,7 +195,7 @@ const ATTACKS = [
 export async function injectionCheck(c: Ctx, from: string, to: string, i = 0) {
   const text = ATTACKS[i % ATTACKS.length];
   const check = detectInjection(text);
-  return c.runtime.commitExternal(nowOf(c), 'injection', (_s, emit) => emit({at: nowOf(c), source: 'live', kind: check.blocked ? 'injection_blocked' : 'message_passed', muse: to, other: from, line: check.blocked ? 'Instruction from another agent blocked' : null, data: {wrapped: wrapUntrusted(text), kinds: check.kinds, limit: INJECTION_LIMIT_NOTE, trigger: 'demo_button', contentHash: null}, tags: check.blocked ? ['injection_blocked'] : []}));
+  return c.runtime.commitExternal(nowOf(c), 'injection', (_s, emit) => emit({at: nowOf(c), source: 'live', kind: check.blocked ? 'injection_blocked' : 'message_passed', muse: to, other: from, line: check.blocked ? 'Instruction from another agent blocked' : null, data: {wrapped: wrapUntrusted(text), kinds: check.kinds, limit: INJECTION_LIMIT_NOTE, trigger: 'demo_button', contentHash: null, ...requester('visitor')}, tags: check.blocked ? ['injection_blocked'] : []}));
 }
 
 export {contentHash};

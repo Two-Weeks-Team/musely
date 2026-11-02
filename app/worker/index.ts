@@ -110,7 +110,17 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     if (r.ok) return json({queued: true, muse: r.muse, position: r.position, already: r.already});
     return json({error: r.reason}, r.reason === 'paused' ? 409 : r.reason === 'unknown_muse' ? 400 : 429);
   }
-  if (url.pathname === '/api/world/highlights' && request.method === 'GET') return json(await world(env).worldHighlights(Number(url.searchParams.get('limit')) || 100));
+  // Highlights, one page at a time: `before` (cursor: the seq of the last row of the previous page) and the period `from`/`to` (ms).
+  // A value that is not a non-negative integer, or from >= to, is a 400 (never silently ignored).
+  if (url.pathname === '/api/world/highlights' && request.method === 'GET') {
+    const q = msParams(url, ['before', 'from', 'to']);
+    if (!q) return json({error: 'bad_query', detail: 'before, from and to are non-negative integers (ms; before is a seq)'}, 400);
+    if (q.from !== null && q.to !== null && q.to <= q.from) return json({error: 'bad_period', detail: 'to must be after from'}, 400);
+    return json(await world(env).worldHighlights(Number(url.searchParams.get('limit')) || 100, q));
+  }
+  // Run log reads (8.6, C08, C09): public, so each answer is cached for 30 seconds (one DO read per URL per edge) and a
+  // client past the burst limit gets a 429 on a cache miss.
+  if (RUN_LOG_PATHS.has(url.pathname) && request.method === 'GET') return cachedRead(request, env, ip, () => runLogRead(env, url));
 
   // Identity (direction v2, 6): signed A2A Agent Cards and the P0 / demo checks.
   const cardMatch = /^\/api\/agents\/(0\d-[a-z]+)\/card$/.exec(url.pathname);
@@ -121,7 +131,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
       if (!realOwner) return json({error: 'judge_session_required'}, 403);
       if (!ownerWrite) return json({error: 'origin_not_allowed'}, 403);
     }
-    return json(await world(env).p0());
+    return json(await world(env).p0(session?.tier === 'judge' ? 'judge' : 'owner'));
   }
   const demo = /^\/api\/demo\/(impostor|injection)$/.exec(url.pathname);
   if (demo && request.method === 'POST') {
@@ -195,6 +205,63 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   }
 
   return json({error: 'not_found'}, 404);
+}
+
+/** Non-negative integer query parameters (milliseconds or a cursor); absent ones are null, any invalid one makes it null. */
+function msParams<K extends string>(url: URL, names: K[]): Record<K, number | null> | null {
+  const out = {} as Record<K, number | null>;
+  for (const k of names) {
+    const v = url.searchParams.get(k);
+    if (v === null || v === '') { out[k] = null; continue; }
+    const n = Number(v);
+    if (!/^\d+$/.test(v) || !Number.isSafeInteger(n)) return null;
+    out[k] = n;
+  }
+  return out;
+}
+
+const RUN_LOG_PATHS = new Set(['/api/world/run', '/api/world/run/inputs', '/api/world/event', '/api/world/autonomy']);
+export const RUN_LOG_CACHE_SECONDS = 30;
+/** The answer of one run-log read (no cache or limit here). */
+async function runLogRead(env: Env, url: URL): Promise<Response> {
+  if (url.pathname === '/api/world/run') {
+    const r = await world(env).worldRun(url.searchParams.get('runId'), url.searchParams.get('snapshot') === '1');
+    return r ? json(r) : json({error: 'unknown_run'}, 404);
+  }
+  if (url.pathname === '/api/world/run/inputs') {
+    const q = msParams(url, ['since', 'limit']);
+    if (!q) return json({error: 'bad_query'}, 400);
+    const runId = url.searchParams.get('runId') ?? '';
+    const rows = runId ? await world(env).worldRunInputs(runId, q.since ?? 0, q.limit ?? 200) : null;
+    return rows ? json(rows) : json({error: 'unknown_run'}, 404);
+  }
+  if (url.pathname === '/api/world/event') {
+    const r = await world(env).worldEvent((url.searchParams.get('id') ?? '').slice(0, 200));
+    return r ? json(r) : json({error: 'unknown_event'}, 404);
+  }
+  // C09 server recount over a period (`from`/`to` ms; default the last 24 hours) or one world `day`. The DO limits the
+  // period to 48 hours and the sample to 20,000 events and answers `partial: true` beyond either.
+  const day = url.searchParams.get('day');
+  if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) return json({error: 'bad_day'}, 400);
+  const q = msParams(url, ['from', 'to']);
+  if (!q) return json({error: 'bad_query', detail: 'from and to are non-negative integers (ms)'}, 400);
+  if (q.from !== null && q.to !== null && q.to <= q.from) return json({error: 'bad_period', detail: 'to must be after from'}, 400);
+  const now = Date.now();
+  const from = q.from ?? (day ? null : (q.to ?? now) - 86_400_000), to = q.to ?? (day ? null : now);
+  return json(await world(env).worldAutonomy({from, to, day, runId: url.searchParams.get('runId')}));
+}
+/** A 30-second public cache in front of a run-log read (Cache API when the runtime has one), and the burst limit on a miss. */
+async function cachedRead(request: Request, env: Env, ip: string, read: () => Promise<Response>): Promise<Response> {
+  const cache = typeof caches !== 'undefined' ? (caches as unknown as {default?: Cache}).default : undefined;
+  const key = new Request(request.url, {method: 'GET'});
+  const hit = cache ? await cache.match(key) : undefined;
+  if (hit) return hit;
+  if (env.BURST && !(await env.BURST.limit({key: 'runlog:' + ip})).success) return json({error: 'slow_down'}, 429);
+  const r = await read();
+  if (r.status !== 200) return r;
+  const out = new Response(r.body, {status: 200, headers: {'content-type': 'application/json; charset=utf-8', 'cache-control': `public, max-age=${RUN_LOG_CACHE_SECONDS}`}});
+  if (cache) await cache.put(key, out.clone());
+  return out;
 }
 
 function threadsConfig(env: Env, url: URL): ThreadsConfig | null {
