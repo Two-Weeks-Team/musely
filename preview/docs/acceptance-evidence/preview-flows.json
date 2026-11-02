@@ -1,8 +1,8 @@
 {
  "info": {
   "url": "https://preview.musely.net/",
-  "startedAt": "2026-11-01T16:16:46.866Z",
-  "finishedAt": "2026-11-01T16:19:53.508Z",
+  "startedAt": "2026-11-02T03:09:20.620Z",
+  "finishedAt": "2026-11-02T03:12:06.564Z",
   "browser": "156.0.8078.76",
   "node": "v24.22.2",
   "platform": "darwin arm64"
@@ -127,37 +127,37 @@
    "vp": "desktop",
    "name": "Story -> cue -> Live world: the cue ending does not restart the story or snap the camera back",
    "ok": true,
-   "detail": "{\"a\":{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":5.000500000000002,\"zoom\":15.2,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:05\",\"cues\":0},\"b\":{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":5.000500000000002,\"zoom\":15.2,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:05\",\"cues\":0}}"
+   "detail": "{\"a\":{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":5.010700000047688,\"zoom\":15.2,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:05\",\"cues\":0},\"b\":{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":5.010700000047688,\"zoom\":15.2,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:05\",\"cues\":0}}"
   },
   {
    "vp": "desktop",
    "name": "Live world -> cue -> Story: the cue ending does not stop the story",
    "ok": true,
-   "detail": "{\"a\":{\"mode\":\"story\",\"tour\":true,\"tourCamera\":true,\"paused\":false,\"elapsed\":8.295200000047688,\"zoom\":21.45,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Story · 0:08 / 3:30\",\"cues\":0},\"b\":{\"mode\":\"story\",\"tour\":true,\"tourCamera\":true,\"paused\":false,\"elapsed\":9.23059999990463,\"zoom\":21.45,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Story · 0:09 / 3:30\",\"cues\":0}}"
+   "detail": "{\"a\":{\"mode\":\"story\",\"tour\":true,\"tourCamera\":true,\"paused\":false,\"elapsed\":8.309,\"zoom\":21.45,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Story · 0:08 / 3:30\",\"cues\":0},\"b\":{\"mode\":\"story\",\"tour\":true,\"tourCamera\":true,\"paused\":false,\"elapsed\":9.23890000009536,\"zoom\":21.45,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Story · 0:09 / 3:30\",\"cues\":0}}"
   },
   {
    "vp": "desktop",
    "name": "during a cue the pause button reads \"Paused for preview\" and is pressed",
    "ok": true,
-   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":true,\"elapsed\":9.395999999999997,\"zoom\":20.740575583140625,\"pauseText\":\"Paused for preview\",\"pressed\":\"true\",\"tourText\":\"Resume story · 0:09\",\"cues\":1}"
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":true,\"elapsed\":9.407200000047677,\"zoom\":20.73236875180597,\"pauseText\":\"Paused for preview\",\"pressed\":\"true\",\"tourText\":\"Resume story · 0:09\",\"cues\":1}"
   },
   {
    "vp": "desktop",
    "name": "pressing it ends the cue and resumes the world",
    "ok": true,
-   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":9.395999999999997,\"zoom\":21.899316559996386,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:09\",\"cues\":0}"
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":9.407200000047677,\"zoom\":21.898952448917612,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:09\",\"cues\":0}"
   },
   {
    "vp": "desktop",
    "name": "when the cue runs out the button is back to \"Pause world\"",
    "ok": true,
-   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":9.395999999999997,\"zoom\":22.3,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:09\",\"cues\":0}"
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":9.407200000047677,\"zoom\":22.3,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:09\",\"cues\":0}"
   },
   {
    "vp": "desktop",
    "name": "a world you paused yourself stays paused after a cue, and the button says so",
    "ok": true,
-   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":true,\"elapsed\":9.395999999999997,\"zoom\":22.3,\"pauseText\":\"Resume world\",\"pressed\":\"true\",\"tourText\":\"Resume story · 0:09\",\"cues\":0}"
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":true,\"elapsed\":9.407200000047677,\"zoom\":22.3,\"pauseText\":\"Resume world\",\"pressed\":\"true\",\"tourText\":\"Resume story · 0:09\",\"cues\":0}"
   },
   {
    "vp": "desktop",
@@ -229,7 +229,7 @@
    "vp": "mobile",
    "name": "returning to Story resumes where it left",
    "ok": true,
-   "detail": "left 3.5 resumed 4.0"
+   "detail": "left 3.5 resumed 4.1"
   },
   {
    "vp": "mobile",
@@ -331,37 +331,37 @@
    "vp": "mobile",
    "name": "Story -> cue -> Live world: the cue ending does not restart the story or snap the camera back",
    "ok": true,
-   "detail": "{\"a\":{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":5.495200000286099,\"zoom\":15.2,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:05\",\"cues\":0},\"b\":{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":5.495200000286099,\"zoom\":15.2,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:05\",\"cues\":0}}"
+   "detail": "{\"a\":{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":5.652099999904633,\"zoom\":15.2,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:05\",\"cues\":0},\"b\":{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":5.652099999904633,\"zoom\":15.2,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:05\",\"cues\":0}}"
   },
   {
    "vp": "mobile",
    "name": "Live world -> cue -> Story: the cue ending does not stop the story",
    "ok": true,
-   "detail": "{\"a\":{\"mode\":\"story\",\"tour\":true,\"tourCamera\":true,\"paused\":false,\"elapsed\":8.790200000286083,\"zoom\":20.8,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Story · 0:08 / 3:30\",\"cues\":0},\"b\":{\"mode\":\"story\",\"tour\":true,\"tourCamera\":true,\"paused\":false,\"elapsed\":9.723600000381438,\"zoom\":20.8,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Story · 0:09 / 3:30\",\"cues\":0}}"
+   "detail": "{\"a\":{\"mode\":\"story\",\"tour\":true,\"tourCamera\":true,\"paused\":false,\"elapsed\":8.94609999990461,\"zoom\":20.8,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Story · 0:08 / 3:30\",\"cues\":0},\"b\":{\"mode\":\"story\",\"tour\":true,\"tourCamera\":true,\"paused\":false,\"elapsed\":9.87940000009533,\"zoom\":20.8,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Story · 0:09 / 3:30\",\"cues\":0}}"
   },
   {
    "vp": "mobile",
    "name": "during a cue the pause button reads \"Paused for preview\" and is pressed",
    "ok": true,
-   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":true,\"elapsed\":9.906900000333755,\"zoom\":20.44927054378723,\"pauseText\":\"Paused for preview\",\"pressed\":\"true\",\"tourText\":\"Resume story · 0:09\",\"cues\":1}"
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":true,\"elapsed\":10.062700000047647,\"zoom\":20.448572192007095,\"pauseText\":\"Paused for preview\",\"pressed\":\"true\",\"tourText\":\"Resume story · 0:10\",\"cues\":1}"
   },
   {
    "vp": "mobile",
    "name": "pressing it ends the cue and resumes the world",
    "ok": true,
-   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":9.906900000333755,\"zoom\":21.82260672529541,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:09\",\"cues\":0}"
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":10.062700000047647,\"zoom\":21.84875994792649,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:10\",\"cues\":0}"
   },
   {
    "vp": "mobile",
    "name": "when the cue runs out the button is back to \"Pause world\"",
    "ok": true,
-   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":9.906900000333755,\"zoom\":22.3,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:09\",\"cues\":0}"
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":10.062700000047647,\"zoom\":22.3,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:10\",\"cues\":0}"
   },
   {
    "vp": "mobile",
    "name": "a world you paused yourself stays paused after a cue, and the button says so",
    "ok": true,
-   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":true,\"elapsed\":9.906900000333755,\"zoom\":22.3,\"pauseText\":\"Resume world\",\"pressed\":\"true\",\"tourText\":\"Resume story · 0:09\",\"cues\":0}"
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":true,\"elapsed\":10.062700000047647,\"zoom\":22.3,\"pauseText\":\"Resume world\",\"pressed\":\"true\",\"tourText\":\"Resume story · 0:10\",\"cues\":0}"
   },
   {
    "vp": "mobile",

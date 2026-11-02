@@ -1,0 +1,733 @@
+{
+ "info": {
+  "url": "https://preview.musely.net/",
+  "startedAt": "2026-11-02T03:15:52.270Z",
+  "finishedAt": "2026-11-02T03:24:26.394Z",
+  "browser": "156.0.8078.76",
+  "node": "v24.22.2",
+  "platform": "darwin arm64"
+ },
+ "ok": true,
+ "cases": [
+  {
+   "vp": "320x568",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 138 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least n/a (strip)"
+  },
+  {
+   "vp": "320x568",
+   "name": "story: a screen too small for the full card shows it as a compact strip, not hidden",
+   "ok": true,
+   "detail": "card up to 138 px, shown in 28 steps"
+  },
+  {
+   "vp": "320x568",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 104 px tall"
+  },
+  {
+   "vp": "320x568",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "360x640",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 266 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least 112 px"
+  },
+  {
+   "vp": "360x640",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 258 px tall"
+  },
+  {
+   "vp": "360x640",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "360x520",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 124 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least n/a (strip)"
+  },
+  {
+   "vp": "360x520",
+   "name": "story: a screen too small for the full card shows it as a compact strip, not hidden",
+   "ok": true,
+   "detail": "card up to 124 px, shown in 28 steps"
+  },
+  {
+   "vp": "360x520",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 104 px tall"
+  },
+  {
+   "vp": "360x520",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "375x667",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 266 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least 112 px"
+  },
+  {
+   "vp": "375x667",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 258 px tall"
+  },
+  {
+   "vp": "375x667",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "390x844",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 284 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least 121 px"
+  },
+  {
+   "vp": "390x844",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 276 px tall"
+  },
+  {
+   "vp": "390x844",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "416x579",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 266 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least 97 px"
+  },
+  {
+   "vp": "416x579",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 258 px tall"
+  },
+  {
+   "vp": "416x579",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "412x732",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 284 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least 121 px"
+  },
+  {
+   "vp": "412x732",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 276 px tall"
+  },
+  {
+   "vp": "412x732",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "600x900",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 284 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least 121 px"
+  },
+  {
+   "vp": "600x900",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 276 px tall"
+  },
+  {
+   "vp": "600x900",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "701x900",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 323 px, shown in 29 of 30 steps, meet-up plan in 29, meet-up line in 8, card text at least 144 px"
+  },
+  {
+   "vp": "701x900",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 318 px tall"
+  },
+  {
+   "vp": "701x900",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "768x1024",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 323 px, shown in 29 of 30 steps, meet-up plan in 29, meet-up line in 8, card text at least 144 px"
+  },
+  {
+   "vp": "768x1024",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 318 px tall"
+  },
+  {
+   "vp": "768x1024",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "820x1180",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 323 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least 144 px"
+  },
+  {
+   "vp": "820x1180",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 318 px tall"
+  },
+  {
+   "vp": "820x1180",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "886x600",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 286 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least 130 px"
+  },
+  {
+   "vp": "886x600",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 281 px tall"
+  },
+  {
+   "vp": "886x600",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1000x680",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 286 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least 130 px"
+  },
+  {
+   "vp": "1000x680",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 281 px tall"
+  },
+  {
+   "vp": "1000x680",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1024x768",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 323 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least 144 px"
+  },
+  {
+   "vp": "1024x768",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 318 px tall"
+  },
+  {
+   "vp": "1024x768",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1080x810",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 323 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least 144 px"
+  },
+  {
+   "vp": "1080x810",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 318 px tall"
+  },
+  {
+   "vp": "1080x810",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1100x700",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 323 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least 144 px"
+  },
+  {
+   "vp": "1100x700",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 318 px tall"
+  },
+  {
+   "vp": "1100x700",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1181x700",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 323 px, shown in 29 of 30 steps, meet-up plan in 29, meet-up line in 8, card text at least 144 px"
+  },
+  {
+   "vp": "1181x700",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 318 px tall"
+  },
+  {
+   "vp": "1181x700",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1194x834",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 323 px, shown in 29 of 30 steps, meet-up plan in 29, meet-up line in 8, card text at least 144 px"
+  },
+  {
+   "vp": "1194x834",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 318 px tall"
+  },
+  {
+   "vp": "1194x834",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1280x800",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 323 px, shown in 29 of 30 steps, meet-up plan in 29, meet-up line in 8, card text at least 144 px"
+  },
+  {
+   "vp": "1280x800",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 318 px tall"
+  },
+  {
+   "vp": "1280x800",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1366x1024",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 323 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least 144 px"
+  },
+  {
+   "vp": "1366x1024",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 318 px tall"
+  },
+  {
+   "vp": "1366x1024",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "667x375",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 80 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least n/a (strip)"
+  },
+  {
+   "vp": "667x375",
+   "name": "story: a screen too small for the full card shows it as a compact strip, not hidden",
+   "ok": true,
+   "detail": "card up to 80 px, shown in 28 steps"
+  },
+  {
+   "vp": "667x375",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 60 px tall"
+  },
+  {
+   "vp": "667x375",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "740x360",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 80 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least n/a (strip)"
+  },
+  {
+   "vp": "740x360",
+   "name": "story: a screen too small for the full card shows it as a compact strip, not hidden",
+   "ok": true,
+   "detail": "card up to 80 px, shown in 28 steps"
+  },
+  {
+   "vp": "740x360",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 60 px tall"
+  },
+  {
+   "vp": "740x360",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "844x390",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 80 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least n/a (strip)"
+  },
+  {
+   "vp": "844x390",
+   "name": "story: a screen too small for the full card shows it as a compact strip, not hidden",
+   "ok": true,
+   "detail": "card up to 80 px, shown in 28 steps"
+  },
+  {
+   "vp": "844x390",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 60 px tall"
+  },
+  {
+   "vp": "844x390",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "932x430",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 80 px, shown in 29 of 30 steps, meet-up plan in 29, meet-up line in 8, card text at least n/a (strip)"
+  },
+  {
+   "vp": "932x430",
+   "name": "story: a screen too small for the full card shows it as a compact strip, not hidden",
+   "ok": true,
+   "detail": "card up to 80 px, shown in 29 steps"
+  },
+  {
+   "vp": "932x430",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 60 px tall"
+  },
+  {
+   "vp": "932x430",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "568x320",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 80 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least n/a (strip)"
+  },
+  {
+   "vp": "568x320",
+   "name": "story: a screen too small for the full card shows it as a compact strip, not hidden",
+   "ok": true,
+   "detail": "card up to 80 px, shown in 28 steps"
+  },
+  {
+   "vp": "568x320",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 60 px tall"
+  },
+  {
+   "vp": "568x320",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "640x360",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 80 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least n/a (strip)"
+  },
+  {
+   "vp": "640x360",
+   "name": "story: a screen too small for the full card shows it as a compact strip, not hidden",
+   "ok": true,
+   "detail": "card up to 80 px, shown in 28 steps"
+  },
+  {
+   "vp": "640x360",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 60 px tall"
+  },
+  {
+   "vp": "640x360",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1024x500",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 80 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least n/a (strip)"
+  },
+  {
+   "vp": "1024x500",
+   "name": "story: a screen too small for the full card shows it as a compact strip, not hidden",
+   "ok": true,
+   "detail": "card up to 80 px, shown in 28 steps"
+  },
+  {
+   "vp": "1024x500",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 60 px tall"
+  },
+  {
+   "vp": "1024x500",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1280x430",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 60 px, shown in 29 of 30 steps, meet-up plan in 29, meet-up line in 8, card text at least n/a (strip)"
+  },
+  {
+   "vp": "1280x430",
+   "name": "story: a screen too small for the full card shows it as a compact strip, not hidden",
+   "ok": true,
+   "detail": "card up to 60 px, shown in 29 steps"
+  },
+  {
+   "vp": "1280x430",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 60 px tall"
+  },
+  {
+   "vp": "1280x430",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1440x500",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 60 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least n/a (strip)"
+  },
+  {
+   "vp": "1440x500",
+   "name": "story: a screen too small for the full card shows it as a compact strip, not hidden",
+   "ok": true,
+   "detail": "card up to 60 px, shown in 28 steps"
+  },
+  {
+   "vp": "1440x500",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 60 px tall"
+  },
+  {
+   "vp": "1440x500",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "1440x900",
+   "name": "story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable",
+   "ok": true,
+   "detail": "card up to 323 px, shown in 28 of 30 steps, meet-up plan in 28, meet-up line in 8, card text at least 144 px"
+  },
+  {
+   "vp": "1440x900",
+   "name": "world mode: same layout checks with a Muse picked",
+   "ok": true,
+   "detail": "card 318 px tall"
+  },
+  {
+   "vp": "1440x900",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "sweep 320-420 x 520-700 + edges",
+   "name": "every phone size in the sweep keeps the layout clear, the buttons pressable and the card text readable",
+   "ok": true,
+   "detail": "78 sizes; card text at least 49 px (at 381x531)"
+  },
+  {
+   "vp": "Asia/Seoul",
+   "name": "a row and its evidence show the event's time, and its day, in the viewer's zone",
+   "ok": true,
+   "detail": "02:30 expected 02:30, day 11월 2일"
+  },
+  {
+   "vp": "Asia/Seoul",
+   "name": "the replay clock shows the run's start in the viewer's zone and says \"your time\", not Menlo Park",
+   "ok": true,
+   "detail": "0:00 / 30:00 · 1× · 02:00 your time"
+  },
+  {
+   "vp": "Asia/Seoul",
+   "name": "the time-of-day filter follows the viewer's zone (this part has moments, the other three have none)",
+   "ok": true,
+   "detail": "night: 26 moments; morning: 0, afternoon: 0, evening: 0"
+  },
+  {
+   "vp": "Asia/Seoul",
+   "name": "Feed: events either side of the viewer's midnight get a day heading each (newest day first), none when they share a day",
+   "ok": true,
+   "detail": "11월 2일 | 11월 1일; expected 11월 2일 | 11월 1일"
+  },
+  {
+   "vp": "Asia/Seoul",
+   "name": "Highlights: the same day headings, newest first",
+   "ok": true,
+   "detail": "11월 2일 | 11월 1일; expected 11월 2일 | 11월 1일"
+  },
+  {
+   "vp": "Asia/Seoul",
+   "name": "Highlights: the time-of-day filter counts moments in the viewer's zone",
+   "ok": true,
+   "detail": "got {\"night\":2,\"morning\":0,\"afternoon\":0,\"evening\":1} expected {\"night\":2,\"morning\":0,\"afternoon\":0,\"evening\":1}"
+  },
+  {
+   "vp": "Europe/London",
+   "name": "a row and its evidence show the event's time, and its day, in the viewer's zone",
+   "ok": true,
+   "detail": "17:30 expected 17:30, day 1 Nov"
+  },
+  {
+   "vp": "Europe/London",
+   "name": "the replay clock shows the run's start in the viewer's zone and says \"your time\", not Menlo Park",
+   "ok": true,
+   "detail": "0:00 / 30:00 · 1× · 17:00 your time"
+  },
+  {
+   "vp": "Europe/London",
+   "name": "the time-of-day filter follows the viewer's zone (this part has moments, the other three have none)",
+   "ok": true,
+   "detail": "afternoon: 26 moments; night: 0, morning: 0, evening: 0"
+  },
+  {
+   "vp": "Europe/London",
+   "name": "Feed: events either side of the viewer's midnight get a day heading each (newest day first), none when they share a day",
+   "ok": true,
+   "detail": "no headings; expected none"
+  },
+  {
+   "vp": "Europe/London",
+   "name": "Highlights: the same day headings, newest first",
+   "ok": true,
+   "detail": "no headings; expected none"
+  },
+  {
+   "vp": "Europe/London",
+   "name": "Highlights: the time-of-day filter counts moments in the viewer's zone",
+   "ok": true,
+   "detail": "got {\"night\":0,\"morning\":0,\"afternoon\":3,\"evening\":0} expected {\"night\":0,\"morning\":0,\"afternoon\":3,\"evening\":0}"
+  },
+  {
+   "vp": "America/Los_Angeles",
+   "name": "a row and its evidence show the event's time, and its day, in the viewer's zone",
+   "ok": true,
+   "detail": "09:30 expected 09:30, day Nov 1"
+  },
+  {
+   "vp": "America/Los_Angeles",
+   "name": "the replay clock shows the run's start in the viewer's zone and says \"your time\", not Menlo Park",
+   "ok": true,
+   "detail": "0:00 / 30:00 · 1× · 09:00 your time"
+  },
+  {
+   "vp": "America/Los_Angeles",
+   "name": "the time-of-day filter follows the viewer's zone (this part has moments, the other three have none)",
+   "ok": true,
+   "detail": "morning: 26 moments; night: 0, afternoon: 0, evening: 0"
+  },
+  {
+   "vp": "America/Los_Angeles",
+   "name": "Feed: events either side of the viewer's midnight get a day heading each (newest day first), none when they share a day",
+   "ok": true,
+   "detail": "no headings; expected none"
+  },
+  {
+   "vp": "America/Los_Angeles",
+   "name": "Highlights: the same day headings, newest first",
+   "ok": true,
+   "detail": "no headings; expected none"
+  },
+  {
+   "vp": "America/Los_Angeles",
+   "name": "Highlights: the time-of-day filter counts moments in the viewer's zone",
+   "ok": true,
+   "detail": "got {\"night\":0,\"morning\":3,\"afternoon\":0,\"evening\":0} expected {\"night\":0,\"morning\":3,\"afternoon\":0,\"evening\":0}"
+  }
+ ]
+}
