@@ -104,9 +104,14 @@ export class ConnectedHost {
   }
 
   // ----- MCP -----
-  async mcp(keyHash: string, method: string, params: unknown, _isNotification: boolean): Promise<McpOutcome> {
+  /** Key check only (active, not revoked): no last-use, no connected flag. The transport asks before it refuses a message it will not dispatch. */
+  authenticate(keyHash: string) { return this.keys.findActive(keyHash) !== null; }
+
+  async mcp(keyHash: string, method: string, params: unknown, isNotification: boolean): Promise<McpOutcome> {
     const key = this.keys.findActive(keyHash);
     if (!key) return {status: 'unauthorized'};
+    // A message without an id runs nothing but notifications (the transport already answers 400; this is the second fence).
+    if (isNotification && method && !method.startsWith('notifications/')) return {status: 'ok', error: {code: -32600, message: 'Invalid Request: only notifications may omit the id'}};
     const now = this.now();
     this.keys.touch(key.id, now);
     // A revoked Muse may still read, but its calls do not change the world (not even the connected flag).

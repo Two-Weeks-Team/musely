@@ -116,6 +116,7 @@ export class WorldDO extends DurableObject<Env> {
   worldHighlights(limit: number) { return this.runtime.highlights(Math.min(300, Math.max(1, limit))); }
   // Connected Muse (direction v2, 7.2, 12.3, 13.1): MCP dispatch, agent keys, owner location, notifications.
   mcp(keyHash: string, method: string, params: unknown, isNotification: boolean) { return this.connected.mcp(keyHash, method, params, isNotification); }
+  mcpAuth(keyHash: string) { return this.connected.authenticate(keyHash); }
   issueAgentKey(muse: string) { return this.connected.issueKey(muse); }
   listAgentKeys(muse: string) { return this.connected.listKeys(muse); }
   agentKeyMuse(id: string) { return this.connected.keyMuse(id); }
