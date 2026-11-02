@@ -90,3 +90,10 @@ The alarm test imports the actual WorldDO and uses the same test-only `cloudflar
 References checked for the test Worker/config tooling: [Cloudflare Workers best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/), [versions and deployments](https://developers.cloudflare.com/workers/versions-and-deployments/), installed Wrangler4.154.0 schema/CLI and retrieved workers-types5.20261102.1. No production runtime API is added.
 
 Account isolation requires the operator-attested account subdomain (verified against the configured account using the read-only Workers subdomain API). Both dedicated origins must use it, and product/stub Worker names must differ. Observation termination uses the last recorded sample, not a round finishing after the deadline; run summaries must have a valid matching world and required versions, counters and snapshot hashes.
+
+
+### Source-clean scope correction — PR104, 2026-11-02
+
+`sourcePath` may identify the attested repository root or its `app/` directory. Every CLI observation round now obtains HEAD and dirty state through `gitSourceState` in `scripts/lib/resilience-io.mjs`. Git status uses `--porcelain --untracked-files=all -- :(top)app/`, so the scope is always the repository-root **entire app/**, including Git-visible tracked and untracked changes. Ignored files are not covered by this Git-status predicate. It must not become `app/app/` when the command cwd is app. The deployed configuration read/hash and served HTML/deployment pin checks remain independent and unchanged.
+
+This source-clean check does **not** attest repository-wide cleanliness, safety of paths outside app, deployment provenance or actual resilience. Real temporary-Git regressions cover tracked `app/worker/index.ts` changes and untracked app worker files from both root and app cwd. These are local filesystem tests, not an actual production observation, isolated fault deployment or four-hour wall-clock run. Earlier local/isolated/operating-demo evidence retains its original environment and limitations.

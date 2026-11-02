@@ -1,4 +1,7 @@
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
 import {createHash} from 'node:crypto';
+const exec=promisify(execFile);
 export const sha256 = value => createHash('sha256').update(value).digest('hex');
 /** GET only, no cookies/credentials, no redirects; bound both headers and streamed body by one deadline. */
 export async function observeGet(url, {fetcher=fetch, timeoutMs=12000, maxBytes=2*1024*1024}={}) {
@@ -18,4 +21,14 @@ export function currentDeployment(rows) {
   const row=[...rows].sort((a,b)=>String(a.created_on).localeCompare(String(b.created_on))).at(-1);
   if(!row?.id || !Array.isArray(row.versions) || row.versions.length!==1 || row.versions[0].percentage!==100 || !row.versions[0].version_id)throw Error('mixed_or_unknown_deployment');
   return {deployId:row.id,versionIds:row.versions.map(v=>v.version_id),createdAt:row.created_on};
+}
+
+/** Read the pinned HEAD and repository-root app/ dirty state from any Git cwd; never emit raw Git filenames. */
+export async function gitSourceState(sourcePath) {
+  const options={cwd:sourcePath,timeout:10000,maxBuffer:1024*1024};
+  const [head,dirty]=await Promise.all([
+    exec('git',['rev-parse','HEAD'],options),
+    exec('git',['status','--porcelain','--untracked-files=all','--',':(top)app/'],options),
+  ]);
+  return {sourceSha:head.stdout.trim(),sourceClean:!dirty.stdout.trim()};
 }

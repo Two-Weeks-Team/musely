@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {Continuity,validatePin,FOUR_HOURS_MS} from './lib/resilience-monitor.mjs';
-import {observeGet,currentDeployment,sha256} from './lib/resilience-io.mjs';
+import {observeGet,currentDeployment,sha256,gitSourceState} from './lib/resilience-io.mjs';
 const exec=promisify(execFile),app=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const args=process.argv.slice(2),arg=k=>args[args.indexOf(k)+1];
 if(!args.includes('--run') || !args.includes('--pin') || !args.includes('--out')) {
@@ -29,16 +29,16 @@ async function round() {
   const at=Date.now(),monoMs=performance.now()-start,index=tracker.samples,raw={at,monoMs,requests:[]};let s={at,monoMs};
   try {
     const results=await Promise.allSettled([
-      identity(),exec('git',['rev-parse','HEAD'],{cwd:source,timeout:10000}),exec('git',['status','--porcelain','--untracked-files=all','--','app/'],{cwd:source,timeout:10000}),readFile(config),
+      identity(),gitSourceState(source),readFile(config),
       Promise.all(['/', '/api/status','/api/world','/api/world/run','/api/world/events?tail=100'].map(async path=>{const url=new URL(path,pin.baseUrl).href,startedAt=Date.now();try{const r=await observeGet(url,{maxBytes:path==='/'?16*1024*1024:2*1024*1024});raw.requests.push(r);return r;}catch(e){const r={url,method:'GET',startedAt,endedAt:Date.now(),error:e.message};raw.requests.push(r);return r;}})),
     ]);
     const failed=results.find(r=>r.status==='rejected');if(failed)throw failed.reason;
-    const [deployment,head,dirty,cfg,requests]=results.map(r=>r.value);
+    const [deployment,sourceState,cfg,requests]=results.map(r=>r.value);
     raw.identity=deployment;
     if(requests.some(r=>r.error))throw Error(requests.find(r=>r.error).error);
     if(requests.some(r=>r.status!==200))throw Error('http_failure');
     const [,status,world,run,events]=requests;
-    s={...s,identity:deployment,sourceSha:head.stdout.trim(),sourceClean:!dirty.stdout.trim(),configSha256:sha256(cfg),htmlSha256:requests[0].sha256,status:JSON.parse(status.body),world:JSON.parse(world.body),run:JSON.parse(run.body),events:JSON.parse(events.body)};
+    s={...s,identity:deployment,...sourceState,configSha256:sha256(cfg),htmlSha256:requests[0].sha256,status:JSON.parse(status.body),world:JSON.parse(world.body),run:JSON.parse(run.body),events:JSON.parse(events.body)};
   } catch(e) {s.error=['request_timeout','response_too_large','deployment_observation_failed','http_failure'].includes(e.message)?e.message:'observation_failed';}
   const verdict=tracker.observe(s);
   await writeFile(join(out,`raw-${String(index).padStart(5,'0')}.json`),JSON.stringify(raw)+'\n',{flag:'wx'});

@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {Continuity, validatePin} from './lib/resilience-monitor.mjs';
-import {observeGet,currentDeployment} from './lib/resilience-io.mjs';
+import {observeGet,currentDeployment,gitSourceState} from './lib/resilience-io.mjs';
 const HOUR = 3600000;
 const pin = {issueId: 63, environment: 'production-read-only', releaseSha: 'a'.repeat(40), deployId: 'deployment-1', versionIds: ['version-1'], configVersion: 'config-1', configSha256: 'b'.repeat(64), htmlSha256: 'c'.repeat(64), workerName: 'musely', baseUrl: 'https://musely.net', operatorAttested: true};
 const sample = (monoMs, extra = {}) => ({monoMs, at: 1800000000000 + monoMs, identity: {deployId: pin.deployId, versionIds: pin.versionIds}, sourceSha: pin.releaseSha, sourceClean: true, configSha256: pin.configSha256, htmlSha256: pin.htmlSha256, world: {worldId: 'w', day: '2026-11-02', tick: monoMs / 60000, version: monoMs / 60000, lastTickAt: 1800000000000 + monoMs}, status: {model: {id:'muse-spark-1.3',connected: true, live: true}, budget: {day:'2026-11-02',capUsd:12,spentUsd:0,reservedUsd:0,liveCalls:0,remainingUsd:12}}, run: {runId:'r',worldId:'w',schemaVersion:'run-log-2',engineVersion:'engine-2',harnessVersion:'harness-test',catalogVersion:'catalog-test',seed:'w:2026-11-02',startedAt:1800000000000,initialSnapshot:{hash:'d'.repeat(64),bytes:100},inputs:{count:0,lastSeq:0,lastAt:null},events:0,stateHash:'e'.repeat(64)}, events: [], ...extra});
@@ -71,4 +71,22 @@ test('a round finishing after the deadline still needs a sample at the boundary'
 test('run input counters agree without assuming run-local global sequence numbers',()=>{
  const base=sample(0).run;for(const inputs of [{count:0,lastSeq:42,lastAt:1800000000001},{count:0,lastSeq:0,lastAt:1800000000001},{count:1,lastSeq:0,lastAt:1800000000001},{count:43,lastSeq:42,lastAt:1800000000001},{count:1,lastSeq:42,lastAt:null}])assert.ok(new Continuity(pin).observe(sample(0,{run:{...base,inputs}})).issues.includes('invalid_response'));
  assert.deepEqual(new Continuity(pin).observe(sample(0,{run:{...base,inputs:{count:1,lastSeq:42,lastAt:1800000000000}}})).issues,[]);
+});
+
+// Real Git repositories, not a mocked status command: cwd must never narrow the intended app scope.
+import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+const execGit=promisify(execFile);
+for(const cwdName of ['root','app'])for(const change of ['tracked','untracked'])test(`git source state detects ${change} app edits from ${cwdName} cwd`,async t=>{
+ const root=await mkdtemp(join(tmpdir(),'d03-source-state-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ await mkdir(join(root,'app','worker'),{recursive:true});await writeFile(join(root,'app','worker','index.ts'),'// initial fixture\n');
+ const git=(...args)=>execGit('git',args,{cwd:root,timeout:10000});
+ await git('init','--quiet');await git('add','app/worker/index.ts');await git('-c','user.name=Fixture','-c','user.email=fixture@example.invalid','-c','core.hooksPath=/dev/null','commit','--quiet','-m','fixture');
+ const cwd=cwdName==='root'?root:join(root,'app'),initial=await gitSourceState(cwd),head=(await git('rev-parse','HEAD')).stdout.trim();
+ assert.deepEqual(initial,{sourceSha:head,sourceClean:true});
+ await writeFile(join(root,'app','worker',change==='tracked'?'index.ts':'untracked.ts'),'// changed fixture\n');
+ assert.deepEqual(await gitSourceState(cwd),{sourceSha:head,sourceClean:false});
 });
