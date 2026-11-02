@@ -60,7 +60,7 @@ test('fixture is a scoped, ordered scenario with catalog ids and genuine recorde
   const required = {spotlight: 3, depart: 2, arrive: 2, beat: 2, encounter: 4, cards_verified: 2, a2a_verified: 1, a2a_refused: 1, impostor_rejected: 1, injection_blocked: 1, decision_rejected: 1, approval_requested: 1, meetup_candidate: 1, trade_proposed: 1, trade_completed: 1, discover: 1};
   for (const [kind, count] of Object.entries(required)) assert.ok(run.events.filter(e => e.kind === kind).length >= count, kind);
   const enc = run.events.filter(e => e.kind === 'encounter'); assert.equal(enc.filter(e => e.data.initiatedByIntent === true).length, 2); assert.equal(enc.filter(e => e.data.initiatedByIntent === false).length, 1); assert.equal(enc.filter(e => !('initiatedByIntent' in e.data)).length, 1);
-  assert.ok(enc.some(e => e.data.actorOrigin === 'muse')); assert.ok(enc.some(e => e.data.actorOrigin === 'person'));
+  assert.ok(enc.some(e => e.data.actorOrigin === 'system')); assert.ok(enc.some(e => e.data.actorOrigin === 'connected')); // C03 values
   const trade = run.events.find(e => e.kind === 'trade_completed'); assert.ok(trade.tags.includes('ability_change')); assert.notEqual(trade.data.beforeHash, trade.data.afterHash);
   const discovery = run.events.find(e => e.kind === 'discover'); assert.ok(discovery.tags.includes('ability_change')); assert.equal(discovery.data.beforeHash, undefined);
   assert.equal(run.events.find(e => e.kind === 'meetup_candidate').data.requestId, run.events.find(e => e.kind === 'approval_requested').data.requestId);

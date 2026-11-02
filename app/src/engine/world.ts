@@ -296,7 +296,8 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       if (gate && !gate.ok) { if (gate.event) emit(gate.event); continue; }
       a.lastMet[b.id] = b.lastMet[a.id] = now;
       const meeting = encounterId(s, a.id, b.id);
-      emit({at: now, source: 'rule', kind: 'encounter', muse: initiator.id, other: other.id, place: placeId, data: {encounterId: meeting, initiatedByIntent: !!initiator.intent, stage: 'recognize'}, tags: []});
+      // C03/C09: who started the meeting: a connected Muse (its owner's runtime set the intent) or a world resident (system).
+      emit({at: now, source: 'rule', kind: 'encounter', muse: initiator.id, other: other.id, place: placeId, data: {encounterId: meeting, initiatedByIntent: !!initiator.intent, actorOrigin: isConnected(s.inbox, initiator.id, now) ? 'connected' : 'system', stage: 'recognize'}, tags: []});
       if (gate?.event) emit(gate.event);
       for (const e of hooks.onEncounter?.(s, initiator, other, placeById(placeId), rngFor(s.seed, s.tick, initiator.id, other.id, 'meet'), now) ?? []) emit(e);
       // The other Muse answers (8.3). A connected Muse answers from its owner's runtime, so nothing is said for it here.

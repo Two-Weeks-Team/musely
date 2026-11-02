@@ -173,7 +173,7 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
   if (!exec) {
     // Revoked before any custodial delegation existed: nothing may sign for this Muse; refuse without an envelope.
     c.runtime.commitRefusal(at, `mcp-${tool.name}-revoked-${Math.random().toString(36).slice(2, 10)}`, `${c.trust.agentByMuse(me)?.agentId ?? me}>${recipient}:delegation_revoked:delegation`, (st, emit) => {
-      emit(tagLocation(st.owner, {at, source: 'live', kind: 'a2a_refused', muse: me, other: recipientMuse, line: 'Refused: delegation revoked', data: {step: 'delegation', reason: 'delegation_revoked', actor: 'your Muse', tool: tool.name, key_id: c.key.id, envelope: null, content}, tags: ['p0_refused']}));
+      emit(tagLocation(st.owner, {at, source: 'live', kind: 'a2a_refused', muse: me, other: recipientMuse, line: 'Refused: delegation revoked', data: {step: 'delegation', reason: 'delegation_revoked', actor: 'your Muse', actorOrigin: 'connected', tool: tool.name, key_id: c.key.id, envelope: null, content}, tags: ['p0_refused']}));
       notifyOwner(inboxOf(st), {kind: 'blocked', at, line: `Blocked: your Muse's ${tool.name.replace(/_/g, ' ')} was refused (delegation revoked)`, ref: null, other: recipientMuse, muse: me});
     });
     return refused('delegation_revoked', {step: 'delegation', retryable: false, envelope: null, command: {command_id: opts.commandId ?? null, expected_version: opts.expectedVersion ?? null, world_version: c.runtime.state().version, duplicate: false}});
@@ -186,7 +186,7 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
     counterparty: peer ? () => peerCheck(c, peer.museId, at) : undefined,
     apply: (st, emit, at2) => {
       const tag = (e: Omit<WorldEvent, 'id' | 'tick'>) => emit(tagLocation(st.owner, e));
-      const live: Emit = e => tag({...e, source: 'live', data: {...(e.data ?? {}), actor: 'your Muse', tool: tool.name, key_id: c.key.id, envelope}});
+      const live: Emit = e => tag({...e, source: 'live', data: {...(e.data ?? {}), actor: 'your Muse', actorOrigin: 'connected', tool: tool.name, key_id: c.key.id, envelope}});
       // A resident's rule answer inside this commit: source rule, with the signed command it committed under.
       const rule: Emit = e => tag({...e, source: 'rule', data: {...(e.data ?? {}), envelope}});
       // World upkeep run before the tool (pass expiry) is not an answer to this command: rule, without the envelope.
@@ -204,7 +204,7 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
     },
     refused: (st, emit, r, at2) => {
       const envelopeFailure = !quietRefusal(r.code);
-      emit(tagLocation(st.owner, {at: at2, source: 'live', kind: envelopeFailure ? 'a2a_refused' : 'command_refused', muse: me, other: recipientMuse, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, content, actor: 'your Muse', tool: tool.name, key_id: c.key.id, envelope, command_id: cmd.commandId}, tags: envelopeFailure ? ['p0_refused'] : []}));
+      emit(tagLocation(st.owner, {at: at2, source: 'live', kind: envelopeFailure ? 'a2a_refused' : 'command_refused', muse: me, other: recipientMuse, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, content, actor: 'your Muse', actorOrigin: 'connected', tool: tool.name, key_id: c.key.id, envelope, command_id: cmd.commandId}, tags: envelopeFailure ? ['p0_refused'] : []}));
       if (envelopeFailure) notifyOwner(inboxOf(st), {kind: 'blocked', at: at2, line: `Blocked: your Muse's ${tool.name.replace(/_/g, ' ')} was refused (${r.code.replace(/_/g, ' ')})`, ref: envelope.message_id, other: recipientMuse, muse: me});
     },
   }, at);

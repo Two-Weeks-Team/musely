@@ -16,10 +16,13 @@ test('empty sample has six unmeasured rows and transparent scope', () => {
 });
 
 test('starts use intent / all meetings, with observed actor origins and missing coverage', () => {
-  const events = [event('1', 'encounter', {initiatedByIntent: true, actorOrigin: 'muse'}), event('2', 'encounter', {initiatedByIntent: true, actorOrigin: 'muse'}), event('3', 'encounter', {initiatedByIntent: false, actorOrigin: 'person'}), event('4', 'encounter')];
+  // C03 actor origins: system (world residents), connected (a person's own Muse), trial (a visitor).
+  const events = [event('1', 'encounter', {initiatedByIntent: true, actorOrigin: 'system'}), event('2', 'encounter', {initiatedByIntent: true, actorOrigin: 'system'}), event('3', 'encounter', {initiatedByIntent: false, actorOrigin: 'connected'}), event('4', 'encounter')];
   const r = row(events, 'starts');
   assert.equal(r.value, '50%'); assert.equal(r.sample, 'n=4 meetings');
-  assert.match(r.note, /muse: 2/); assert.match(r.note, /person: 1/); assert.match(r.note, /1.*not recorded/);
+  assert.match(r.note, /system: 2 \(2 by intent\)/); assert.match(r.note, /connected: 1 \(0 by intent\)/); assert.match(r.note, /trial: 0/); assert.match(r.note, /1 without origin/); assert.match(r.note, /1.*not recorded/);
+  // The old non-contract values are not origins: they count as unrecorded.
+  assert.match(row([event('1', 'encounter', {initiatedByIntent: true, actorOrigin: 'muse'})], 'starts').note, /Actor origins not recorded/);
   assert.equal(row([event('1', 'encounter')], 'starts').value, 'Not measured');
   assert.match(row([event('1', 'encounter')], 'starts').note, /origin of each start is not recorded/);
   assert.equal(row([event('1', 'encounter', {initiatedByIntent: false})], 'starts').value, '0%');

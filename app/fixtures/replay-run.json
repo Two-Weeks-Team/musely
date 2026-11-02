@@ -91,7 +91,7 @@
       "place": "commons:cafe",
       "data": {
         "initiatedByIntent": true,
-        "actorOrigin": "muse"
+        "actorOrigin": "system"
       },
       "tags": [],
       "fixture": true,
@@ -240,7 +240,7 @@
       "place": "commons:campfire",
       "data": {
         "initiatedByIntent": false,
-        "actorOrigin": "person"
+        "actorOrigin": "connected"
       },
       "tags": [],
       "fixture": true,
@@ -380,7 +380,7 @@
       "place": "osm:way/30118918",
       "data": {
         "initiatedByIntent": true,
-        "actorOrigin": "muse"
+        "actorOrigin": "system"
       },
       "tags": [],
       "fixture": true,

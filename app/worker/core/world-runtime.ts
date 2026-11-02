@@ -12,6 +12,9 @@
 //   agree unless the world moved; answers that no longer apply are logged as discarded.
 // - Concurrency (C05): at most MAX_MODEL_CALLS model calls run at once per world. A call that finds no free slot
 //   falls back at once (never waits); every slot is released in a finally block.
+// - Run log (8.6, C08, I-10): every commit appends its inputs (model outputs, command payloads, approvals) with the
+//   public state hash before and after to run-log.ts, inside the same transaction; each event row names its run and
+//   input row. Reads of the log (highlight pages, period samples, one event with its commit) are below.
 import {createWorld, tick, spotlightFor, spotlightInput, encounterInput, requestSpotlight, TICK_MS, type WorldState, type WorldEvent, type Decision, type EncounterReply, type Hooks} from '../../src/engine/world.ts';
 import {validate, buildMessages, maxCostUsd, actualCostUsd, failureCostUsd, checkOutput} from './actions.ts';
 import {callModel, type ModelConfig} from './model.ts';
@@ -19,6 +22,8 @@ import {replayFor} from './replay.ts';
 import {isConnected} from '../../src/engine/inbox.ts';
 import {COMMANDS_TABLE, type CommandResult} from './commands.ts';
 import type {Ledger, Sql} from './ledger.ts';
+import {RunLog, evidenceIds, redact, type InputKind} from './run-log.ts';
+import {recountAutonomy, values} from './autonomy-oracle.ts';
 
 /** The world's SQL handle plus the Durable Object storage transaction (ctx.storage.transactionSync). */
 export type TxSql = Sql & {transactionSync<T>(fn: () => T): T};
@@ -54,6 +59,11 @@ export type RuntimeOptions = {
   meetingGate: ((s: WorldState, now: number) => Promise<NonNullable<Hooks['canMeet']>>) | 'off';
 };
 type Emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => void;
+/** A stored event: its log position, run and the input row that committed it (null for events before the run log). */
+export type LoggedEvent = WorldEvent & {seq: number; runId: string | null; inputSeq: number | null};
+const EV_COLS = 'seq, id, tick, at, source, kind, muse, other, place, line, data, tags, run_id AS runId, input_seq AS inputSeq';
+/** Largest server-side autonomy sample (a world day is about 15,000 events). */
+export const AUTONOMY_SAMPLE_MAX = 60_000;
 export type CommandRow = {payloadHash: string; result: CommandResult; output: unknown};
 export type HeartbeatResult = {status: 'committed' | 'skipped_duplicate' | 'skipped_early'; tick: number; events: number; spotlight?: {muse: string; source: string; reason?: string}; replies?: {live: number; rule: number}};
 
@@ -81,7 +91,9 @@ export class WorldRuntime {
     let held = true;
     return () => { if (held) { held = false; this.slotsInUse -= 1; } };
   }
-  constructor(sql: TxSql, opts: RuntimeOptions) { this.sql = sql; this.opts = opts; }
+  /** The versioned run record and the ordered inputs of every commit (run-log.ts). */
+  readonly runLog: RunLog;
+  constructor(sql: TxSql, opts: RuntimeOptions) { this.sql = sql; this.opts = opts; this.runLog = new RunLog(sql, opts.worldId); }
   get worldId() { return this.opts.worldId; }
 
   init(now: number) {
@@ -95,13 +107,22 @@ export class WorldRuntime {
     this.sql.exec('CREATE INDEX IF NOT EXISTS events_kind_at ON events (kind, at)');
     this.sql.exec(COMMANDS_TABLE);
     this.sql.exec('CREATE TABLE IF NOT EXISTS refusals (key TEXT PRIMARY KEY, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, count INTEGER NOT NULL)');
-    if (!this.sql.exec('SELECT id FROM world WHERE id = 1').toArray().length) {
+    this.runLog.init();
+    const existed = this.sql.exec('SELECT id FROM world WHERE id = 1').toArray().length > 0;
+    if (!existed) {
       const s = createWorld(this.opts.worldId, now);
       this.sql.exec('INSERT INTO world (id, state, version) VALUES (1, ?, ?)', JSON.stringify(s), s.version);
     }
+    // A new world, the first start of a world stored before the run log, or new code versions: the run record says which.
+    this.runLog.open(this.state(), now, existed);
   }
 
-  state(): WorldState { return JSON.parse(String(this.sql.exec('SELECT state FROM world WHERE id = 1').toArray()[0].state)); }
+  private raw() { return String(this.sql.exec('SELECT state FROM world WHERE id = 1').toArray()[0].state); }
+  state(): WorldState { return JSON.parse(this.raw()); }
+  /** Inserts a commit's events with their run and input row (C08); a repeated id is ignored (the log keeps the first). */
+  private insertEvents(events: WorldEvent[], ref: {runId: string; seq: number} | null) {
+    for (const e of events) this.sql.exec('INSERT OR IGNORE INTO events (id, tick, at, source, kind, muse, other, place, line, data, tags, run_id, input_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', e.id, e.tick, e.at, e.source, e.kind, e.muse, e.other ?? null, e.place ?? null, e.line ?? null, JSON.stringify(e.data ?? {}), JSON.stringify(e.tags), ref?.runId ?? null, ref?.seq ?? null);
+  }
 
   /** One heartbeat. Safe to call again after a crash or an alarm retry. */
   async heartbeat(now: number): Promise<HeartbeatResult> {
@@ -119,7 +140,7 @@ export class WorldRuntime {
       this.opts.beforeCommit?.();
       // Commit point: everything below is synchronous and one storage transaction.
       return this.sql.transactionSync(() => {
-      const current = this.state();
+      const raw = this.raw(), current: WorldState = JSON.parse(raw);
       if (current.tick !== before.tick || current.day !== before.day || this.sql.exec('SELECT 1 FROM ticks WHERE day = ? AND tick = ?', before.day, before.tick).toArray().length) return {status: 'skipped_duplicate', tick: before.tick, events: 0};
       let usable = decision;
       const late: Omit<WorldEvent, 'id' | 'tick'>[] = [];
@@ -146,7 +167,15 @@ export class WorldRuntime {
       if (!usable && info.reason) all.push({at: now, source: info.source as WorldEvent['source'], kind: 'spotlight_fallback', muse: spot.muse, data: {reason: info.reason}, tags: [], id: `${current.day}:${current.tick}:fallback`, tick: current.tick});
       this.sql.exec('UPDATE world SET state = ?, version = ? WHERE id = 1', JSON.stringify(state), state.version);
       this.sql.exec('INSERT INTO ticks (day, tick, committed_at, spotlight) VALUES (?, ?, ?, ?)', current.day, current.tick, now, JSON.stringify({muse: turn.muse, priority: turn.priority, ...info}));
-      for (const e of all) this.sql.exec('INSERT OR IGNORE INTO events (id, tick, at, source, kind, muse, other, place, line, data, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', e.id, e.tick, e.at, e.source, e.kind, e.muse, e.other ?? null, e.place ?? null, e.line ?? null, JSON.stringify(e.data ?? {}), JSON.stringify(e.tags));
+      // The tick's recorded inputs (8.1: not reproducible from the seed): the spotlight answer, used or discarded, and
+      // every meeting answer with its source; ids of the model calls, never the prompt.
+      const tickInput = {
+        seed: state.seed, gate: canMeet ? 'checked' : 'off',
+        spotlight: {muse: turn.muse, priority: turn.priority, source: info.source, reason: info.reason ?? null, freedom: spot.freedom, used: !!usable, discarded: decision && lost ? lost : null,
+          decision: decision ? {source: decision.source, freedom: decision.freedom, output: redact(decision.output), evidence: evidenceIds(decision.evidence)} : null},
+        replies: answers.map(r => ({muse: r.muse, other: r.other, encounterId: r.encounterId, source: r.source, reason: r.reason ?? null, output: r.output ? redact(r.output) : null, evidence: evidenceIds(r.evidence), used: r.source === 'rule' || (replies.find(x => x.encounterId === r.encounterId && x.muse === r.muse)?.source !== 'rule' && answered.has(`${r.encounterId}>${r.muse}`))})),
+      };
+      this.insertEvents(all, this.runLog.commit({at: now, kind: 'tick', label: `${current.day}:${current.tick}`, beforeRaw: raw, before: current, after: state, changed: true, events: all, input: tickInput}));
       const said = all.filter(e => e.kind === 'encounter_reply');
       return {status: 'committed' as const, tick: current.tick, events: all.length, spotlight: {muse: turn.muse, priority: turn.priority, ...info}, replies: {live: said.filter(e => e.source === 'live').length, rule: said.filter(e => e.source === 'rule').length}};
       });
@@ -201,7 +230,7 @@ export class WorldRuntime {
       for (const e of this.closedRepeats.splice(0)) emit(e);
       if (!fresh && dedup) return;
       mutate(st, e => emit({...e, data: {...(e.data ?? {}), dedup_key: key}}));
-    }, () => false).events;
+    }, () => false, 'refusal', () => ({key})).events;
   }
   refusalCount(key: string) { return Number(this.sql.exec('SELECT count FROM refusals WHERE key = ?', key).toArray()[0]?.count ?? 0); }
 
@@ -326,7 +355,7 @@ export class WorldRuntime {
       box.out = {ok: true, muse: museId, position: r.position, already: false, eventIds: []};
       emit({at: now, source: 'live', kind: 'spotlight_requested', muse: museId, line: null, data: {origin: by.origin, actorOrigin: by.origin === 'connected' ? 'connected' : 'trial', requester: by.requester, position: r.position}, tags: []});
       // The version does not move: the queue changes no command's validity, so a plan made against it stays current.
-    }, () => false);
+    }, () => false, 'external', () => ({spotlightRequest: {muse: museId, origin: by.origin}}));
     const out = box.out;
     return out.ok && !out.already ? {...out, eventIds: done.events.map(e => e.id)} : out;
   }
@@ -336,22 +365,25 @@ export class WorldRuntime {
    * synchronously on the current state, then state, version and events are written together.
    */
   commitExternal(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void) {
-    return this.commit(now, label, mutate, () => true).events;
+    return this.commit(now, label, mutate, () => true, 'external').events;
   }
   /**
    * Command commit point (C03), one transaction: `guard` runs first (stored-row re-check, nonce claim) and
    * may abort with a code before anything is written; then the mutation, the version (a refused rule bumps it
    * only when the state really changed), the events and the stored result row.
    */
-  commitCommand(now: number, label: string, c: {guard: () => string | null; mutate: (s: WorldState, emit: Emit) => {ok: boolean}; record: (version: number, events: WorldEvent[]) => {actorId: string; commandId: string; action: string; row: CommandRow}}): {aborted: string} | {aborted: null; events: WorldEvent[]; row: CommandRow} {
+  commitCommand(now: number, label: string, c: {guard: () => string | null; mutate: (s: WorldState, emit: Emit) => {ok: boolean}; record: (version: number, events: WorldEvent[]) => {actorId: string; commandId: string; action: string; payload?: unknown; row: CommandRow}}): {aborted: string} | {aborted: null; events: WorldEvent[]; row: CommandRow} {
     return this.sql.transactionSync(() => {
       const aborted = c.guard();
       if (aborted) return {aborted};
-      let ok = false, row: CommandRow | null = null;
-      const done = this.write(now, label, (s, emit) => { ok = synchronous(c.mutate(s, emit)).ok; }, changed => ok || changed, (s, events) => {
+      let ok = false, row: CommandRow | null = null, input: Record<string, unknown> | null = null;
+      const done = this.write(now, label, (s, emit) => { ok = synchronous(c.mutate(s, emit)).ok; }, changed => ok || changed, 'command', () => input, (s, events) => {
         const rec = c.record(s.version, events);
         this.sql.exec('INSERT INTO commands (actor_id, command_id, payload_hash, action, result, output, at) VALUES (?, ?, ?, ?, ?, ?, ?)', rec.actorId, rec.commandId, rec.row.payloadHash, rec.action, JSON.stringify(rec.row.result), JSON.stringify(rec.row.output ?? null), now);
         row = rec.row;
+        // The command as an ordered input (C08): who, which id and action, the redacted payload (approvals and answers
+        // are commands) and its result. The signed envelope stays in the events' evidence.
+        input = {actorId: rec.actorId, commandId: rec.commandId, action: rec.action, payloadHash: rec.row.payloadHash, payload: redact(rec.payload ?? null), ok: rec.row.result.ok, code: rec.row.result.error?.code ?? null, worldVersion: rec.row.result.worldVersion};
       });
       return {aborted: null, events: done.events, row: row!};
     });
@@ -361,45 +393,68 @@ export class WorldRuntime {
     return r ? {payloadHash: String(r.payload_hash), result: JSON.parse(String(r.result)), output: JSON.parse(String(r.output))} : null;
   }
 
-  private commit(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void, bump: (changed: boolean) => boolean) {
-    return this.sql.transactionSync(() => this.write(now, label, mutate, bump));
+  private commit(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void, bump: (changed: boolean) => boolean, kind: InputKind, input?: () => Record<string, unknown> | null) {
+    return this.sql.transactionSync(() => this.write(now, label, mutate, bump, kind, input));
   }
-  /** The body of a commit; callers hold the transaction (never nested). */
-  private write(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void, bump: (changed: boolean) => boolean, after?: (s: WorldState, events: WorldEvent[]) => void) {
-    const raw = String(this.sql.exec('SELECT state FROM world WHERE id = 1').toArray()[0].state);
+  /** The body of a commit; callers hold the transaction (never nested). `after` runs before the run-log row is written. */
+  private write(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void, bump: (changed: boolean) => boolean, kind: InputKind, input?: () => Record<string, unknown> | null, after?: (s: WorldState, events: WorldEvent[]) => void) {
+    const raw = this.raw();
     const s: WorldState = JSON.parse(raw), out: WorldEvent[] = [];
     let n = 0;
     synchronous(mutate(s, e => out.push({...e, id: `${s.day}:${s.tick}:${label}:${now}:${n++}`, tick: s.tick})) as unknown);
     const changed = JSON.stringify(s) !== raw, bumped = bump(changed);
     if (bumped) s.version += 1;
     if (changed || bumped) this.sql.exec('UPDATE world SET state = ?, version = ? WHERE id = 1', JSON.stringify(s), s.version);
-    for (const e of out) this.sql.exec('INSERT OR IGNORE INTO events (id, tick, at, source, kind, muse, other, place, line, data, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', e.id, e.tick, e.at, e.source, e.kind, e.muse, e.other ?? null, e.place ?? null, e.line ?? null, JSON.stringify(e.data ?? {}), JSON.stringify(e.tags));
     after?.(s, out);
+    this.insertEvents(out, this.runLog.commit({at: now, kind, label, beforeRaw: raw, before: JSON.parse(raw), after: s, changed: changed || bumped, events: out, input: input?.() ?? null}));
     return {state: s, events: out};
   }
 
   /** Events after `sinceSeq` in order; with `day` only that world day (ids start with the day); with `tail` the newest N. */
   events(sinceSeq = 0, limit = 200, opts: {day?: string; tail?: number} = {}) {
-    if (opts.tail) {
-      return this.sql.exec('SELECT seq, id, tick, at, source, kind, muse, other, place, line, data, tags FROM events ORDER BY seq DESC LIMIT ?', Math.min(500, opts.tail)).toArray().reverse()
-        .map(r => ({...r, data: JSON.parse(String(r.data)), tags: JSON.parse(String(r.tags))}) as WorldEvent & {seq: number});
-    }
+    if (opts.tail) return this.rows(`SELECT ${EV_COLS} FROM events ORDER BY seq DESC LIMIT ?`, Math.min(500, opts.tail)).reverse();
     const day = opts.day && /^\d{4}-\d{2}-\d{2}$/.test(opts.day) ? opts.day + ':%' : '%';
-    return this.sql.exec('SELECT seq, id, tick, at, source, kind, muse, other, place, line, data, tags FROM events WHERE seq > ? AND id LIKE ? ORDER BY seq LIMIT ?', sinceSeq, day, limit).toArray()
-      .map(r => ({...r, data: JSON.parse(String(r.data)), tags: JSON.parse(String(r.tags))}) as WorldEvent & {seq: number});
+    return this.rows(`SELECT ${EV_COLS} FROM events WHERE seq > ? AND id LIKE ? ORDER BY seq LIMIT ?`, sinceSeq, day, limit);
   }
-  eventsOfKind(tick: number, kind: string) {
-    return this.sql.exec('SELECT seq, id, tick, at, source, kind, muse, other, place, line, data, tags FROM events WHERE tick = ? AND kind = ? ORDER BY seq', tick, kind).toArray()
-      .map(r => ({...r, data: JSON.parse(String(r.data)), tags: JSON.parse(String(r.tags))}) as WorldEvent & {seq: number});
+  private rows(q: string, ...b: unknown[]): LoggedEvent[] {
+    return this.sql.exec(q, ...b).toArray().map(r => ({...r, data: JSON.parse(String(r.data)), tags: JSON.parse(String(r.tags))}) as LoggedEvent);
   }
+  eventsOfKind(tick: number, kind: string) { return this.rows(`SELECT ${EV_COLS} FROM events WHERE tick = ? AND kind = ? ORDER BY seq`, tick, kind); }
   /** The newest events of one kind, newest first. */
-  recentOfKind(kind: string, limit = 20) {
-    return this.sql.exec('SELECT seq, id, tick, at, source, kind, muse, other, place, line, data, tags FROM events WHERE kind = ? ORDER BY seq DESC LIMIT ?', kind, limit).toArray()
-      .map(r => ({...r, data: JSON.parse(String(r.data)), tags: JSON.parse(String(r.tags))}) as WorldEvent & {seq: number});
+  recentOfKind(kind: string, limit = 20) { return this.rows(`SELECT ${EV_COLS} FROM events WHERE kind = ? ORDER BY seq DESC LIMIT ?`, kind, limit); }
+  /**
+   * Highlights, newest first, one page at a time (C08, 8.6): `before` is the cursor (the seq of the last row of the
+   * previous page), `from`/`to` the period (event time, `to` exclusive). The caller asks for the next page while a page
+   * comes back full, so nothing beyond the first page is out of reach.
+   */
+  highlights(limit = 100, opts: {before?: number | null; from?: number | null; to?: number | null} = {}) {
+    return this.rows(`SELECT ${EV_COLS} FROM events WHERE tags != '[]' AND seq < ? AND at >= ? AND at < ? ORDER BY seq DESC LIMIT ?`, opts.before ?? Number.MAX_SAFE_INTEGER, opts.from ?? 0, opts.to ?? Number.MAX_SAFE_INTEGER, limit);
   }
-  highlights(limit = 100) {
-    return this.sql.exec("SELECT seq, id, tick, at, source, kind, muse, other, place, line, data, tags FROM events WHERE tags != '[]' ORDER BY seq DESC LIMIT ?", limit).toArray()
-      .map(r => ({...r, data: JSON.parse(String(r.data)), tags: JSON.parse(String(r.tags))}));
+  /** One event with the commit that wrote it and its run (P2: highlight → run id + event id → inputs and evidence). */
+  eventRecord(id: string) {
+    const e = this.rows(`SELECT ${EV_COLS} FROM events WHERE id = ?`, id)[0];
+    if (!e) return null;
+    const runId = this.runLog.runOfEvent(e.runId ?? null), run = runId ? this.runLog.runById(runId) : null;
+    const {initialSnapshot, ...head} = run ?? ({} as Partial<NonNullable<typeof run>>);
+    return {event: e, runId, runIdStored: e.runId != null, input: e.inputSeq != null ? this.runLog.input(Number(e.inputSeq)) : null, run: run ? {...head, initialSnapshot: {hash: initialSnapshot!.hash, bytes: initialSnapshot!.body.length}} : null};
+  }
+  /**
+   * The six autonomy measures recounted on the server from the run log (C09): one world, one period (`from`..`to`, or
+   * one world `day` as the panel loads it) and optionally one run. At most AUTONOMY_SAMPLE_MAX events; more makes the
+   * sample partial, never silently complete. Events written before the run log belong to the pre-run-log run.
+   */
+  autonomy(q: {from?: number | null; to?: number | null; day?: string | null; runId?: string | null}) {
+    const day = q.day && /^\d{4}-\d{2}-\d{2}$/.test(q.day) ? q.day : null;
+    const from = q.from ?? 0, to = q.to ?? Number.MAX_SAFE_INTEGER;
+    const pre = this.runLog.runs().find(r => r.origin === 'pre-run-log')?.runId ?? null;
+    const runId = q.runId ?? null;
+    const runClause = runId ? (runId === pre ? ' AND (run_id = ? OR run_id IS NULL)' : ' AND run_id = ?') : '';
+    const evs = this.rows(`SELECT ${EV_COLS} FROM events WHERE at >= ? AND at < ? AND id LIKE ?${runClause} ORDER BY seq LIMIT ?`, from, to, day ? day + ':%' : '%', ...(runId ? [runId] : []), AUTONOMY_SAMPLE_MAX + 1);
+    const capped = evs.length > AUTONOMY_SAMPLE_MAX, sample = capped ? evs.slice(0, AUTONOMY_SAMPLE_MAX) : evs;
+    const runIds = [...new Set(sample.map(e => e.runId ?? pre ?? 'unrecorded'))];
+    const scope = {worldId: this.opts.worldId, runIds, from: q.from ?? null, to: q.to ?? null, day, complete: !capped, partialReason: capped ? `more than ${AUTONOMY_SAMPLE_MAX} events in the period` : null};
+    const result = recountAutonomy(sample, scope);
+    return {...result, values: values(result), byRun: runIds.length > 1 ? runIds.map(r => ({runId: r, values: values(recountAutonomy(sample.filter(e => (e.runId ?? pre ?? 'unrecorded') === r), {...scope, runIds: [r]}))})) : null};
   }
   /** Compact public view for clients: positions, current beats, inventories, spotlight. */
   view(now: number) {

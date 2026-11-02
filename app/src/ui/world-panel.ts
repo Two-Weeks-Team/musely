@@ -4,7 +4,9 @@
 //  - Map: the ten Muses at their real places, moving along trips in real time
 //  - Panel tabs: Feed (source badges) · Highlights · P1 before/after · Autonomy (2.2) · Identity (claim, P0,
 //    impostor/injection checks) · Location (virtual location, 13.1)
-//  - Evidence view (P2): request id, model, envelope, verification steps, raw JSON
+//  - Evidence view (P2): request id, model, envelope, verification steps, raw JSON, and the run log behind the event
+//    (run id, the commit that wrote it, state hashes) from /api/world/event
+//  - Highlights are read from the server a page at a time (cursor) over a chosen period, so older moments stay reachable
 import {Marker, type Map as LibreMap} from 'maplibre-gl';
 import {HARNESSES, harnessById} from '../engine/harness';
 import {PLACES, PLACE_BY_ID} from '../engine/places';
@@ -20,7 +22,7 @@ import {fetchJson, newHealth, track, resState, stateText, loadLog, BLOCKED, type
 import {isolation, enforceIsolation} from './isolation';
 import {mountReplay, replayPlayer, type ReplayEvent} from './replay';
 import {computeAutonomy} from './autonomy';
-import {EMPTY_FILTER, matchFilter, type Filter} from './replay-core';
+import {EMPTY_FILTER, matchFilter, dayBound, type Filter} from './replay-core';
 import {sourceLabel, modelNote} from './source-label';
 import {taskCancelledText, envelopeFacts} from './evidence-text';
 import {mountLocationChip, deviceLocationCard} from './location-bar';
@@ -28,7 +30,13 @@ import {museLine, snapshotOf, type OwnerLocationView} from './location-state';
 import {placeCell} from '../engine/location';
 export {sourceLabel};
 
-type Ev = {seq: number; id: string; tick: number; at: number; source: 'live' | 'rule' | 'scripted' | 'replay'; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data: any; tags: string[]};
+type Ev = {seq: number; id: string; tick: number; at: number; source: 'live' | 'rule' | 'scripted' | 'replay'; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data: any; tags: string[]; runId?: string | null; inputSeq?: number | null};
+/** /api/world/event: one event with the run-log commit that wrote it (worker/core/world-runtime.ts eventRecord). */
+type EventRecord = {runId: string | null; runIdStored: boolean; input: {seq: number; kind: string; label: string; beforeHash: string; afterHash: string; itemsHead: string | null; input: any} | null; run: {runId: string; origin: string; engineVersion: string; harnessVersion: string; catalogVersion: string; schemaVersion: string; startedAt: number} | null};
+/** /api/world/autonomy (worker/core/autonomy-oracle.ts): the server's recount, in the table's words. */
+type ServerAutonomy = {values: Record<string, {value: string; measured: boolean}>; scope: {runIds: string[]; complete: boolean; partialReason?: string | null}; sample: {events: number}};
+/** Highlights per server page (the API allows 300). */
+const HL_PAGE = 300;
 type MuseView = {id: string; place: string; travel: {to: string; departAt: number; arriveAt: number; speed: string} | null; beat: {id: string; line: string | null} | null; inventory: string[]; reflection: string; wants?: {goal: string; items: string[]; source: string}};
 type WorldView = {worldId: string; day: string; tick: number; lastTickAt: number; nextSpotlight: {muse: string; freedom: string; priority?: boolean}; muses: MuseView[]};
 
@@ -215,7 +223,6 @@ export function mountWorldPanel(map: LibreMap) {
   document.body.append(evidence);
 
   let world: WorldView | null = null, events: Ev[] = [], tab = 'feed', hf: Filter = {...EMPTY_FILTER};
-  let lastHighlights: {at: number; events: Ev[]} | null = null;
   const pins = museMarkers(map);
 
   const stateCard = (heading: string, detail: string, retry: () => void) => {
@@ -246,6 +253,7 @@ export function mountWorldPanel(map: LibreMap) {
     const c = el('button', 'close', '×'); c.type = 'button'; c.setAttribute('aria-label', 'Close evidence'); c.onclick = () => evidence.hidePopover();
     const s = sourceLabel(e);
     const h3 = el('h3', '', describe(e)); h3.id = 'evidence-title'; h3.tabIndex = -1;
+    evidence.dataset.eventId = e.id;
     evidence.append(c, el('span', 'eyebrow', 'EVIDENCE'), h3, el('span', 'src ' + s.cls, s.text));
     const dl = el('dl', 'facts');
     const fact = (k: string, v: unknown) => { if (v === undefined || v === null || v === '') return; dl.append(el('dt', '', k), el('dd', '', typeof v === 'string' ? v : JSON.stringify(v))); };
@@ -274,6 +282,20 @@ export function mountWorldPanel(map: LibreMap) {
     evidence.append(raw);
     evidence.showPopover();
     h3.focus({preventScroll: true});
+    // The run log behind a live event (C08, P2): its run id and the commit that wrote it. A fixture makes no request.
+    if (!e.fixture) void runFacts(e, dl, links);
+  }
+  async function runFacts(e: EvidenceEv, dl: HTMLElement, links: HTMLElement) {
+    const link = el('a', '', 'Run record for this event (run id · event id) ↗'); link.href = `/api/world/event?id=${encodeURIComponent(e.id)}`; link.target = '_blank'; link.rel = 'noopener';
+    links.append(link); if (!links.isConnected) evidence.insertBefore(links, evidence.querySelector('details'));
+    const r = await fetchJson<EventRecord>(link.href);
+    if (!evidence.matches(':popover-open') || evidence.dataset.eventId !== e.id) return; // closed, or now showing another event
+    const add = (k: string, v: string) => dl.append(el('dt', '', k), el('dd', '', v));
+    if (!r.ok) { add('Run', `${e.runId ?? 'not stored on this row'} · the run record could not be read (${r.error})`); return; }
+    const rec = r.data;
+    add('Run', rec.runId ? `${rec.runId}${rec.runIdStored ? '' : ' (written before the run log; counted in its pre-run-log run)'}${rec.run ? ` · ${rec.run.origin} · ${rec.run.engineVersion} · ${rec.run.harnessVersion} · ${rec.run.catalogVersion}` : ''}` : 'No run record');
+    if (rec.input) add('Commit', `#${rec.input.seq} ${rec.input.kind} (${rec.input.label}) · state ${rec.input.beforeHash.slice(0, 12)} → ${rec.input.afterHash.slice(0, 12)}${rec.input.itemsHead ? ` · item history head ${rec.input.itemsHead.slice(0, 12)}` : ''}`);
+    else add('Commit', 'Not recorded (this event was written before the run log)');
   }
   function openEvidence(e: EvidenceEv, trigger?: HTMLElement) {
     if (!ret) ret = {tab, scrollTop: panel.scrollTop, triggerId: trigger?.dataset.eventId ?? e.id, resume: replayPlayer.getState().playing};
@@ -317,8 +339,9 @@ export function mountWorldPanel(map: LibreMap) {
   };
   panel.addEventListener('toggle', ev => { if ((ev as ToggleEvent).newState === 'closed') leaveReplay(); });
 
-  /** Highlights: find a moment by tag, Muse, place or time of day; the list and the count update without a new request. */
-  function highlightsView(hl: Ev[]): HTMLElement[] {
+  /** Highlights: find a moment by period, tag, Muse, place or time of day. Tag, Muse, place and time of day narrow the loaded
+   *  list without a request; the period asks the server again, and "Load older moments" reads the next page. */
+  function highlightsView(hl: Ev[], more: boolean): HTMLElement[] {
     const bar = el('div', 'filter'); bar.setAttribute('role', 'group'); bar.setAttribute('aria-label', 'Find moments');
     const status = el('p', 'muted'); status.setAttribute('role', 'status');
     const ul = el('ul', 'ev-list');
@@ -327,7 +350,7 @@ export function mountWorldPanel(map: LibreMap) {
       ul.replaceChildren();
       const shown = hl.filter(e => matchFilter(e, hf));
       addRows(ul, shown);
-      status.textContent = shown.length ? `${shown.length} moment${shown.length === 1 ? '' : 's'}` : 'No moment matches. Clear the filters.';
+      status.textContent = (shown.length ? `${shown.length} moment${shown.length === 1 ? '' : 's'}` : 'No moment matches. Clear the filters.') + (more ? ` · ${hl.length} loaded, older moments in this period are on the server` : '');
       for (const c of chips) c.setAttribute('aria-pressed', String((c.dataset.tag ?? '') === hf.tag));
     };
     const chip = (tag: string, label: string) => { const b = el('button', 'tag', label); b.type = 'button'; b.dataset.tag = tag; b.onclick = () => { hf = {...hf, tag}; draw(); }; chips.push(b); bar.append(b); };
@@ -341,11 +364,39 @@ export function mountWorldPanel(map: LibreMap) {
     };
     const muses = [...new Set(hl.flatMap(e => [e.muse, e.other ?? null]).filter((m): m is string => !!m))].sort();
     const places = [...new Set(hl.map(e => e.place).filter((p): p is string => !!p))].sort();
+    // The period (your dates, both ends included) is a server query: a new period loads its own pages.
+    const dateField = (label: string, key: 'from' | 'to') => {
+      const wrap = el('label', 'fld'); wrap.append(el('span', '', label));
+      const inp = el('input'); inp.type = 'date'; inp.value = hlPeriod[key];
+      inp.onchange = () => { hlPeriod = {...hlPeriod, [key]: inp.value}; void render(); };
+      wrap.append(inp); return wrap;
+    };
     const fields = el('div', 'fields');
+    fields.append(dateField('From (your date)', 'from'), dateField('To (your date)', 'to'));
     fields.append(field('Muse', [['', 'Any Muse'], ...muses.map(m => [m, shortName(m)] as [string, string])], 'muse'), field('Place', [['', 'Any place'], ...places.map(p => [p, placeName(p)] as [string, string])], 'place'), field('Time of day (your time)', PARTS, 'part'));
-    const clear = el('button', 'secondary', 'Clear filters'); clear.type = 'button'; clear.onclick = () => { hf = {...EMPTY_FILTER}; void render(); };
+    const clear = el('button', 'secondary', 'Clear filters'); clear.type = 'button'; clear.onclick = () => { hf = {...EMPTY_FILTER}; hlPeriod = {from: '', to: ''}; void render(); };
+    const older = el('button', 'secondary', 'Load older moments'); older.type = 'button'; older.hidden = !more;
+    older.onclick = async () => { older.disabled = true; const r = await loadHighlights(true); if (!r.ok) { status.textContent = `Older moments could not be loaded (${r.error}). Try again.`; older.disabled = false; return; } void render(); };
     draw();
-    return [bar, fields, clear, status, ul];
+    return [bar, fields, clear, status, ul, older];
+  }
+  /** Loaded highlight pages for one period. `cursor` is the seq of the oldest row read; `more` while the last page came back full. */
+  let hlPeriod = {from: '', to: ''};
+  let hlPages: {key: string; at: number; events: Ev[]; cursor: number | null; more: boolean} | null = null;
+  async function loadHighlights(older = false): Promise<{ok: true} | {ok: false; error: string}> {
+    const from = dayBound(hlPeriod.from), to = dayBound(hlPeriod.to, true), key = `${from ?? ''}:${to ?? ''}`;
+    hf = {...hf, from, to};
+    const keep = hlPages?.key === key ? hlPages : null;
+    const q = new URLSearchParams({limit: String(HL_PAGE)});
+    if (from !== null) q.set('from', String(from)); if (to !== null) q.set('to', String(to));
+    if (older && keep?.cursor != null) q.set('before', String(keep.cursor));
+    const r = await load<Ev[]>('highlights', '/api/world/highlights?' + q);
+    if (!r.ok) return {ok: false, error: r.error};
+    // The newest page replaces the newest rows; pages already read further back stay (each id once).
+    const seen = new Set<string>(), merged = (older ? [...(keep?.events ?? []), ...r.data] : [...r.data, ...(keep?.events ?? []).filter(e => !r.data.length || e.seq < r.data[r.data.length - 1].seq)]).filter(e => !seen.has(e.id) && !!seen.add(e.id));
+    const full = r.data.length >= HL_PAGE;
+    hlPages = {key, at: r.at, events: merged, cursor: merged.length ? Math.min(...merged.map(e => e.seq)) : null, more: older ? full : (keep && keep.events.length > r.data.length ? keep.more : full)};
+    return {ok: true};
   }
 
   let generation = 0;
@@ -364,12 +415,13 @@ export function mountWorldPanel(map: LibreMap) {
       const ul = el('ul', 'ev-list'); addRows(ul, events.slice(-80).reverse());
       body.append(ul.childNodes.length ? ul : el('p', 'muted', 'Waiting for the next heartbeat…'));
     } else if (tab === 'highlights') {
-      const r = await load<Ev[]>('highlights', '/api/world/highlights?limit=200');
+      const r = await loadHighlights();
       if (stale()) return;
-      if (r.ok) lastHighlights = {at: r.at, events: r.data};
-      if (!lastHighlights) { body.append(stateCard('Highlights unavailable', `${health.get('highlights')?.error} · there is nothing to show yet.`, () => void render())); return; }
-      if (!r.ok) body.append(staleNote(`Highlights could not be refreshed (${r.error}). Showing the list from ${at(lastHighlights.at)}.`, () => void render()));
-      body.append(el('p', 'muted', 'Moments tagged by rule: first trade, refusals, impostors, blocked instructions, off-script choices, teleports, relics, gatherings, P0. Open one to see its evidence.'), ...(lastHighlights.events.length ? highlightsView(lastHighlights.events) : [el('p', 'muted', 'No highlights yet. They appear as the world runs.')]));
+      const shown = hlPages && hlPages.key === `${dayBound(hlPeriod.from) ?? ''}:${dayBound(hlPeriod.to, true) ?? ''}` ? hlPages : null;
+      if (!shown) { body.append(stateCard('Highlights unavailable', `${health.get('highlights')?.error} · there is nothing to show yet.`, () => void render())); return; }
+      if (!r.ok) body.append(staleNote(`Highlights could not be refreshed (${r.error}). Showing the list from ${at(shown.at)}.`, () => void render()));
+      const period = hlPeriod.from || hlPeriod.to;
+      body.append(el('p', 'muted', 'Moments tagged by rule: first trade, refusals, impostors, blocked instructions, off-script choices, teleports, relics, gatherings, P0. Open one to see its evidence and its run record.'), ...(shown.events.length || period ? highlightsView(shown.events, shown.more) : [el('p', 'muted', 'No highlights yet. They appear as the world runs.')]));
     } else if (tab === 'p1') {
       const p = el('p', 'muted', 'Does a reward change what a Muse does next? Two views: the same Muse before and after it gained an ability item in the live log, and the real engine run twice in your browser from the same seed and start, once with the item.');
       const d = await dayEvents(day);
@@ -391,8 +443,18 @@ export function mountWorldPanel(map: LibreMap) {
       if (stale()) return;
       if (d.error && !d.events.length) { body.append(stateCard('Run log unavailable', `${d.error} · the six numbers are not shown, because a failed request is not a measurement of zero.`, () => void render())); return; }
       if (d.error) body.append(staleNote(d.stale ? `The run log could not be refreshed (${d.error}). Showing the log loaded at ${at(d.at)}.` : `The run log stopped at ${d.error}: partial sample.`, () => void render()));
-      const res = computeAutonomy(d.events, {label: 'Live log (production)', day, worldId: world?.worldId ?? null, runId: null, complete: !d.error, partialReason: d.error ? `log stopped at ${d.error}` : null});
-      body.append(el('p', 'muted', `${res.period}. We call it autonomy only with this table beside it.`), autonomyTable(res));
+      // The server recounts the same world day from the run log (C09 oracle), up to the last event this table read.
+      const lastAt = d.events.length ? Math.max(...d.events.map(e => e.at)) + 1 : null;
+      const srv = await load<ServerAutonomy>('autonomy', `/api/world/autonomy?day=${day}${lastAt ? '&to=' + lastAt : ''}`);
+      if (stale()) return;
+      const runIds = srv.ok ? srv.data.scope.runIds : [...new Set(d.events.map(e => e.runId).filter((x): x is string => !!x))];
+      const res = computeAutonomy(d.events, {label: 'Live log (production)', day, worldId: world?.worldId ?? null, runId: runIds.length ? runIds.join(' + ') : null, complete: !d.error, partialReason: d.error ? `log stopped at ${d.error}` : null});
+      const differ = srv.ok ? res.rows.filter(r => srv.data.values[r.key]?.value !== r.value) : [];
+      const check = !srv.ok ? `Server recount unavailable (${srv.error}); the table above is the browser's count only.`
+        : differ.length ? `Server recount from the run log differs on ${differ.map(r => `${r.label} (server: ${srv.data.values[r.key]?.value})`).join(', ')}${srv.data.scope.complete ? '' : ' · the server sample is partial'}.`
+        : `Server recount from the run log (${srv.data.sample.events} events${runIds.length > 1 ? `, ${runIds.length} runs` : ''}): all six values match.`;
+      const p = el('p', 'muted', check); p.dataset.recount = !srv.ok ? 'unavailable' : differ.length ? 'differs' : 'match';
+      body.append(el('p', 'muted', `${res.period}. We call it autonomy only with this table beside it.`), autonomyTable(res), p);
     } else if (tab === 'identity') {
       await renderIdentity(stale);
     } else if (tab === 'location') {

@@ -104,7 +104,7 @@ export class WorldDO extends DurableObject<Env> {
   ritualRecord(rec: RitualRecord, sessionTag: string, byOwner = false) {
     if (byOwner && rec.passed) this.ritual.saveOwnerRecord(rec);
     // A unique label: two rituals judged in the same millisecond must not share an event id (the second would be dropped).
-    return this.runtime.commitExternal(Date.now(), 'ritual-' + Math.random().toString(36).slice(2, 10), (_s, emit) => emit({at: Date.now(), source: rec.requestId ? 'live' : 'replay', kind: 'ritual_judged', muse: null, line: rec.passed ? 'Welcome ritual passed' : 'Welcome ritual not passed', data: {passed: rec.passed, results: rec.results, evidence: rec.requestId ? {model: rec.model, requestId: rec.requestId} : null, who: byOwner ? 'owner (owner session)' : rec.tier === 'judge' ? 'judge link ' + sessionTag : 'visitor ' + sessionTag, framesStored: false}, tags: ['ritual']}));
+    return this.runtime.commitExternal(Date.now(), 'ritual-' + Math.random().toString(36).slice(2, 10), (_s, emit) => emit({at: Date.now(), source: rec.requestId ? 'live' : 'replay', kind: 'ritual_judged', muse: null, line: rec.passed ? 'Welcome ritual passed' : 'Welcome ritual not passed', data: {passed: rec.passed, results: rec.results, evidence: rec.requestId ? {model: rec.model, requestId: rec.requestId} : null, who: byOwner ? 'owner (owner session)' : rec.tier === 'judge' ? 'judge link ' + sessionTag : 'visitor ' + sessionTag, framesStored: false, actorOrigin: byOwner ? 'connected' : 'trial'}, tags: ['ritual']}));
   }
   worldView() { return this.runtime.view(Date.now()); }
   /** A visitor's priority spotlight request (8.2); the Worker route checks the session and passes an opaque requester id. */
@@ -113,7 +113,19 @@ export class WorldDO extends DurableObject<Env> {
     return this.runtime.requestSpotlight(muse, Date.now(), {origin, requester});
   }
   worldEvents(since: number, limit: number, opts: {day?: string; tail?: number} = {}) { return this.runtime.events(since, Math.min(2000, Math.max(1, limit)), opts); }
-  worldHighlights(limit: number) { return this.runtime.highlights(Math.min(300, Math.max(1, limit))); }
+  /** One page of highlights (at most 300), newest first; `before` is the cursor of the next page, `from`/`to` the period. */
+  worldHighlights(limit: number, opts: {before?: number | null; from?: number | null; to?: number | null} = {}) { return this.runtime.highlights(Math.min(300, Math.max(1, limit)), opts); }
+  // Run log (8.6, C08, C09): the current run, its ordered inputs, one event with its commit, the server recount.
+  worldRun(runId?: string | null, snapshot = false) {
+    const s = this.runtime.state(), log = this.runtime.runLog;
+    if (!runId) return log.summary(s);
+    const r = log.runById(runId);
+    if (!r) return null;
+    return snapshot ? r : {...r, initialSnapshot: {hash: r.initialSnapshot.hash, bytes: r.initialSnapshot.body.length}};
+  }
+  worldRunInputs(runId: string, since: number, limit: number) { return this.runtime.runLog.runById(runId) ? this.runtime.runLog.inputs(runId, since, limit) : null; }
+  worldEvent(id: string) { return this.runtime.eventRecord(id); }
+  worldAutonomy(q: {from?: number | null; to?: number | null; day?: string | null; runId?: string | null}) { return this.runtime.autonomy(q); }
   // Connected Muse (direction v2, 7.2, 12.3, 13.1): MCP dispatch, agent keys, owner location, notifications.
   mcp(keyHash: string, method: string, params: unknown, isNotification: boolean) { return this.connected.mcp(keyHash, method, params, isNotification); }
   mcpAuth(keyHash: string) { return this.connected.authenticate(keyHash); }

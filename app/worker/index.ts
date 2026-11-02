@@ -110,7 +110,30 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     if (r.ok) return json({queued: true, muse: r.muse, position: r.position, already: r.already});
     return json({error: r.reason}, r.reason === 'paused' ? 409 : r.reason === 'unknown_muse' ? 400 : 429);
   }
-  if (url.pathname === '/api/world/highlights' && request.method === 'GET') return json(await world(env).worldHighlights(Number(url.searchParams.get('limit')) || 100));
+  // Highlights, one page at a time: `before` (cursor: the seq of the last row of the previous page) and the period `from`/`to` (ms).
+  if (url.pathname === '/api/world/highlights' && request.method === 'GET') return json(await world(env).worldHighlights(Number(url.searchParams.get('limit')) || 100, {before: msParam(url, 'before'), from: msParam(url, 'from'), to: msParam(url, 'to')}));
+  // Run log (8.6, C08): the current RunRecord summary (or one run, with `snapshot=1` its public initial snapshot), its inputs in order, one event with its commit.
+  if (url.pathname === '/api/world/run' && request.method === 'GET') {
+    const r = await world(env).worldRun(url.searchParams.get('runId'), url.searchParams.get('snapshot') === '1');
+    return r ? json(r) : json({error: 'unknown_run'}, 404);
+  }
+  if (url.pathname === '/api/world/run/inputs' && request.method === 'GET') {
+    const runId = url.searchParams.get('runId') ?? '';
+    const rows = runId ? await world(env).worldRunInputs(runId, Number(url.searchParams.get('since')) || 0, Number(url.searchParams.get('limit')) || 200) : null;
+    return rows ? json(rows) : json({error: 'unknown_run'}, 404);
+  }
+  if (url.pathname === '/api/world/event' && request.method === 'GET') {
+    const r = await world(env).worldEvent((url.searchParams.get('id') ?? '').slice(0, 200));
+    return r ? json(r) : json({error: 'unknown_event'}, 404);
+  }
+  // C09 server recount of the six autonomy measures over a period (`from`/`to` ms, at most 7 days; default the last 24 hours) or one world `day`.
+  if (url.pathname === '/api/world/autonomy' && request.method === 'GET') {
+    const day = url.searchParams.get('day');
+    if (day && !/^\d{4}-\d{2}-\d{2}$/.test(day)) return json({error: 'bad_day'}, 400);
+    const now = Date.now(), from = msParam(url, 'from') ?? (day ? null : now - 86_400_000), to = msParam(url, 'to') ?? (day ? null : now);
+    if (from !== null && to !== null && (to <= from || to - from > 7 * 86_400_000)) return json({error: 'bad_period', detail: 'to must be after from, at most 7 days'}, 400);
+    return json(await world(env).worldAutonomy({from, to, day, runId: url.searchParams.get('runId')}));
+  }
 
   // Identity (direction v2, 6): signed A2A Agent Cards and the P0 / demo checks.
   const cardMatch = /^\/api\/agents\/(0\d-[a-z]+)\/card$/.exec(url.pathname);
@@ -195,6 +218,14 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   }
 
   return json({error: 'not_found'}, 404);
+}
+
+/** A non-negative integer query parameter (milliseconds or a cursor), or null when absent or invalid. */
+function msParam(url: URL, name: string): number | null {
+  const v = url.searchParams.get(name);
+  if (v === null || v === '') return null;
+  const n = Number(v);
+  return Number.isSafeInteger(n) && n >= 0 ? n : null;
 }
 
 function threadsConfig(env: Env, url: URL): ThreadsConfig | null {
