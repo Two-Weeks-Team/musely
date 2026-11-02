@@ -9,7 +9,7 @@ The 2026-11-02 app-target block of [issue #68](https://github.com/Two-Weeks-Team
 | State | Current evidence | Next receipt, never inferred |
 |---|---|---|
 | Requirements/package | These two draft documents and code cross-check | Owner review of actual portal fields/terms and remaining disclosures |
-| Actual I-04 connection | Not connected; real owner Threads claim pending | Real Muse read→move/greet→trade→inbox→accept/reject→result→revoke receipts |
+| Actual I-04 connection | Not connected; owner Threads claim machine-verified at the dated checkpoint | Real Muse read→move/greet→trade→inbox→accept/reject→result→revoke receipts |
 | Application | Not submitted | Portal submission acknowledgement/reference/time for this exact main-product packet |
 | Risk/tool/QA review | No outcome recorded | Actual review status, approved tool set and any requested changes |
 | Approval | Not approved | Explicit approval receipt/date; no inference from a working HTTPS endpoint |
@@ -70,7 +70,7 @@ Source basis: [privacy policy source](../../app/static/privacy.html), [terms sou
 | Usage/IP protection | Settled reservation/usage records pruned after about3 days; aggregate budget totals remain | Unsettled reservations are not included in that pruning query; do not promise blanket deletion of every ledger row |
 | Owner/visitor sessions | Owner cookie1h, general visitor cookie24h; token rotation invalidates corresponding owner sessions | These are distinct domains; a judge/visitor is not an owner |
 | Ritual frames | Sent only to the vision route for judgment; not persisted by the application. Challenge metadata expires after3min and is removed on a later ritual start | Camera permission and actual performance are separate owner checkpoints; no raw frames enter this packet |
-| Operator Threads claim | Server-side operator claim record/token; no general visitor Threads sign-in | Claim remains pending. No access token or personal claim evidence is copied into public docs |
+| Operator Threads claim | Server-side operator claim record/token; no general visitor Threads sign-in | Machine-verified at the dated checkpoint in CONNECTOR_VERIFICATION; recheck before actual connection. No access token or private claim evidence is copied into public docs |
 | Hosting logs/email | Current policy says Workers Logs up to7 days and received email stored in Workspace | Actual log configuration/redaction, mailbox/backup lifecycle and support routing are not re-audited here; no new retention promise |
 | Hosting/maps/model/mail | Cloudflare serves state/logs; OpenFreeMap serves tiles; direct Meta Model API handles configured system/ritual requests; Workspace stores received support mail | Public policy identifies recipients; deployment/version-specific controls and any portal processing attestation need actual review |
 
