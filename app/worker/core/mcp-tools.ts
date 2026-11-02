@@ -105,8 +105,8 @@ export const TOOLS: ToolDef[] = [
 TOOLS.find(t => t.name === 'heartbeat_check')!.write = undefined;
 TOOLS.find(t => t.name === 'heartbeat_check')!.annotations = {readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false};
 const COMMAND_PROPS: Record<string, Prop> = {
-  command_id: {type: 'string', pattern: '^[A-Za-z0-9_-]{8,64}$', description: 'Optional idempotency key. A retry with the same id and the same arguments returns the first result without acting again; other arguments with the same id are refused as command_conflict. After stale_world, re-plan with a new id.'},
-  expected_version: {type: 'integer', minimum: 0, description: 'Optional world_version from get_world_state you planned against; if the world moved, the call is refused as stale_world and nothing changes.'},
+  command_id: {type: 'string', pattern: '^[A-Za-z0-9_-]{8,64}$', description: 'Optional idempotency key. Once a call with this id has committed, a retry with the same id and arguments returns that first result without acting again; other arguments with the same id are refused as command_conflict. A refused call spends nothing, so you may retry the same id (for example after stale_world with a fresh expected_version). While the first call is still running, a retry is refused as in_progress (retryable).'},
+  expected_version: {type: 'integer', minimum: 0, description: 'Optional world_version from get_world_state you planned against; if the world moved, the call is refused as stale_world (retryable) and nothing changes. Omit it to skip the version check.'},
 };
 for (const t of TOOLS) if (t.write) Object.assign(t.inputSchema.properties, COMMAND_PROPS);
 export const TOOL_NAMES = TOOLS.map(t => t.name);
@@ -150,14 +150,13 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
   const exec = await c.trust.custodialExecutor(me, c.ownerRoot);
   if (!exec) {
     // Revoked before any custodial delegation existed: nothing may sign for this Muse; refuse without an envelope.
-    c.runtime.commitRefusal(at, `mcp-${tool.name}-revoked-${Math.random().toString(36).slice(2, 10)}`, (st, emit) => {
+    c.runtime.commitRefusal(at, `mcp-${tool.name}-revoked-${Math.random().toString(36).slice(2, 10)}`, `${c.trust.agentByMuse(me)?.agentId ?? me}>${recipient}:delegation_revoked:delegation`, (st, emit) => {
       emit(tagLocation(st.owner, {at, source: 'live', kind: 'a2a_refused', muse: me, other: recipientMuse, line: 'Refused: delegation revoked', data: {step: 'delegation', reason: 'delegation_revoked', actor: 'your Muse', tool: tool.name, key_id: c.key.id, envelope: null, content}, tags: ['p0_refused']}));
       notifyOwner(inboxOf(st), {kind: 'blocked', at, line: `Blocked: your Muse's ${tool.name.replace(/_/g, ' ')} was refused (delegation revoked)`, ref: null, other: recipientMuse});
     });
-    const version = c.runtime.state().version;
-    return refused('delegation_revoked', {step: 'delegation', retryable: false, envelope: null, command: {command_id: opts.commandId ?? null, expected_version: opts.expectedVersion ?? version, world_version: version, duplicate: false}});
+    return refused('delegation_revoked', {step: 'delegation', retryable: false, envelope: null, command: {command_id: opts.commandId ?? null, expected_version: opts.expectedVersion ?? null, world_version: c.runtime.state().version, duplicate: false}});
   }
-  const cmd = await signCommand(exec, {worldId, expectedVersion: opts.expectedVersion ?? c.runtime.state().version, action: tool.name, payload: content, recipient, scope: tool.write!.scope, ownerClaimed: c.ownerClaimed, now: at, commandId: opts.commandId});
+  const cmd = await signCommand(exec, {worldId, expectedVersion: opts.expectedVersion ?? null, action: tool.name, payload: content, recipient, scope: tool.write!.scope, ownerClaimed: c.ownerClaimed, now: at, commandId: opts.commandId});
   const envelope = envelopeEvidence(cmd.signed);
   const out = await executeCommand(c, cmd, {
     recipient,

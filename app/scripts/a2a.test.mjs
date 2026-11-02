@@ -7,8 +7,10 @@ import {Trust, OWNER_SLOT} from '../worker/core/trust.ts';
 import {runP0, verifyMeeting, impostorCheck, injectionCheck, findOwnerTrade} from '../worker/core/a2a.ts';
 import {makeHooks} from '../src/engine/rules.ts';
 
+// Like Durable Object SQL: transaction statements are refused (only transactionSync opens a transaction).
+const TX_SQL = /^\s*(BEGIN|SAVEPOINT|COMMIT|ROLLBACK|RELEASE|END)\b/i;
 // transactionSync stands in for ctx.storage.transactionSync: a savepoint that rolls back on a throw.
-const sqlite = () => { const db = new DatabaseSync(':memory:'); let depth = 0; return {exec(q, ...b) { const st = db.prepare(q); if (/^\s*(select|with)/i.test(q)) return {toArray: () => st.all(...b)}; st.run(...b); return {toArray: () => []}; }, transactionSync(fn) { const sp = 'tx' + depth++; db.exec('SAVEPOINT ' + sp); try { const r = fn(); db.exec('RELEASE ' + sp); return r; } catch (e) { db.exec('ROLLBACK TO ' + sp); db.exec('RELEASE ' + sp); throw e; } finally { depth--; } }}; };
+const sqlite = () => { const db = new DatabaseSync(':memory:'); let depth = 0; return {exec(q, ...b) { if (TX_SQL.test(q)) throw new Error('Durable Object SQL rejects transaction statements; use transactionSync'); const st = db.prepare(q); if (/^\s*(select|with)/i.test(q)) return {toArray: () => st.all(...b)}; st.run(...b); return {toArray: () => []}; }, transactionSync(fn) { const sp = 'tx' + depth++; db.exec('SAVEPOINT ' + sp); try { const r = fn(); if (r && typeof r.then === 'function') throw new Error('transactionSync callback must be synchronous'); db.exec('RELEASE ' + sp); return r; } catch (e) { db.exec('ROLLBACK TO ' + sp); db.exec('RELEASE ' + sp); throw e; } finally { depth--; } }}; };
 const T0 = Date.parse('2026-11-03T16:00:00Z');
 async function setup() {
   const sql = sqlite(), ledger = new Ledger(sql, {dailyCapUsd: 1}); ledger.init();
@@ -69,4 +71,28 @@ test('while revoked and not re-delegated, live decisions for the owner Muse are 
   await ctx.trust.revoke(OWNER_SLOT);
   assert.equal(ctx.trust.suspended(OWNER_SLOT), true);
   assert.equal(ctx.trust.suspended('02-moss'), false);
+});
+
+test('P0 run twice in a row: both runs keep their refusal evidence (P0 refusals are never collapsed)', async () => {
+  const {ctx, runtime} = await setup();
+  const first = await runP0(ctx);
+  assert.deepEqual([first.before, first.afterRevoke], ['verified', 'delegation_revoked']);
+  // A second valid trade with the same partner (so both refusals share actor, other side, code and step):
+  // clear today's pair counter and give the owner's Muse something new to offer.
+  const partner = runtime.events(0, 2000).find(e => e.kind === 'a2a_refused').other;
+  runtime.commitExternal(T0, 'second-run', st => {
+    st.items.trades = {};
+    const me = st.muses.find(m => m.id === OWNER_SLOT), p = st.muses.find(m => m.id === partner);
+    me.inventory.push('wildflower', 'pastry', 'tea', 'coffee', 'clover_seed');
+    p.inventory.push('fruit', 'tea', 'pastry', 'route_map');
+  });
+  const plan = findOwnerTrade(runtime.state());
+  assert.equal(plan?.partner, partner, 'the second run trades with the same partner');
+  const second = await runP0(ctx);
+  assert.deepEqual([second.before, second.afterRevoke], ['verified', 'delegation_revoked'], JSON.stringify(second));
+  const refused = runtime.events(0, 2000).filter(e => e.kind === 'a2a_refused');
+  assert.equal(refused.length, 2, 'one refusal per run');
+  assert.equal(refused[1].other, partner);
+  assert.ok(refused.every(e => e.tags.includes('p0_refused') && e.data.label === 'p0-after-revoke'));
+  assert.notEqual(refused[0].data.envelope.message_id, refused[1].data.envelope.message_id);
 });

@@ -5,8 +5,10 @@ import {Ledger} from '../worker/core/ledger.ts';
 import {WorldRuntime} from '../worker/core/world-runtime.ts';
 import {spotlightFor, spotlightInput, TICK_MS} from '../src/engine/world.ts';
 
+// Like Durable Object SQL: transaction statements are refused (only transactionSync opens a transaction).
+const TX_SQL = /^\s*(BEGIN|SAVEPOINT|COMMIT|ROLLBACK|RELEASE|END)\b/i;
 // transactionSync stands in for ctx.storage.transactionSync: a savepoint that rolls back on a throw.
-const sqlite = () => { const db = new DatabaseSync(':memory:'); let depth = 0; return {exec(q, ...b) { const st = db.prepare(q); if (/^\s*(select|with)/i.test(q)) return {toArray: () => st.all(...b)}; st.run(...b); return {toArray: () => []}; }, transactionSync(fn) { const sp = 'tx' + depth++; db.exec('SAVEPOINT ' + sp); try { const r = fn(); db.exec('RELEASE ' + sp); return r; } catch (e) { db.exec('ROLLBACK TO ' + sp); db.exec('RELEASE ' + sp); throw e; } finally { depth--; } }}; };
+const sqlite = () => { const db = new DatabaseSync(':memory:'); let depth = 0; return {exec(q, ...b) { if (TX_SQL.test(q)) throw new Error('Durable Object SQL rejects transaction statements; use transactionSync'); const st = db.prepare(q); if (/^\s*(select|with)/i.test(q)) return {toArray: () => st.all(...b)}; st.run(...b); return {toArray: () => []}; }, transactionSync(fn) { const sp = 'tx' + depth++; db.exec('SAVEPOINT ' + sp); try { const r = fn(); if (r && typeof r.then === 'function') throw new Error('transactionSync callback must be synchronous'); db.exec('RELEASE ' + sp); return r; } catch (e) { db.exec('ROLLBACK TO ' + sp); db.exec('RELEASE ' + sp); throw e; } finally { depth--; } }}; };
 const T0 = Date.parse('2026-11-03T16:00:00Z');
 function setup({cap = 20, fetcher, key = 'k', ...rest} = {}) {
   const sql = sqlite(), ledger = new Ledger(sql, {dailyCapUsd: cap, now: () => T0}); ledger.init();

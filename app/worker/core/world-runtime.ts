@@ -38,6 +38,12 @@ type Emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => void;
 export type CommandRow = {payloadHash: string; result: CommandResult; output: unknown};
 export type HeartbeatResult = {status: 'committed' | 'skipped_duplicate' | 'skipped_early'; tick: number; events: number; spotlight?: {muse: string; source: string; reason?: string}};
 
+/** A transaction callback must finish synchronously; an async mutation would commit half-done. */
+const synchronous = <T>(r: T): T => {
+  if (r && typeof (r as {then?: unknown}).then === 'function') throw new Error('commit mutations must be synchronous');
+  return r;
+};
+
 export class WorldRuntime {
   private sql: TxSql;
   private opts: RuntimeOptions;
@@ -82,7 +88,9 @@ export class WorldRuntime {
       if (decision && current.version !== before.version) { late.push({at: now, source: decision.source, kind: 'decision_discarded', muse: decision.muse, data: {reason: 'world changed while the model was answering', evidence: decision.evidence ?? null}, tags: []}); usable = null; }
       if (decision && this.opts.delegationValid && !this.opts.delegationValid(decision.muse)) { late.push({at: now, source: decision.source, kind: 'decision_discarded', muse: decision.muse, data: {reason: 'delegation revoked before commit', evidence: decision.evidence ?? null}, tags: []}); usable = null; }
       const {state, events} = tick(current, {now, decision: usable}, canMeet ? {...this.opts.hooks, canMeet: this.dedupMeetings(canMeet)} : this.opts.hooks);
-      const all = [...events, ...late.map((e, i) => ({...e, id: `${current.day}:${current.tick}:late${i}`, tick: current.tick}))];
+      // Refusal windows that closed (here or during the tick) leave one summary with their repeat count.
+      const repeats = [...this.closedRepeats.splice(0), ...this.closeRefusalWindows(now)].map((e, i) => ({...e, id: `${current.day}:${current.tick}:repeats${i}`, tick: current.tick}));
+      const all = [...events, ...late.map((e, i) => ({...e, id: `${current.day}:${current.tick}:late${i}`, tick: current.tick})), ...repeats];
       if (!usable && info.reason) all.push({at: now, source: info.source as WorldEvent['source'], kind: 'spotlight_fallback', muse: spot.muse, data: {reason: info.reason}, tags: [], id: `${current.day}:${current.tick}:fallback`, tick: current.tick});
       this.sql.exec('UPDATE world SET state = ?, version = ? WHERE id = 1', JSON.stringify(state), state.version);
       this.sql.exec('INSERT INTO ticks (day, tick, committed_at, spotlight) VALUES (?, ?, ?, ?)', current.day, current.tick, now, JSON.stringify({muse: spot.muse, ...info}));
@@ -112,13 +120,35 @@ export class WorldRuntime {
       return !r.ok && typeof key === 'string' && !this.noteRefusal(key, at) ? {ok: false, event: null} : r;
     };
   }
+  /** Summaries of windows closed inside a tick (the meeting gate cannot emit them itself). */
+  private closedRepeats: Omit<WorldEvent, 'id' | 'tick'>[] = [];
+  /** Deletes windows that ended; each one that suppressed repeats becomes a refusal_repeats event (repeat_count = occurrences). */
+  private closeRefusalWindows(now: number): Omit<WorldEvent, 'id' | 'tick'>[] {
+    const closed = this.sql.exec('SELECT key, first_at, last_at, count FROM refusals WHERE first_at <= ?', now - REFUSAL_WINDOW_MS).toArray();
+    if (!closed.length) return [];
+    this.sql.exec('DELETE FROM refusals WHERE first_at <= ?', now - REFUSAL_WINDOW_MS);
+    return closed.filter(r => Number(r.count) > 1).map(r => ({at: now, source: 'live', kind: 'refusal_repeats', muse: null, line: null, data: {dedup_key: String(r.key), repeat_count: Number(r.count), suppressed: Number(r.count) - 1, first_at: Number(r.first_at), last_at: Number(r.last_at)}, tags: []}));
+  }
   /** Counts a refusal; true when it opens a new window (log an event), false for a repeat inside the window. */
   noteRefusal(key: string, now: number) {
-    this.sql.exec('DELETE FROM refusals WHERE last_at < ?', now - REFUSAL_WINDOW_MS);
+    this.closedRepeats.push(...this.closeRefusalWindows(now));
     const r = this.sql.exec('SELECT first_at FROM refusals WHERE key = ?', key).toArray()[0];
-    if (r && now - Number(r.first_at) < REFUSAL_WINDOW_MS) { this.sql.exec('UPDATE refusals SET count = count + 1, last_at = ? WHERE key = ?', now, key); return false; }
-    this.sql.exec('INSERT OR REPLACE INTO refusals (key, first_at, last_at, count) VALUES (?, ?, ?, 1)', key, now, now);
+    if (r) { this.sql.exec('UPDATE refusals SET count = count + 1, last_at = ? WHERE key = ?', now, key); return false; }
+    this.sql.exec('INSERT INTO refusals (key, first_at, last_at, count) VALUES (?, ?, ?, 1)', key, now, now);
     return true;
+  }
+  /**
+   * The one refusal commit. It never moves the version (a refused request cannot make concurrent valid plans
+   * stale) and writes nothing when nothing changed. With `dedup` (default) a repeat of `key` inside the window
+   * is only counted; `dedup: false` always logs (evidence flows such as P0 must keep every event).
+   */
+  commitRefusal(now: number, label: string, key: string, mutate: (s: WorldState, emit: Emit) => void, dedup = true) {
+    return this.commit(now, label, (st, emit) => {
+      const fresh = this.noteRefusal(key, now);
+      for (const e of this.closedRepeats.splice(0)) emit(e);
+      if (!fresh && dedup) return;
+      mutate(st, e => emit({...e, data: {...(e.data ?? {}), dedup_key: key}}));
+    }, () => false).events;
   }
   refusalCount(key: string) { return Number(this.sql.exec('SELECT count FROM refusals WHERE key = ?', key).toArray()[0]?.count ?? 0); }
 
@@ -168,13 +198,6 @@ export class WorldRuntime {
     return this.commit(now, label, mutate, () => true).events;
   }
   /**
-   * A refusal record: its events (and owner notifications) without moving the world version, so a refused
-   * request can never make concurrent valid plans stale. Nothing is written when nothing changed.
-   */
-  commitRefusal(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void) {
-    return this.commit(now, label, mutate, () => false).events;
-  }
-  /**
    * Command commit point (C03), one transaction: `guard` runs first (stored-row re-check, nonce claim) and
    * may abort with a code before anything is written; then the mutation, the version (a refused rule bumps it
    * only when the state really changed), the events and the stored result row.
@@ -184,7 +207,7 @@ export class WorldRuntime {
       const aborted = c.guard();
       if (aborted) return {aborted};
       let ok = false, row: CommandRow | null = null;
-      const done = this.write(now, label, (s, emit) => { ok = c.mutate(s, emit).ok; }, changed => ok || changed, (s, events) => {
+      const done = this.write(now, label, (s, emit) => { ok = synchronous(c.mutate(s, emit)).ok; }, changed => ok || changed, (s, events) => {
         const rec = c.record(s.version, events);
         this.sql.exec('INSERT INTO commands (actor_id, command_id, payload_hash, action, result, output, at) VALUES (?, ?, ?, ?, ?, ?, ?)', rec.actorId, rec.commandId, rec.row.payloadHash, rec.action, JSON.stringify(rec.row.result), JSON.stringify(rec.row.output ?? null), now);
         row = rec.row;
@@ -205,7 +228,7 @@ export class WorldRuntime {
     const raw = String(this.sql.exec('SELECT state FROM world WHERE id = 1').toArray()[0].state);
     const s: WorldState = JSON.parse(raw), out: WorldEvent[] = [];
     let n = 0;
-    mutate(s, e => out.push({...e, id: `${s.day}:${s.tick}:${label}:${now}:${n++}`, tick: s.tick}));
+    synchronous(mutate(s, e => out.push({...e, id: `${s.day}:${s.tick}:${label}:${now}:${n++}`, tick: s.tick})) as unknown);
     const changed = JSON.stringify(s) !== raw, bumped = bump(changed);
     if (bumped) s.version += 1;
     if (changed || bumped) this.sql.exec('UPDATE world SET state = ?, version = ? WHERE id = 1', JSON.stringify(s), s.version);

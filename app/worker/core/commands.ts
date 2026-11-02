@@ -7,7 +7,8 @@
 //      a different payload → command_conflict; the same id still in flight → in_progress (retryable)
 //   4. recipient, delegation, scope, expiry, content, approval and an unused nonce (verifyEnvelope with
 //      claim: false), then the counterparty's card and delegation when the action has one
-//   5. expectedVersion against the current world → stale_world
+//   5. expectedVersion against the current world → stale_world (null: the caller did not plan against a
+//      version, so none is checked here or at the commit)
 //   6. optional work outside the transaction (a model call); its settle() always runs
 //   7. one storage transaction: the stored row again, the world version and both delegations (a late answer is
 //      discarded), the nonce claim, then apply, version, events and the result row.
@@ -22,7 +23,7 @@ import type {Trust, Executor} from './trust.ts';
 
 export const COMMANDS_TABLE = 'CREATE TABLE IF NOT EXISTS commands (actor_id TEXT NOT NULL, command_id TEXT NOT NULL, payload_hash TEXT NOT NULL, action TEXT NOT NULL, result TEXT NOT NULL, output TEXT, at INTEGER NOT NULL, PRIMARY KEY (actor_id, command_id))';
 
-export type WorldCommand = {commandId: string; worldId: string; expectedVersion: number; actorId: string; action: string; payload: Record<string, unknown>; signed: Signed};
+export type WorldCommand = {commandId: string; worldId: string; expectedVersion: number | null; actorId: string; action: string; payload: Record<string, unknown>; signed: Signed};
 export type CommandError = {code: string; retryable: boolean};
 export type CommandResult = {ok: boolean; commandId: string; worldVersion: number; eventIds: string[]; error?: CommandError};
 export type Refused = CommandError & {step: string};
@@ -35,14 +36,26 @@ export type CommandHandler<T = unknown> = {
   /** Who this command must be addressed to, decided by the verifier: the peer agent, or worldHandler(worldId). */
   recipient: string;
   counterparty?: () => Promise<PeerCheck>;
-  /** Work outside the transaction. executeCommand calls the returned settle() whatever happens next (C05), so a discarded answer is still paid for. */
+  /**
+   * Work outside the transaction, bounded by the deadline. executeCommand calls the returned settle()
+   * whatever happens next (C05), so a discarded answer is still paid for. think must settle its own
+   * reservation before it throws: a throw (or a missed deadline) returns no settle().
+   */
   think?: () => Promise<{thought: T; settle?: () => void}>;
   apply: (st: WorldState, emit: Emit, at: number, thought: T | undefined) => Applied;
   /** Logs a refusal (the default is one command_refused event). Owner notifications may be added here. */
   refused?: (st: WorldState, emit: Emit, r: Refused, at: number) => void;
+  /** false: log every refusal (evidence flows such as P0); by default repeats inside the window are only counted. */
+  dedup?: boolean;
 };
 export type CommandOutcome = {result: CommandResult; output: unknown; duplicate: boolean; verified: boolean; refused: Refused | null};
-export type CommandCtx = {trust: Trust; runtime: WorldRuntime};
+/** deadlineMs bounds think and counterparty (default STEP_DEADLINE_MS). */
+export type CommandCtx = {trust: Trust; runtime: WorldRuntime; deadlineMs?: number};
+export const STEP_DEADLINE_MS = 15_000;
+const within = <T>(p: Promise<T>, ms: number): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([p, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('step deadline passed')), ms); })]).finally(() => clearTimeout(timer ?? null));
+};
 
 const RETRYABLE = new Set(['stale_world', 'in_progress']);
 /** Refusals that are about timing or retries, not about the actor's authority: no owner Blocked notice, no p0_refused tag. */
@@ -54,14 +67,14 @@ export const commandContent = (c: Pick<WorldCommand, 'worldId' | 'expectedVersio
 export const payloadHash = (c: Pick<WorldCommand, 'worldId' | 'action' | 'payload'>) => contentHash({worldId: c.worldId, action: c.action, payload: c.payload});
 
 /** Signs a command with an executor; the envelope's message id is the command id. */
-export async function signCommand(exec: Executor, m: {worldId: string; expectedVersion: number; action: string; payload: Record<string, unknown>; recipient: string; scope: ScopeId | string; ownerClaimed: boolean; now: number; commandId?: string; approvalRef?: string | null; taskId?: string | null; ttlMs?: number}): Promise<WorldCommand> {
+export async function signCommand(exec: Executor, m: {worldId: string; expectedVersion: number | null; action: string; payload: Record<string, unknown>; recipient: string; scope: ScopeId | string; ownerClaimed: boolean; now: number; commandId?: string; approvalRef?: string | null; taskId?: string | null; ttlMs?: number}): Promise<WorldCommand> {
   const signed = await signEnvelope(exec.key, exec.delegation, exec.d, {recipient: m.recipient, action: m.action, scope: m.scope, content: commandContent(m), ownerClaimed: m.ownerClaimed, now: m.now, messageId: m.commandId, approvalRef: m.approvalRef, taskId: m.taskId, ttlMs: m.ttlMs});
   return {commandId: signed.envelope.message_id, worldId: m.worldId, expectedVersion: m.expectedVersion, actorId: signed.envelope.agent_id, action: m.action, payload: m.payload, signed};
 }
 
 const bound = (c: CommandCtx, cmd: WorldCommand) => {
   const e = cmd?.signed?.envelope;
-  if (!e || typeof cmd.commandId !== 'string' || !Number.isInteger(cmd.expectedVersion)) return false;
+  if (!e || typeof cmd.commandId !== 'string' || !(cmd.expectedVersion === null || Number.isInteger(cmd.expectedVersion))) return false;
   if (cmd.commandId !== e.message_id || cmd.actorId !== e.agent_id || cmd.action !== e.action || cmd.worldId !== c.runtime.worldId) return false;
   try { return canonicalize(cmd.signed.content) === canonicalize(commandContent(cmd)); } catch { return false; }
 };
@@ -71,15 +84,13 @@ export async function executeCommand<T>(c: CommandCtx, cmd: WorldCommand, h: Com
   let proven = false;
   const refuse = (step: string, code: string, opts: {verified?: boolean; event?: Omit<WorldEvent, 'id' | 'tick'>} = {}): CommandOutcome => {
     const r: Refused = {step, code, retryable: RETRYABLE.has(code)};
-    // An unproven actor id is attacker-chosen, so it is not used as a key.
-    const actor = proven ? cmd.actorId : 'unverified', key = `${actor}:${code}:${step}`;
-    const events = c.runtime.commitRefusal(now, `cmd-refused-${actor}-${id}-${Math.random().toString(36).slice(2, 8)}`, (st, emit) => {
-      if (!c.runtime.noteRefusal(key, now)) return;
-      const tagged: Emit = e => emit({...e, data: {...(e.data ?? {}), dedup_key: key}});
-      if (opts.event) tagged(opts.event);
-      else if (h.refused) h.refused(st, tagged, r, now);
-      else tagged({at: now, source: 'live', kind: 'command_refused', muse: null, data: {step, reason: code, action: cmd?.action ?? null, command_id: id}, tags: []});
-    });
+    // An unproven actor id is attacker-chosen, so it is not used as a key. The key names the other side too.
+    const actor = proven ? cmd.actorId : 'unverified', key = `${actor}>${h.recipient}:${code}:${step}`;
+    const events = c.runtime.commitRefusal(now, `cmd-refused-${actor}-${id}-${Math.random().toString(36).slice(2, 8)}`, key, (st, emit) => {
+      if (opts.event) emit(opts.event);
+      else if (h.refused) h.refused(st, emit, r, now);
+      else emit({at: now, source: 'live', kind: 'command_refused', muse: null, data: {step, reason: code, action: cmd?.action ?? null, command_id: id}, tags: []});
+    }, h.dedup !== false);
     return {result: {ok: false, commandId: id, worldVersion: c.runtime.state().version, eventIds: events.map(x => x.id), error: {code, retryable: r.retryable}}, output: null, duplicate: false, verified: !!opts.verified, refused: r};
   };
   const stored = (row: CommandRow): CommandOutcome => ({result: row.result, output: row.output, duplicate: true, verified: true, refused: null});
@@ -103,14 +114,17 @@ export async function executeCommand<T>(c: CommandCtx, cmd: WorldCommand, h: Com
     // 4. A new request: the full envelope check without spending the nonce, then the peer's side.
     const verdict = await verifyEnvelope(cmd.signed, c.trust, now, {recipient: h.recipient, claim: false});
     if (!verdict.ok) return refuse(verdict.step, verdict.reason);
-    const peer = h.counterparty ? await h.counterparty() : null;
+    const deadline = c.deadlineMs ?? STEP_DEADLINE_MS;
+    let peer: PeerCheck | null = null;
+    if (h.counterparty) { try { peer = await within(h.counterparty(), deadline); } catch { return refuse('counterparty', 'counterparty_unavailable', {verified: true}); } }
     if (peer && !peer.ok) return refuse('counterparty', peer.reason, {verified: true});
-    // 5. The world the actor planned against.
-    if (c.runtime.state().version !== cmd.expectedVersion) return refuse('version', 'stale_world', {verified: true});
+    // 5. The world the actor planned against (if it named one).
+    const stale = () => cmd.expectedVersion !== null && c.runtime.state().version !== cmd.expectedVersion;
+    if (stale()) return refuse('version', 'stale_world', {verified: true});
     // 6. Outside the transaction.
     let thought: T | undefined;
     if (h.think) {
-      try { const t = await h.think(); thought = t.thought; settle = t.settle; } catch { return refuse('think', 'decision_unavailable', {verified: true}); }
+      try { const t = await within(h.think(), deadline); thought = t.thought; settle = t.settle; } catch { return refuse('think', 'decision_unavailable', {verified: true}); }
     }
     // 7. Commit point: one storage transaction.
     const box: {applied: Applied} = {applied: {ok: false, code: 'not_applied'}};
@@ -119,7 +133,7 @@ export async function executeCommand<T>(c: CommandCtx, cmd: WorldCommand, h: Com
       guard: () => {
         const again = c.runtime.commandRow(cmd.actorId, cmd.commandId);
         if (again) return again.payloadHash === hash ? 'duplicate' : 'command_conflict';
-        if (c.runtime.state().version !== cmd.expectedVersion) return 'stale_world';
+        if (stale()) return 'stale_world';
         if (!current() || (peer?.ok && !peer.current(now))) return 'delegation_revoked';
         // Last: the nonce is spent only by the commit that uses it (rolled back with it on a throw).
         return c.trust.claimNonce(e.agent_id, e.nonce, e.message_id, e.expires_at) ? null : 'replay';
@@ -132,7 +146,8 @@ export async function executeCommand<T>(c: CommandCtx, cmd: WorldCommand, h: Com
       },
     });
     if (done.aborted === 'duplicate') return stored(c.runtime.commandRow(cmd.actorId, cmd.commandId)!);
-    if (done.aborted !== null) return refuse('commit', done.aborted, {verified: true, event: LATE[done.aborted] ? {at: now, source: 'live', kind: 'decision_discarded', muse: null, data: {reason: LATE[done.aborted], action: cmd.action, command_id: id, thought: h.think ? 'discarded' : null}, tags: []} : undefined});
+    // decision_discarded is for a late model answer; without think, a commit-time refusal is an ordinary one.
+    if (done.aborted !== null) return refuse('commit', done.aborted, {verified: true, event: h.think && LATE[done.aborted] ? {at: now, source: 'live', kind: 'decision_discarded', muse: null, data: {reason: LATE[done.aborted], action: cmd.action, command_id: id, thought: 'discarded'}, tags: []} : undefined});
     return {result: done.row.result, output: done.row.output, duplicate: false, verified: true, refused: null};
   } finally {
     c.runtime.pending.delete(flight);

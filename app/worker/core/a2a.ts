@@ -42,6 +42,8 @@ export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; 
   const evidence = envelopeEvidence(cmd.signed);
   const out = await executeCommand(c, cmd, {
     recipient: partner.agentId,
+    // P0 is evidence: every refusal of every run stays in the log.
+    dedup: false,
     counterparty: () => peerCheck(c, plan.partner, nowOf(c)),
     apply: (st, emit, at) => {
       emit({at, source: 'live', kind: 'a2a_verified', muse: OWNER_SLOT, other: plan.partner, line: 'Signature, delegation, scope, expiry, nonce: verified', data: {steps: ['signature', 'recipient', 'delegation', 'scope', 'expiry', 'content', 'replay', 'counterparty'], envelope: evidence, content, label: opts.label}, tags: ['p0_valid']});
