@@ -99,6 +99,7 @@ export async function loadRecordedRun(read: RunReader, selected?: string, signal
     };
     const inputs = await collect('/api/world/run/inputs', head.readThrough.inputSeq, head.readThrough.inputs, 25, 4096);
     const events = await collect('/api/world/events', head.readThrough.eventSeq, head.readThrough.events, 500, 50000);
+    scope.signal.throwIfAborted();
     return {...head, inputs, events};
   } finally { scope.close(); }
 }

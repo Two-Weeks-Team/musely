@@ -67,3 +67,8 @@ test('cumulative snapshot budget is enforced while paging instead of buffering t
  await assert.rejects(loadRecordedRun(s.read,r.runId,undefined,{onProgress:advanceWaits(t,[])}),e=>e.code==='record_too_large');
  assert.ok(s.calls.at(-1).includes('/inputs?'));assert.ok(Number(new URL(s.calls.at(-1),'https://offline.invalid').searchParams.get('since'))<136,'reject without requesting final page');
 });
+test('cancellation queued at final input progress rejects before returning a supported event-free run',async t=>{
+ const r=record(1),s=transport(t,r),controller=new AbortController();loadRun(r);
+ await assert.rejects(loadRecordedRun(s.read,r.runId,controller.signal,{onProgress:p=>{if(p.phase==='inputs'&&p.loaded===1)queueMicrotask(()=>controller.abort());}}),/cancel|abort/i);
+ assert.equal(controller.signal.aborted,true);assert.equal(s.calls.length,2,'no event GET is required or issued');
+});
