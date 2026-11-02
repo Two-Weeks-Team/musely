@@ -8,6 +8,7 @@ import {resolve,join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
 import {summarizeFrames,comparePss,compareContext,validateFreeze,DURATION_MS,eightPayload,compareBaselineContext,externalCodePaths} from './device-metrics.mjs';
+import {auditLocalPair,validateLocalBaseline,localDocumentBound} from './lib/device-local-pair.mjs';
 const sha=b=>createHash('sha256').update(b).digest('hex');
 export class TargetCDP {
  constructor(socket){
@@ -42,17 +43,19 @@ const publicProbe=(url,options={})=>fetch(url,{cache:'no-store',...options,heade
 export function errorCauseMetadata(error){const cause=error?.cause;if(!cause)return null;const value=x=>typeof x==='string'&&/^[A-Za-z0-9_]{1,64}$/.test(x)?x:null;return {code:value(cause.code),name:value(cause.name)};}
 export function urlQueryState(raw){const hash=raw.indexOf('#'),end=hash<0?raw.length:hash,query=raw.indexOf('?');return query<0||query>=end?'none':query+1===end?'empty':'nonempty';}
 export async function auditSource(pin){
+ const localPair=pin.environment==='local-read-only-pair'?await auditLocalPair(pin,publicProbe):null;
+ const readOptions=localPair?{redirect:'error',credentials:'omit'}:{};
  const htmlHeaders={Accept:pin.htmlAccept??'*/*'};
- const url=pin.origin+'/',response=await publicProbe(url,{headers:htmlHeaders});if(!response.ok)throw Error('HTML GET '+response.status);const body=Buffer.from(await response.arrayBuffer());if(sha(body)!==pin.htmlSHA256)throw Error('served HTML does not match frozen release');
- const status=await publicProbe(pin.origin+'/api/status');if(!status.ok)throw Error('status GET '+status.status);const rawStatus=await status.text();
+ const url=pin.origin+'/',response=await publicProbe(url,{...readOptions,headers:htmlHeaders});if(!response.ok)throw Error('HTML GET '+response.status);const body=Buffer.from(await response.arrayBuffer());if(sha(body)!==pin.htmlSHA256)throw Error('served HTML does not match frozen release');
+ const status=await publicProbe(pin.origin+'/api/status',readOptions);if(!status.ok)throw Error('status GET '+status.status);const rawStatus=await status.text();
  for(const path of externalCodePaths(body.toString('utf8'),pin.origin,pin.externalCodeFiles??[]))if(!pin.files.some(f=>f.path===path))throw Error('runtime code missing from manifest '+path);
- const files=[];for(const file of pin.files??[]){if(!/^[A-Za-z0-9_./-]+$/.test(file.path)||file.path.includes('..'))throw Error('invalid manifest path');const r=await publicProbe(pin.origin+'/'+file.path,file.path==='index.html'?{headers:htmlHeaders}:{});const bytes=Buffer.from(await r.arrayBuffer());const digest=sha(bytes);if(!r.ok||digest!==file.sha256||bytes.length!==file.bytes)throw Error('asset pin mismatch '+file.path);files.push({path:file.path,sha256:digest,bytes:bytes.length});}
+ const files=[];for(const file of pin.files??[]){if(!/^[A-Za-z0-9_./-]+$/.test(file.path)||file.path.includes('..'))throw Error('invalid manifest path');const r=await publicProbe(pin.origin+'/'+file.path,{...readOptions,...(file.path==='index.html'?{headers:htmlHeaders}:{})});const bytes=Buffer.from(await r.arrayBuffer());const digest=sha(bytes);if(!r.ok||digest!==file.sha256||bytes.length!==file.bytes)throw Error('asset pin mismatch '+file.path);files.push({path:file.path,sha256:digest,bytes:bytes.length});}
  const externalCodeFiles=[];for(const file of pin.externalCodeFiles??[]){const r=await publicProbe(file.url,{redirect:'error',credentials:'omit'});if(!r.ok||Number(r.headers.get('content-length'))>1024*1024)throw Error('external code observation failed');const chunks=[];let n=0;for await(const chunk of r.body){n+=chunk.length;if(n>1024*1024)throw Error('external code observation too large');chunks.push(chunk);}const bytes=Buffer.concat(chunks);if(bytes.length!==file.bytes||sha(bytes)!==file.sha256)throw Error('external code pin mismatch');externalCodeFiles.push({...file,observedAt:new Date().toISOString()});}
- return {at:new Date().toISOString(),url,htmlAccept:htmlHeaders.Accept,htmlSHA256:sha(body),htmlBytes:body.length,statusCode:status.status,statusSHA256:sha(rawStatus),publicStatus:JSON.parse(rawStatus),deploymentIdentity:'release/config/worker identity is root-attested in the freeze pin; public status has no release identity endpoint',files,externalCodeFiles};
+ return {at:new Date().toISOString(),url,htmlAccept:htmlHeaders.Accept,htmlSHA256:sha(body),htmlBytes:body.length,statusCode:status.status,statusSHA256:sha(rawStatus),publicStatus:JSON.parse(rawStatus),deploymentIdentity:localPair?'Local recorded public GET dataset; no production Worker identity':'release/config/worker identity is root-attested in the freeze pin; public status has no release identity endpoint',files,externalCodeFiles,...(localPair?{localPair}:{})};
 }
 // Pure report producers share the same serialized-output seam as the collector.
 const PROFILE_CACHE_POLICY='unchanged-profile-cache';
-export const createMeasurementReport=(opts,pin)=> ({kind:opts.kind,pin,conditions:{durationMs:DURATION_MS,dprCap:1.5,route:'story-manual-210',cachePolicy:opts.kind==='first-load'?'target cache disabled; service worker bypass;4Mbps/150ms':PROFILE_CACHE_POLICY,documentPolicy:opts.kind==='first-load'?'network document':'frozen HTML interception',globalCacheCleared:false},startedAt:new Date().toISOString(),complete:false,writes:[],errors:[],memory:{samples:[]},cleanup:{targetClosed:false,browserClosed:false,forwardChanged:false}});
+export const createMeasurementReport=(opts,pin)=> ({kind:opts.kind,pin,conditions:{durationMs:DURATION_MS,dprCap:1.5,route:'story-manual-210',cachePolicy:opts.kind==='first-load'?'target cache disabled; service worker bypass;4Mbps/150ms':PROFILE_CACHE_POLICY,documentPolicy:opts.kind==='first-load'||pin.environment==='local-read-only-pair'?'network document':'frozen HTML interception',globalCacheCleared:false},startedAt:new Date().toISOString(),complete:false,writes:[],errors:[],memory:{samples:[]},cleanup:{targetClosed:false,browserClosed:false,forwardChanged:false}});
 export const measurementContext=report=> ({model:report.model,android:report.android,chrome:report.chrome,viewport:report.device.viewport,dpr:report.device.dpr.applied,route:'story-manual-210',cachePolicy:PROFILE_CACHE_POLICY});
 export class BrowserSourceAudit{
  constructor(pin,documentUrl){this.pin=pin;this.documentUrl=documentUrl;this.rows=new Map();this.pending=[];}
@@ -65,7 +68,9 @@ export class BrowserSourceAudit{
 }
 export const deniedTelemetry=(row,origin)=>row.method==='POST'&&row.origin===origin&&row.path==='/cdn-cgi/rum'&&((row.query===false&&(row.queryState===undefined||row.queryState==='none'))||(row.query===true&&row.queryState==='empty'))&&row.fragment===false&&row.credentials===false&&row.action==='aborted';
 export function stalePublicMapRead(request,error){try{const u=new URL(request.url);return request.method==='GET'&&u.origin==='https://tiles.openfreemap.org'&&!u.username&&!u.password&&!request.url.includes('?')&&!request.url.includes('#')&&/^\/planet\/\d{8}_\d{6}_pt\/\d{1,2}\/\d+\/\d+\.pbf$/.test(u.pathname)&&String(error)==='Error: Invalid InterceptionId.';}catch{return false;}}
-export const measurementPassed=report=> report.complete&&!report.protocolError&&!(report.interceptionErrors??[]).some(row=>row.classification!=='stale-public-map-read')&&Array.isArray(report.metrics?.errors)&&report.metrics.errors.length===0&&!report.errors.length&&!report.writes.some(row=>!deniedTelemetry(row,report.pin.origin))&&!report.cleanup.restorationErrors?.length&&Object.values(report.gate??{}).every(x=>x===true)&&(report.kind!=='mobile-210'||report.memory.complete===true&&report.memory.comparison?.numericPass===true&&report.baselineProvenance?.complete===true)&&!(report.contextMismatches?.length);
+const collected=report=> report.complete&&!report.protocolError&&!(report.interceptionErrors??[]).some(row=>row.classification!=='stale-public-map-read')&&Array.isArray(report.metrics?.errors)&&report.metrics.errors.length===0&&!report.errors.length&&!report.writes.some(row=>!deniedTelemetry(row,report.pin.origin))&&!report.cleanup.restorationErrors?.length&&Object.values(report.gate??{}).every(x=>x===true)&&!(report.contextMismatches?.length);
+export const baselineCaptured=report=>report.pin.environment==='local-read-only-pair'&&report.pin.role==='baseline-capture'&&/^[a-f0-9]{64}$/.test(report.deviceSerialSHA256??'')&&collected(report)&&report.memory.complete===true&&compareBaselineContext(report,report.context).complete&&localDocumentBound(report)&&['sourceBefore','sourceAfter'].every(side=>report[side]?.localPair?.serverConfigSHA256===report.pin.localPair.serverConfigSHA256&&report[side]?.localPair?.datasetSHA256===report.pin.localPair.datasetSHA256);
+export const measurementPassed=report=> !(report.pin.environment==='local-read-only-pair'&&report.pin.role==='baseline-capture')&&collected(report)&&(report.kind!=='mobile-210'||report.memory.complete===true&&report.memory.comparison?.numericPass===true&&report.baselineProvenance?.complete===true)&&(report.pin.environment!=='local-read-only-pair'||localDocumentBound(report));
 export async function finalizeMeasurement(report,c){
  // Always replace an earlier sample: unavailable final metrics are not an error-free observation.
  report.metrics=null;
@@ -73,15 +78,20 @@ export async function finalizeMeasurement(report,c){
  if(c){await c.settleEvents?.();if(c.eventError)report.protocolError??=c.eventError;}
  report.networkAudit={continuedWriteRequests:0,blockedWriteAttempts:report.writes.length,deniedTelemetry:report.writes.filter(row=>deniedTelemetry(row,report.pin.origin)),fatalWriteAttempts:report.writes.filter(row=>!deniedTelemetry(row,report.pin.origin)),note:'All non-GET/HEAD requests are aborted. Telemetry entries are denied attempts, not successful access or zero network attempts.'};
  report.measuredChecksPass=measurementPassed(report);
+ if(report.pin.environment==='local-read-only-pair')report.baselineCaptured=baselineCaptured(report);
 }
 export async function runMeasurement(opts,pin){
+ const local=pin.environment==='local-read-only-pair',captureBaseline=local&&pin.role==='baseline-capture';
  const refusals=validateFreeze(pin,opts);if(refusals.length)throw Error('Measurement refused before CDP: '+refusals.join(', '));
  if(!opts.execute)throw Error('Measurement requires explicit --execute after root release freeze');
- if(opts.kind==='mobile-210'&&(!opts.baseline||!pin.baselineContext))throw Error('mobile comparison requires --baseline and explicit baselineContext provenance before CDP');
+ if(local&&!opts.serial)throw Error('local pair requires the exact physical device serial');
+ if(captureBaseline&&opts.baseline)throw Error('local baseline capture cannot use a historical baseline');
+ if(opts.kind==='mobile-210'&&!captureBaseline&&(!opts.baseline||!pin.baselineContext))throw Error('mobile comparison requires --baseline and explicit baselineContext provenance before CDP');
  let baseline,baselineProvenance,baselineSHA256;
- if(opts.kind==='mobile-210'){
+ if(opts.kind==='mobile-210'&&!captureBaseline){
   const bytes=readFileSync(opts.baseline);baselineSHA256=sha(bytes);if(!/^[a-f0-9]{64}$/.test(pin.baselineSHA256??'')||baselineSHA256!==pin.baselineSHA256)throw Error('baseline hash does not match freeze declaration');
   baseline=JSON.parse(bytes);baselineProvenance=compareBaselineContext(baseline,pin.baselineContext);if(baselineProvenance.mismatches.length)throw Error('baseline context mismatch: '+baselineProvenance.mismatches.join(','));
+  if(local){const errors=validateLocalBaseline(baseline,pin,sha(opts.serial));if(errors.length)throw Error('local baseline refused: '+errors.join(','));if(!baselineProvenance.complete)throw Error('local baseline context is incomplete');}
  }
  if(!opts.out)throw Error('a new --out directory is required');if(existsSync(join(opts.out,'results.json')))throw Error('immutable result already exists');
  const targets=await(await fetch(opts.endpoint+'/json/list')).json();const target=targets.find(t=>t.id===opts.targetId&&t.type==='page');if(!target||new URL(target.url).origin!==pin.origin)throw Error('exact task target missing or wrong origin');
@@ -89,23 +99,25 @@ export async function runMeasurement(opts,pin){
  if(baseline){report.baselineSHA256=baselineSHA256;report.baselineArtifact=opts.baseline;report.baselineProvenance=baselineProvenance;}
  let c,networkChanged=false,intercepted=false,lifecycle=false,browserAudit;
  try{
-  report.sourceBefore=await auditSource(pin);if(!pin.htmlFile&&opts.kind!=='first-load')throw Error('frozen htmlFile required for baseline-equivalent 210s route');
+  report.sourceBefore=await auditSource(pin);if(!local&&!pin.htmlFile&&opts.kind!=='first-load')throw Error('frozen htmlFile required for baseline-equivalent 210s route');
   const frozen=pin.htmlFile?readFileSync(pin.htmlFile):null;if(frozen&&sha(frozen)!==pin.htmlSHA256)throw Error('local frozen HTML pin mismatch');
-  c=await TargetCDP.connect(target.webSocketDebuggerUrl);await c.send('Runtime.enable');await c.send('Page.enable');await c.send('Network.enable',opts.kind==='first-load'?{maxTotalBufferSize:64*1024*1024,maxResourceBufferSize:16*1024*1024}:{});
+  c=await TargetCDP.connect(target.webSocketDebuggerUrl);await c.send('Runtime.enable');await c.send('Page.enable');await c.send('Network.enable',opts.kind==='first-load'||local?{maxTotalBufferSize:64*1024*1024,maxResourceBufferSize:16*1024*1024}:{});
+  if(local)report.conditions.inspectorBuffers={total:64*1024*1024,resource:16*1024*1024};
   report.preNavigationDevice=await c.evaluate(metadataExpression);if(report.preNavigationDevice.visibility!=='visible')throw Error('exact task tab must already be visible');
   if(pin.referenceDevice==='MacBookPro18,2'){report.model=execFileSync('sysctl',['-n','hw.model'],{encoding:'utf8'}).trim();if(report.model!==pin.referenceDevice||/HeadlessChrome/.test(report.preNavigationDevice.ua))throw Error('approved visible desktop reference required');}
   else{if(!opts.serial)throw Error('approved mobile reference requires --serial');report.model=adb(opts.serial,'shell','getprop','ro.product.model').trim();report.android=adb(opts.serial,'shell','getprop','ro.build.version.release').trim();report.chrome=adb(opts.serial,'shell','dumpsys','package','com.android.chrome').match(/versionName=(.*)/)?.[1]?.trim();if(report.model!==pin.referenceDevice||report.android!=='16'||!/Android/.test(report.preNavigationDevice.ua))throw Error('approved Android16 reference required');}
+  if(local)report.deviceSerialSHA256=sha(opts.serial);
   if(opts.kind==='desktop-210'&&pin.referenceDevice!=='MacBookPro18,2'||opts.kind==='mobile-210'&&pin.referenceDevice!=='SM-S918N')throw Error('measurement kind/reference mismatch');
   const loads=new Set();c.on('Page.lifecycleEvent',e=>loads.add(e.loaderId+':'+e.name));await c.send('Page.setLifecycleEventsEnabled',{enabled:true});lifecycle=true;
   c.on('Runtime.exceptionThrown',e=>report.errors.push(e.exceptionDetails?.text??'page exception'));
-  if(opts.kind==='first-load')browserAudit=new BrowserSourceAudit(pin,pin.origin+'/?dpr=1.5');
+  if(opts.kind==='first-load'||local)browserAudit=new BrowserSourceAudit(pin,pin.origin+(local?'/?autoplay=0&perf=1&dpr=1.5':'/?dpr=1.5'));
   c.on('Network.responseReceived',e=>browserAudit?.response(e));
   c.on('Network.loadingFailed',e=>(report.networkFailures??=[]).push({requestId:e.requestId,type:e.type,canceled:e.canceled===true,error:/^net::[A-Z_]+$/.test(e.errorText)?e.errorText:'network_failure'}));
   c.on('Network.loadingFinished',async e=>{report.transferredBytes=(report.transferredBytes??0)+e.encodedDataLength;await browserAudit?.finished(e.requestId,id=>c.send('Network.getResponseBody',{requestId:id}));});
   c.on('Fetch.requestPaused',async e=>{
    try{
    if(!['GET','HEAD'].includes(e.request.method)){const u=new URL(e.request.url),row={method:e.request.method,path:u.pathname,origin:u.origin,query:e.request.url.includes('?'),queryState:urlQueryState(e.request.url),fragment:e.request.url.includes('#'),credentials:!!(u.username||u.password),action:'abort-pending'};report.writes.push(row);await c.send('Fetch.failRequest',{requestId:e.requestId,errorReason:'BlockedByClient'});row.action='aborted';}
-   else if(opts.kind!=='first-load'&&e.resourceType==='Document'&&e.request.url===pin.origin+'/?autoplay=0&perf=1&dpr=1.5')await c.send('Fetch.fulfillRequest',{requestId:e.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'text/html; charset=utf-8'}],body:frozen.toString('base64')});
+   else if(!local&&opts.kind!=='first-load'&&e.resourceType==='Document'&&e.request.url===pin.origin+'/?autoplay=0&perf=1&dpr=1.5')await c.send('Fetch.fulfillRequest',{requestId:e.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'text/html; charset=utf-8'}],body:frozen.toString('base64')});
    else await c.send('Fetch.continueRequest',{requestId:e.requestId});
    }catch(error){const u=new URL(e.request.url),stale=stalePublicMapRead(e.request,error);(report.interceptionErrors??=[]).push({method:e.request.method,origin:u.origin,path:u.pathname,networkId:e.networkId??null,requestId:e.requestId,error:String(error),classification:stale?'stale-public-map-read':'fatal'});if(!stale)throw error;}
   });await c.send('Fetch.enable',{patterns:[{urlPattern:'*'}]});intercepted=true;
@@ -128,7 +140,7 @@ export async function runMeasurement(opts,pin){
     report.gate={fps:report.performance.complete&&report.performance.medianFps>=(opts.kind==='desktop-210'?55:30),p95:report.performance.p95FrameMs<=(opts.kind==='desktop-210'?33:50),visible:raw.visibility.length===0};
     if(opts.kind==='mobile-210'){
      report.memory.samples.push({elapsed:(Date.now()-began)/1000,...samplePss(opts.serial)});const all=report.memory.samples.every(x=>x.complete);report.memory.complete=all;report.memory.peakKiB=all?Math.max(...report.memory.samples.map(x=>x.pssKiB)):null;report.memory.endKiB=all?report.memory.samples.at(-1).pssKiB:null;
-     if(opts.baseline){report.memory.comparison=comparePss(baseline.memory,report.memory);report.context=measurementContext(report);report.contextMismatches=compareContext(pin.baselineContext,report.context);}
+     report.context=measurementContext(report);if(opts.baseline){report.memory.comparison=comparePss(baseline.memory,report.memory);report.contextMismatches=compareContext(pin.baselineContext,report.context);}
     }
    }else if(opts.kind==='eight-budget'){
     await until(c,'window.__world.getMetrics().characters?.every(x=>x.loadedLods.length===3)&&window.__world.getMetrics().characterUpgrade?.props');await c.evaluate("window.__world.startStory();document.getElementById('pause').click()");report.renderSamples=[];
@@ -146,7 +158,7 @@ export async function runMeasurement(opts,pin){
  }catch(error){report.error=String(error);report.errorCause=errorCauseMetadata(error);}
  finally{
   if(c){const restore=async(method,params)=>{try{await c.send(method,params);}catch(error){(report.cleanup.restorationErrors??=[]).push({method,error:String(error)});}};if(networkChanged){await restore('Network.emulateNetworkConditions',{offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1});await restore('Network.setCacheDisabled',{cacheDisabled:false});await restore('Network.setBypassServiceWorker',{bypass:false});}if(intercepted)await restore('Fetch.disable');if(lifecycle)await restore('Page.setLifecycleEventsEnabled',{enabled:false});try{await c.evaluate(performanceCleanupExpression);}catch(error){(report.cleanup.restorationErrors??=[]).push({method:'visibility listener cleanup',error:String(error)});}}
-  await finalizeMeasurement(report,c);if(c){await c.close();await c.settleEvents?.();if(c.eventError)report.protocolError??=c.eventError;report.cleanup.ownCdpConnectionClosed=true;report.measuredChecksPass=measurementPassed(report);}
+  await finalizeMeasurement(report,c);if(c){await c.close();await c.settleEvents?.();if(c.eventError)report.protocolError??=c.eventError;report.cleanup.ownCdpConnectionClosed=true;report.measuredChecksPass=measurementPassed(report);if(local)report.baselineCaptured=baselineCaptured(report);}
   report.acceptance='Separate device acceptance review required; collector completion is not overall C11 PASS';report.finishedAt=new Date().toISOString();writeFileSync(join(opts.out,'results.json'),JSON.stringify(report,null,2)+'\n',{flag:'wx'});
  }
  return report;
@@ -156,6 +168,6 @@ export async function main(argv=process.argv.slice(2)){
  const opts=options(argv);
  if(opts.help||(!opts.execute&&!opts.metadata)){console.log('PREPARATION ONLY. Measurement requires --execute --pin frozen.json --cdp http://127.0.0.1:PORT --target EXACT_ID --kind mobile-210|desktop-210|first-load|eight-budget|live-observation --out NEW_DIR [--serial DEVICE --baseline baseline.json]. No browser/device connection was made.');return 0;}
  if(opts.metadata){if(!opts.endpoint||!opts.targetId)throw Error('metadata requires exact --cdp and --target');if(!['127.0.0.1','localhost','[::1]'].includes(new URL(opts.endpoint).hostname))throw Error('metadata endpoint must be local');const list=await(await fetch(opts.endpoint+'/json/list')).json();const target=list.find(x=>x.id===opts.targetId&&x.type==='page');console.log(JSON.stringify(target?{id:target.id,type:target.type,title:target.title,url:target.url}:null));return 0;}
- if(!opts.pin)throw Error('frozen --pin is required before CDP');const pin=JSON.parse(readFileSync(opts.pin));const report=await runMeasurement(opts,pin);console.log(JSON.stringify({complete:report.complete,error:report.error??null,gate:report.gate??null}));return report.measuredChecksPass?0:1;
+ if(!opts.pin)throw Error('frozen --pin is required before CDP');const pin=JSON.parse(readFileSync(opts.pin));const report=await runMeasurement(opts,pin);console.log(JSON.stringify({complete:report.complete,error:report.error??null,gate:report.gate??null,...(pin.environment==='local-read-only-pair'?{baselineCaptured:report.baselineCaptured,comparisonPass:report.measuredChecksPass}:{})}));return report.measuredChecksPass||report.baselineCaptured?0:1;
 }
 if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url)main().then(code=>{process.exitCode=code;}).catch(error=>{console.error(String(error));process.exitCode=2;});
