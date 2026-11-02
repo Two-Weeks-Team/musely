@@ -497,3 +497,18 @@ The app Live world scene, pins and selected Muse card use the same server IDs, v
 ## I-07 owner workflow evidence update (2026-11-03)
 
 EXP-REWARD/EXP-MEETUP/EXP-COMMS/AUTONOMY may reuse the [I-07 acceptance record](OWNER_WORKFLOW_ACCEPTANCE.md): local Task/privacy/migration criteria and150actual deployed owner/demo-peer checks, now accompanied by the machine-verified claim and positive bilateral approval. The record separates original8b13execution from unchanged494owner-workflow source, local fixtures from production, and two authenticated principals from two real people. Earlier catalog/prototype rows above remain historical descriptions; this update records the I-07implementation evidence. Personal Muse, webcam, remaining downstream criteria and wholeS3 remain separate.
+
+
+## I-09 implementation mapping acceptance (2026-11-03)
+
+The earlier paragraph describing ActionSpec sequence/blend/props/socket/partner fields as a gap is the initial mapping description. Existing BEATS and public events now map through `src/ui/live-scene-core.ts` and the [accepted live-scene table](LIVE_SCENE.md#i-09-final-acceptance-and-evidence-handoff-2026-11-03). No new ActionSpec type is introduced. Original rows/source references remain intact; this records their implemented projection scope.
+
+| Mapping field | Accepted implementation scope |
+|---|---|
+| Sequence and posture/blend | Server beat startedAt drives existing clip bundles; seated talk overlays non-overlapping upper-body tracks on sit_idle. Local seek/LOD retain root, skeleton and action/blend phase. |
+| Props, sockets and visibility | Existing props attach to named socket bones. Recorded item fields select the prop or named item-card fallback; the sole holder changes at the authored contact frame. |
+| Partner synchronization | Paired clips retain authored 0.9 m spacing/contact timing. Remote partners or occupied slots produce stated fallback, not body overlap or an invented transfer. |
+| Effects and visual status | Recorded teleport/item/stamp/trade-lock cues use existing instances. Complete/fallback/missing keep C02 meanings; postcard artwork, unavailable models, help celebration and unknown clips retain their stated fallback. |
+| Identity and source | EXP-WORLD/EXP-REWARD/EXP-MEETUP/EXP-COMMS use the same server Muse IDs, owner labels, inventory/version and events as pins/cards. Story stays scripted; EXP-REPLAY keeps original source/public-checkpoint provenance without executing commands/models or granting authentication/rewards. |
+
+[LIVE_SCENE](LIVE_SCENE.md#i-09-final-acceptance-and-evidence-handoff-2026-11-03) and the [C02/C03/C08/C11 handoff](../../docs/roadmap/execution-contract.md#i-09-evidence-handoff-2026-11-03) record accepted evidence and limits. The final 112/112 audit checks are offline retained-receipt/hash checks, not new runtime tests. Fixtures, original 8b13 execution/desktop receipts, actual 494 replay, emulated layout and physical phone measurements keep separate labels/identities. Specific I-13 event projections may be reused while its issue remains open, without certifying every I-13 workflow or personal Muse client. I-11/D-01/D-04 may consume the I-09 output; personal Muse/webcam, D-03 and whole-S3 acceptance remain separate.

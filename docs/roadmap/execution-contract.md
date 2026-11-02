@@ -165,3 +165,17 @@
 ### I-07 / C03·C04·C06 (2026-11-03)
 
 [Owner workflow acceptance](../../app/docs/OWNER_WORKFLOW_ACCEPTANCE.md) records the original five I-07criteria,150actual deployed owner/demo-peer checks, the machine-verified claim, and source-equivalence reuse from8b13to494. [Experience mapping](../../app/docs/EXPERIENCE_MATRIX.md#i-07-owner-workflow-evidence-update-2026-11-03) connects EXP-REWARD/EXP-MEETUP/EXP-COMMS/AUTONOMY. This updates the I-07 evidence for C03/C04/C06; C05 retains separate I-12/D-03 evidence. Contract requirements are unchanged. Local privacy/migration tests, original operating receipts and remaining personal Muse/webcam/S3 prerequisites stay distinct.
+
+
+### I-09 evidence handoff (2026-11-03)
+
+I-09 #56의 원 4항 수용·인계 근거는 [LIVE_SCENE 최종 수용](../../app/docs/LIVE_SCENE.md#i-09-final-acceptance-and-evidence-handoff-2026-11-03)과 [경험 대응](../../app/docs/EXPERIENCE_MATRIX.md#i-09-implementation-mapping-acceptance-2026-11-03)에 추가 기록한다. 기존 C02/C03/C08/C11 본문·원 SHA·초기 실패를 보존한다. 초기 342회귀/재기반 대기와 ActionSpec-gap 문구는 당시 기록이며, 이후 PR99·최종 증거가 해당 인계 범위를 보강한다. 새 ActionSpec 타입이나 모든 fallback의 완성 clip화를 요구하지 않는다.
+
+- C02: sourceMode/visualStatus와 Story/fixture/replay/운영/emulated/physical 구분을 유지한다. 기존 sequence/blend/props/socket/partner/fallback 대응을 수용하며 fixture를 실제 claim·권한·보상으로 승격하지 않는다.
+- C03: 같은 서버 Muse ID·version·owner/inventory·공개 event를 지도/actor/card에 투영한다. 원 event.at/source와 공개 publishedAt/옛 기록 at fallback을 보존한다. renderer는 명령·모델·보상을 재실행하거나 private 후보/이유를 복원하지 않는다.
+- C08: I09 actor-local seek/LOD 위상과 I11 RunRecord seek를 구분한다. 후속 live/recorded store·동일 checkpoint·public event.line·live 복귀의 통합 증거를 연결하며 I09에 I11 역선행을 추가하지 않는다.
+- C11: 수용된 13 GLB/rig/공식 Validator 보고서의 동일 bytes와 기존 support-foot/furniture/contact/LOD 기준을 재사용한다. 새 Validator 실행이나 모든 임의 자세에서 충돌이 없다는 보증을 주장하지 않는다. 8명 ≤90 draw/15MiB/96MiB·LOD0 최대2 기준은 유지하고 10명 max draw 91은 별도 관측한다. 승인 desktop/실제 폰/DPR1.5·210초/PSS 비교, 별도 494 cold와 emulated layout을 각 환경대로 기록한다. 기준 완화·새 절대메모리 상한·환경 재태그는 없다.
+
+PR99 head `b5d4c98665f814d4c0fd36c4e4ecaa941176470f`/merge `ce3a7d8dc8dc12da8152d843969d0295e19cd91f`의 최종 7개 검토 blob과 기록된 390/390·browser 28/28·독립 23+4 GREEN을 연결한다. 원 RED/부분 수정은 남긴다. 외부 `i09-final-acceptance-review` 묶음의 112/112는 120개 보존 입력의 **오프라인 기존 영수증·해시 감사**이며 새 운영/브라우저/기기 시험이 아니다. 15파일 manifest SHA256 `66c15e32bb80099030cffa4e2e3d79efce0dfaff02abaab79cb6265365b50d74`와 전체 asset/source hash·입력 목록을 C10 종료 참조로 사용한다.
+
+원 8b13 실행/desktop과 최종 494 서비스를 구분한다. 실제 494 replay 11/11은 원 event 4012/run 3/input 349/version 801/hash `1e829885f31537cf9c5c7ebbf2dde6fa8be6b03dd762b6159e89d61e3a6da51a`에 연결되며 원 실행을 494 새 업무실행으로 바꾸지 않는다. 동일 renderer/assets/Worker/config 근거는 재사용하고 변경된 read-only loader/UI 영향은 실제 494·fresh layout·물리 client 증거로 구분한다. 저장 server verdict를 새 model call/독립 crypto 검증/개인 Muse 연결로 표현하지 않는다. I13 #57은 해당 event projection 출력만 인수한다. I11/D01/D04에 I09 출력을 인계하되 personal Muse/webcam·D03·downstream 전체·S3 수용은 별도다. 최종 C10·체크·인계는 #56에서 마감하며 이 문서 추가 자체가 새 운영 실행/배포/GitHub close receipt는 아니다.
