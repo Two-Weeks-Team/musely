@@ -334,6 +334,16 @@ test('AC3 Worker routes: /api/world/run, /run/inputs, /event, /highlights (befor
   // Public run-log reads: 30 seconds public cache; a client past the burst limit gets 429.
   for (const path of ['/api/world/run', `/api/world/run/inputs?runId=${run.body.runId}`, `/api/world/event?id=${encodeURIComponent(p1.body[0].id)}`, `/api/world/autonomy?from=${now - 60_000}&to=${now + 60_000}`]) assert.equal((await go(path)).cache, 'public, max-age=30', path);
   assert.equal(p1.cache, 'no-store', 'highlights stay uncached');
+  // A stored copy can come back from the edge cache with the zone's browser TTL (production: max-age=14400); the hit
+  // is answered with the run-log TTL again, and its body is the stored one.
+  const stored = new Map();
+  globalThis.caches = {default: {match: async req => { const r = stored.get(req.url); return r ? new Response(await r.clone().text(), {status: 200, headers: {'content-type': 'application/json', 'cache-control': 'public, max-age=14400', 'cf-cache-status': 'HIT'}}) : undefined; }, put: async (req, r) => { stored.set(req.url, r); }}};
+  try {
+    const miss = await go('/api/world/run');
+    const hit = await go('/api/world/run');
+    assert.equal(miss.cache, 'public, max-age=30'); assert.equal(hit.cache, 'public, max-age=30', 'a cache hit keeps the 30-second browser TTL');
+    assert.deepEqual(hit.body, miss.body);
+  } finally { delete globalThis.caches; }
   // Review 7: C03 values only. A demo check and a judge-run P0 are trial; the owner's own acts keep data.actor and no origin.
   const {sourceLabel} = await import('../src/ui/source-label.ts');
   const imp = (await go('/api/world/highlights?limit=50')).body.filter(e => e.kind === 'impostor_rejected');
