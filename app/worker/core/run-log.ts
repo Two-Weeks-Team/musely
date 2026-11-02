@@ -81,7 +81,7 @@ const each = (t: Table) => (v: unknown) => (Array.isArray(v) ? v.map(x => pick(x
  * Allow-lists of the public snapshot: every field of the world state is named here with what is kept. A field that is
  * not listed is left out; scripts/run-log.test.mjs fails when the state has a field none of these tables names.
  */
-export const SNAPSHOT_FIELDS: Record<'state' | 'muse' | 'wants' | 'beat' | 'owner' | 'inbox' | 'task' | 'message' | 'mail' | 'notification', Table> = {
+export const SNAPSHOT_FIELDS: Record<'state' | 'muse' | 'wants' | 'beat' | 'owner' | 'inbox' | 'task' | 'help' | 'message' | 'mail' | 'notification' | 'invite', Table> = {
   state: {} as Table, muse: {} as Table,
   wants: {goal: 'text', items: 'copy', source: 'copy', updatedAt: 'copy'},
   beat: {id: 'copy', clip: 'copy', startedAt: 'copy', endsAt: 'copy', line: 'text'},
@@ -92,14 +92,19 @@ export const SNAPSHOT_FIELDS: Record<'state' | 'muse' | 'wants' | 'beat' | 'owne
     // Version 2 (I-07): the meetup candidates, the hash that fingerprints them, the owner decisions, who decides and
     // the chosen candidate are private; the revision, the record version and the stage are not.
     schema: 'copy', revision: 'copy', contentHash: 'private', candidates: 'private', approvals: 'private', stage: 'copy', owners: 'private', confirmed: 'private'},
+  // A help request (I-13): ids as they are, the request line by its hash.
+  help: {service: 'copy', item: 'copy', part: 'copy', asked: 'copy', result: 'copy', note: 'text'},
   message: {id: 'copy', from: 'copy', to: 'copy', kind: 'copy', at: 'copy', text: 'text', item: 'copy', blocked: 'copy', read: 'copy'},
   mail: {id: 'copy', from: 'copy', to: 'copy', item: 'copy', text: 'text', sentAt: 'copy', deliverAt: 'copy', crossRegion: 'copy', timed: 'copy'},
   notification: {id: 'copy', kind: 'copy', at: 'copy', line: 'text', ref: 'copy', other: 'copy', muse: 'copy', detail: 'private'},
+  // A campfire invite (I-13): ids, answers and times as they are, the invitation line by its hash.
+  invite: {id: 'copy', from: 'copy', to: 'copy', place: 'copy', note: 'text', at: 'copy', expiresAt: 'copy', status: 'copy', answers: 'copy', closedAt: 'copy', gathered: 'copy'},
 };
 const F = SNAPSHOT_FIELDS;
 // A Muse's anchor is the owner's cell (13.1): private.
 Object.assign(F.muse, {id: 'copy', place: 'copy', travel: 'copy', beat: (v: unknown) => pick(v as Record<string, unknown>, F.beat), inventory: 'copy', memory: 'texts', reflection: 'text', lastMet: 'copy', intent: 'copy', wants: (v: unknown) => pick(v as Record<string, unknown>, F.wants), anchor: 'private'} satisfies Table);
-Object.assign(F.inbox, {version: 'copy', tasks: each(F.task), messages: each(F.message), mail: each(F.mail), notifications: each(F.notification), connected: 'copy', sent: 'copy', seq: 'copy'} satisfies Table);
+Object.assign(F.task, {help: (v: unknown) => pick(v as Record<string, unknown>, F.help)} satisfies Table);
+Object.assign(F.inbox, {version: 'copy', tasks: each(F.task), messages: each(F.message), mail: each(F.mail), notifications: each(F.notification), invites: each(F.invite), connected: 'copy', sent: 'copy', seq: 'copy'} satisfies Table);
 Object.assign(F.state, {worldId: 'copy', day: 'copy', seed: 'copy', tick: 'copy', version: 'copy', lastTickAt: 'copy', spotlight: 'copy', items: 'copy', paused: 'copy', muses: each(F.muse), owner: (v: unknown) => pick(v as Record<string, unknown>, F.owner), inbox: (v: unknown) => pick(v as Record<string, unknown>, F.inbox)} satisfies Table);
 
 /**
@@ -132,6 +137,8 @@ export const COMMAND_FIELDS: Record<string, readonly string[]> = {
   move: ['kind', 'to', 'mode'], discover: ['kind'], craft: ['kind', 'recipe'], greet: ['kind', 'to'],
   propose_trade: ['kind', 'to', 'give', 'want'], counter_trade: ['kind', 'task_id', 'give', 'want'], accept_trade: ['kind', 'task_id'], reject_trade: ['kind', 'task_id'],
   send_postcard: ['kind', 'to', 'item'], give_gift: ['kind', 'to', 'item'], propose_meetup: ['kind', 'to'], answer_candidate: ['kind', 'task_id', 'answer'], update_wants: ['kind', 'items'],
+  // I-13: the invitation and request lines (`text`) are never kept.
+  invite_campfire: ['kind', 'to'], propose_help: ['kind', 'to', 'item', 'needs'], answer_help: ['kind', 'task_id', 'answer', 'item'],
 };
 /** The allowed fields of a command payload whose values are ids (or lists of ids); every other key is only named in `omitted`. */
 export function commandFields(action: string, payload: unknown): {fields: Record<string, unknown>; omitted: string[]} {

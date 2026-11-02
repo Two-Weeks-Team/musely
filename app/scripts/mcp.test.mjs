@@ -984,7 +984,9 @@ test('I-03A #94 a message without an id runs nothing but notifications: tools/ca
   assert.equal((await t.http({jsonrpc: '2.0', method: 'notifications/x', params: {_meta: META()}}, {headers: {'mcp-protocol-version': MODERN}})).status, 202);
 });
 
-test('I-03A #94 cold call: a not-ready tool after more than 24 h refreshes the connection in one commit (one agent_connected); the tool itself changes nothing', async () => {
+// The three tools that were not ready have a backend since I-13 (their success, refusal and idempotency are in
+// scripts/messages.test.mjs), so a read tool now carries this connection check: the tool itself changes nothing.
+test('I-03A #94 cold call: a read tool after more than 24 h refreshes the connection in one commit (one agent_connected); the tool itself changes nothing', async () => {
   const t = await setup();
   await t.call('get_world_state');
   const norm = st => { const c = structuredClone(st); delete c.version; delete c.inbox.connected[OWNER_SLOT]; return c; };
@@ -993,8 +995,8 @@ test('I-03A #94 cold call: a not-ready tool after more than 24 h refreshes the c
   const rest = snap => { const {events: _e, sqlite_sequence: _q, world: _w, agent_keys: _k, run_inputs: _i, run_counts: _c, ...others} = snap; return others; };
   t.clock.now += 25 * 3_600_000;
   const before = dbSnapshot(t.sql), state0 = t.state(), events0 = t.events().length;
-  const r = await t.call('invite_campfire', {to: ['01-sunny']});
-  assert.equal(r.structuredContent.refused, 'capability_not_ready');
+  const r = await t.call('register_agent');
+  assert.equal(r.isError, false);
   const after = dbSnapshot(t.sql), state1 = t.state();
   const added = t.events().slice(events0);
   assert.deepEqual(added.map(e => e.kind), ['agent_connected'], 'exactly one event, and it is the connection, not the tool');
@@ -1010,12 +1012,12 @@ test('I-03A #94 cold call: a not-ready tool after more than 24 h refreshes the c
   assert.deepEqual(after.run_counts.map(r => [r.events, r.inputs]), before.run_counts.map(r => [r.events + 1, r.inputs + 1]));
   // Warm right after: nothing at all.
   const warm = dbSnapshot(t.sql);
-  await t.call('propose_help', {to: '09-copper', item: 'coffee'});
+  await t.call('get_world_state');
   assert.deepEqual(dbSnapshot(t.sql), warm);
   // After the 10-minute refresh window: one commit that moves the connected time, no event.
   t.clock.now += 11 * 60_000;
   const v0 = t.state().version, n0 = t.events().length;
-  await t.call('answer_help', {task_id: 'task_1', answer: 'reject'});
+  await t.call('get_agent_card', {muse: '02-moss'});
   assert.equal(t.state().version - v0, 1); assert.equal(t.events().length, n0);
   assert.equal(t.state().inbox.connected[OWNER_SLOT], t.clock.now);
 });
