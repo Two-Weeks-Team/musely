@@ -28,6 +28,17 @@ export function publicReadAllowed(url,origin,method='GET'){
  const allowed=new Set(['id','runId','snapshot','since','limit','tail','before','from','to','day']);return [...u.searchParams.keys()].every(k=>allowed.has(k));
  }catch{return false;}
 }
+// This classifies denials; neither exception is permission to transmit the request.
+export function captureRequestPolicy(url,method,origin,phase){
+ let u;try{u=new URL(url);}catch{return 'fatal-denied';}
+ const same=u.origin===new URL(origin).origin&&!u.username&&!u.password,exact=!u.search&&!u.hash;
+ if(same&&exact&&method==='POST'&&u.pathname==='/cdn-cgi/rum')return 'denied-telemetry';
+ if(u.pathname==='/cdn-cgi/rum')return 'fatal-denied';
+ if(phase==='bootstrap'&&same&&exact&&method==='GET'&&u.pathname==='/api/owner/location')return 'bootstrap-denied-read';
+ const api=u.pathname.startsWith('/api/')||u.pathname==='/mcp';
+ return method==='GET'&&!u.username&&!u.password&&(!api||same&&publicReadAllowed(url,origin))?'public-read':'fatal-denied';
+}
+function validDeniedRows(rows,kind,origin){return Array.isArray(rows)&&rows.every(r=>r&&r.action==='aborted'&&r.sameOrigin===true&&['bootstrap','recording'].includes(r.phase)&&captureRequestPolicy(new URL(r.path,origin).href,r.method,origin,r.phase)===kind);}
 // A view is a required filming side. Its ID is stable across retakes; takeId identifies one recording.
 export function cutViews(c){return c.views?.length?c.views:[{id:'main',runId:c.refs?.[0]?.runId,duration:c.duration,seekSec:c.seekSec,snapshotHash:c.snapshotHash}];}
 const canonical=x=>JSON.stringify(x===undefined?null:Array.isArray(x)?x.map(v=>JSON.parse(canonical(v))):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,JSON.parse(canonical(x[k]))])):x);
@@ -122,6 +133,8 @@ export async function verifyMedia(p,dir){
    const receipt=JSON.parse(await readFile(inside(dir,segment.receipt),'utf8'));
    if(receipt.media?.file!==segment.file||receipt.media?.sha256!==segment.sha256||receipt.media?.bytes!==raw.length)throw Error(c.id+':media_binding_mismatch');
    if(receipt.schema!=='musely-demo-capture-2'||receipt.kind!=='recorded_public_capture'||receipt.cutId!==c.id||receipt.viewId!==view.id||receipt.takeId!==segment.takeId||receipt.runId!==view.runId||receipt.durationSeconds!==view.duration||canonical(receipt.release)!==canonical(p.release)||!Number.isFinite(receipt.startOffsetSec)||receipt.startOffsetSec<0||receipt.blockedRequests!==0||receipt.label!=='REPLAY'||receipt.virtual!==true||canonical(receipt.originalSources)!==canonical(sources(refs))||receipt.observed?.runId!==view.runId||receipt.observed?.label!==true||receipt.observed?.hash!==view.snapshotHash||receipt.seekSec!==view.seekSec)throw Error(c.id+':capture_receipt_mismatch');
+   const bootstrap=receipt.bootstrapDeniedReads??[],telemetry=receipt.deniedTelemetry??[];
+   if(!validDeniedRows(bootstrap,'bootstrap-denied-read',p.origin)||!validDeniedRows(telemetry,'denied-telemetry',p.origin)||(bootstrap.length||telemetry.length)&&(receipt.denialsAreAccessReceipts!==false||receipt.continuedWriteRequests!==0)||(receipt.continuedWriteRequests??0)!==0)throw Error(c.id+':denied_request_audit_mismatch');
    if(!Array.isArray(receipt.refs)||!Array.isArray(segment.refs)||canonical(refKeys(receipt.refs))!==canonical(refKeys(refs))||canonical(refKeys(segment.refs))!==canonical(refKeys(refs)))throw Error(c.id+':captured_refs_mismatch');
    rows.push({cut:c,view,segment,receipt,clip});
   }

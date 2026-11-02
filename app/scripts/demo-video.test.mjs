@@ -90,3 +90,38 @@ test('D05 explicit P1 view and exact take duration are required before HTML GET 
  await assert.rejects(()=>captureDemoCut(browser,p,'s05',dir,{viewId:'before',seconds:20}),/take_duration_must_match_view/);
  assert.equal(allocated,false);
 });
+
+// No real browser or network: the route callback is exercised with explicit fake requests and bytes.
+async function captureFixture(t,{bootstrap=[],recording=[]}={}){
+ const {dir,p}=await mediaFixture(t),cut=p.cuts[11];cut.duration=1/16;p.cuts[0].duration+=6-cut.duration;
+ const html='OFFLINE FROZEN HTML',before=globalThis.fetch;globalThis.fetch=async()=>new Response(html);t.after(()=>{globalThis.fetch=before;});p.release.htmlSha256=sha(html);
+ let route,videoPath,mediaDir,bodyReads=0;const aborted=[],continued=[];
+ const fire=async ({path,method='GET',origin=p.origin})=>{const url=origin+path,request={url:()=>url,method:()=>method,postData(){bodyReads++;throw Error('body must not be read');},headers(){throw Error('headers must not be read');}};await route({request:()=>request,abort:async()=>aborted.push({path,method}),continue:async()=>continued.push({path,method})});};
+ const button=name=>({click:async()=>{if(name==='Play recorded run')for(const r of recording)await fire(r);}}),root={getByRole:(_role,{name})=>button(name),locator:()=>({fill:async()=>{},dispatchEvent:async()=>{},selectOption:async()=>{}}),evaluate:async()=>({runId:'A',hash:cut.snapshotHash,label:true})};
+ const page={video:()=>({path:async()=>videoPath}),goto:async()=>{for(const r of bootstrap)await fire(r);},waitForFunction:async()=>{},locator:()=>root,evaluate:async fn=>fn.toString().includes('projection.events')?cut.refs.map(r=>r.eventId):undefined};
+ const browser={newContext:async options=>{mediaDir=options.recordVideo.dir;videoPath=join(mediaDir,'OFFLINE-FIXTURE.NOT-VIDEO');await writeFile(videoPath,'OFFLINE MOCK BYTES NOT FOOTAGE');return {route:async(_pattern,fn)=>{route=fn;},newPage:async()=>page,close:async()=>{}};}};
+ return {dir,p,cut,browser,aborted,continued,get mediaDir(){return mediaDir;},get bodyReads(){return bodyReads;}};
+}
+test('D05 bootstrap private read and exact telemetry stay aborted and audited without rejecting a take',async t=>{
+ const f=await captureFixture(t,{bootstrap:[{path:'/api/owner/location'},{path:'/cdn-cgi/rum',method:'POST'}],recording:[{path:'/cdn-cgi/rum',method:'POST'}]});
+ const media=await captureDemoCut(f.browser,f.p,'s12',f.dir),receipt=JSON.parse(await readFile(join(f.dir,media.receipt),'utf8'));
+ assert.equal(receipt.blockedRequests,0);assert.equal(receipt.bootstrapDeniedReads.length,1);assert.equal(receipt.deniedTelemetry.length,2);assert.equal(receipt.continuedWriteRequests,0);assert.equal(receipt.denialsAreAccessReceipts,false);assert.equal(f.aborted.length,3);assert.equal(f.continued.length,0);assert.equal(f.bodyReads,0);
+ const audit=JSON.parse(await readFile(join(f.mediaDir,'network-audit.json'),'utf8'));assert.equal(audit.bootstrapDeniedReads.length,1);assert.equal(audit.deniedTelemetry.length,2);
+ const {verifyMedia}=await import('./lib/demo-video.mjs');f.cut.media=[media];assert.equal((await verifyMedia({...f.p,cuts:[f.cut]},f.dir)).length,1);receipt.bootstrapDeniedReads[0].phase='recording';await writeFile(join(f.dir,media.receipt),JSON.stringify(receipt));await assert.rejects(()=>verifyMedia({...f.p,cuts:[f.cut]},f.dir),/denied_request_audit_mismatch/);
+});
+test('D05 owner-location GET after take start remains fatal and its denied audit is retained',async t=>{
+ const f=await captureFixture(t,{recording:[{path:'/api/owner/location'},{path:'/api/owner/inbox?token=DO-NOT-PERSIST'}]});
+ await assert.rejects(()=>captureDemoCut(f.browser,f.p,'s12',f.dir),/capture_blocked_requests:2/);
+ const raw=await readFile(join(f.mediaDir,'network-audit.json'),'utf8'),audit=JSON.parse(raw);assert.equal(audit.fatalDeniedRequests.length,2);assert.equal(audit.bootstrapDeniedReads.length,0);assert.equal(audit.continuedWriteRequests,0);assert.ok(!raw.includes('DO-NOT-PERSIST'));assert.equal(f.bodyReads,0);
+});
+test('D05 exception classification permits no new request and is exact in origin/method/path/phase',async()=>{
+ const {captureRequestPolicy}=await import('./lib/demo-video.mjs'),o='https://musely.net';
+ assert.equal(captureRequestPolicy(o+'/api/owner/location','GET',o,'bootstrap'),'bootstrap-denied-read');assert.equal(captureRequestPolicy(o+'/cdn-cgi/rum','POST',o,'recording'),'denied-telemetry');
+ for(const [path,method,phase,origin] of [['/api/owner/location','GET','recording'],['/api/owner/location','POST','bootstrap'],['/api/owner/location?x=1','GET','bootstrap'],['/api/owner/inbox','GET','bootstrap'],['/api/world/spotlight','POST','bootstrap'],['/mcp','POST','recording'],['/cdn-cgi/rum?x=1','POST','recording'],['/cdn-cgi/RUM','POST','bootstrap'],['/cdn-cgi/rum','GET','bootstrap'],['/cdn-cgi/rum','POST','recording','https://other.invalid'],['/api/owner/location','GET','bootstrap','https://other.invalid'],['/other-telemetry','POST','recording']])assert.equal(captureRequestPolicy((origin??o)+path,method,o,phase),'fatal-denied',path);
+});
+
+test('D05 unrelated private reads and world writes remain fatal even during bootstrap',async t=>{
+ const f=await captureFixture(t,{bootstrap:[{path:'/api/owner/inbox'},{path:'/api/world/spotlight',method:'POST'}]});
+ await assert.rejects(()=>captureDemoCut(f.browser,f.p,'s12',f.dir),/capture_blocked_requests:2/);
+ const audit=JSON.parse(await readFile(join(f.mediaDir,'network-audit.json'),'utf8'));assert.equal(audit.fatalDeniedRequests.length,2);assert.equal(audit.bootstrapDeniedReads.length,0);assert.equal(audit.continuedWriteRequests,0);assert.equal(f.aborted.length,2);assert.equal(f.continued.length,0);assert.equal(f.bodyReads,0);
+});
