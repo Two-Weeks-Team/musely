@@ -204,11 +204,17 @@ test('reviewer key: every /mcp write tool acts as the reviewer Muse, without wai
     ['move', {to: 'commons:garden'}],
     'arrive',
     ['craft', {recipe: 'bloom'}],
+    // I-13: the Invite Token found at the campfire is spent on an invite; Copper is asked about the Bloom (it asks for a
+    // Spark, input-required) and the reviewer withdraws.
+    ['invite_campfire', {to: ['01-sunny', '02-moss']}],
+    ['propose_help', {to: '09-copper', item: 'bloom'}],
+    ['answer_help', () => ({task_id: t.state().inbox.tasks.find(x => x.kind === 'help' && x.from === REVIEWER && x.status === 'pending').id, answer: 'reject'})],
   ];
   const done = [];
   for (const call of calls) {
     if (call === 'arrive') { await t.dobj.runtime.heartbeat(Math.max(Date.now(), t.state().lastTickAt) + 2 * TICK); assert.equal(t.muse(REVIEWER).place, 'commons:garden'); continue; }
-    const [name, args] = call;
+    const [name, rawArgs] = call;
+    const args = typeof rawArgs === 'function' ? rawArgs() : rawArgs;
     const r = await c.tool(name, args);
     assert.equal(r.isError, false, `${name}: ${JSON.stringify(r.structuredContent)}`);
     const mine = t.events().filter(e => e.data?.key_id === key.id && e.data?.tool === name);
@@ -219,12 +225,13 @@ test('reviewer key: every /mcp write tool acts as the reviewer Muse, without wai
   }
   const hb = await c.tool('heartbeat_check');
   assert.equal(hb.isError, false); done.push('heartbeat_check');
-  // invite_campfire, propose_help and answer_help have no backend yet (I-13): under this key too they are refused, never a success.
+  // Every write tool has a backend since I-13 (#57): all of them ran under this key.
   const {TOOLS, NOT_READY_TOOLS} = await import('../worker/core/mcp-tools.ts');
-  assert.deepEqual(done.sort(), TOOLS.filter(x => !x.annotations.readOnlyHint && !(x.name in NOT_READY_TOOLS)).map(x => x.name).sort(), 'every write tool that has a backend');
-  for (const name of Object.keys(NOT_READY_TOOLS)) assert.equal((await c.tool(name, name === 'invite_campfire' ? {to: ['01-sunny']} : name === 'propose_help' ? {to: '01-sunny', item: 'coffee'} : {task_id: 'task_r1', answer: 'accept'})).structuredContent.refused, 'capability_not_ready', name);
+  assert.deepEqual(NOT_READY_TOOLS, {});
+  assert.deepEqual(done.sort(), TOOLS.filter(x => !x.annotations.readOnlyHint).map(x => x.name).sort(), 'every write tool');
   const e = t.muse(REVIEWER);
-  assert.ok(e.inventory.includes('bloom') && e.inventory.includes('invite_token') && !e.inventory.includes(postcard));
+  assert.ok(e.inventory.includes('bloom') && !e.inventory.includes('invite_token') && !e.inventory.includes(postcard), 'the Invite Token was spent on the invite');
+  assert.equal(t.state().inbox.tasks.find(x => x.kind === 'help' && x.from === REVIEWER).status, 'rejected', 'the reviewer withdrew its help request');
   assert.equal(e.wants.goal, 'Find a story for tonight');
   assert.equal(JSON.stringify([t.muse(OWNER).inventory, t.muse(OWNER).wants]), owner0, 'the owner Muse\'s items and wants did not change');
   assert.ok(t.events().filter(x => x.data?.key_id === key.id).every(x => x.muse !== OWNER && x.other !== OWNER), 'no reviewer-key event involves the owner Muse');
@@ -349,7 +356,7 @@ test('purge: the key\'s free text and envelopes leave events, command rows and i
   const r = await t.go('DELETE', `/api/agent-keys/${A.id}?purge=1`, undefined, h(rev));
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual([r.body.id, r.body.muse, r.body.purged, typeof r.body.revoked_at], [A.id, REVIEWER, true, 'number']);
-  assert.deepEqual(r.body.deleted, {events_anonymized: aEvents.length + 1, rule_events_anonymized: 1, commands_deleted: aRows + 1, messages_redacted: 2, mail_redacted: 1, notifications_redacted: 1, wants_reset: false, key_record: 'hash_and_last_use_removed'}, 'the revoke event is anonymized too');
+  assert.deepEqual(r.body.deleted, {events_anonymized: aEvents.length + 1, rule_events_anonymized: 1, commands_deleted: aRows + 1, messages_redacted: 2, mail_redacted: 1, notes_redacted: 0, notifications_redacted: 1, wants_reset: false, key_record: 'hash_and_last_use_removed'}, 'the revoke event is anonymized too');
   assert.deepEqual(r.body.kept, {events: aEvents.length + 2, key_record: 'id_muse_created_revoked', unlinked: {agent_connected_events: 1, messages_to_muse: 1}});
   assert.deepEqual(rows().map(x => x.command_id).filter(x => x.endsWith('-row')), ['no-key-events-row']);
   assert.equal(t.state().inbox.notifications.find(n => n.id === 'n_other').line, 'other Muse notice', 'another Muse\'s notification stays');
@@ -403,7 +410,7 @@ test('purge: the key\'s free text and envelopes leave events, command rows and i
 
   // Again: nothing is left to remove, and nothing is logged. Then key B: its wants were the current ones, so they go back.
   const again = await t.go('DELETE', `/api/agent-keys/${A.id}?purge=1`, undefined, h(rev));
-  assert.deepEqual([again.status, again.body.deleted], [200, {events_anonymized: 0, rule_events_anonymized: 0, commands_deleted: 0, messages_redacted: 0, mail_redacted: 0, notifications_redacted: 0, wants_reset: false, key_record: 'hash_and_last_use_removed'}]);
+  assert.deepEqual([again.status, again.body.deleted], [200, {events_anonymized: 0, rule_events_anonymized: 0, commands_deleted: 0, messages_redacted: 0, mail_redacted: 0, notes_redacted: 0, notifications_redacted: 0, wants_reset: false, key_record: 'hash_and_last_use_removed'}]);
   assert.equal(t.events().filter(e => e.kind === 'data_deleted').length, 1, 'an empty purge writes no data_deleted event');
   const rb = await t.go('DELETE', `/api/agent-keys/${B.id}?purge=1`, undefined, h(rev));
   assert.equal(rb.body.deleted.wants_reset, true);

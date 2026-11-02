@@ -20,9 +20,15 @@ export type MeetupCandidate = {id: string; time: string; place: string; place_id
  * id (or `musely:rule` for a resident without an owner, source rule). It carries no reason, ever.
  */
 export type TaskApproval = {ref: string; by: string; revision: number; contentHash: string; at: number; decision: 'approve' | 'reject'; candidate: string | null; source: 'owner' | 'rule'};
+/**
+ * Help (I-13, worker/core/messages.ts): `from` asks `to` for its service on `item` (kept). `part` is the item the requester
+ * supplies for the work (spent when the help completes), `asked` what the helper last asked for (input-required),
+ * `result` the item the completed help granted. Plain ids and text only, so a version 2 migration can copy it as is.
+ */
+export type HelpRequest = {service: string; item: string; part: string | null; asked: string | null; result: string | null; note: string | null};
 export type Task = {
   id: string;
-  kind: 'trade' | 'meetup';
+  kind: 'trade' | 'meetup' | 'help';
   from: string;            // who opened the Task
   to: string;
   /** cancelled: closed because the owner revoked a participant's delegation (C06 maps failed to cancelled). */
@@ -40,6 +46,8 @@ export type Task = {
   /** Meetup: up to five candidates built from public information; the Muses' answers are accept|reject only. */
   candidates?: MeetupCandidate[];
   answers?: Record<string, 'accept' | 'reject'>;
+  /** Help: what is asked and what was supplied (see HelpRequest). */
+  help?: HelpRequest;
   /** `via`: how an answer was made (a resident's rule answer or a Muse's own live call); older entries have none. */
   history: {by: string; action: 'propose' | 'counter' | 'accept' | 'reject' | 'expire' | 'answer' | 'cancel' | 'revise' | 'approve'; at: number; give?: string; want?: string; via?: 'live' | 'rule'}[];
   // ----- version 2 (worker/core/tasks.ts keeps these in step with the content at every commit; see migrateInbox) -----
@@ -57,12 +65,20 @@ export type Task = {
   /** Meetup: set when both owners approved the same revision, hash and candidate (completed, Meetup Ember issued). */
   confirmed?: {candidate: string; at: number};
 };
-export type Message = {id: string; from: string; to: string; kind: 'greet' | 'postcard' | 'gift'; at: number; text: string | null; item?: string | null; blocked?: string[]; read: boolean};
+export type Message = {id: string; from: string; to: string; kind: 'greet' | 'postcard' | 'gift' | 'invite'; at: number; text: string | null; item?: string | null; blocked?: string[]; read: boolean};
 export type Mail = {id: string; from: string; to: string; item: string; text: string | null; sentAt: number; deliverAt: number; crossRegion: boolean;
   /** Expiry clock of a time-limited item in the mail (I-06): it keeps running in transit and moves to the receiver. */
   timed?: {item: string; at: number; expiresAt: number}};
 /** `muse`: the Muse whose owner this is for (its details go only to that owner's session). Older stored notifications have none: they were the owner Muse's. */
 export type OwnerNotification = {id: string; kind: 'meetup_candidate' | 'trade_completed' | 'blocked'; at: number; line: string; ref: string | null; other: string | null; muse?: string; detail?: Record<string, unknown>};
+/**
+ * A campfire invite (I-13, worker/core/messages.ts): a Message that spent one Invite Token. `answers` per invitee: a
+ * resident answers by rule at once; a connected Muse answers by coming to the campfire (live). Three or more of the
+ * inviter and its accepted invitees at the campfire together close it as gathered (one highlight).
+ */
+export type InviteAnswer = {answer: 'pending' | 'accept' | 'decline' | 'unavailable'; via: 'rule' | 'live' | null; at: number};
+export type CampfireInvite = {id: string; from: string; to: string[]; place: string; note: string | null; at: number; expiresAt: number;
+  status: 'open' | 'gathered' | 'expired' | 'cancelled'; answers: Record<string, InviteAnswer>; closedAt?: number; gathered?: string[]};
 export const notificationMuse = (n: OwnerNotification) => n.muse ?? '00-jolly';
 export type Inbox = {
   /** 2 once worker/core/tasks.ts migrated the stored Tasks (absent: version 1). */
@@ -75,6 +91,8 @@ export type Inbox = {
   connected: Record<string, number>;
   /** day → museId → counts for daily limits on postcards and gifts. */
   sent: Record<string, Record<string, {postcards: number; gifts: number}>>;
+  /** Campfire invites (I-13). Missing in states stored before them. */
+  invites?: CampfireInvite[];
   seq: number;
 };
 /** A new inbox is already version 2 (worker/core/tasks.ts migrates stored version 1 inboxes). */
@@ -144,4 +162,5 @@ export const taskView = (t: Task, me: string) => ({
   answers: t.answers ?? null,
   stage: t.kind === 'meetup' ? t.stage ?? 'negotiate' : null,
   owner_approval: t.kind === 'meetup' && t.stage === 'owner_approval' ? (t.status === 'pending' ? 'waiting' : t.confirmed ? 'approved' : 'not_confirmed') : null,
+  help: t.help ? {service: t.help.service, item: t.help.item, part: t.help.part, asked: t.help.asked, result: t.help.result, note: t.help.note === null ? null : wrapUntrusted(t.help.note)} : null,
 });

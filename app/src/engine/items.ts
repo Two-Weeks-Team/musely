@@ -12,7 +12,7 @@ export type ItemSpec = {
   permanent: boolean; consumable: boolean; transferable: boolean; stackable: boolean;
   expiresHours?: number;
   /** Ability the item changes (layer 1 reward). Set only when an effect rule implements it, and named like that rule. */
-  ability?: 'bus_speed' | 'teleport' | 'night_sky' | 'plant' | 'extra_activity' | 'send_postcard' | 'extra_spotlight';
+  ability?: 'bus_speed' | 'teleport' | 'night_sky' | 'plant' | 'extra_activity' | 'send_postcard' | 'extra_spotlight' | 'campfire_invite';
   owner?: string;            // role tools belong to a character
   visual: 'prop' | 'card' | 'stamp' | 'glow';
   sellable: boolean;         // convenience only (GTM later); provenance never
@@ -29,7 +29,8 @@ export const EFFECT_RULES = {
   teleport: {does: 'verified-neighborhood teleport; one token spent per teleport. Only the owner\'s Muse, into its owner\'s verified cell: residents have no neighborhood verification', where: 'items.ts speedFor, rules.ts makeHooks, location.ts teleportCheck, travel.ts teleport'},
   plant: {does: 'opens the garden_plant beat (with a Clover Seed) that grows a Bloom', where: 'beats.ts garden_plant'},
   bloom_seed: {does: 'consumed by garden_plant into a Bloom; the Garden Pass is kept', where: 'beats.ts garden_plant, world.ts finishBeat'},
-  send_postcard: {does: 'one stamp is spent per postcard mailed (send_postcard tool)', where: 'mcp-tools.ts send_postcard'},
+  send_postcard: {does: 'one stamp is spent per postcard mailed (send_postcard tool)', where: 'messages.ts sendPostcard (send_postcard tool)'},
+  campfire_invite: {does: 'one token is spent per campfire invite (invite_campfire tool) to up to 8 Muses; residents answer by rule and walk to the campfire; three or more of the inviter and its accepted invitees there together make one campfire_gathering_3plus highlight', where: 'messages.ts inviteCampfire, inviteUpkeep'},
   night_sky: {does: 'opens the night_pass_stargaze beat 19:00-03:00 at parks, gardens, benches, the campfire and landmarks', where: 'beats.ts night_pass_stargaze'},
   extra_activity: {does: 'one more discovery after the daily 10 (at most one ticket a day); the ticket is spent', where: 'items.ts discover, receiveDiscovery'},
   extra_spotlight: {does: 'spent at the end of a tick for one extra spotlight turn on the next tick, ahead of the rotation; nobody loses a turn (not for a connected Muse)', where: 'items.ts spendSpotlightTickets, world.ts tick'},
@@ -54,13 +55,14 @@ export const ITEM_EFFECTS: Record<string, ItemEffect> = {
   garden_pass: {rule: 'plant'},
   taxi_token: {rule: 'teleport'},
   recharge_ticket: {rule: 'extra_activity'},
-  invite_token: NONE('campfire invites have no engine path yet (invite_campfire, I-13)'),
+  invite_token: {rule: 'campfire_invite'},
   postage_stamp: {rule: 'send_postcard'},
   spotlight_ticket: {rule: 'extra_spotlight'},
   coffee: GIFT_NONE, pastry: GIFT_NONE, wildflower: GIFT_NONE, fruit: GIFT_NONE, snack_box: GIFT_NONE, tea: GIFT_NONE,
   clover_seed: {rule: 'bloom_seed'},
   bloom: NONE('craft result of garden_plant (Garden Pass + Clover Seed); no ability of its own'),
-  story_scroll: CRAFT_NONE, mixtape: CRAFT_NONE, star_chart: CRAFT_NONE, repaired_gadget: CRAFT_NONE, route_map: CRAFT_NONE, welcome_garland: CRAFT_NONE, reading_list: CRAFT_NONE, comfort_note: CRAFT_NONE,
+  story_scroll: NONE('result of Ember\'s story help (propose_help, I-13); no ability of its own'), mixtape: CRAFT_NONE, star_chart: CRAFT_NONE,
+  repaired_gadget: NONE('result of Copper\'s repair help (propose_help, I-13); no ability of its own'), route_map: CRAFT_NONE, welcome_garland: CRAFT_NONE, reading_list: CRAFT_NONE, comfort_note: CRAFT_NONE,
   spark: NONE('balance currency, not cashable (9); nothing spends it yet'),
   commons_ember: RELIC_NONE, sf_bookmark: RELIC_NONE, oakland_vinyl: RELIC_NONE, stanford_tassel: RELIC_NONE, san_mateo_bean: RELIC_NONE, mountain_view_circuit_leaf: RELIC_NONE, redwood_pinecone: RELIC_NONE, san_jose_trail_badge: RELIC_NONE,
   friendship_seal: NONE('relationship record; not issued by any rule yet'),
@@ -90,7 +92,7 @@ export const ITEMS: ItemSpec[] = [
   // Tokens (consumed)
   S('taxi_token', 'Taxi Token', 'token', {consumable: true, stackable: true, ability: 'teleport', sellable: true}),
   S('recharge_ticket', 'Recharge Ticket', 'token', {consumable: true, stackable: true, ability: 'extra_activity', sellable: true}),
-  S('invite_token', 'Invite Token', 'token', {consumable: true, stackable: true, sellable: true}),
+  S('invite_token', 'Invite Token', 'token', {consumable: true, stackable: true, ability: 'campfire_invite', sellable: true}),
   S('postage_stamp', 'Postage Stamp', 'token', {consumable: true, stackable: true, ability: 'send_postcard', sellable: true}),
   S('spotlight_ticket', 'Spotlight Ticket', 'token', {consumable: true, stackable: true, ability: 'extra_spotlight', sellable: true}),
   // Gifts and consumables
