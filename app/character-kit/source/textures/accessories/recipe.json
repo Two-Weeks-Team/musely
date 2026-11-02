@@ -1,0 +1,61 @@
+{
+  "seed": 20261101,
+  "normalConvention": "+Y tangent space",
+  "ormChannels": {
+    "R": "occlusion",
+    "G": "roughness",
+    "B": "metallic"
+  },
+  "colorUse": "near-neutral albedo tinted by glTF baseColorFactor per variant",
+  "origin": "Original deterministic procedural patterns; no copied reference texture.",
+  "materials": {
+    "linen": {
+      "size": 256,
+      "threads": 24,
+      "weave": "plain",
+      "roughness": "0.83-0.89"
+    },
+    "twill": {
+      "size": 256,
+      "threads": 32,
+      "weave": "twill",
+      "roughness": "0.78-0.83"
+    },
+    "knit": {
+      "size": 256,
+      "stitches": [
+        16,
+        20
+      ],
+      "roughness": "0.88-0.92"
+    },
+    "canvas": {
+      "size": 256,
+      "threads": 36,
+      "wax": "mottled roughness 0.53-0.71"
+    },
+    "wood": {
+      "size": 256,
+      "rings": 14,
+      "roughness": "0.63-0.73"
+    },
+    "cork": {
+      "size": 256,
+      "roughness": "0.86-0.90"
+    },
+    "brushed-metal": {
+      "size": 256,
+      "direction": "U",
+      "roughness": "0.35-0.49",
+      "metallic": 1
+    },
+    "matte-shell": {
+      "size": 256,
+      "roughness": "0.55-0.61"
+    },
+    "paper": {
+      "size": 256,
+      "roughness": "0.90-0.94"
+    }
+  }
+}

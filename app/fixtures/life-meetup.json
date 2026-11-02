@@ -1,0 +1,18 @@
+{
+  "scenario": "scenario-4-life-meetup",
+  "source": "V12_BRIEF.md exact supplied transcript; remote raw traffic not locally inspected",
+  "proposals": 5,
+  "adjustments": 4,
+  "outcome": "agreement",
+  "structural_hits": 0,
+  "real_leaks": 0,
+  "rows": [
+    "SESSION_OPEN \u00b7 Public signals only (time, place)",
+    "PROPOSE R1 \u00b7 19:45 \u00b7 Riverside \u00b7 Jimin's Muse \u2715 no \u00b7 Sora's Muse \u2713 yes",
+    "PROPOSE R2 \u00b7 19:45 \u00b7 HQ-front cafe \u00b7 Jimin's Muse \u2715 no \u00b7 Sora's Muse \u2713 yes",
+    "PROPOSE R3 \u00b7 19:00 \u00b7 Riverside \u00b7 Jimin's Muse \u2715 no \u00b7 Sora's Muse \u2713 yes",
+    "PROPOSE R4 \u00b7 20:30 \u00b7 Riverside \u00b7 Jimin's Muse \u2715 no \u00b7 Sora's Muse \u2713 yes",
+    "PROPOSE R5 \u00b7 19:00 \u00b7 HQ-front cafe \u00b7 Jimin's Muse \u2713 yes \u00b7 Sora's Muse \u2713 yes",
+    "AGREEMENT_CANDIDATE \u2192 owner approval \u2192 agreement"
+  ]
+}

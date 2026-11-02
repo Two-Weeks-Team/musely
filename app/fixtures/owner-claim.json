@@ -1,0 +1,22 @@
+{
+  "version": "musely-claim-v1",
+  "agent": "owner-muse",
+  "provider": "threads",
+  "handle": "combba82",
+  "owner_hash": "c50072bb9c1849da05e9c842bb91b916573fde90c4fd07dc36aa8d40f89caf6f",
+  "root_public_jwk": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "MZ7leR2jYLm2piAX2XHYcAaBGKDG0-ykdUg5QLuMxGw",
+    "y": "RiimvtgY7rCravZSL1RUvlD3TDJKQZ3xy1wHgYIIXkk",
+    "kid": "LMOezJ0Gk4OqMP_54pqNGvTzYL79HkTmSCrWW1koQOk",
+    "alg": "ES256",
+    "use": "sig"
+  },
+  "fingerprint": "ef961d6f307ba7750291a6169849e84da1aff584bf8c2295949dacc3ece7b39d",
+  "fingerprint_display": "ef96 1d6f 307b a775",
+  "claim_text": "I am claiming my Muse on Musely. Fingerprint: ef96 1d6f 307b a775 · musely.net",
+  "status": "pending_claim",
+  "permalink": null,
+  "verified_at": null
+}

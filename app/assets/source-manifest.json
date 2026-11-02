@@ -1,0 +1,17 @@
+{
+  "muse_base.glb": {
+    "source": "assets/muse_base.glb",
+    "bytes": 191488,
+    "sha256": "a1f2db9a615537fed51c96fb4fd576938bf752b8405009648e9133863803709b"
+  },
+  "variant_a.png": {
+    "source": "assets/variant_a.png",
+    "bytes": 74785,
+    "sha256": "28a1b032cb2b49bccb276b37ae498061e52ec67e48b70e546fa6d96ca9649115"
+  },
+  "variant_b.png": {
+    "source": "assets/variant_b.png",
+    "bytes": 99241,
+    "sha256": "2ff250470479735cd77585926e0b3cd6f41d4d9bfd367ff96642a0304b348af7"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "seed": 240731,
+  "fleeceMapSize": 1024,
+  "fiberStrokes": 42000,
+  "normalConvention": "+Y tangent space",
+  "ormChannels": {
+    "R": "occlusion=1",
+    "G": "roughness",
+    "B": "metallic=0"
+  },
+  "faceMapSize": 512,
+  "origin": "Original deterministic fiber strokes and color/noise fields; no copied reference texture."
+}

@@ -1,0 +1,355 @@
+{
+  "schema": "musely.muse-clips.v3",
+  "fps": 24,
+  "rootMotion": "in-place; world routes own translation/yaw",
+  "walkStrideMeters": 0.27,
+  "sitAnchor": "Hips lowers 0.055m; seat alignment is owned by the world adapter",
+  "clips": [
+    {
+      "name": "idle_breathe",
+      "seconds": 4.0,
+      "loop": true
+    },
+    {
+      "name": "walk",
+      "seconds": 1.3333333333333333,
+      "loop": true
+    },
+    {
+      "name": "look_around",
+      "seconds": 4.0,
+      "loop": true
+    },
+    {
+      "name": "think",
+      "seconds": 4.0,
+      "loop": true
+    },
+    {
+      "name": "listen",
+      "seconds": 3.0,
+      "loop": true
+    },
+    {
+      "name": "talk",
+      "seconds": 3.0,
+      "loop": true
+    },
+    {
+      "name": "wave",
+      "seconds": 2.5,
+      "loop": false
+    },
+    {
+      "name": "sit_down",
+      "seconds": 1.5,
+      "loop": false
+    },
+    {
+      "name": "sit_idle",
+      "seconds": 4.0,
+      "loop": true
+    },
+    {
+      "name": "stand_up",
+      "seconds": 1.5,
+      "loop": false
+    },
+    {
+      "name": "celebrate",
+      "seconds": 2.5,
+      "loop": false
+    },
+    {
+      "name": "offer_item",
+      "seconds": 2.5,
+      "loop": false
+    },
+    {
+      "name": "welcome_neighbors",
+      "seconds": 2.5,
+      "loop": false,
+      "signature": true
+    },
+    {
+      "name": "water_plants",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "inspect_map",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "tell_story",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "reassure",
+      "seconds": 3.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "read_book",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "music_bounce",
+      "seconds": 2.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "observe_sky",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "inspect_gadget",
+      "seconds": 4.0,
+      "loop": true,
+      "signature": true
+    },
+    {
+      "name": "drink",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true,
+      "prop": "cup"
+    },
+    {
+      "name": "plant",
+      "seconds": 4.0,
+      "loop": false,
+      "action": true,
+      "prop": "seedling"
+    },
+    {
+      "name": "high_five",
+      "seconds": 2.5,
+      "loop": false,
+      "action": true,
+      "contactSeconds": 1.0,
+      "partnerClip": "high_five",
+      "partnerDistanceMeters": 0.9
+    },
+    {
+      "name": "nod",
+      "seconds": 1.5,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "head_shake",
+      "seconds": 2.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "point_way",
+      "seconds": 2.5,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "clap",
+      "seconds": 2.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "fist_bump",
+      "seconds": 2.0,
+      "loop": false,
+      "action": true,
+      "contactSeconds": 0.8333333333333334,
+      "partnerClip": "fist_bump",
+      "partnerDistanceMeters": 0.9
+    },
+    {
+      "name": "handoff_give",
+      "seconds": 3.0,
+      "loop": false,
+      "action": true,
+      "contactSeconds": 1.3333333333333333,
+      "partnerClip": "handoff_receive",
+      "partnerDistanceMeters": 0.9
+    },
+    {
+      "name": "handoff_receive",
+      "seconds": 3.0,
+      "loop": false,
+      "action": true,
+      "contactSeconds": 1.3333333333333333,
+      "partnerClip": "handoff_give",
+      "partnerDistanceMeters": 0.9
+    },
+    {
+      "name": "eat",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true,
+      "prop": "plate"
+    },
+    {
+      "name": "board",
+      "seconds": 2.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "bus_sway",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "stretch",
+      "seconds": 4.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "feed_birds",
+      "seconds": 3.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "pick_up",
+      "seconds": 3.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "write_note",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true,
+      "prop": "notepad"
+    },
+    {
+      "name": "photo",
+      "seconds": 3.0,
+      "loop": false,
+      "action": true,
+      "prop": "camera"
+    },
+    {
+      "name": "yawn",
+      "seconds": 3.0,
+      "loop": false,
+      "action": true
+    },
+    {
+      "name": "hammer",
+      "seconds": 2.0,
+      "loop": true,
+      "action": true,
+      "prop": "hammer"
+    },
+    {
+      "name": "lantern_hold",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "dance",
+      "seconds": 4.0,
+      "loop": true,
+      "action": true
+    },
+    {
+      "name": "carry_walk",
+      "seconds": 1.3333333333333333,
+      "loop": true,
+      "action": true,
+      "strideMeters": 0.27
+    },
+    {
+      "name": "run",
+      "seconds": 0.6666666666666666,
+      "loop": true,
+      "action": true,
+      "strideMeters": 0.222
+    }
+  ],
+  "sockets": {
+    "Socket_Head": {
+      "bone": "Head",
+      "neutralBlenderWorld": [
+        0,
+        0,
+        0.89
+      ]
+    },
+    "Socket_Hand_L": {
+      "bone": "Hand_L",
+      "neutralBlenderWorld": [
+        0.355,
+        -0.023,
+        0.17
+      ]
+    },
+    "Socket_Hand_R": {
+      "bone": "Hand_R",
+      "neutralBlenderWorld": [
+        -0.355,
+        -0.023,
+        0.17
+      ]
+    },
+    "Socket_Back": {
+      "bone": "Chest",
+      "neutralBlenderWorld": [
+        0,
+        0.17,
+        0.48
+      ]
+    },
+    "Socket_Chest": {
+      "bone": "Chest",
+      "neutralBlenderWorld": [
+        0,
+        -0.17,
+        0.47
+      ]
+    },
+    "SigilSocket": {
+      "bone": "Head",
+      "neutralBlenderWorld": [
+        0,
+        -0.154,
+        0.845
+      ]
+    }
+  },
+  "expressions": [
+    "Neutral",
+    "Smile",
+    "Curious",
+    "Thinking",
+    "Focused",
+    "Listening",
+    "Concerned",
+    "Delight"
+  ],
+  "controls": [
+    "Blink_L",
+    "Blink_R",
+    "MouthOpen"
+  ],
+  "actionSockets": {
+    "drink": "Socket_Hand_R"
+  }
+}

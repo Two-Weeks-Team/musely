@@ -1,0 +1,37 @@
+{
+  "bones": 20,
+  "meshes": [
+    "Jolly_Base",
+    "Jolly_Face"
+  ],
+  "clips": [
+    "idle_breathe",
+    "walk",
+    "look_around",
+    "think",
+    "listen",
+    "talk",
+    "wave",
+    "sit_down",
+    "sit_idle",
+    "stand_up",
+    "celebrate",
+    "offer_item"
+  ],
+  "morphs": [
+    "Smile",
+    "Curious",
+    "Thinking",
+    "Focused",
+    "Listening",
+    "Concerned",
+    "Delight",
+    "Blink_L",
+    "Blink_R",
+    "MouthOpen"
+  ],
+  "glbBytes": 5912584,
+  "source": "character-kit/source/muse_family.blend",
+  "gltf": "character-kit/runtime/base/lod0.glb",
+  "sha256": "6543bd2d53731e4512f11ad3ccffb92b6339464df00d80dd7f8ccbe7d80af771"
+}

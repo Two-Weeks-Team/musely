@@ -1,0 +1,36 @@
+{
+  "schema": "musely.jolly-base-validation.v1",
+  "basedOnMain": "ec9bffe",
+  "heightM": 0.8997574279189754,
+  "triangles": 22886,
+  "bones": 20,
+  "actions": 12,
+  "expressionPresets": 8,
+  "assetBytes": 5912584,
+  "assetSha256": "6543bd2d53731e4512f11ad3ccffb92b6339464df00d80dd7f8ccbe7d80af771",
+  "nodeTests": 28,
+  "typecheck": "pass",
+  "build": "pass",
+  "gltfErrors": 0,
+  "gltfWarnings": 0,
+  "gltfInfos": 11,
+  "browserSizes": [
+    "1440x1000",
+    "390x844 touch emulation"
+  ],
+  "physicalMobile": "not tested",
+  "finalRun": {
+    "elapsed": 210,
+    "lifeTime": 587.970999999986,
+    "tour": false,
+    "button": "Replay story \u00b7 3:30",
+    "sceneSame": true,
+    "museIdsSame": true,
+    "actorSame": true,
+    "fps": 60,
+    "drawCalls": 40,
+    "canvas": 1,
+    "errors": []
+  },
+  "productionDeployment": "unchanged; local feature candidate"
+}

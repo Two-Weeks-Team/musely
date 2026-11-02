@@ -1,0 +1,30 @@
+{
+  "probe": "image-structured",
+  "at": "2026-11-01T06:01:15.073Z",
+  "model": "muse-spark-1.3",
+  "reasoning_effort": "minimal",
+  "status": 200,
+  "latencyMs": 2503,
+  "headers": {
+    "x-ratelimit-limit-requests": "3000",
+    "x-ratelimit-limit-tokens": "4000000",
+    "x-ratelimit-remaining-requests": "2994",
+    "x-ratelimit-remaining-tokens": "3997350",
+    "x-request-id": "2ed997a4-3384-4732-828e-4e26f7c26001",
+    "x-route": "model-api-rust"
+  },
+  "id": "chatcmpl-01a195b2-a3b2-7660-aa05-a4b8c02bbc00",
+  "usage": {
+    "completion_tokens": 196,
+    "prompt_tokens": 469,
+    "total_tokens": 665,
+    "completion_tokens_details": {
+      "reasoning_tokens": 131
+    },
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    }
+  },
+  "output": "{\"confidence\": 0.99, \"observation\": \"Image shows abstract gold geometric mandala-like pattern on black background with central triangle and radiating curved lines; no person or raised hand visible.\", \"passed\": false, \"step\": \"describe_image_and_check_hand_raise\"}",
+  "error": null
+}

@@ -217,7 +217,7 @@
 
 - 입력: WorldCommand·Signed·현재 world version
 - 출력: C03 executeCommand/CommandResult와 영속 중복 방지
-- 대상 경로: `preview/worker/core/commands.ts`, `preview/worker/core/world-runtime.ts`, `preview/worker/world-do.ts`, `preview/worker/core/a2a.ts`, `preview/src/identity/envelope.ts`, `preview/scripts/command-runtime.test.mjs`
+- 대상 경로: `app/worker/core/commands.ts`, `app/worker/core/world-runtime.ts`, `app/worker/world-do.ts`, `app/worker/core/a2a.ts`, `app/src/identity/envelope.ts`, `app/scripts/command-runtime.test.mjs`
 - 재사용 근거: #17/#20/#22 기반 재사용
 - 제외/제약: 관련 없는 기능·운영 범위 확대
 
@@ -244,7 +244,7 @@
 
 - 입력: 주인 계정 claim·3개 challenge 원본 프레임·현재 위임
 - 출력: claim/ritual 판정·별도 주인 철회 경로·권한 상태 UI
-- 대상 경로: `preview/worker/core/threads.ts`, `preview/worker/core/trust.ts`, `preview/worker/index.ts`, `preview/src/ui/identity.ts`, `preview/scripts/identity-flow.test.mjs`, `preview/worker/core/owner-api.ts`
+- 대상 경로: `app/worker/core/threads.ts`, `app/worker/core/trust.ts`, `app/worker/index.ts`, `app/src/ui/identity.ts`, `app/scripts/identity-flow.test.mjs`, `app/worker/core/owner-api.ts`
 - 재사용 근거: #13/#15/#20 claim/keys, #29 실제 ritual 진행 PR을 검토·재사용; 기존 judge=owner와 제어권은 분리
 - 제외/제약: 일반 사용자 OAuth 앱 검수는 G-01; 주인 실제 동작 checkpoint 필요
 
@@ -272,7 +272,7 @@
 
 - 입력: 실행자 bearer 자격, 방향 v2 7.2 전체 tool 목록
 - 출력: 공개 HTTPS MCP endpoint·정확한 JSON schemas·쓰기 adapter
-- 대상 경로: `preview/worker/core/tasks.ts`, `preview/worker/core/commands.ts`, `preview/worker/index.ts`, `preview/wrangler.jsonc`, `preview/docs/MCP_TOOLS.md`, `preview/scripts/mcp.test.mjs`, `preview/worker/core/mcp-server.ts`, `preview/worker/core/mcp-tools.ts`, `preview/worker/core/connected.ts`, `preview/worker/core/agent-keys.ts`
+- 대상 경로: `app/worker/core/tasks.ts`, `app/worker/core/commands.ts`, `app/worker/index.ts`, `app/wrangler.jsonc`, `app/docs/MCP_TOOLS.md`, `app/scripts/mcp.test.mjs`, `app/worker/core/mcp-server.ts`, `app/worker/core/mcp-tools.ts`, `app/worker/core/connected.ts`, `app/worker/core/agent-keys.ts`
 - 재사용 근거: #26 병합 MCP/agent-keys/인박스 기반을 재사용하고 차이만 보완
 - 제외/제약: 완전한 도구 작동 완료는 I-03B; 기능 backend 소유권은 I-07/I-13
 
@@ -299,7 +299,7 @@
 
 - 입력: 완료된 Task/아이템/위치 backend와 I-03A schemas
 - 출력: 모든 7.2 tools의 실제 결과·인박스 응답/기한
-- 대상 경로: `preview/worker/core/tasks.ts`, `preview/docs/MCP_TOOLS.md`, `preview/scripts/mcp.test.mjs`, `preview/worker/core/mcp-server.ts`, `preview/worker/core/mcp-tools.ts`, `preview/worker/core/connected.ts`, `preview/worker/core/agent-keys.ts`
+- 대상 경로: `app/worker/core/tasks.ts`, `app/docs/MCP_TOOLS.md`, `app/scripts/mcp.test.mjs`, `app/worker/core/mcp-server.ts`, `app/worker/core/mcp-tools.ts`, `app/worker/core/connected.ts`, `app/worker/core/agent-keys.ts`
 - 재사용 근거: #26 병합 MCP/agent-keys/인박스 기반을 재사용하고 차이만 보완
 - 제외/제약: Muse 계정의 실제 호출자는 I-04
 
@@ -325,7 +325,7 @@
 
 - 입력: 주인 Muse 계정·보안 자격 입력·HTTPS MCP
 - 출력: 실제 Muse tool call→world event의 상관 증거
-- 대상 경로: `preview/docs/CONNECTOR_VERIFICATION.md`, `preview/docs/MCP_TOOLS.md`
+- 대상 경로: `app/docs/CONNECTOR_VERIFICATION.md`, `app/docs/MCP_TOOLS.md`
 - 재사용 근거: I-03B 도구 검증 재사용
 - 제외/제약: 공개 디렉터리 승인·사용자 전체 지원·미응답 성공 추정 제외
 
@@ -352,7 +352,7 @@
 
 - 입력: 현재 world state/seed·공개 wants/memory·모델 Decision
 - 출력: 검증된 순환 spotlight와 실제 encounter 응답·성찰
-- 대상 경로: `preview/src/engine/world.ts`, `preview/src/engine/harness.ts`, `preview/worker/core/world-runtime.ts`, `preview/worker/core/actions.ts`, `preview/scripts/engine.test.mjs`, `preview/scripts/world-runtime.test.mjs`
+- 대상 경로: `app/src/engine/world.ts`, `app/src/engine/harness.ts`, `app/worker/core/world-runtime.ts`, `app/worker/core/actions.ts`, `app/scripts/engine.test.mjs`, `app/scripts/world-runtime.test.mjs`
 - 재사용 근거: #17/#21/#22 재사용
 - 제외/제약: 관련 없는 기능·운영 범위 확대
 
@@ -379,7 +379,7 @@
 
 - 입력: P-01 전체 ItemSpec/장소 표·인벤토리/시간/ledger
 - 출력: 각 item의 effectRule·명시적 만료/소모·보상/이력
-- 대상 경로: `preview/src/engine/items.ts`, `preview/src/engine/rules.ts`, `preview/src/engine/places.ts`, `preview/scripts/items.test.mjs`, `preview/docs/EXPERIENCE_MATRIX.md`
+- 대상 경로: `app/src/engine/items.ts`, `app/src/engine/rules.ts`, `app/src/engine/places.ts`, `app/scripts/items.test.mjs`, `app/docs/EXPERIENCE_MATRIX.md`
 - 재사용 근거: #18 구현 재사용
 - 제외/제약: 관련 없는 기능·운영 범위 확대
 
@@ -406,7 +406,7 @@
 
 - 입력: TaskRecord·공개 신호·local accept/reject·주인 approval
 - 출력: 거래/만남 Task 상태 기계와 영수증/Meetup Ember
-- 대상 경로: `preview/worker/core/tasks.ts`, `preview/worker/core/commands.ts`, `preview/worker/index.ts`, `preview/src/ui/owner-inbox.ts`, `preview/scripts/tasks.test.mjs`, `preview/src/engine/inbox.ts`
+- 대상 경로: `app/worker/core/tasks.ts`, `app/worker/core/commands.ts`, `app/worker/index.ts`, `app/src/ui/owner-inbox.ts`, `app/scripts/tasks.test.mjs`, `app/src/engine/inbox.ts`
 - 재사용 근거: #20 서명 검증·기존 proposal fixture 참고
 - 제외/제약: 실제 외부 초대·예약·결제 금지
 
@@ -434,7 +434,7 @@
 
 - 입력: 가상 위치 프리셋/주인 목적지·현재 Muse 셀/아이템
 - 출력: 검증된 travel/ETA·버스·토큰 소비 순간이동
-- 대상 경로: `preview/src/engine/world.ts`, `preview/src/engine/places.ts`, `preview/src/ui/world-panel.ts`, `preview/scripts/location.test.mjs`, `preview/src/engine/location.ts`, `preview/src/engine/travel.ts`, `preview/worker/core/owner-api.ts`
+- 대상 경로: `app/src/engine/world.ts`, `app/src/engine/places.ts`, `app/src/ui/world-panel.ts`, `app/scripts/location.test.mjs`, `app/src/engine/location.ts`, `app/src/engine/travel.ts`, `app/worker/core/owner-api.ts`
 - 재사용 근거: #26 location/travel/connectedRoutes를 보완하며 중복 엔진 금지
 - 제외/제약: 실제 GPS 인증·기기 GPS 위조·새 베이 3D 공간 제외
 
@@ -461,7 +461,7 @@
 
 - 입력: world snapshot/event·ActionSpec·동일 Muse ID
 - 출력: 라이브 장면 투영·LOD/소품/상대 동기화
-- 대상 경로: `preview/src/ui/live-scene.ts`, `preview/src/main.ts`, `preview/src/scene.ts`, `preview/src/character-kit/MuseActor.ts`, `preview/scripts/actions.browser.js`
+- 대상 경로: `app/src/ui/live-scene.ts`, `app/src/main.ts`, `app/src/scene.ts`, `app/src/character-kit/MuseActor.ts`, `app/scripts/actions.browser.js`
 - 재사용 근거: #2/#16/#23/#25 재사용
 - 제외/제약: 완성하지 못한 clip은 명시된 fallback 허용
 
@@ -488,7 +488,7 @@
 
 - 입력: 인벤토리/수신자/거리/Task·서버 시간
 - 출력: 지연 메시지·선물 기록·모임·help 결과/성찰
-- 대상 경로: `preview/worker/core/tasks.ts`, `preview/worker/core/messages.ts`, `preview/src/engine/rules.ts`, `preview/scripts/messages.test.mjs`
+- 대상 경로: `app/worker/core/tasks.ts`, `app/worker/core/messages.ts`, `app/src/engine/rules.ts`, `app/scripts/messages.test.mjs`
 - 재사용 근거: 기존 items/rules/beat 재사용
 - 제외/제약: 관련 없는 기능·운영 범위 확대
 
@@ -516,7 +516,7 @@
 
 - 입력: RunRecord·입력/이벤트 순서·source/actorOrigin
 - 출력: append-only 원기록·highlight filter·6항목 집계
-- 대상 경로: `preview/worker/core/run-log.ts`, `preview/worker/core/world-runtime.ts`, `preview/src/ui/world-panel.ts`, `preview/scripts/run-log.test.mjs`
+- 대상 경로: `app/worker/core/run-log.ts`, `app/worker/core/world-runtime.ts`, `app/src/ui/world-panel.ts`, `app/scripts/run-log.test.mjs`
 - 재사용 근거: #17/#20/#25 로그/패널 재사용
 - 제외/제약: 관련 없는 기능·운영 범위 확대
 
@@ -543,7 +543,7 @@
 
 - 입력: 버전 호환 RunRecord·시각·배속
 - 출력: loadRun/seek/setSpeed와 장면/증거 투영
-- 대상 경로: `preview/src/replay/player.ts`, `preview/src/ui/world-panel.ts`, `preview/scripts/replay.test.mjs`, `preview/scripts/replay.browser.js`
+- 대상 경로: `app/src/replay/player.ts`, `app/src/ui/world-panel.ts`, `app/scripts/replay.test.mjs`, `app/scripts/replay.browser.js`
 - 재사용 근거: 현재 replay-library는 모델 fallback 자료이며 world run과 구분
 - 제외/제약: 관련 없는 기능·운영 범위 확대
 
@@ -569,7 +569,7 @@
 
 - 입력: 허용 Action·session/IP quota·예산 설정·provider/Gateway
 - 출력: 실패/상한에서 정직한 replay/scenario 및 사용량
-- 대상 경로: `preview/worker/core/proxy.ts`, `preview/worker/core/ledger.ts`, `preview/worker/core/session.ts`, `preview/wrangler.jsonc`, `preview/scripts/proxy.test.mjs`, `preview/docs/V2_VERIFICATION.md`
+- 대상 경로: `app/worker/core/proxy.ts`, `app/worker/core/ledger.ts`, `app/worker/core/session.ts`, `app/wrangler.jsonc`, `app/scripts/proxy.test.mjs`, `app/docs/V2_VERIFICATION.md`
 - 재사용 근거: #13/#15 예산/프록시 재사용
 - 제외/제약: 관련 없는 기능·운영 범위 확대
 
@@ -596,7 +596,7 @@
 
 - 입력: S2 done 이슈·release SHA/URL/deployId/configVersion
 - 출력: 실제 계정·서버의 통합 경로 증거
-- 대상 경로: `preview/docs/RELEASE_ACCEPTANCE.md`, `preview/scripts/product-e2e.browser.js`
+- 대상 경로: `app/docs/RELEASE_ACCEPTANCE.md`, `app/scripts/product-e2e.browser.js`
 - 재사용 근거: 각 기능 이슈 증거 재사용 가능하나 동일 build 차이 명시
 - 제외/제약: 관련 없는 기능·운영 범위 확대
 
@@ -622,7 +622,7 @@
 
 - 입력: 동일 배포 world/run과 control snapshot·request/event ID
 - 출력: P0/P1/P2 evidence bundle와 6항목 재집계
-- 대상 경로: `preview/docs/RELEASE_ACCEPTANCE.md`, `preview/docs/evidence/INDEX.md`, `preview/scripts/proof-evidence.test.mjs`
+- 대상 경로: `app/docs/RELEASE_ACCEPTANCE.md`, `app/docs/evidence/INDEX.md`, `app/scripts/proof-evidence.test.mjs`
 - 재사용 근거: 없음 — 신규 계획
 - 제외/제약: 관련 없는 기능·운영 범위 확대
 
@@ -649,7 +649,7 @@
 
 - 입력: 동일 release build와 격리 fault 환경·운영 demo URL
 - 출력: 4시간 이상 연속 run 및 장애/보안 증거
-- 대상 경로: `preview/docs/RELEASE_ACCEPTANCE.md`, `preview/scripts/resilience.test.mjs`, `preview/docs/evidence/INDEX.md`
+- 대상 경로: `app/docs/RELEASE_ACCEPTANCE.md`, `app/scripts/resilience.test.mjs`, `app/docs/evidence/INDEX.md`
 - 재사용 근거: 기존 V2_VERIFICATION 결과는 build/config 차이 확인 후 재사용
 - 제외/제약: 운영 방문자에게 장애 주입·전면 보안 보장 제외
 
@@ -676,7 +676,7 @@
 
 - 입력: C11 수치 기준·시험 전 기기/메모리 예산 표·release build
 - 출력: 실기기/에뮬레이션 별 측정·DPR 결정 기록
-- 대상 경로: `preview/docs/DEVICE_ACCEPTANCE.md`, `preview/scripts/first-load.browser.js`, `preview/scripts/world-ui.browser.js`
+- 대상 경로: `app/docs/DEVICE_ACCEPTANCE.md`, `app/scripts/first-load.browser.js`, `app/scripts/world-ui.browser.js`
 - 재사용 근거: #14·성능 overlay·캐릭터 킷 예산 재사용
 - 제외/제약: 메모리 한도는 시험 전 기록된 결정 필요; 미정은 ready 불가
 
@@ -703,7 +703,7 @@
 
 - 입력: 검증한 release/run highlights와 두 핵심 축
 - 출력: 3분 shotlist·최종 영상·컷별 증거 링크
-- 대상 경로: `preview/docs/DEMO_SHOTLIST.md`, `preview/docs/evidence/INDEX.md`
+- 대상 경로: `app/docs/DEMO_SHOTLIST.md`, `app/docs/evidence/INDEX.md`
 - 재사용 근거: 기존 3:30 story는 참고 연출
 - 제외/제약: 프리뷰 전체를 3분으로 축소하지 않음
 
@@ -729,7 +729,7 @@
 
 - 입력: 실제 공식 요건·로그인 폼·검증 빌드/영상
 - 출력: 제출 준비 완료 패키지; 실제 제출/확인은 별도 실행 상태와 receipt
-- 대상 경로: `README.md`, `preview/README.md`, `preview/docs/SUBMISSION_CHECKLIST.md`, `preview/character-kit/NOTICE.md`
+- 대상 경로: `README.md`, `app/README.md`, `app/docs/SUBMISSION_CHECKLIST.md`, `app/character-kit/NOTICE.md`
 - 재사용 근거: V2_VERIFICATION·NOTICE 재사용
 - 제외/제약: 이슈 생성 권한을 공개 전환/제출 권한으로 확대하지 않음
 
@@ -756,7 +756,7 @@
 
 - 입력: 개발 완료 release와 실제 파일럿 운영 조건
 - 출력: 일반 인증/연결/복구·지원·비용·운영 게이트
-- 대상 경로: `docs/roadmap/GTM_READINESS.md`, `preview/docs/OPERATIONS.md`
+- 대상 경로: `docs/roadmap/GTM_READINESS.md`, `app/docs/OPERATIONS.md`
 - 재사용 근거: S2/S3 한계를 운영 요구로 전환
 - 제외/제약: GTM 전체 코드 구현을 이 단일 이슈로 닫지 않음; 운영 하위 이슈 게이트 필요
 
@@ -782,7 +782,7 @@
 
 - 입력: 실제 Muse 연결 증거·공식 directory 신청 요구
 - 출력: 요건 대응표·준비/신청/심사/승인 별 상태
-- 대상 경로: `docs/roadmap/GTM_READINESS.md`, `preview/docs/CONNECTOR_VERIFICATION.md`
+- 대상 경로: `docs/roadmap/GTM_READINESS.md`, `app/docs/CONNECTOR_VERIFICATION.md`
 - 재사용 근거: 실제 커넥터 연동 I-04 재사용
 - 제외/제약: 심사 기간/승인 추정·별도 승인 없는 외부 신청 제외
 
