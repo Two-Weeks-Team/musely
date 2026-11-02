@@ -30,6 +30,9 @@
 // grantItem and the item history chain). A rejection, the deadline, a revocation or a candidate change confirms nothing.
 // The owners' private conditions are evaluated in their own browser (src/ui/owner-inbox.ts) and never sent; a decision
 // carries no reason, and the route refuses any field it does not know.
+//
+// Help (I-13, worker/core/messages.ts): the v1 `help` kind keeps its request in `Task.help`; messages.ts registers its
+// content and payload with registerTaskKind.
 import {canonicalize} from '../../src/identity/jcs.ts';
 import {sha256Hex} from '../../src/engine/sha256.ts';
 import {emptyInbox, nextId, notifyOwner, notificationMuse, TASK_TTL_MS, type Inbox, type Task, type MeetupCandidate, type TaskApproval} from '../../src/engine/inbox.ts';

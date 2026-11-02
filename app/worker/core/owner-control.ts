@@ -20,8 +20,9 @@ type State = ReturnType<WorldRuntime['state']>;
 
 const revoking = new WeakMap<Trust, Set<string>>();
 const hasPending = (s: State, museId: string) => (s.inbox?.tasks ?? []).some(t => t.status === 'pending' && (t.from === museId || t.to === museId));
+const hasOpenInvite = (s: State, museId: string) => (s.inbox?.invites ?? []).some(i => i.status === 'open' && (i.from === museId || (i.to.includes(museId) && i.answers[museId]?.answer !== 'unavailable')));
 /** Does the world still show a revoked Muse as active (not paused, or with pending Tasks)? */
-const needsStop = (s: State, museId: string) => !s.paused?.[museId] || hasPending(s, museId);
+const needsStop = (s: State, museId: string) => !s.paused?.[museId] || hasPending(s, museId) || hasOpenInvite(s, museId);
 
 /**
  * The world side of a revocation, idempotent: every pending Task of the Muse closes as cancelled, and the Muse is paused
@@ -39,6 +40,17 @@ function stopInWorld(st: State, emit: Emit, museId: string, version: number, by:
   for (const t of cancelTasksFor((st.inbox ??= emptyInbox()), museId, now, by)) {
     cancelled.push(t.id);
     emit({at: now, source: 'rule', kind: 'task_cancelled', muse: museId, other: t.from === museId ? t.to : t.from, line: 'A pending Task was cancelled: the owner revoked the delegation', data: {task_id: t.id, task: t.kind, reason: 'delegation_revoked'}, tags: []});
+  }
+  // Cancel in this same commit: a re-delegation before the next tick must not revive old consent.
+  for (const inv of st.inbox?.invites ?? []) {
+    if (inv.status !== 'open') continue;
+    if (inv.from === museId) {
+      inv.status = 'cancelled'; inv.closedAt = now;
+      emit({at: now, source: 'rule', kind: 'campfire_invite_cancelled', muse: museId, place: inv.place, line: 'A campfire invite was cancelled: the owner revoked the delegation', data: {invite_id: inv.id, reason: 'delegation_revoked'}, tags: []});
+    } else if (inv.to.includes(museId) && inv.answers[museId]?.answer !== 'unavailable') {
+      inv.answers[museId] = {answer: 'unavailable', via: null, at: now};
+      emit({at: now, source: 'rule', kind: 'campfire_invite_answer', muse: museId, other: inv.from, place: inv.place, line: null, data: {invite_id: inv.id, answer: 'unavailable', reason: 'delegation_revoked'}, tags: []});
+    }
   }
   let stopped: ReturnType<typeof pauseMuse> = null;
   if (!st.paused?.[museId]) {

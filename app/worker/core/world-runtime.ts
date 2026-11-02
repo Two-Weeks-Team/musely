@@ -22,6 +22,7 @@ import {replayFor} from './replay.ts';
 import {isConnected} from '../../src/engine/inbox.ts';
 import {COMMANDS_TABLE, type CommandResult} from './commands.ts';
 import {syncTasks} from './tasks.ts';
+import {withMessageHooks} from './messages.ts';
 import type {Ledger, Sql} from './ledger.ts';
 import {RunLog, evidenceIds, commandFields, outputFields, reasonCode, type InputKind, type CommitRecord} from './run-log.ts';
 import {recountAutonomy, values} from './autonomy-oracle.ts';
@@ -95,7 +96,8 @@ export class WorldRuntime {
   }
   /** The versioned run record and the ordered inputs of every commit (run-log.ts). */
   readonly runLog: RunLog;
-  constructor(sql: TxSql, opts: RuntimeOptions) { this.sql = sql; this.opts = opts; this.runLog = new RunLog(sql, opts.worldId); }
+  // Campfire invites close (gathered, expired, cancelled) on every tick: the invite upkeep joins the hooks here (I-13).
+  constructor(sql: TxSql, opts: RuntimeOptions) { this.sql = sql; this.opts = {...opts, hooks: withMessageHooks(opts.hooks)}; this.runLog = new RunLog(sql, opts.worldId); }
   get worldId() { return this.opts.worldId; }
 
   init(now: number) {
