@@ -60,6 +60,15 @@ export function tokensConfigured(t: OwnerTokens) {
   return coreConfigured(t) || reviewerConfigured(t);
 }
 
+/**
+ * The owner id of a Muse whose principal can sign in on this deployment (its control token is set and valid), else null:
+ * a Muse nobody can sign in for is a resident, and its side of an owner approval is decided by rule (I-07).
+ */
+export function ownerIdForMuse(t: OwnerTokens, museId: string): string | null {
+  const p = PRINCIPAL_IDS.find(id => PRINCIPALS[id].muses.includes(museId));
+  return p && activeToken(t, p) ? PRINCIPALS[p].ownerId : null;
+}
+
 /** Which principal a presented control token belongs to (constant-time compare), or null. */
 export function principalForToken(tokens: OwnerTokens, presented: unknown): PrincipalId | null {
   if (typeof presented !== 'string' || !presented || presented.length > 512 || !tokensConfigured(tokens)) return null;

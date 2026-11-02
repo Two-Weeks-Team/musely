@@ -1,6 +1,6 @@
-// Owner control HTTP routes (contract C06, I-02): the owner session, revocation and re-delegation, approvals, the owner
-// location source (13.1), Musely agent keys (7.2) with the key purge (G-09), owner notifications (12.3) and the
-// reviewer Muse reset (G-08).
+// Owner control HTTP routes (contract C06, I-02): the owner session, revocation and re-delegation, approvals and the
+// owner inbox (I-07), the owner location source (13.1), Musely agent keys (7.2) with the key purge (G-09), owner
+// notifications (12.3) and the reviewer Muse reset (G-08).
 // Owner actions need an owner session (POST /api/owner/session with a control token) for the Muse in question, and
 // every owner write must come from one of our origins (CSRF). A judge session is not an owner: it keeps reads and the
 // P0 demonstration only. The owner id comes from the session, never from the request body. Agent keys are shown once.
@@ -9,6 +9,7 @@ import {
   type OwnerSession, type OwnerTokens,
 } from './owner-session.ts';
 import {OWNER_MUSE} from '../../src/engine/world.ts';
+import type {DecisionInput, DecisionOutcome} from './tasks.ts';
 
 type MaybePromise<T> = T | Promise<T>;
 export interface ConnectedStub {
@@ -25,6 +26,8 @@ export interface ConnectedStub {
   ownerRedelegate(muse: string, by: string): MaybePromise<{ok: boolean; reason?: string}>;
   delegationStatus(muses: string[]): MaybePromise<unknown>;
   taskParticipants(taskId: string): MaybePromise<{from: string; to: string; status: string} | null>;
+  ownerApprove(input: DecisionInput): MaybePromise<DecisionOutcome>;
+  ownerInbox(muses: string[]): MaybePromise<unknown>;
 }
 /** Who is asking: the verified owner session, if any. A judge or visitor session never appears here. */
 export type OwnerAuth = {owner: OwnerSession | null};
@@ -32,6 +35,8 @@ export type OwnerConfig = {secret: string; tokens: OwnerTokens; origins: string[
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) => new Response(JSON.stringify(body), {status, headers: {'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers}});
 const MUSE_ID = /^\d{2}-[a-z]{2,12}$/;
+/** The fields POST /api/owner/approvals reads (C06). */
+export const APPROVAL_FIELDS = ['taskId', 'revision', 'contentHash', 'decision', 'candidate'];
 
 async function body(request: Request, limit: number): Promise<Record<string, unknown> | null> {
   try { const text = await request.text(); if (text.length > limit) return null; const v = JSON.parse(text || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? v : null; } catch { return null; }
@@ -105,10 +110,13 @@ export async function connectedRoutes(request: Request, url: URL, auth: OwnerAut
     return r.reason === 'delegation_revoked' ? json({error: 'delegation_revoked', detail: 'The Muse is revoked. Delegate it again (POST /api/owner/redelegate) before a reset.'}, 409) : json({error: r.reason ?? 'refused'}, 404);
   }
 
-  // ----- owner approvals (C06): the authorization is here; the Task workflow behind it belongs to I-07 -----
+  // ----- owner approvals (C06, I-07): {taskId, revision, contentHash, decision, candidate?} -----
   if (p === '/api/owner/approvals' && method === 'POST') {
     const b = await body(request, 2048);
     if (!b) return json({error: 'bad_request'}, 400);
+    // Only these fields are read. Anything else (a free-text reason, say) refuses the whole request before any of it is
+    // used, stored or logged: a decision never carries a reason.
+    if (Object.keys(b).some(k => !APPROVAL_FIELDS.includes(k))) return json({error: 'unexpected_field', detail: `Only ${APPROVAL_FIELDS.join(', ')} are accepted. A decision carries no reason.`}, 400);
     const taskId = String(b.taskId ?? '');
     if (!/^task_[0-9a-z]{1,10}$/.test(taskId) || !['approve', 'reject'].includes(String(b.decision))) return json({error: 'bad_request'}, 400);
     const pre = gate({write: true});
@@ -117,8 +125,19 @@ export async function connectedRoutes(request: Request, url: URL, auth: OwnerAut
     if (!task) return json({error: 'unknown_task'}, 404);
     const mine = PRINCIPALS[pre.principal].muses.find(m => m === task.from || m === task.to);
     if (!mine) return json({error: 'not_your_muse', detail: 'This owner session controls only its own Muse.'}, 403);
-    // Not yet implemented: the revision/contentHash approval and the two-owner completion are I-07. Never a fake success.
-    return json({error: 'capability_not_ready', detail: 'Owner approval of Tasks arrives with I-07. Nothing was approved.', muse: mine}, 501);
+    const decision = b.decision as 'approve' | 'reject';
+    if (!Number.isSafeInteger(b.revision) || (b.revision as number) < 1 || typeof b.contentHash !== 'string' || !/^[0-9a-f]{64}$/.test(b.contentHash)) return json({error: 'bad_request', detail: 'revision (from 1) and contentHash (64 hex) of the Task you decide on are required.'}, 400);
+    if (b.candidate !== undefined && (decision !== 'approve' || typeof b.candidate !== 'string' || !/^c[1-5]$/.test(b.candidate))) return json({error: 'bad_request', detail: 'candidate is a candidate id (c1…c5), only with approve.'}, 400);
+    const r = await stub.ownerApprove({taskId, muse: mine, ownerId: pre.ownerId, revision: b.revision as number, contentHash: b.contentHash, decision, candidate: (b.candidate as string | undefined) ?? null});
+    if (r.ok) return json({ok: true, decision, duplicate: r.duplicate, confirmed: r.confirmed, task: r.task});
+    return json({error: r.code, retryable: r.retryable, ...(r.extra ?? {})}, r.status);
+  }
+  // ----- the owner inbox (C06, 12.3): separate from the agent inbox (heartbeat_check) -----
+  if (p === '/api/owner/inbox' && method === 'GET') {
+    const s = gate({write: false});
+    if (s instanceof Response) return s;
+    const principal = PRINCIPALS[s.principal];
+    return json({owner: ownerSessionView(s), demo_limits: principal.demo ? principal.note : null, ...(await stub.ownerInbox(principal.muses)) as object});
   }
 
   // ----- owner location (13.1): the real owner's Muse only -----

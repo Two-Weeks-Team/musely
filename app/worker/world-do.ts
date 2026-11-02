@@ -14,6 +14,8 @@ import {RitualStore, type RitualRecord} from './core/ritual.ts';
 import {revokeMuse, redelegateMuse, reconcilePaused, delegationStatus} from './core/owner-control.ts';
 import {resetMuse} from './core/muse-reset.ts';
 import {initRetention, pruneCommands, RETENTION_CHECK_MS} from './core/data-retention.ts';
+import {migrateTaskStore, type DecisionInput} from './core/tasks.ts';
+import {ownerIdForMuse} from './core/owner-session.ts';
 
 export class WorldDO extends DurableObject<Env> {
   private ledger: Ledger;
@@ -46,10 +48,15 @@ export class WorldDO extends DurableObject<Env> {
       hooks,
       model: {base: env.MODEL_BASE, key: env.MODEL_API_KEY, model: env.MODEL_ID, timeoutMs: 8000},
     });
-    this.connected = new ConnectedHost({sql: ctx.storage.sql, trust: this.trust, runtime: this.runtime, hooks, baseUrl: this.origin, ownerRoot: () => this.ownerRoot, ownerClaimed: () => this.getClaim('owner-muse')?.status === 'claimed'});
+    // A Muse has an owner for meetup approvals only when that owner can sign in here (its control token is set); otherwise
+    // it is a resident and its side is approved by rule (I-07).
+    const tokens = {owner: env.OWNER_CONTROL_TOKEN, peer: env.DEMO_PEER_CONTROL_TOKEN, reviewer: env.REVIEWER_CONTROL_TOKEN, judge: env.JUDGE_TOKEN};
+    this.connected = new ConnectedHost({sql: ctx.storage.sql, trust: this.trust, runtime: this.runtime, hooks, baseUrl: this.origin, ownerRoot: () => this.ownerRoot, ownerClaimed: () => this.getClaim('owner-muse')?.status === 'claimed', ownerOf: muse => ownerIdForMuse(tokens, muse)});
     ctx.blockConcurrencyWhile(async () => {
       this.ledger.init();
       this.runtime.init(Date.now());
+      // Task records version 2 (C06, I-07): migrates a stored version 1 inbox once, before any other commit; a restart writes nothing.
+      migrateTaskStore(this.runtime, Date.now());
       initRetention(ctx.storage.sql);
       // The heartbeat (direction v2, 8.7): one alarm per minute keeps the shared world running.
       if ((await ctx.storage.getAlarm()) === null) await ctx.storage.setAlarm(Date.now() + 5_000);
@@ -141,6 +148,9 @@ export class WorldDO extends DurableObject<Env> {
   ownerRedelegate(muse: string, by: string) { return redelegateMuse({trust: this.trust, runtime: this.runtime}, muse, by); }
   delegationStatus(muses: string[]) { return delegationStatus({trust: this.trust, runtime: this.runtime}, muses); }
   taskParticipants(taskId: string) { const t = this.runtime.state().inbox?.tasks.find(x => x.id === taskId); return t ? {from: t.from, to: t.to, status: t.status} : null; }
+  // Owner approvals and the owner inbox (C06, I-07); the Worker route checks the owner session and the Muse.
+  ownerApprove(input: DecisionInput) { return this.connected.ownerApprove(input); }
+  ownerInbox(muses: string[]) { return this.connected.ownerInbox(muses); }
   ownerLocation() { return this.connected.ownerLocation(); }
   setOwnerLocation(input: unknown) { return this.connected.setOwnerLocation(input); }
   ownerNotifications(detailFor: string[]) { return this.connected.notifications(detailFor); }

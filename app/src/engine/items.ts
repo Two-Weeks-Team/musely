@@ -130,7 +130,8 @@ export const RULES = {perPlacePerDay: 1, perDay: 10, pairTradesPerDay: 1, tradeR
 /** Entries the world state keeps; older ones leave the state but the chain anchor still links to them. */
 export const HISTORY_KEEP = 200;
 
-export type HistoryVia = 'discover' | 'craft' | 'trade' | 'gift' | 'expired';
+/** `meetup`: a Meetup Ember issued when both owners approved a meetup (I-07). */
+export type HistoryVia = 'discover' | 'craft' | 'trade' | 'gift' | 'expired' | 'meetup';
 /**
  * One move in the append-only item history (9: discovery place → owner). Chained entries carry `seq`, `prevHash`
  * and `hash`; entries written before the chain existed have none and sit before genesis (see verifyHistory).
@@ -306,7 +307,7 @@ export function expiresAt(l: Ledger, museId: string, item: string) {
 }
 
 /** Item gained from the world (craft, grant): into the inventory, its expiry clock started, history appended. */
-export function grantItem(l: Ledger, m: {id: string; inventory: string[]}, item: string, at: number, place: string | null, via: 'craft' | 'discover') {
+export function grantItem(l: Ledger, m: {id: string; inventory: string[]}, item: string, at: number, place: string | null, via: 'craft' | 'discover' | 'meetup') {
   readyHistory(l);
   m.inventory.push(item);
   stampAcquired(l, m.id, item, at);

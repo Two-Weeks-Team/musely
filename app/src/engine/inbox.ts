@@ -13,6 +13,13 @@ export const MAX_COUNTERS = 2;
 const KEEP = 50;
 
 export type TradeOffer = {by: string; give: string; want: string};
+/** A meetup candidate built from public information only (harness likes, commons places, the next free half hours). */
+export type MeetupCandidate = {id: string; time: string; place: string; place_id: string | null; public_basis: string};
+/**
+ * One owner's decision on a Task (C04/C06), bound to the exact revision and contentHash it was made on. `by` is the owner
+ * id (or `musely:rule` for a resident without an owner, source rule). It carries no reason, ever.
+ */
+export type TaskApproval = {ref: string; by: string; revision: number; contentHash: string; at: number; decision: 'approve' | 'reject'; candidate: string | null; source: 'owner' | 'rule'};
 export type Task = {
   id: string;
   kind: 'trade' | 'meetup';
@@ -28,11 +35,27 @@ export type Task = {
   /** Trade: the current offer; `round` counts counter-offers (max 2). */
   offer?: TradeOffer;
   round: number;
-  /** Meetup: a candidate built from public information; answers are accept|reject only. */
+  /** Meetup (v1, one candidate): stored Tasks from before version 2. worker/core/tasks.ts moves it into `candidates`. */
   candidate?: {time: string; place: string; public_basis: string};
+  /** Meetup: up to five candidates built from public information; the Muses' answers are accept|reject only. */
+  candidates?: MeetupCandidate[];
   answers?: Record<string, 'accept' | 'reject'>;
   /** `via`: how an answer was made (a resident's rule answer or a Muse's own live call); older entries have none. */
-  history: {by: string; action: 'propose' | 'counter' | 'accept' | 'reject' | 'expire' | 'answer' | 'cancel'; at: number; give?: string; want?: string; via?: 'live' | 'rule'}[];
+  history: {by: string; action: 'propose' | 'counter' | 'accept' | 'reject' | 'expire' | 'answer' | 'cancel' | 'revise' | 'approve'; at: number; give?: string; want?: string; via?: 'live' | 'rule'}[];
+  // ----- version 2 (worker/core/tasks.ts keeps these in step with the content at every commit; see migrateInbox) -----
+  schema?: 2;
+  /** Content revision: 1 for a new Task, +1 whenever what an approval binds to (offer, candidates) changes. */
+  revision?: number;
+  /** Hex SHA-256 of the JCS form of the content (kind, participants, offer or candidates). */
+  contentHash?: string;
+  /** museId → that side's owner decision for the current revision; a content change drops them (they no longer apply). */
+  approvals?: Record<string, TaskApproval>;
+  /** Meetup: `owner_approval` once both Muses accepted; then only the owners (or a resident's rule) decide. */
+  stage?: 'negotiate' | 'owner_approval';
+  /** Meetup, fixed when the owner approval starts: museId → owner id, or null for a resident (it approves by rule). */
+  owners?: Record<string, string | null>;
+  /** Meetup: set when both owners approved the same revision, hash and candidate (completed, Meetup Ember issued). */
+  confirmed?: {candidate: string; at: number};
 };
 export type Message = {id: string; from: string; to: string; kind: 'greet' | 'postcard' | 'gift'; at: number; text: string | null; item?: string | null; blocked?: string[]; read: boolean};
 export type Mail = {id: string; from: string; to: string; item: string; text: string | null; sentAt: number; deliverAt: number; crossRegion: boolean;
@@ -42,6 +65,8 @@ export type Mail = {id: string; from: string; to: string; item: string; text: st
 export type OwnerNotification = {id: string; kind: 'meetup_candidate' | 'trade_completed' | 'blocked'; at: number; line: string; ref: string | null; other: string | null; muse?: string; detail?: Record<string, unknown>};
 export const notificationMuse = (n: OwnerNotification) => n.muse ?? '00-jolly';
 export type Inbox = {
+  /** 2 once worker/core/tasks.ts migrated the stored Tasks (absent: version 1). */
+  version?: 2;
   tasks: Task[];
   messages: Message[];
   mail: Mail[];
@@ -52,7 +77,8 @@ export type Inbox = {
   sent: Record<string, Record<string, {postcards: number; gifts: number}>>;
   seq: number;
 };
-export const emptyInbox = (): Inbox => ({tasks: [], messages: [], mail: [], notifications: [], connected: {}, sent: {}, seq: 0});
+/** A new inbox is already version 2 (worker/core/tasks.ts migrates stored version 1 inboxes). */
+export const emptyInbox = (): Inbox => ({version: 2, tasks: [], messages: [], mail: [], notifications: [], connected: {}, sent: {}, seq: 0});
 export const DAILY = {postcards: 3, gifts: 3} as const;
 
 export const isConnected = (inbox: Inbox | undefined, museId: string, now: number) => !!inbox && now - (inbox.connected[museId] ?? -Infinity) < CONNECTED_MS;
@@ -111,5 +137,11 @@ export const taskView = (t: Task, me: string) => ({
   deadline: t.deadline, deadline_iso: new Date(t.deadline).toISOString(),
   offer: t.offer ? {by: t.offer.by, they_give: t.offer.by === me ? t.offer.want : t.offer.give, you_give: t.offer.by === me ? t.offer.give : t.offer.want} : null,
   counters_used: t.round, counters_left: Math.max(0, MAX_COUNTERS - t.round),
-  candidate: t.candidate ?? null, answers: t.answers ?? null,
+  revision: t.revision ?? null, content_hash: t.contentHash ?? null,
+  candidates: t.candidates ?? (t.candidate ? [{id: 'c1', ...t.candidate, place_id: null}] : null),
+  /** The first candidate, for clients of the one-candidate shape (before version 2). */
+  candidate: t.candidates?.[0] ?? t.candidate ?? null,
+  answers: t.answers ?? null,
+  stage: t.kind === 'meetup' ? t.stage ?? 'negotiate' : null,
+  owner_approval: t.kind === 'meetup' && t.stage === 'owner_approval' ? (t.status === 'pending' ? 'waiting' : t.confirmed ? 'approved' : 'not_confirmed') : null,
 });

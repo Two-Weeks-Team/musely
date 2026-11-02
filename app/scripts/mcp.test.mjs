@@ -234,12 +234,13 @@ test('write tools: each signs a server_custodial envelope, verifies, commits and
   t.edit(st => { st.inbox.tasks.push({id: 'task_old', kind: 'meetup', from: OWNER_SLOT, to: '05-bloom', status: 'pending', awaiting: OWNER_SLOT, createdAt: t.clock.now, deadline: t.clock.now + 30 * 60_000, updatedAt: t.clock.now, round: 0, candidate: {time: '18:00', place: 'The Garden', public_basis: 'x'}, answers: {'05-bloom': 'accept'}, history: [{by: OWNER_SLOT, action: 'propose', at: t.clock.now}, {by: '05-bloom', action: 'answer', at: t.clock.now}]}); });
   assert.equal((await t.call('answer_candidate', {task_id: 'task_old', answer: 'accept'})).isError, false);
   assert.deepEqual(t.events('meetup_candidate').at(-1).data.answers_via, {[OWNER_SLOT]: 'live', '05-bloom': 'rule'});
-  assert.equal((await t.call('answer_candidate', {task_id: task.id, answer: 'accept'})).structuredContent.refused, 'task_completed');
+  // I-07: both Muses said yes, so only the owners decide now; the Task is not completed before they approve.
+  assert.equal((await t.call('answer_candidate', {task_id: task.id, answer: 'accept'})).structuredContent.refused, 'awaiting_owner_approval');
   const pub = await t.route('GET', '/api/owner/notifications', {session: null});
   const meetN = pub.body.notifications.find(n => n.kind === 'meetup_candidate');
   assert.ok(meetN && meetN.detail === undefined, 'public view hides the candidate details');
   const full = await t.route('GET', '/api/owner/notifications');
-  assert.ok(full.body.notifications.find(n => n.kind === 'meetup_candidate').detail.time);
+  assert.ok(full.body.notifications.find(n => n.kind === 'meetup_candidate').detail.candidates[0].time);
   assert.deepEqual([...new Set(full.body.notifications.map(n => n.kind))].every(k => ['meetup_candidate', 'trade_completed', 'blocked'].includes(k)), true);
 
   // update_wants (#21 updateWants with source 'connected')
@@ -916,12 +917,12 @@ test('I-03A tasks.ts: v1 Task statuses map to the C06 names; records and transit
   const id = p.structuredContent.task.id, inbox = () => t.state().inbox;
   const v1Before = JSON.stringify(inbox().tasks);
   const r = getTaskRecord(inbox(), id, {events: t.events()});
-  assert.deepEqual(Object.keys(r).sort(), ['approvalRefs', 'awaiting', 'contentHash', 'createdAt', 'eventIds', 'expiresAt', 'id', 'kind', 'participants', 'payload', 'revision', 'status', 'updatedAt', 'version'].sort());
+  assert.deepEqual(Object.keys(r).sort(), ['approvalRefs', 'approvals', 'awaiting', 'contentHash', 'createdAt', 'eventIds', 'expiresAt', 'id', 'kind', 'participants', 'payload', 'revision', 'status', 'updatedAt', 'version'].sort());
   assert.equal(r.version, 2); assert.equal(r.kind, 'trade'); assert.deepEqual(r.participants, [OWNER_SLOT, '02-moss']);
   assert.equal(r.status, 'submitted'); assert.equal(r.awaiting, '02-moss'); assert.equal(r.revision, 1);
   assert.match(r.contentHash, /^[0-9a-f]{64}$/); assert.equal(r.expiresAt, inbox().tasks.find(x => x.id === id).deadline);
   assert.deepEqual(r.payload, {kind: 'trade', offer: {by: OWNER_SLOT, give: 'coffee', want: 'tea'}, counters: 0});
-  assert.deepEqual(r.approvalRefs, []);
+  assert.deepEqual([r.approvalRefs, r.approvals], [[], {}]);
   assert.deepEqual(r.eventIds, t.events('trade_proposed').filter(e => e.data.task_id === id).map(e => e.id));
   assert.equal(r.eventIds.length, 1);
   assert.equal(JSON.stringify(inbox().tasks), v1Before, 'building a record changes nothing');
