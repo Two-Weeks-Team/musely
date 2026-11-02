@@ -39,6 +39,8 @@
   - 처리 순서 구체화: wrapper 결합 → 서명 → 위임 철회·버전(철회된 행위자는 저장 결과도 조회하지 못한다) → 저장 결과(같은 hash 재반환, 다른 hash `command_conflict`, 같은 ID 진행 중 `in_progress` retryable) → nonce를 소비하지 않는 envelope 검증(기대 수신자 포함) → 상대 카드·위임 → `stale_world` → 트랜잭션 밖 작업(think; 반환한 `settle`은 executeCommand가 finally에서 호출하고, think는 throw 전에 스스로 정산한다. think와 상대 확인에는 15초 데드라인) → 하나의 트랜잭션에서 저장 결과·world version·양쪽 위임을 다시 확인한 뒤 nonce 소비·적용·이벤트·결과 행. 거부는 nonce를 소비하지 않으므로 같은 commandId로 재시도할 수 있다.
   - 거부는 world version을 올리지 않고 상태가 그대로면 세계 행을 다시 쓰지 않는다. 규칙 거부(apply 실패)는 상태가 실제로 바뀐 경우에만 버전을 올리며 결과 행은 저장한다. 같은 (actor, 상대, code, step) 거부는 10분 창에서 이벤트 하나로 합치고 횟수는 `refusals` 테이블에 둔다. 창이 닫히면 반복이 있었던 키마다 `refusal_repeats` 이벤트(`repeat_count`)를 남긴다. P0 같은 증거 흐름(`ownerTrade`)은 합치지 않는다. `decision_discarded`는 think가 있을 때만 쓰고, 그 밖의 커밋 시점 거부는 일반 거부(handler 기록·Blocked 알림)로 남긴다. `stale_world`·`command_conflict`·`replay`·`in_progress`는 주인 Blocked 알림과 `p0_refused` 태그에서 제외한다.
 
+- 2026-11-02 구현 대응 (I-03B #50): MCP `ToolCtx.now`를 커밋 시각으로 다시 읽고 `CommandCtx.now?: () => number`를 사용하는 호출은 async 검증 뒤 Task apply·상대 자격·자기 위임/봉투 만료를 실제 커밋 시각으로 판정한다. 시계가 없는 기존 호출은 전달한 `now`를 유지한다. MCP `ToolCtx.ownerClaimedNow?: () => boolean`은 현재 클레임을 커밋 직전 재조회하며, self/claim 거부 전에 아이템 upkeep을 실행하지 않는다. 전체 도구의 localhost 실제 TLS→Worker/DO→서명→커밋 증거는 `app/docs/MCP_INTEGRATION.md`; fixture와 실제 배포/실계정(I-04/D-01) 증거는 구분한다.
+
 ## C04 — 신원·권한과 커밋
 
 - 기존 `identity/envelope.ts`의 `Signed`, `Envelope`, `Verdict`, `TrustRegistry`, `verifyEnvelope`와 ES256/JCS·위임장 계약을 재사용한다. JSON 정규화/서명을 별도 임의 구현하지 않는다.
