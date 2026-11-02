@@ -118,3 +118,10 @@ test('peer instructions are wrapped and blocked; ordinary chat passes', () => {
     assert.equal(detectInjection(ok).blocked, false, ok);
   assert.equal(wrapUntrusted('<b>hi</b>'), '<untrusted_data source="other_agent"> b hi /b </untrusted_data>');
 });
+
+test('Agent Card provider and interface URLs follow the deployment origin', async () => {
+  const m = await muse();
+  const card = buildCard(harnessById('03-ripple'), m.root, {ownerClaimed: true, fingerprint: 'dead', scopes, baseUrl: 'https://musely.net'});
+  assert.equal(card.provider.url, 'https://musely.net');
+  assert.ok(card.supportedInterfaces[0].url.startsWith('https://musely.net/a2a/'));
+});

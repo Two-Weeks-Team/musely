@@ -19,7 +19,7 @@ test('Worker entry: /api/agent-keys → /mcp handshake and tools → owner locat
   const sql = {exec(q, ...b) { const st = db.prepare(q); if (/^\s*(select|with)/i.test(q)) return {toArray: () => st.all(...b)}; st.run(...b); return {toArray: () => []}; }};
   let alarm = null, ready;
   const ctx = {storage: {sql, getAlarm: async () => alarm, setAlarm: async t => { alarm = t; }}, blockConcurrencyWhile: fn => (ready = fn())};
-  const env = {MODEL_ID: 'muse-spark-1.3', MODEL_BASE: 'https://api.meta.ai/v1', DAILY_BUDGET_USD: '1', TURNSTILE_SITEKEY: 'x', ALLOWED_HOSTS: 'musely.net', SESSION_SECRET: 'e2e-secret'};
+  const env = {MODEL_ID: 'muse-spark-1.3', MODEL_BASE: 'https://api.meta.ai/v1', DAILY_BUDGET_USD: '1', TURNSTILE_SITEKEY: 'x', ALLOWED_HOSTS: 'musely.net,www.musely.net', PUBLIC_ORIGIN: 'https://musely.net', SESSION_SECRET: 'e2e-secret'};
   const dobj = new WorldDO(ctx, env);
   await ready;
   env.WORLD = {idFromName: () => 'id', get: () => dobj};
@@ -77,4 +77,12 @@ test('Worker entry: /api/agent-keys → /mcp handshake and tools → owner locat
   assert.equal((await go('POST', '/mcp', {jsonrpc: '2.0', id: 4, method: 'tools/list'}, v)).status, 401);
   const kinds = dobj.worldEvents(0, 500).filter(e => e.muse === '00-jolly').map(e => e.kind);
   for (const kind of ['agent_key_issued', 'agent_connected', 'greet', 'owner_location_set', 'depart', 'agent_key_revoked']) assert.ok(kinds.includes(kind), kind);
+});
+
+test('www and any non-canonical host are sent to the canonical origin with method-preserving 308', async () => {
+  const {canonicalRedirect} = await import('../worker/index.ts');
+  const r = canonicalRedirect(new URL('https://www.musely.net/mcp?x=1'), 'https://musely.net');
+  assert.equal(r.status, 308);
+  assert.equal(r.headers.get('location'), 'https://musely.net/mcp?x=1');
+  assert.equal(canonicalRedirect(new URL('https://musely.net/api/status'), 'https://musely.net'), null);
 });

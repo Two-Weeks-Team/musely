@@ -82,6 +82,9 @@ async function retry<T>(fn: () => Promise<T>, tries: number, delayMs: number): P
 }
 
 /** The owner's recent posts, to reuse an existing claim post instead of posting twice. */
+// Reuse needs the whole approved text, so a post made for another deployment (same fingerprint) is never reused.
+const sameText = (a: string, b: string) => a.replace(/\s+/g, ' ').trim().includes(b.replace(/\s+/g, ' ').trim());
+
 export const recentPosts = (cfg: ThreadsConfig, token: string) =>
   call<{data?: {id: string; text?: string; permalink?: string; username?: string; timestamp?: string}[]}>(cfg, 'GET', '/v1.0/me/threads', {fields: 'id,text,permalink,username,timestamp', limit: '25', access_token: token});
 
@@ -93,7 +96,7 @@ export async function claimViaWorker(cfg: ThreadsConfig, code: string, expected:
   const t = await step('exchange', () => exchangeCode(cfg, code));
   const who = await step('identity', () => me(cfg, t.token));
   if (who.username.toLowerCase() !== expected.handle.toLowerCase()) throw new ClaimStepError('identity', new ThreadsError(`Signed in as @${who.username}, not the claimed owner @${expected.handle}`, 403));
-  const existing = await step('find_existing', async () => (await recentPosts(cfg, t.token).catch(() => ({data: []}))).data?.find(p => matchClaim({...p, username: p.username ?? who.username}, expected).textOk) ?? null);
+  const existing = await step('find_existing', async () => (await recentPosts(cfg, t.token).catch(() => ({data: []}))).data?.find(p => matchClaim({...p, username: p.username ?? who.username}, expected).textOk && sameText(p.text ?? '', expected.text)) ?? null);
   const mediaId = existing?.id ?? await step('publish', () => retry(() => publishText(cfg, t.token, who.id, expected.text), 3, 1500));
   await hooks.onPublished?.(mediaId, t.token);
   const post = existing?.permalink && existing.text ? {...existing, username: existing.username ?? who.username} : await step('read_back', () => retry(() => readPost(cfg, t.token, mediaId), 4, hooks.readDelayMs ?? 1500));

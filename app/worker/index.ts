@@ -1,4 +1,4 @@
-// Musely preview Worker: static assets plus the /api surface (direction v2, 15 and 20.2).
+// Musely main product Worker (musely.net): static assets plus the /api surface (direction v2, 15 and 20.2).
 import {handleMuse} from './core/proxy.ts';
 import {issueSession, readSession, cookieValue, sessionCookie, hashIp, timingSafeEqual, verifyTurnstile} from './core/session.ts';
 import type {Env} from './env.ts';
@@ -172,9 +172,18 @@ function threadsConfig(env: Env, url: URL): ThreadsConfig | null {
 }
 const redirectHome = (query: string) => new Response(null, {status: 302, headers: {location: '/?' + query, 'set-cookie': 'musely_ts=; Path=/api/threads; Max-Age=0; HttpOnly; Secure; SameSite=Lax', 'cache-control': 'no-store'}});
 
+/** Requests to any other allowed host (www) go to the canonical origin; 308 keeps POST bodies for MCP clients. */
+export function canonicalRedirect(url: URL, publicOrigin: string): Response | null {
+  const canonical = new URL(publicOrigin);
+  if (url.host === canonical.host) return null;
+  return new Response(null, {status: 308, headers: {location: canonical.origin + url.pathname + url.search, 'cache-control': 'public, max-age=3600'}});
+}
+
 export default {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
+    const moved = canonicalRedirect(url, env.PUBLIC_ORIGIN);
+    if (moved) return moved;
     const jwks = /^\/\.well-known\/jwks\/([A-Za-z0-9_-]{20,64})\.json$/.exec(url.pathname);
     if (jwks) { const set = await world(env).jwks(jwks[1]); return set ? json(set, 200, {'cache-control': 'public, max-age=300'}) : json({error: 'unknown_key'}, 404); }
     // Musely MCP server (Streamable HTTP, 2025-06-18) for custom connectors; auth is a Musely agent key.

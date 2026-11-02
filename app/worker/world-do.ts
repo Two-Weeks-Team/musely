@@ -22,7 +22,8 @@ export class WorldDO extends DurableObject<Env> {
   private origin: string;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.origin = env.PUBLIC_ORIGIN || 'https://musely.net';
+    this.origin = env.PUBLIC_ORIGIN;
+    if (!this.origin) throw new Error('PUBLIC_ORIGIN is not set');
     this.ledger = new Ledger(ctx.storage.sql, {dailyCapUsd: Number(env.DAILY_BUDGET_USD) || 20});
     this.trust = new Trust(ctx.storage.sql);
     this.ritual = new RitualStore(ctx.storage.sql);

@@ -51,7 +51,7 @@ async function setup({claimed = true} = {}) {
   assert.equal(issued.status, 201);
   const key = issued.body.key;
   let id = 0;
-  const http = (msg, {token = key, headers = {}, method = 'POST'} = {}) => handleMcpHttp(new Request(HOST + '/mcp', {method, body: method === 'POST' ? (typeof msg === 'string' ? msg : JSON.stringify(msg)) : undefined, headers: {'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(token ? {authorization: 'Bearer ' + token} : {}), ...headers}}), stub, {allowedHosts: ['musely.net']});
+  const http = (msg, {token = key, headers = {}, method = 'POST'} = {}) => handleMcpHttp(new Request(HOST + '/mcp', {method, body: method === 'POST' ? (typeof msg === 'string' ? msg : JSON.stringify(msg)) : undefined, headers: {'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(token ? {authorization: 'Bearer ' + token} : {}), ...headers}}), stub, {allowedHosts: ['musely.net', 'www.musely.net']});
   const rpc = async (method, params, opts) => { const res = await http({jsonrpc: '2.0', id: ++id, method, params}, opts); return {status: res.status, body: res.status === 202 ? null : await res.json(), headers: res.headers}; };
   const call = async (name, args = {}, opts) => { const r = await rpc('tools/call', {name, arguments: args}, opts); return r.body.result ?? r.body; };
   const state = () => runtime.state();
@@ -114,6 +114,7 @@ test('transport and auth: 401 without a valid key, 405 for GET, 403 for a foreig
   assert.equal((await t.http(null, {method: 'DELETE'})).status, 405);
   assert.equal((await t.http({jsonrpc: '2.0', id: 3, method: 'ping'}, {headers: {origin: 'https://evil.example'}})).status, 403);
   assert.equal((await t.http({jsonrpc: '2.0', id: 4, method: 'ping'}, {headers: {origin: 'https://musely.net'}})).status, 200);
+  assert.equal((await t.http({jsonrpc: '2.0', id: 41, method: 'ping'}, {headers: {origin: 'https://www.musely.net'}})).status, 200);
   assert.equal((await t.http({jsonrpc: '2.0', id: 5, method: 'ping'}, {headers: {'mcp-protocol-version': '1999-01-01'}})).status, 400);
   assert.equal((await t.http([{jsonrpc: '2.0', id: 6, method: 'ping'}])).status, 400);
   assert.equal((await t.http('{not json')).status, 400);

@@ -6,10 +6,10 @@ interface __BaseEnv_Env {
 	ASSETS: Fetcher;
 	MODEL_ID: "muse-spark-1.3";
 	MODEL_BASE: "https://api.meta.ai/v1";
-	DAILY_BUDGET_USD: "20";
+	DAILY_BUDGET_USD: "12";
 	TURNSTILE_SITEKEY: "0x4AAAAAAFu3dgEV5S3LzeDU";
 	ALLOWED_HOSTS: "musely.net,www.musely.net";
-		PUBLIC_ORIGIN: "https://musely.net";
+	PUBLIC_ORIGIN: "https://musely.net";
 	MODEL_API_KEY: string;
 	JUDGE_TOKEN: string;
 	WORLD: DurableObjectNamespace<import("./index").WorldDO>;

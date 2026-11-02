@@ -23,5 +23,6 @@ SOFTWARE.
 ---
 
 Scope: this license does not cover the Muse/Jolly character or any asset
-derived from it. See preview/character-kit/NOTICE.md for the excluded paths.
-Third-party data keeps its own license (see preview/README.md).
+derived from it. See app/character-kit/NOTICE.md (main product) and
+preview/character-kit/NOTICE.md (preview) for the excluded paths.
+Third-party data keeps its own license (see app/README.md and preview/README.md).

@@ -8,8 +8,8 @@ The 3D Muse characters in this repository are fan-made recreations of Jolly. We 
 
 These paths fall outside the repository license:
 
-- `preview/character-kit/`: every file, including `source/`, `portable/`, `runtime/`, `references/` and `validation/` captures.
-- `preview/assets/muse_base.glb`: the Muse model used by the current preview.
-- Any Muse/Jolly model, texture, render or capture produced from the files above, including build output in `preview/dist/`.
+- `app/character-kit/` and `preview/character-kit/`: every file, including `source/`, `portable/`, `runtime/`, `references/` and `validation/` captures.
+- `app/assets/muse_base.glb` and `preview/assets/muse_base.glb`: the Muse model used by the main product and the preview.
+- Any Muse/Jolly model, texture, render or capture produced from the files above, including build output in `app/dist/` and `preview/dist/`.
 
 The surrounding code, the Sigil textures, the map work and the scenario remain under the repository license.

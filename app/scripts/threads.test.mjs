@@ -93,6 +93,15 @@ test('an existing claim post is reused instead of posting again', async () => {
   assert.equal(g.calls.filter(c => c.path.endsWith('/threads_publish') || c.path === '/v1.0/42/threads').length, 0, 'no new post');
 });
 
+test('a post made for another deployment with the same fingerprint is not reused', async () => {
+  const other = text.replace('· musely.net', '· preview.musely.net');
+  const g = fakeGraph({existing: {id: 'media-old', text: other, permalink: 'https://www.threads.com/@centisgood/post/OLD2', username: 'centisgood'}});
+  const r = await claimViaWorker(g.cfg, 'good', expected, 1, {readDelayMs: 0});
+  assert.equal(r.reused, false);
+  assert.equal(g.calls.filter(c => c.path.endsWith('/threads_publish')).length, 1, 'publishes this deployment\'s own text');
+  assert.equal(r.record.status, 'claimed');
+});
+
 test('failures name their step', async () => {
   await assert.rejects(claimViaWorker(fakeGraph({publishMissing: true}).cfg, 'good', expected), e => e.step === 'publish' && e.cause.code === 24);
   const saved = [];

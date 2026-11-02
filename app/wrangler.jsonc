@@ -9,7 +9,7 @@
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*", "/.well-known/jwks/*", "/mcp"]
+    "run_worker_first": true
   },
   "durable_objects": {
     "bindings": [{"name": "WORLD", "class_name": "WorldDO"}]
