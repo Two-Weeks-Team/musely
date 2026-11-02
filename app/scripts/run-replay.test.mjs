@@ -121,3 +121,25 @@ test('publishedAt selects the real publication cue clock while preserving the bu
  assert.equal(frame.events[0].at,T0+1000);assert.equal(frame.events[0].data.publishedAt,T0+20000);
  assert.equal(frame.snapshotAt,T0+2000);assert.equal(frame.snapshotHash,r.inputs.at(-1).afterHash);
 });
+
+// The engine computes real-speed ETAs from geographic distance; arrival milliseconds need not be integral.
+import {DatabaseSync} from 'node:sqlite';
+import {WorldRuntime} from '../worker/core/world-runtime.ts';
+import {beginTrip} from '../src/engine/travel.ts';
+import {tripMs} from '../src/engine/world.ts';
+import {PLACES,placeById} from '../src/engine/places.ts';
+test('real recorded trips retain fractional arrival times in both initial and committed snapshots',()=>{
+ const db=new DatabaseSync(':memory:');let depth=0;const sql={exec(q,...b){const st=db.prepare(q);if(/^\s*(select|with|explain)/i.test(q))return{toArray:()=>st.all(...b)};st.run(...b);return{toArray:()=>[]};},transactionSync(fn){const id='t'+depth++;db.exec('SAVEPOINT '+id);try{const r=fn();db.exec('RELEASE '+id);return r;}catch(e){db.exec('ROLLBACK TO '+id);db.exec('RELEASE '+id);throw e;}finally{depth--;}}};
+ try{
+  const rt=new WorldRuntime(sql,{worldId:'trip-replay',model:null,meetingGate:'off',publicationNow:()=>T0+1000});rt.init(T0);
+  const from=placeById(rt.state().muses[0].place),to=PLACES.find(p=>!Number.isInteger(T0+1000+tripMs(from,p,'walk')));assert.ok(to,'actual geography produces fractional ETA');
+  rt.commitExternal(T0+1000,'recorded-trip',(st,emit)=>beginTrip(st.muses[0],to,T0+1000,'scripted',emit,'recorded regression'));
+  const run=rt.runLog.current,r={...run,inputs:rt.runLog.inputs(run.runId),events:rt.events(0,100,{runId:run.runId}),readThrough:rt.runLog.boundary(run.runId)},travel=rt.state().muses[0].travel;
+  assert.equal(Number.isInteger(travel.arriveAt),false);const original=JSON.stringify(r),p=loadRun(r);p.seek(p.getState().durationSec);assert.deepEqual(p.getFrame().publicState.muses[0].travel,travel);assert.equal(JSON.stringify(r),original,'replay never rounds the original checkpoint');
+  const last=r.inputs.at(-1);const initialOnly={...r,startedAt:last.at,initialSnapshot:last.afterSnapshot,inputs:[],events:[],readThrough:{inputSeq:0,eventSeq:0,inputs:0,events:0}};
+  assert.deepEqual(loadRun(initialOnly).getFrame().publicState.muses[0].travel,travel);
+ }finally{db.close();}
+});
+test('nonfinite, negative, out-of-range and reversed arrival times remain invalid',()=>{
+ for(const arriveAt of [NaN,Infinity,-1,Number.MAX_SAFE_INTEGER+1,'tomorrow',T0-1]){const r=record(),state=JSON.parse(r.initialSnapshot.body);state.muses[0].travel={to:'commons:cafe',departAt:T0,arriveAt,speed:'walk'};r.initialSnapshot=snapshot(state);r.inputs[0].beforeHash=r.initialSnapshot.hash;rejects(r,'invalid_record');}
+});
