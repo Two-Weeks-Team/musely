@@ -67,7 +67,7 @@ async (page) => {
    const alignment = await p.evaluate(() => {const W=window.__world,pin=document.querySelector('.muse-pin[data-muse-id="00-jolly"]'),f=W.liveScene.projection.frames(Number(pin.dataset.projectedAt)).get('00-jolly');return {pin:JSON.parse(pin.dataset.lnglat),actor:W.alignmentAt(f.x,f.z).geo,replay:pin.dataset.replay,at:Number(pin.dataset.projectedAt),clock:W.getMetrics().live.at,source:document.getElementById('muse-source').textContent,want:document.getElementById('muse-want-text').textContent};});
    check(vp, 'recorded pin, actor and card use one public projection and recorded clock', alignment.replay === 'true' && alignment.at === alignment.clock && alignment.pin.every((v,i) => Math.abs(v-alignment.actor[i]) < 1e-8) && alignment.source.includes('REPLAY') && !alignment.want.includes('text-sha256:'), JSON.stringify(alignment));
    await root.locator('[data-recorded-speed="1"]').click(); await root.getByRole('button', {name: 'Play recorded run', exact: true}).click();
-   await root.locator('[data-event-id]').first().click(); await p.locator('#evidence').waitFor();
+   await root.locator('[data-event-id=' + JSON.stringify(template.events[0].id) + ']').click(); await p.locator('#evidence').waitFor();
    const evidence = await p.locator('#evidence').textContent();
    check(vp, 'evidence uses cached run/commit/model references without fetching or authenticating', evidence.includes('fixture-request-id') && evidence.includes('Recorded run') && evidence.includes('Recorded commit') && evidence.includes('REPLAY') && requests.length === afterLoad, evidence.slice(-300));
    await p.getByRole('button', {name: 'Close evidence', exact: true}).click();
