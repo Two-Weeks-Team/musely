@@ -64,6 +64,8 @@ export type Hooks = {
   onEncounter?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, rand: () => number, at: number) => Omit<WorldEvent, 'id' | 'tick'>[];
   /** Credential check before two Muses meet (C04). On refusal neither Muse changes; only `event` is logged. */
   canMeet?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, at: number) => {ok: boolean; event: Omit<WorldEvent, 'id' | 'tick'> | null};
+  /** World upkeep after this tick's moves and meetings (campfire invites, I-13: worker/core/messages.ts inviteUpkeep). */
+  onTick?: (s: WorldState, now: number) => Omit<WorldEvent, 'id' | 'tick'>[];
 };
 
 const fmt = new Intl.DateTimeFormat('en-CA', {timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
@@ -312,6 +314,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     const place = placeById(placeId);
     if (place.kind === 'campfire' && group.length >= 3 && clock.hour >= 17) emit({at: now, source: 'rule', kind: 'gathering', muse: group[0].id, place: placeId, data: {count: group.length, muses: group.map(m => m.id)}, tags: ['campfire_gathering_3plus']});
   }
+  for (const e of hooks.onTick?.(s, now) ?? []) emit(e);
 
   // A priority turn leaves the queue (only its own entry, and any paused since); requests that arrived meanwhile stay
   // for the next tick. The rotation waits during priority turns.

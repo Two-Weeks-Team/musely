@@ -45,7 +45,8 @@ export function pruneCommands(sql: Sql, now: number) {
 }
 
 type Row = {id: string; kind: string; at: number; muse: string | null; other: string | null; line: string | null; data: Record<string, unknown>};
-export type PurgeCounts = {events_anonymized: number; rule_events_anonymized: number; commands_deleted: number; messages_redacted: number; mail_redacted: number; notifications_redacted: number; wants_reset: boolean; key_record: 'hash_and_last_use_removed'};
+/** notes_redacted: campfire invite lines and help request lines (I-13) kept in the invite record or the help Task. */
+export type PurgeCounts = {events_anonymized: number; rule_events_anonymized: number; commands_deleted: number; messages_redacted: number; mail_redacted: number; notes_redacted: number; notifications_redacted: number; wants_reset: boolean; key_record: 'hash_and_last_use_removed'};
 export type PurgeKept = {events: number; key_record: 'id_muse_created_revoked'; unlinked: {agent_connected_events: number; messages_to_muse: number}};
 export type PurgeReport = {deleted: PurgeCounts; kept: PurgeKept};
 
@@ -73,7 +74,7 @@ export function purgeKeyData(d: PurgeDeps, key: {id: string; muse: string; creat
     const toRow = (r: Record<string, unknown>): Row => ({id: String(r.id), kind: String(r.kind), at: Number(r.at), muse: str(r.muse), other: str(r.other), line: str(r.line), data: parse(r.data)});
     const rows: Row[] = d.sql.exec("SELECT id, kind, at, muse, other, line, data FROM events WHERE (muse = ? OR other = ?) AND at >= ? AND json_extract(data, '$.key_id') = ?", museId, museId, key.createdAt, key.id).toArray().map(toRow);
     const eventIds = new Set(rows.map(r => r.id)), commandIds = new Set<string>(), taskAt = new Set<string>(), refusedAt = new Set<number>();
-    const greets: Row[] = [], postcards: Row[] = [], goals = new Set<string>();
+    const greets: Row[] = [], postcards: Row[] = [], invites: Row[] = [], helpTasks = new Set<string>(), goals = new Set<string>();
     for (const r of rows) {
       const env = r.data.envelope as {message_id?: unknown} | null | undefined;
       for (const id of [str(env?.message_id), str(r.data.command_id)]) if (id) commandIds.add(id);
@@ -82,6 +83,8 @@ export function purgeKeyData(d: PurgeDeps, key: {id: string; muse: string; creat
       if (r.kind === 'a2a_refused') refusedAt.add(r.at);
       if (r.kind === 'greet') greets.push(r);
       if (r.kind === 'postcard_sent') postcards.push(r);
+      if (r.kind === 'campfire_invite') invites.push(r);
+      if (r.kind === 'help_requested' && str(r.data.task_id)) helpTasks.add(String(r.data.task_id));
       if (r.kind === 'wants_updated') for (const g of [str((r.data.wants as {goal?: unknown} | undefined)?.goal), r.line]) if (g) goals.add(g);
     }
     for (const r of rows) d.sql.exec('UPDATE events SET line = ?, data = ? WHERE id = ?', FREE_TEXT_LINE.has(r.kind) && r.line !== null ? REDACTED : r.line, JSON.stringify(redactData(r.data)), r.id);
@@ -104,12 +107,18 @@ export function purgeKeyData(d: PurgeDeps, key: {id: string; muse: string; creat
       if (m.from !== museId) return false;
       if (m.kind === 'greet') return greets.some(g => g.at === m.at && g.other === m.to);
       if (m.kind === 'postcard') return postcards.some(p => p.other === m.to && p.data.item === m.item && delivered.some(x => x.at === m.at && x.to === m.to && x.data.item === m.item && x.data.sentAt === p.at));
+      if (m.kind === 'invite') return invites.some(i => i.at === m.at && Array.isArray(i.data.to) && i.data.to.includes(m.to));
       return false;
     };
     const redactedMessages = new Set<string>();
     for (const m of inbox.messages) if (m.text !== null && fromKey(m)) { m.text = REDACTED; redactedMessages.add(m.id); }
     let mail = 0;
     for (const x of inbox.mail) if (x.from === museId && x.text !== null && postcards.some(p => p.at === x.sentAt && p.other === x.to && p.data.item === x.item)) { x.text = REDACTED; mail += 1; }
+    // The invitation line of those invites and the request line of those help Tasks (I-13).
+    let notes = 0;
+    const inviteIds = new Set(invites.map(i => str(i.data.invite_id)).filter(Boolean));
+    for (const x of inbox.invites ?? []) if (x.from === museId && x.note !== null && x.note !== REDACTED && inviteIds.has(x.id)) { x.note = REDACTED; notes += 1; }
+    for (const t of inbox.tasks) if (t.help && t.from === museId && t.help.note !== null && t.help.note !== REDACTED && helpTasks.has(t.id)) { t.help.note = REDACTED; notes += 1; }
     let notifications = 0;
     for (const n of inbox.notifications) {
       const mine = notificationMuse(n) === museId;
@@ -125,14 +134,14 @@ export function purgeKeyData(d: PurgeDeps, key: {id: string; muse: string; creat
     // 4. The key record: no hash, no last use.
     d.keys.forget(key.id);
 
-    const deleted: PurgeCounts = {events_anonymized: rows.length, rule_events_anonymized: ruleRows.length, commands_deleted: commands, messages_redacted: redactedMessages.size, mail_redacted: mail, notifications_redacted: notifications, wants_reset: wantsReset, key_record: 'hash_and_last_use_removed'};
+    const deleted: PurgeCounts = {events_anonymized: rows.length, rule_events_anonymized: ruleRows.length, commands_deleted: commands, messages_redacted: redactedMessages.size, mail_redacted: mail, notes_redacted: notes, notifications_redacted: notifications, wants_reset: wantsReset, key_record: 'hash_and_last_use_removed'};
     const kept: PurgeKept = {events: rows.length + ruleRows.length, key_record: 'id_muse_created_revoked', unlinked: {
       agent_connected_events: Number(d.sql.exec("SELECT COUNT(*) AS n FROM events WHERE kind = 'agent_connected' AND muse = ?", museId).toArray()[0]?.n ?? 0),
       messages_to_muse: inbox.messages.filter(x => x.to === museId).length,
     }};
     report = {deleted, kept};
     // Who and how much, never which key (the key id is what was just removed). Nothing found: nothing to record.
-    const found = rows.length + ruleRows.length + commands + redactedMessages.size + mail + notifications > 0 || wantsReset;
+    const found = rows.length + ruleRows.length + commands + redactedMessages.size + mail + notes + notifications > 0 || wantsReset;
     if (found) emit({at: now, source: 'live', kind: 'data_deleted', muse: museId, line: 'Data made under a revoked agent key was deleted or anonymized', data: {by, scope: 'agent_key', deleted, kept}, tags: []});
   });
   return report!;
