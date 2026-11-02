@@ -149,12 +149,15 @@ test('a missing or invalid REVIEWER_CONTROL_TOKEN turns off only the reviewer (5
     assert.deepEqual([reset.status, reset.body.error], [503, 'not_configured'], bad.slice(0, 12));
     if (bad !== OWNER_TOKEN && bad !== PEER_TOKEN) assert.equal((await u.go('POST', '/api/owner/session', {token: bad}, {origin: ORIGIN})).status, 403, 'an invalid reviewer token opens nothing');
   }
-  // A reviewer session issued while the token was valid ends when the token is replaced by an invalid one.
+  // A reviewer session issued while its token was valid ends once that same token becomes invalid (here: the judge link
+  // token is set to the same value); the owner's session goes on.
   const v = await boot();
-  const rev = await v.login(REVIEWER_TOKEN);
+  const rev = await v.login(REVIEWER_TOKEN), vo = await v.login(OWNER_TOKEN);
   assert.equal((await v.go('GET', '/api/owner/session', undefined, {cookie: rev})).body.owner.principal, 'reviewer');
-  v.env.REVIEWER_CONTROL_TOKEN = 'short';
+  v.env.JUDGE_TOKEN = REVIEWER_TOKEN;
   assert.equal((await v.go('GET', '/api/owner/session', undefined, {cookie: rev})).body.owner, null);
+  assert.equal((await v.go('POST', '/api/owner/reset', {}, h(rev))).status, 503);
+  assert.equal((await v.go('GET', '/api/owner/session', undefined, {cookie: vo})).body.owner.principal, 'owner');
   // The owner and demo-peer rule is unchanged: a broken owner or demo-peer token stops owner control as a whole.
   for (const extra of [{OWNER_CONTROL_TOKEN: 'x'.repeat(31)}, {DEMO_PEER_CONTROL_TOKEN: OWNER_TOKEN}]) {
     const u = await boot(extra);
