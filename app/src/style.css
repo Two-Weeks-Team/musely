@@ -139,3 +139,5 @@ body:not([data-mode=world]) #muse-card .card-candidate:not([hidden]){display:blo
 /* Short landscape tablets: the story heading is centred on the screen and reaches into the selected-Muse card (left 28 px, 308 px wide), so it moves into the free area to the right of the card. */
 @media(min-width:700.02px) and (max-width:1180px) and (min-height:530.02px) and (max-height:700px){#story-heading{left:calc((100% + 336px)/2);max-width:calc(100% - 336px - 28px)}}
 .ev-day{list-style:none;padding:9px 2px 3px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#A9B3C7}
+/* Policy links in the attribution line: a taller, wider touch area on phones. Inline padding does not change the line box, and the negative margin cancels the added width, so the line wraps and sits exactly as before (--footer-h is untouched: the line is outside the footer). */
+@media(max-width:700px){.attribution a.legal{padding:5px 3px;margin:0 -3px}}
