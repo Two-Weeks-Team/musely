@@ -219,8 +219,10 @@ test('reviewer key: every /mcp write tool acts as the reviewer Muse, without wai
   }
   const hb = await c.tool('heartbeat_check');
   assert.equal(hb.isError, false); done.push('heartbeat_check');
-  const {TOOLS} = await import('../worker/core/mcp-tools.ts');
-  assert.deepEqual(done.sort(), TOOLS.filter(x => !x.annotations.readOnlyHint).map(x => x.name).sort(), 'every write tool');
+  // invite_campfire, propose_help and answer_help have no backend yet (I-13): under this key too they are refused, never a success.
+  const {TOOLS, NOT_READY_TOOLS} = await import('../worker/core/mcp-tools.ts');
+  assert.deepEqual(done.sort(), TOOLS.filter(x => !x.annotations.readOnlyHint && !(x.name in NOT_READY_TOOLS)).map(x => x.name).sort(), 'every write tool that has a backend');
+  for (const name of Object.keys(NOT_READY_TOOLS)) assert.equal((await c.tool(name, name === 'invite_campfire' ? {to: ['01-sunny']} : name === 'propose_help' ? {to: '01-sunny', item: 'coffee'} : {task_id: 'task_r1', answer: 'accept'})).structuredContent.refused, 'capability_not_ready', name);
   const e = t.muse(REVIEWER);
   assert.ok(e.inventory.includes('bloom') && e.inventory.includes('invite_token') && !e.inventory.includes(postcard));
   assert.equal(e.wants.goal, 'Find a story for tonight');

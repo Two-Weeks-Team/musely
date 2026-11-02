@@ -45,7 +45,7 @@ Known gaps against the specification text (SHOULD, not MUST): a value outside a 
 
 - Every message, including `initialize` and notifications, needs `Authorization: Bearer <Musely agent key>`.
 - Key format: `msly_` followed by 43 base64url characters (32 random bytes).
-- A missing, malformed, unknown or revoked key gets HTTP 401, JSON-RPC `-32001` (`Unauthorized: send Authorization: Bearer <Musely agent key>`), and `WWW-Authenticate: Bearer realm="musely-mcp"`. Authentication is checked before the body is validated.
+- A missing, malformed, unknown, revoked or purged key gets HTTP 401, JSON-RPC `-32001` (`Unauthorized: send Authorization: Bearer <Musely agent key>`). `WWW-Authenticate` is `Bearer realm="musely-mcp"` when no `Authorization` header was sent, and `Bearer realm="musely-mcp", error="invalid_token"` otherwise (RFC 6750 3.1). Malformed, unknown, revoked and purged keys get the same body. Authentication is checked before the body is validated (an unsupported `MCP-Protocol-Version` header is answered first).
 - Keys are issued by `POST /api/agent-keys` and revoked by `DELETE /api/agent-keys/{id}`. Both need an owner session (not the judge link) whose principal owns the key's Muse, and `Origin: https://musely.net`. `DELETE /api/agent-keys/{id}?purge=1` revokes the key and deletes or anonymizes the data made with it (see "Data retention and deletion"). The key is shown once. Musely stores only its SHA-256 hash, plus the key id, the Muse, and creation, last-use and revocation times.
 - A key maps to one Muse and acts through that Muse's `server_custodial` executor, inside the owner's delegation. If the owner revokes the delegation, every write under the key is refused (`delegation_revoked`).
 - In the current demo, keys are issued only by the operators, for the Muses of the three principals: the owner (`00-jolly`), the team-controlled demo peer (`09-copper`) and the directory reviewer (`04-ember`, see "Reviewer access"). Visitors cannot get a key.
@@ -95,13 +95,13 @@ A rule refusal is not a JSON-RPC error. The tool returns a normal result with `i
 
 ### Agent key rotation and revocation
 
-A key is a bearer credential: whoever holds it acts as its Muse. Keys are created and ended only in the Musely owner session (`POST /api/agent-keys`, `DELETE /api/agent-keys/{id}`), never by an MCP tool, and nothing rotates or revokes them on its own.
+A key is a bearer credential: whoever holds it acts as its Muse. Keys are created and ended only in the Musely owner session (`POST /api/agent-keys`, `DELETE /api/agent-keys/{id}`; the session must own the key's Muse, else `403 not_your_muse`), never by an MCP tool, and nothing rotates or revokes them on its own. The same steps apply to the owner, demo peer and reviewer keys.
 
 Rotation (for example when a key may have leaked, or when the connector moves to another Muse runtime):
 
 1. The owner issues a new key in the owner session (`POST /api/agent-keys`). The response shows the key once (`shown_once: true`); the old key keeps working.
 2. The owner puts the new key into the custom connector's secure credential field and checks it with one call (for example `register_agent`, whose `key.id` is the new key's id). The key goes only into that field: not into a chat message, a URL or a log.
-3. The owner revokes the old key (`DELETE /api/agent-keys/{old id}`). From then on the old key gets 401. The Muse stays connected because the new key was used in the last 24 hours.
+3. The owner revokes the old key (`DELETE /api/agent-keys/{old id}`, or `?purge=1` to also delete or anonymize what was made with it, see "Data retention and deletion"). From then on the old key gets 401. The Muse stays connected because the new key was used in the last 24 hours.
 
 Revocation (for example when the connector is removed): the owner revokes the key. Then:
 
