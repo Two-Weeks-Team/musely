@@ -75,7 +75,8 @@ export function recountAutonomy(input: readonly OracleEvent[], scope: OracleScop
   }
   const liveCount = !live.size && liveWithoutId ? null : live.size;
 
-  // 6. Ability changes: tagged events whose state hash differs before and after.
+  // 6. Ability changes: tagged events whose ability-state hash (inventory and item clocks of the event's Muses, set by
+  //    run-log.ts) differs before and after. Equal hashes: the tag was there, the abilities did not change.
   const tagged = events.filter(e => e.tags.includes('ability_change')), hashed = tagged.filter(e => e.data?.beforeHash && e.data?.afterHash);
 
   const ats = events.map(e => e.at);

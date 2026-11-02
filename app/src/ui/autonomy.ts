@@ -47,6 +47,7 @@ export function computeAutonomy(events: AutoEvent[], scope: AutoScope): AutoResu
   }
   // Live answers without any request id cannot be counted: that part is unknown, but replay and scenario counts stay.
   const liveUnknown = live.size === 0 && missingLive > 0, scenario = unique.filter(e => e.source === 'scripted' && e.kind === 'spotlight').length;
+  // beforeHash/afterHash: the ability state (inventory and item clocks) of the event's Muses before and after its commit.
   const tagged = unique.filter(e => e.tags.includes('ability_change'));
   const hashed = tagged.filter(e => e.data?.beforeHash && e.data?.afterHash);
   const observations = tagged.length - hashed.length;

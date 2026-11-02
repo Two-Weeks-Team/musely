@@ -85,7 +85,7 @@ export class WorldDO extends DurableObject<Env> {
     const claim = this.getClaim('owner-muse');
     return {trust: this.trust, runtime: this.runtime, ownerRoot: this.ownerRoot, ownerClaimed: claim?.status === 'claimed', baseUrl: this.origin};
   }
-  p0() { return runP0(this.ctx_()); }
+  p0(by?: 'judge' | 'owner') { return runP0({...this.ctx_(), requestedBy: by}); }
   impostor(target: string) { return impostorCheck(this.ctx_(), target); }
   injection(from: string, to: string, i: number) { return injectionCheck(this.ctx_(), from, to, i); }
   async agentCard(museId: string) {
@@ -104,7 +104,7 @@ export class WorldDO extends DurableObject<Env> {
   ritualRecord(rec: RitualRecord, sessionTag: string, byOwner = false) {
     if (byOwner && rec.passed) this.ritual.saveOwnerRecord(rec);
     // A unique label: two rituals judged in the same millisecond must not share an event id (the second would be dropped).
-    return this.runtime.commitExternal(Date.now(), 'ritual-' + Math.random().toString(36).slice(2, 10), (_s, emit) => emit({at: Date.now(), source: rec.requestId ? 'live' : 'replay', kind: 'ritual_judged', muse: null, line: rec.passed ? 'Welcome ritual passed' : 'Welcome ritual not passed', data: {passed: rec.passed, results: rec.results, evidence: rec.requestId ? {model: rec.model, requestId: rec.requestId} : null, who: byOwner ? 'owner (owner session)' : rec.tier === 'judge' ? 'judge link ' + sessionTag : 'visitor ' + sessionTag, framesStored: false, actorOrigin: byOwner ? 'connected' : 'trial'}, tags: ['ritual']}));
+    return this.runtime.commitExternal(Date.now(), 'ritual-' + Math.random().toString(36).slice(2, 10), (_s, emit) => emit({at: Date.now(), source: rec.requestId ? 'live' : 'replay', kind: 'ritual_judged', muse: null, line: rec.passed ? 'Welcome ritual passed' : 'Welcome ritual not passed', data: {passed: rec.passed, results: rec.results, evidence: rec.requestId ? {model: rec.model, requestId: rec.requestId} : null, who: byOwner ? 'owner (owner session)' : rec.tier === 'judge' ? 'judge link ' + sessionTag : 'visitor ' + sessionTag, framesStored: false, ...(byOwner ? {actor: 'owner'} : {actorOrigin: 'trial'})}, tags: ['ritual']}));
   }
   worldView() { return this.runtime.view(Date.now()); }
   /** A visitor's priority spotlight request (8.2); the Worker route checks the session and passes an opaque requester id. */

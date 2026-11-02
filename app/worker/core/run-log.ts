@@ -11,7 +11,11 @@
 // The model's answers, approvals and asynchronous answers cannot be rebuilt from the seed (8.1, C05); this log keeps them.
 // Never stored: camera frames (they never reach the world) and private conditions: the owner's location (cell, preset,
 // target, a Muse's anchor cell) and meetup candidate time/place details (inbox candidates, owner notification details).
-// No statement in this file updates or deletes a row of runs or run_inputs.
+// No free text either: greetings, postcard notes, wants goals, model lines and reasons, reflections and memories are
+// stored as a SHA-256 of the text (the public events keep the text, and the key purge in data-retention.ts can anonymize
+// them there); command payloads keep only their hash and the per-action id fields (COMMAND_FIELDS). So nothing here is
+// a purge target and both tables stay append-only. No statement in this file updates or deletes a row of runs or
+// run_inputs (run_counts is a counter cache, not part of the record).
 import {ENGINE_VERSION, type WorldState, type WorldEvent} from '../../src/engine/world.ts';
 import {HARNESSES} from '../../src/engine/harness.ts';
 import {ITEMS} from '../../src/engine/items.ts';
@@ -54,33 +58,94 @@ export function currentVersions(): RunVersions {
 }
 const sameVersions = (a: RunVersions, b: RunVersions) => a.schemaVersion === b.schemaVersion && a.engineVersion === b.engineVersion && a.harnessVersion === b.harnessVersion && a.catalogVersion === b.catalogVersion;
 
+/** A SHA-256 of a free text (null stays null): the run log names a text without keeping it. */
+export const textHash = (t: unknown) => (typeof t === 'string' ? 'text-sha256:' + sha256Hex('musely-run-text-v1\n' + t) : t === undefined ? null : t);
+/** A single id-like token (Muse, item, place, task ids, enum values): kept as is. Anything with spaces is not an id. */
+const ID_RE = /^[A-Za-z0-9_.:\/|@#-]{1,96}$/;
+const isId = (v: unknown) => typeof v === 'string' && ID_RE.test(v);
+
+type Rule = 'copy' | 'text' | 'texts' | 'private' | ((v: any) => unknown);
+type Table = Record<string, Rule>;
+const pick = (o: Record<string, unknown> | null | undefined, t: Table): Record<string, unknown> | null => {
+  if (!o || typeof o !== 'object') return (o ?? null) as null;
+  const out: Record<string, unknown> = {};
+  for (const [k, rule] of Object.entries(t)) {
+    if (!(k in o) || o[k] === undefined) continue;
+    const v = o[k];
+    out[k] = rule === 'copy' ? v : rule === 'text' ? textHash(v) : rule === 'texts' ? (Array.isArray(v) ? v.map(textHash) : textHash(v)) : rule === 'private' ? PRIVATE : rule(v);
+  }
+  return out;
+};
+const each = (t: Table) => (v: unknown) => (Array.isArray(v) ? v.map(x => pick(x as Record<string, unknown>, t)) : null);
 /**
- * The world state without private conditions: the owner location (cell, preset, target), each Muse's anchor cell
- * (it is the owner's cell), meetup candidate details and owner notification details. Everything else is kept.
+ * Allow-lists of the public snapshot: every field of the world state is named here with what is kept. A field that is
+ * not listed is left out; scripts/run-log.test.mjs fails when the state has a field none of these tables names.
  */
-export function publicState(s: WorldState): Record<string, unknown> {
-  const {owner, inbox, muses, ...rest} = s;
-  return {
-    ...rest,
-    muses: muses.map(m => (m.anchor ? {...m, anchor: PRIVATE} : m)),
-    owner: owner ? {source: owner.source, muse: owner.muse, verified: owner.verified, setAt: owner.setAt, location: PRIVATE} : null,
-    inbox: inbox ? {...inbox, tasks: inbox.tasks.map(t => (t.candidate ? {...t, candidate: PRIVATE} : t)), notifications: inbox.notifications.map(n => (n.detail ? {...n, detail: PRIVATE} : n))} : null,
-  };
-}
-/** The body stored as a run's initial snapshot, and the hash every commit records before and after (C09 beforeHash/afterHash). */
+export const SNAPSHOT_FIELDS: Record<'state' | 'muse' | 'wants' | 'beat' | 'owner' | 'inbox' | 'task' | 'message' | 'mail' | 'notification', Table> = {
+  state: {} as Table, muse: {} as Table,
+  wants: {goal: 'text', items: 'copy', source: 'copy', updatedAt: 'copy'},
+  beat: {id: 'copy', clip: 'copy', startedAt: 'copy', endsAt: 'copy', line: 'text'},
+  // The owner location (cell, preset, target) is private; whether it is set and verified is not.
+  owner: {source: 'copy', muse: 'copy', verified: 'copy', setAt: 'copy', cell: 'private', preset: 'private', target: 'private'},
+  inbox: {} as Table,
+  task: {id: 'copy', kind: 'copy', from: 'copy', to: 'copy', status: 'copy', awaiting: 'copy', createdAt: 'copy', deadline: 'copy', updatedAt: 'copy', offer: 'copy', round: 'copy', candidate: 'private', answers: 'copy', history: 'copy'},
+  message: {id: 'copy', from: 'copy', to: 'copy', kind: 'copy', at: 'copy', text: 'text', item: 'copy', blocked: 'copy', read: 'copy'},
+  mail: {id: 'copy', from: 'copy', to: 'copy', item: 'copy', text: 'text', sentAt: 'copy', deliverAt: 'copy', crossRegion: 'copy', timed: 'copy'},
+  notification: {id: 'copy', kind: 'copy', at: 'copy', line: 'text', ref: 'copy', other: 'copy', muse: 'copy', detail: 'private'},
+};
+const F = SNAPSHOT_FIELDS;
+// A Muse's anchor is the owner's cell (13.1): private.
+Object.assign(F.muse, {id: 'copy', place: 'copy', travel: 'copy', beat: (v: unknown) => pick(v as Record<string, unknown>, F.beat), inventory: 'copy', memory: 'texts', reflection: 'text', lastMet: 'copy', intent: 'copy', wants: (v: unknown) => pick(v as Record<string, unknown>, F.wants), anchor: 'private'} satisfies Table);
+Object.assign(F.inbox, {tasks: each(F.task), messages: each(F.message), mail: each(F.mail), notifications: each(F.notification), connected: 'copy', sent: 'copy', seq: 'copy'} satisfies Table);
+Object.assign(F.state, {worldId: 'copy', day: 'copy', seed: 'copy', tick: 'copy', version: 'copy', lastTickAt: 'copy', spotlight: 'copy', items: 'copy', paused: 'copy', muses: each(F.muse), owner: (v: unknown) => pick(v as Record<string, unknown>, F.owner), inbox: (v: unknown) => pick(v as Record<string, unknown>, F.inbox)} satisfies Table);
+
+/**
+ * The world state as the run log keeps it: only the allow-listed fields, private conditions (owner location, a Muse's
+ * anchor cell, meetup candidate details, owner notification details) replaced by PRIVATE, free text by its hash.
+ */
+export function publicState(s: WorldState): Record<string, unknown> { return pick(s as unknown as Record<string, unknown>, F.state)!; }
+/** The body stored as a run's initial snapshot, and the hash every commit records before and after (the world-state hashes). */
 export const snapshotBody = (s: WorldState) => JSON.stringify(publicState(s));
 export const bodyHash = (body: string) => sha256Hex(SNAPSHOT_PREFIX + body);
 export const stateHash = (s: WorldState) => bodyHash(snapshotBody(s));
 
-/** Keys whose values are private conditions wherever they appear in a recorded payload. */
-const PRIVATE_KEYS = new Set(['candidate', 'detail', 'details', 'cell', 'preset', 'target', 'anchor', 'lat', 'lng', 'latitude', 'longitude', 'coords', 'frames', 'frame', 'image', 'images']);
-/** A copy of a payload with private values replaced (depth-limited; strings longer than 500 characters are cut). */
-export function redact(v: unknown, depth = 0): unknown {
-  if (v === null || typeof v !== 'object') return typeof v === 'string' && v.length > 500 ? v.slice(0, 500) + '…' : v;
-  if (depth > 6) return PRIVATE;
-  if (Array.isArray(v)) return v.slice(0, 50).map(x => redact(x, depth + 1));
-  return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, PRIVATE_KEYS.has(k) ? PRIVATE : redact(x, depth + 1)]));
+/**
+ * C09 ability state of the Muses an ability_change event is about (its muse and other): their inventory and item
+ * expiry clocks only. A tagged event whose before and after hashes are equal changed no ability.
+ */
+export function abilityHash(s: WorldState, muses: readonly string[]): string {
+  const body = [...new Set(muses)].sort().map(id => {
+    const m = s.muses.find(x => x.id === id);
+    const expiry = (s.items?.expiry?.[id] ?? []).map(x => ({item: x.item, at: x.at, expiresAt: x.expiresAt})).sort((a, b) => (a.item < b.item ? -1 : a.item > b.item ? 1 : a.at - b.at));
+    return {id, inventory: m ? [...m.inventory].sort() : null, expiry};
+  });
+  return sha256Hex('musely-ability-v1\n' + canonicalize(body));
 }
+
+/** Command payload fields kept per action (ids and enum values only; free text such as a greeting or a goal never). */
+export const COMMAND_FIELDS: Record<string, readonly string[]> = {
+  move: ['kind', 'to', 'mode'], discover: ['kind'], craft: ['kind', 'recipe'], greet: ['kind', 'to'],
+  propose_trade: ['kind', 'to', 'give', 'want'], counter_trade: ['kind', 'task_id', 'give', 'want'], accept_trade: ['kind', 'task_id'], reject_trade: ['kind', 'task_id'],
+  send_postcard: ['kind', 'to', 'item'], give_gift: ['kind', 'to', 'item'], propose_meetup: ['kind', 'to'], answer_candidate: ['kind', 'task_id', 'answer'], update_wants: ['kind', 'items'],
+};
+/** The allowed fields of a command payload whose values are ids (or lists of ids); every other key is only named in `omitted`. */
+export function commandFields(action: string, payload: unknown): {fields: Record<string, unknown>; omitted: string[]} {
+  const allowed = new Set(COMMAND_FIELDS[action] ?? []), fields: Record<string, unknown> = {}, omitted: string[] = [];
+  for (const [k, v] of Object.entries(payload && typeof payload === 'object' ? payload as Record<string, unknown> : {})) {
+    const ok = allowed.has(k) && (v === null || typeof v === 'boolean' || typeof v === 'number' || isId(v) || (Array.isArray(v) && v.length <= 8 && v.every(isId)));
+    if (ok) fields[k] = v; else omitted.push(k);
+  }
+  return {fields, omitted: omitted.sort()};
+}
+/** Free-text fields of a model answer (spotlight, meeting answer): kept as hashes. */
+const OUTPUT_TEXT = new Set(['line', 'public_reason', 'reason', 'text', 'goal', 'note']);
+/** A model answer for the run log: ids, enum values and booleans as they are, every other string hashed. */
+export function outputFields(o: unknown): Record<string, unknown> | null {
+  if (!o || typeof o !== 'object') return null;
+  return Object.fromEntries(Object.entries(o as Record<string, unknown>).map(([k, v]) => [k, typeof v === 'string' ? (OUTPUT_TEXT.has(k) || !isId(v) ? (v === '' ? '' : textHash(v)) : v) : typeof v === 'boolean' || typeof v === 'number' || v === null ? v : textHash(JSON.stringify(v))]));
+}
+/** The code of a fallback or discard reason ("input_invalid: …" → "input_invalid"); the text after it is not kept. */
+export const reasonCode = (r: unknown) => (typeof r === 'string' && r ? (r.split(':')[0].trim().replace(/\s+/g, '_').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 48) || 'other') : null);
 /** Model evidence kept in an input row: model and ids only (a replay keeps the recorded request's ids). */
 export function evidenceIds(ev: unknown): Record<string, unknown> | null {
   if (!ev || typeof ev !== 'object') return null;
@@ -94,7 +159,8 @@ const INPUT_COLS = 'seq, run_id, at, kind, label, day, tick, version_before, ver
 const toRun = (r: Record<string, unknown>): RunRecord => ({runId: String(r.run_id), worldId: String(r.world_id), schemaVersion: String(r.schema_version), engineVersion: String(r.engine_version), harnessVersion: String(r.harness_version), catalogVersion: String(r.catalog_version), seed: String(r.seed), initialSnapshot: {hash: String(r.snapshot_hash), body: String(r.snapshot)}, startedAt: Number(r.started_at), origin: String(r.origin) as RunOrigin, prevRunId: r.prev_run_id == null ? null : String(r.prev_run_id), legacy: r.legacy == null ? null : JSON.parse(String(r.legacy))});
 const toInput = (r: Record<string, unknown>): RunInput => ({seq: Number(r.seq), runId: String(r.run_id), at: Number(r.at), kind: String(r.kind) as InputKind, label: String(r.label), day: String(r.day), tick: Number(r.tick), versionBefore: Number(r.version_before), versionAfter: Number(r.version_after), beforeHash: String(r.before_hash), afterHash: String(r.after_hash), itemsHead: r.items_head == null ? null : String(r.items_head), itemsSeq: r.items_seq == null ? null : Number(r.items_seq), events: Number(r.events), input: r.input == null ? null : JSON.parse(String(r.input))});
 
-export type CommitRecord = {at: number; kind: InputKind; label: string; beforeRaw: string; before: WorldState; after: WorldState; changed: boolean; events: WorldEvent[]; input?: Record<string, unknown> | null};
+export type CommitRecord = {at: number; kind: InputKind; label: string; beforeRaw: string; before: WorldState; after: WorldState; afterRaw?: string; changed: boolean; events: WorldEvent[]; input?: Record<string, unknown> | null};
+export type PreparedInput = {runId: string; seq: number; c: CommitRecord; beforeHash: string; afterHash: string};
 
 export class RunLog {
   private sql: Sql;
@@ -109,6 +175,8 @@ export class RunLog {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, world_id TEXT NOT NULL, n INTEGER NOT NULL UNIQUE, schema_version TEXT NOT NULL, engine_version TEXT NOT NULL, harness_version TEXT NOT NULL, catalog_version TEXT NOT NULL, seed TEXT NOT NULL, snapshot_hash TEXT NOT NULL, snapshot TEXT NOT NULL, started_at INTEGER NOT NULL, origin TEXT NOT NULL, prev_run_id TEXT, legacy TEXT)`);
     this.sql.exec('CREATE TABLE IF NOT EXISTS run_inputs (seq INTEGER PRIMARY KEY, run_id TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL, day TEXT NOT NULL, tick INTEGER NOT NULL, version_before INTEGER NOT NULL, version_after INTEGER NOT NULL, before_hash TEXT NOT NULL, after_hash TEXT NOT NULL, items_head TEXT, items_seq INTEGER, events INTEGER NOT NULL, input TEXT)');
     this.sql.exec('CREATE INDEX IF NOT EXISTS run_inputs_run ON run_inputs (run_id, seq)');
+    // Counter cache per run (inputs and stored events), kept in the commit transaction so reads need no COUNT(*).
+    this.sql.exec('CREATE TABLE IF NOT EXISTS run_counts (run_id TEXT PRIMARY KEY, inputs INTEGER NOT NULL, events INTEGER NOT NULL)');
     // The events table belongs to world-runtime.ts; an older world gets the two columns (existing rows keep NULL).
     for (const [col, type] of [['run_id', 'TEXT'], ['input_seq', 'INTEGER']]) {
       try { this.sql.exec(`SELECT ${col} FROM events LIMIT 0`).toArray(); } catch { this.sql.exec(`ALTER TABLE events ADD COLUMN ${col} ${type}`); }
@@ -127,7 +195,7 @@ export class RunLog {
     const v = currentVersions();
     if (last) {
       const prev = toRun(last);
-      if (sameVersions(prev, v)) return (this.run = prev);
+      if (sameVersions(prev, v)) { this.ensureCounts(prev); return (this.run = prev); }
       return (this.run = this.insertRun(s, now, 'version_change', prev.runId, Number(last.n) + 1, null));
     }
     let legacy: RunRecord['legacy'] = null;
@@ -141,40 +209,50 @@ export class RunLog {
     const body = snapshotBody(s), hash = bodyHash(body), v = currentVersions();
     const runId = `run-${n}-${now.toString(36)}-${hash.slice(0, 8)}`;
     this.sql.exec(`INSERT INTO runs (${RUN_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, runId, this.worldId, n, v.schemaVersion, v.engineVersion, v.harnessVersion, v.catalogVersion, s.seed, hash, body, now, origin, prevRunId, legacy ? JSON.stringify(legacy) : null);
+    this.sql.exec('INSERT OR IGNORE INTO run_counts (run_id, inputs, events) VALUES (?, 0, ?)', runId, legacy?.events ?? 0);
     return {runId, worldId: this.worldId, ...v, seed: s.seed, initialSnapshot: {hash, body}, startedAt: now, origin, prevRunId, legacy};
+  }
+  /** A run stored without a counter row (opened by an earlier build): counted once. */
+  private ensureCounts(r: RunRecord) {
+    if (this.sql.exec('SELECT 1 FROM run_counts WHERE run_id = ?', r.runId).toArray().length) return;
+    const inputs = Number(this.sql.exec('SELECT COUNT(*) AS n FROM run_inputs WHERE run_id = ?', r.runId).toArray()[0]?.n ?? 0);
+    const events = Number(this.sql.exec(`SELECT COUNT(*) AS n FROM events WHERE run_id = ?${r.origin === 'pre-run-log' ? ' OR run_id IS NULL' : ''}`, r.runId).toArray()[0]?.n ?? 0);
+    this.sql.exec('INSERT INTO run_counts (run_id, inputs, events) VALUES (?, ?, ?)', r.runId, inputs, events);
   }
   get current(): RunRecord {
     if (!this.run) throw new Error('run log not opened');
     return this.run;
   }
 
-  private hashRaw(raw: string, s: WorldState) {
-    if (this.cache?.raw === raw) return this.cache.hash;
-    return stateHash(s);
-  }
-
   /**
-   * Records one commit (call inside the commit's transaction, before its events are inserted). Nothing is recorded
-   * for a commit that changed nothing and logged nothing. The events are completed in place: `actorOrigin` defaults to
-   * system (the world's own processes; other origins are set where the event is made), and every ability_change event
-   * gets the commit's beforeHash/afterHash. Returns the run id and input seq the events are stored with.
+   * Prepares the record of one commit (inside the commit's transaction, before its events are inserted). Null for a
+   * commit that changed nothing and logged nothing. The events are completed in place: `actorOrigin` is `system` for
+   * the world's own processes when the maker set neither an origin nor an `actor` (C03 values only; an owner's act
+   * keeps `data.actor` and no origin), and every ability_change event gets the before/after hash of the ability state
+   * (inventory and expiry) of the Muses it is about. Call append() with the number of event rows really inserted.
    */
-  commit(c: CommitRecord): {runId: string; seq: number} | null {
+  prepare(c: CommitRecord): PreparedInput | null {
     if (!c.changed && !c.events.length) return null;
     const run = this.current;
-    const beforeHash = this.hashRaw(c.beforeRaw, c.before);
-    const afterRaw = JSON.stringify(c.after);
+    const beforeHash = this.cache?.raw === c.beforeRaw ? this.cache.hash : stateHash(c.before);
     const afterHash = c.changed ? stateHash(c.after) : beforeHash;
-    this.cache = {raw: afterRaw, hash: afterHash};
+    this.cache = {raw: c.afterRaw ?? JSON.stringify(c.after), hash: afterHash};
     const seq = Number(this.sql.exec('SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM run_inputs').toArray()[0].n);
-    const chain = c.after.items?.chain;
-    this.sql.exec(`INSERT INTO run_inputs (${INPUT_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, seq, run.runId, c.at, c.kind, c.label.slice(0, 160), c.after.day, c.after.tick, c.before.version, c.after.version, beforeHash, afterHash, chain?.head ?? null, chain?.seq ?? null, c.events.length, c.input ? JSON.stringify(c.input) : null);
     for (const e of c.events) {
       const data = (e.data ??= {});
-      if (!ACTOR_ORIGINS.includes(data.actorOrigin as ActorOrigin)) data.actorOrigin = 'system';
-      if (e.tags.includes('ability_change')) { data.beforeHash = beforeHash; data.afterHash = afterHash; }
+      if (!ACTOR_ORIGINS.includes(data.actorOrigin as ActorOrigin)) { if (data.actor === undefined) data.actorOrigin = 'system'; else delete data.actorOrigin; }
+      if (e.tags.includes('ability_change')) {
+        const of = [e.muse, e.other].filter((x): x is string => !!x);
+        data.abilityOf = of; data.beforeHash = abilityHash(c.before, of); data.afterHash = abilityHash(c.after, of);
+      }
     }
-    return {runId: run.runId, seq};
+    return {runId: run.runId, seq, c, beforeHash, afterHash};
+  }
+  /** Appends the prepared row with the number of event rows the commit really inserted (a repeated event id is not stored). */
+  append(p: PreparedInput, inserted: number) {
+    const {c} = p, chain = c.after.items?.chain;
+    this.sql.exec(`INSERT INTO run_inputs (${INPUT_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, p.seq, p.runId, c.at, c.kind, c.label.slice(0, 160), c.after.day, c.after.tick, c.before.version, c.after.version, p.beforeHash, p.afterHash, chain?.head ?? null, chain?.seq ?? null, inserted, c.input ? JSON.stringify(c.input) : null);
+    this.sql.exec('UPDATE run_counts SET inputs = inputs + 1, events = events + ? WHERE run_id = ?', inserted, p.runId);
   }
 
   // ---------- reads ----------
@@ -203,14 +281,15 @@ export class RunLog {
 
   /** GET /api/world/run: the current run without the snapshot body (its size instead), and every run in order. */
   summary(s: WorldState) {
-    const run = this.current, counts = this.sql.exec('SELECT COUNT(*) AS n, COALESCE(MAX(seq), 0) AS last, MAX(at) AS at FROM run_inputs WHERE run_id = ?', run.runId).toArray()[0];
-    const legacyClause = run.origin === 'pre-run-log' ? ' OR run_id IS NULL' : '';
-    const events = Number(this.sql.exec(`SELECT COUNT(*) AS n FROM events WHERE run_id = ?${legacyClause}`, run.runId).toArray()[0]?.n ?? 0);
+    // Counters from run_counts and the newest input row (index on run_id, seq): no full-table count on a public read.
+    const run = this.current, counts = this.sql.exec('SELECT inputs, events FROM run_counts WHERE run_id = ?', run.runId).toArray()[0];
+    const last = this.sql.exec('SELECT seq, at FROM run_inputs WHERE run_id = ? ORDER BY seq DESC LIMIT 1', run.runId).toArray()[0];
+    const events = Number(counts?.events ?? 0);
     const {initialSnapshot, ...rest} = run;
     return {
       ...rest, initialSnapshot: {hash: initialSnapshot.hash, bytes: initialSnapshot.body.length},
       versionsNow: currentVersions(),
-      inputs: {count: Number(counts?.n ?? 0), lastSeq: Number(counts?.last ?? 0), lastAt: counts?.at == null ? null : Number(counts.at)},
+      inputs: {count: Number(counts?.inputs ?? 0), lastSeq: Number(last?.seq ?? 0), lastAt: last?.at == null ? null : Number(last.at)},
       events, itemsAnchor: this.itemsAnchor(s), stateHash: stateHash(s),
       runs: this.runs().map(r => ({runId: r.runId, origin: r.origin, startedAt: r.startedAt, engineVersion: r.engineVersion, harnessVersion: r.harnessVersion, catalogVersion: r.catalogVersion, schemaVersion: r.schemaVersion, prevRunId: r.prevRunId})),
     };

@@ -10,8 +10,8 @@ import {readFileSync} from 'node:fs';
 import {register} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
 import {Ledger} from '../worker/core/ledger.ts';
-import {WorldRuntime, AUTONOMY_SAMPLE_MAX} from '../worker/core/world-runtime.ts';
-import {RunLog, currentVersions, publicState, snapshotBody, bodyHash, stateHash, redact, PRIVATE, RUN_SCHEMA_VERSION} from '../worker/core/run-log.ts';
+import {WorldRuntime, AUTONOMY_SAMPLE_MAX, AUTONOMY_PERIOD_MAX_MS} from '../worker/core/world-runtime.ts';
+import {currentVersions, publicState, snapshotBody, bodyHash, stateHash, textHash, commandFields, abilityHash, SNAPSHOT_FIELDS, PRIVATE, RUN_SCHEMA_VERSION} from '../worker/core/run-log.ts';
 import {recountAutonomy, values} from '../worker/core/autonomy-oracle.ts';
 import {computeAutonomy} from '../src/ui/autonomy.ts';
 import {EMPTY_FILTER, matchFilter, dayBound} from '../src/ui/replay-core.ts';
@@ -94,9 +94,9 @@ test('AC1 each commit appends one ordered input row: model outputs with request 
   assert.equal(tick1.spotlight.decision.output.decision, 'walk', 'the model output itself');
   assert.equal(tick1.seed, rt.state().seed);
   const reply = tick1.replies.find(r => r.source === 'live');
-  assert.ok(reply, 'the other Muse answered with a model call'); assert.match(reply.evidence.requestId, /^req-encounter-/); assert.match(reply.output.line, /^Hello/); assert.equal(reply.used, true);
+  assert.ok(reply, 'the other Muse answered with a model call'); assert.match(reply.evidence.requestId, /^req-encounter-/); assert.match(reply.output.line, /^text-sha256:/, 'the line is kept as a hash'); assert.equal(reply.output.line, textHash(allEvents(rt).find(e => e.kind === 'encounter_reply' && e.source === 'live').line)); assert.equal(reply.output.intent, 'greet'); assert.equal(reply.used, true);
   assert.equal(JSON.stringify(tick1).includes('messages'), false, 'the prompt is not stored');
-  assert.deepEqual(rows[iCmd].input, {actorId: 'agent-jolly', commandId: 'cmd-1', action: 'answer_candidate', payloadHash: 'h1', payload: {task_id: 'task_1', answer: 'accept'}, ok: true, code: null, worldVersion: rows[iCmd].version_after});
+  assert.deepEqual(rows[iCmd].input, {actorId: 'agent-jolly', commandId: 'cmd-1', action: 'answer_candidate', payloadHash: 'h1', fields: {task_id: 'task_1', answer: 'accept'}, omitted: [], ok: true, code: null, worldVersion: rows[iCmd].version_after});
   // Every event names its run and its commit; every commit's after-hash is the next commit's before-hash.
   for (const e of allEvents(rt)) { assert.equal(e.runId, run.runId, e.id); assert.ok(rows.some(r => r.seq === e.inputSeq), e.id); }
   for (const r of rows) assert.equal(allEvents(rt).filter(e => e.inputSeq === r.seq).length, r.events, `events of input ${r.seq}`);
@@ -136,15 +136,18 @@ test('AC1 private conditions and raw frames never enter the run log (snapshot or
   s.sql.exec("UPDATE runs SET engine_version = 'engine-0'"); // test only: the stored run came from older code
   const rt2 = new WorldRuntime(s.sql, {worldId: 'w', meetingGate: 'off', ledger: s.ledger, model: null}); rt2.init(T0 + 3);
   const all = runs(s.sql); assert.equal(all.length, 2); assert.equal(all[1].origin, 'version_change'); assert.equal(all[1].prev_run_id, all[0].run_id);
-  const log = JSON.stringify(runs(s.sql)) + JSON.stringify(inputs(s.sql));
-  for (const secret of [CELL, TIME, SPOT, FRAME, '37.1', '-122.1']) assert.equal(log.includes(secret), false, `${secret} is in the run log`);
+  // The run log tables and the public events table: none of the private values.
+  const log = JSON.stringify(runs(s.sql)) + JSON.stringify(inputs(s.sql)) + JSON.stringify(s.sql.exec('SELECT * FROM events').toArray());
+  for (const secret of [CELL, TIME, SPOT, FRAME, '37.1', '-122.1']) assert.equal(log.includes(secret), false, `${secret} is in the run log or events`);
   const snap = JSON.parse(all[1].snapshot);
-  assert.equal(snap.owner.location, PRIVATE); assert.equal(snap.muses[0].anchor, PRIVATE);
+  for (const k of ['cell', 'preset', 'target']) assert.equal(snap.owner[k], PRIVATE, k); assert.equal(snap.owner.source, 'gps'); assert.equal(snap.muses[0].anchor, PRIVATE);
   assert.equal(snap.inbox.tasks[0].candidate, PRIVATE); assert.equal(snap.inbox.notifications.at(-1).detail, PRIVATE);
   assert.equal(snap.inbox.tasks[0].id, 'task_1', 'the rest of the Task is kept');
   const cmd = inputs(s.sql).find(r => r.kind === 'command').input;
-  assert.deepEqual(cmd.payload, {task_id: 'task_1', answer: 'accept', candidate: PRIVATE, owner: {cell: PRIVATE, lat: PRIVATE, lng: PRIVATE}, frames: PRIVATE});
-  assert.equal(redact({a: {b: 'x'.repeat(600)}}).a.b.length, 501, 'long strings are cut');
+  assert.deepEqual(cmd.fields, {task_id: 'task_1', answer: 'accept'}); assert.deepEqual(cmd.omitted, ['candidate', 'frames', 'owner'], 'other keys are named, never stored');
+  assert.deepEqual(commandFields('greet', {kind: 'greet', text: 'hi there', to: '01-sunny'}), {fields: {kind: 'greet', to: '01-sunny'}, omitted: ['text']});
+  assert.deepEqual(commandFields('propose_trade', {kind: 'propose_trade', to: 'not an id', give: 'coffee', want: 'tea'}).omitted, ['to'], 'a value that is not an id is not kept');
+  assert.deepEqual(commandFields('unknown_action', {kind: 'x'}).fields, {}, 'an action without a field list keeps only its hash');
   // The source of the run log never updates or deletes its rows.
   const src = readFileSync(new URL('../worker/core/run-log.ts', import.meta.url), 'utf8');
   assert.equal(/(UPDATE|DELETE FROM|REPLACE INTO|DROP TABLE)\s+(runs|run_inputs)\b/i.test(src), false);
@@ -173,7 +176,7 @@ test('AC1 a world stored before the run log gets one pre-run-log run; its old ev
   assert.equal(evs.filter(e => e.runId === null).length, old.length, 'old rows are not rewritten');
   assert.ok(evs.filter(e => e.runId === run.run_id).length > 0);
   // The pre-run-log run owns its old events in a recount and in the evidence record.
-  assert.equal(rt.autonomy({runId: run.run_id}).sample.events, evs.length);
+  assert.equal(rt.autonomy({runId: run.run_id, from: T0 - 2 * 3_600_000, to: T0 + 3_600_000}).sample.events, evs.length);
   const rec = rt.eventRecord(evs[0].id);
   assert.equal(rec.runId, run.run_id); assert.equal(rec.runIdStored, false); assert.equal(rec.input, null);
 });
@@ -229,7 +232,7 @@ test('AC2 oracle = panel: the replay fixture, a recorded runtime day, and 300 ra
   assert.ok(day.some(e => e.kind === 'encounter') && day.some(e => e.source === 'live'), 'the run has meetings and live answers');
   const srv = same(day, 'runtime');
   assert.equal(srv.models.value, `${new Set(day.filter(e => e.source === 'live' && e.data.evidence?.requestId).map(e => e.data.evidence.requestId)).size} live · 0 replay · ${day.filter(e => e.source === 'scripted' && e.kind === 'spotlight').length} scenario`);
-  assert.deepEqual(rt.autonomy({}).values, srv, 'the runtime API gives the same values');
+  assert.deepEqual(rt.autonomy({from: T0 - 1, to: T0 + 60 * TICK_MS}).values, srv, 'the runtime API gives the same values');
   // Random samples (seeded): kinds, sources, origins, ids, encounter ids, request ids, hashes, duplicates.
   let seed = 7; const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648), pick = a => a[Math.floor(rnd() * a.length)];
   const kinds = ['encounter', 'approval_requested', 'meetup_candidate', 'cards_verified', 'a2a_verified', 'a2a_refused', 'impostor_rejected', 'spotlight', 'encounter_reply', 'trade_completed', 'injection_blocked', 'decision_rejected', 'beat'];
@@ -300,7 +303,7 @@ test('AC3 Worker routes: /api/world/run, /run/inputs, /event, /highlights (befor
   const env = {MODEL_ID: 'muse-spark-1.3', MODEL_BASE: 'https://api.meta.ai/v1', DAILY_BUDGET_USD: '1', TURNSTILE_SITEKEY: 'x', ALLOWED_HOSTS: 'musely.net,www.musely.net', PUBLIC_ORIGIN: 'https://musely.net', SESSION_SECRET: 'e2e-secret'};
   const dobj = new WorldDO(ctx, env); await ready;
   env.WORLD = {idFromName: () => 'id', get: () => dobj}; env.ASSETS = {fetch: async () => new Response('asset')};
-  const go = async path => { const r = await worker.fetch(new Request('https://musely.net' + path), env); return {status: r.status, body: await r.json()}; };
+  const go = async path => { const r = await worker.fetch(new Request('https://musely.net' + path), env); return {status: r.status, body: await r.json(), cache: r.headers.get('cache-control')}; };
   const now = Date.now();
   // Each check one millisecond apart: two commits in the same millisecond with the same label share an event id.
   for (let i = 0; i < 5; i++) { await dobj.impostor('01-sunny'); await new Promise(r => setTimeout(r, 3)); }
@@ -322,7 +325,36 @@ test('AC3 Worker routes: /api/world/run, /run/inputs, /event, /highlights (befor
   assert.equal(auto.status, 200); assert.equal(auto.body.values.signatures.value, '0 passed · 5 refused'); assert.deepEqual(auto.body.scope.runIds, [run.body.runId]);
   assert.equal((await go('/api/world/autonomy?from=10&to=5')).status, 400);
   assert.equal((await go('/api/world/autonomy?day=nope')).status, 400);
-  assert.equal((await go(`/api/world/autonomy?from=0&to=${8 * 86_400_000}`)).status, 400, 'at most 7 days');
+  const long = await go(`/api/world/autonomy?from=0&to=${8 * 86_400_000}`);
+  assert.equal(long.status, 200); assert.equal(long.body.partial, true, 'a period over 48 hours is answered partial'); assert.match(long.body.scope.partialReason, /48 hours/);
+  for (const bad of ['from=abc', 'to=-5', 'from=1.5', 'from=1e3']) assert.equal((await go(`/api/world/autonomy?${bad}`)).status, 400, bad);
+  // Highlights: a bad cursor or period is a 400, like the recount.
+  for (const bad of ['before=abc', 'before=-1', 'from=x', 'to=1.5', 'from=10&to=5', 'from=5&to=5']) assert.equal((await go(`/api/world/highlights?${bad}`)).status, 400, bad);
+  assert.equal((await go('/api/world/highlights?from=5&to=6')).status, 200);
+  // Public run-log reads: 30 seconds public cache; a client past the burst limit gets 429.
+  for (const path of ['/api/world/run', `/api/world/run/inputs?runId=${run.body.runId}`, `/api/world/event?id=${encodeURIComponent(p1.body[0].id)}`, `/api/world/autonomy?from=${now - 60_000}&to=${now + 60_000}`]) assert.equal((await go(path)).cache, 'public, max-age=30', path);
+  assert.equal(p1.cache, 'no-store', 'highlights stay uncached');
+  // Review 7: C03 values only. A demo check and a judge-run P0 are trial; the owner's own acts keep data.actor and no origin.
+  const {sourceLabel} = await import('../src/ui/source-label.ts');
+  const imp = (await go('/api/world/highlights?limit=50')).body.filter(e => e.kind === 'impostor_rejected');
+  assert.ok(imp.length && imp.every(e => e.data.actorOrigin === 'trial' && /demo button/.test(e.data.actor)));
+  assert.equal(sourceLabel(imp[0]).text, 'LIVE · verified', 'a check a visitor started is still a verification badge');
+  const p0 = await dobj.p0('judge');
+  const p0Events = allEvents(dobj.runtime).filter(e => ['a2a_verified', 'a2a_refused', 'command_refused'].includes(e.kind) && e.data.label?.startsWith('p0'));
+  assert.ok(p0Events.length > 0, JSON.stringify(p0));
+  for (const e of p0Events) { assert.equal(e.data.actorOrigin, 'trial', e.kind); assert.equal(e.data.actor, 'judge link (P0 run)'); }
+  await dobj.ritualRecord({at: Date.now(), passed: true, results: [], requestId: null, model: null, tier: 'owner'}, 'abc', true);
+  const ritual = allEvents(dobj.runtime).filter(e => e.kind === 'ritual_judged').at(-1);
+  assert.equal(ritual.data.actor, 'owner'); assert.equal('actorOrigin' in ritual.data, false, 'no C03 value for the owner');
+  await dobj.ownerRevoke('03-ripple', 'owner');
+  const revoke = allEvents(dobj.runtime).filter(e => e.muse === '03-ripple' && ['delegation_revoked', 'muse_paused'].includes(e.kind));
+  assert.equal(revoke.length, 2);
+  for (const e of revoke) { assert.equal(e.data.actor, 'owner', e.kind); assert.equal('actorOrigin' in e.data, false, e.kind); }
+  const origins = (await go(`/api/world/autonomy?from=${now - 60_000}&to=${Date.now() + 60_000}`)).body.origins;
+  assert.ok(origins.unrecorded >= 3, 'owner acts are counted as unrecorded, never as system');
+  env.BURST = {limit: async () => ({success: false})};
+  assert.equal((await go('/api/world/run')).status, 429); assert.equal((await go(`/api/world/autonomy?from=${now - 60_000}&to=${now}`)).status, 429);
+  delete env.BURST;
 });
 
 // ---------------------------------------------------------------- AC4
@@ -387,4 +419,204 @@ test('AC4 a period crossing a deploy is split by run, and an oversized sample is
   assert.deepEqual(r.byRun.map(b => b.values.starts.value), ['100%', '0%']);
   assert.equal(rt2.autonomy({from: T0, to: T0 + 100, runId: r.scope.runIds[1]}).values.starts.value, '0%');
   assert.ok(AUTONOMY_SAMPLE_MAX >= 15_000, 'a world day fits in one sample');
+});
+
+// ---------------------------------------------------------------- PR #93 review
+/** Muses on long beats at their own places; `groups` are [ids..., place] that share a place. */
+const scene = (groups, connected = []) => {
+  const st = createWorld('w', T0), spare = PLACES.filter(p => p.zone === 'neighborhood').map(p => p.id);
+  st.muses.forEach((m, k) => { m.place = spare[k]; m.travel = null; m.intent = null; m.beat = {id: 'hold', clip: 'idle', startedAt: T0, endsAt: T0 + 3_600_000, line: null}; });
+  for (const g of groups) for (const id of g.slice(0, -1)) st.muses.find(m => m.id === id).place = g.at(-1);
+  for (const id of connected) st.inbox.connected[id] = T0;
+  return st;
+};
+const meetingOf = (st, id) => tick(st, {now: T0 + TICK_MS}).events.find(e => e.kind === 'encounter' && (e.muse === id || e.other === id));
+
+test('review 2: a meeting is connected only when the connected Muse headed for that Muse; a resident walking up to an idle connected Muse is system', () => {
+  // A resident heads for the idle connected Muse: the resident started it, by intent, as system.
+  let st = scene([['00-jolly', '01-sunny', 'commons:cafe']], ['00-jolly']);
+  st.muses.find(m => m.id === '01-sunny').intent = {kind: 'greet', target: '00-jolly'};
+  let e = meetingOf(st, '00-jolly');
+  assert.equal(e.muse, '01-sunny'); assert.equal(e.data.initiatedByIntent, true); assert.equal(e.data.actorOrigin, 'system');
+  // The connected Muse heads for the other one: connected, by intent.
+  st = scene([['00-jolly', '01-sunny', 'commons:cafe']], ['00-jolly']);
+  st.muses.find(m => m.id === '00-jolly').intent = {kind: 'greet', target: '01-sunny'};
+  e = meetingOf(st, '00-jolly');
+  assert.equal(e.muse, '00-jolly'); assert.equal(e.data.initiatedByIntent, true); assert.equal(e.data.actorOrigin, 'connected');
+  // Nobody's intent points at the other: whoever the coin picks, the start is not by intent and is system — even when
+  // the connected Muse holds an intent aimed at someone elsewhere, and even when the coin picks it.
+  for (const seed of ['a', 'b', 'c', 'd', 'e', 'f']) {
+    st = scene([['00-jolly', '03-ripple', 'commons:hq']], ['00-jolly']); st.seed = 'seed-' + seed;
+    st.muses.find(m => m.id === '00-jolly').intent = {kind: 'greet', target: '09-copper'};
+    e = meetingOf(st, '00-jolly');
+    assert.equal(e.data.initiatedByIntent, false, seed); assert.equal(e.data.actorOrigin, 'system', seed);
+  }
+  // Without a connection a Muse's own intent is a resident's: system.
+  st = scene([['00-jolly', '01-sunny', 'commons:cafe']]);
+  st.muses.find(m => m.id === '00-jolly').intent = {kind: 'greet', target: '01-sunny'};
+  assert.equal(meetingOf(st, '00-jolly').data.actorOrigin, 'system');
+  assert.equal(ENGINE_VERSION, 'engine-2', 'the tick output changed, so the engine version moved');
+});
+
+test('review 1: the recount is bounded: 48 hours at most, 20,000 events at most, both answered partial', () => {
+  const s = setup({key: undefined}), rt = s.rt;
+  const long = rt.autonomy({from: T0 - 72 * 3_600_000, to: T0});
+  assert.equal(long.partial, true); assert.equal(long.scope.from, T0 - AUTONOMY_PERIOD_MAX_MS); assert.equal(long.scope.to, T0); assert.match(long.scope.partialReason, /48 hours/);
+  assert.equal(rt.autonomy({from: T0 - 3_600_000, to: T0 + 1}).partial, false);
+  // 20,001 events in one hour.
+  const ins = s.sql.db.prepare("INSERT INTO events (id, tick, at, source, kind, muse, data, tags, run_id) VALUES (?, 0, ?, 'rule', 'beat', '01-sunny', '{}', '[]', ?)");
+  s.sql.db.exec('BEGIN'); for (let i = 0; i <= AUTONOMY_SAMPLE_MAX; i++) ins.run(`bulk-${i}`, T0 + 10 + i, rt.runLog.current.runId); s.sql.db.exec('COMMIT');
+  const big = rt.autonomy({from: T0, to: T0 + 3_600_000});
+  assert.equal(AUTONOMY_SAMPLE_MAX, 20_000); assert.equal(big.partial, true); assert.equal(big.sample.events, AUTONOMY_SAMPLE_MAX); assert.match(big.scope.partialReason, /more than 20000 events/);
+  assert.equal(big.sample.lastAt, T0 + 10 + AUTONOMY_SAMPLE_MAX - 1, 'the oldest 20,000 are counted');
+});
+
+test('review 1: the day-mode recount scans an index on event time, never the whole events table (EXPLAIN QUERY PLAN)', () => {
+  const s = setup({key: undefined}), rt = s.rt;
+  const plan = q => { const {sql, params} = rt.autonomyQuery(q, T0); return s.sql.exec('EXPLAIN QUERY PLAN ' + sql, ...params).toArray().map(r => r.detail).join(' | '); };
+  const day = plan({day: '2026-11-03'});
+  assert.match(day, /USING (COVERING )?INDEX events_at/, day); assert.doesNotMatch(day, /SCAN events(?! USING)/, day);
+  const run = plan({day: '2026-11-03', runId: rt.runLog.current.runId});
+  assert.match(run, /USING (COVERING )?INDEX events_(run_)?at/, run); assert.doesNotMatch(run, /SCAN events(?! USING)/, run);
+  const q = rt.autonomyQuery({day: '2026-11-03'}, T0);
+  const base = Date.parse('2026-11-03T00:00:00Z');
+  assert.deepEqual(q.params.slice(0, 2), [base + 5 * 3_600_000, base + 34 * 3_600_000], 'the world day (UTC-7 or -8) with 2 hours either side');
+});
+
+test('review 1 + 7: /run counts come from counters kept in the commit; run_inputs.events is the rows really inserted', () => {
+  const s = setup({key: undefined}), rt = s.rt;
+  const once = (_st, emit) => emit({at: T0, source: 'rule', kind: 'note', muse: null, tags: []});
+  rt.commitExternal(T0, 'same', once);
+  rt.commitExternal(T0, 'same', once); // the same label and time: the same event id, ignored by the log
+  const rows = inputs(s.sql);
+  assert.deepEqual(rows.slice(-2).map(r => r.events), [1, 0], 'the repeated id is not counted as stored');
+  const sum = rt.runLog.summary(rt.state()), run = rt.runLog.current.runId;
+  assert.equal(sum.events, Number(s.sql.exec('SELECT COUNT(*) AS n FROM events WHERE run_id = ?', run).toArray()[0].n));
+  assert.equal(sum.inputs.count, rows.length); assert.equal(sum.inputs.lastSeq, rows.at(-1).seq);
+  const src = readFileSync(new URL('../worker/core/run-log.ts', import.meta.url), 'utf8');
+  const summary = src.slice(src.indexOf('  summary('), src.indexOf('\n  }\n', src.indexOf('  summary(')));
+  assert.equal(/COUNT\(\*\)/.test(summary), false, 'no COUNT(*) on the public read');
+});
+
+test('review 4: an ability_change event is a change only when its Muses\' inventory or item clocks really changed', () => {
+  const s = setup({key: undefined}), rt = s.rt;
+  // Tagged, but the inventories stay as they were (something else in the world changed).
+  rt.commitExternal(T0, 'no-swap', (st, emit) => { st.muses[3].reflection = 'thinking'; emit({at: T0, source: 'rule', kind: 'trade_completed', muse: '01-sunny', other: '02-moss', data: {give: 'x', want: 'y'}, tags: ['ability_change']}); });
+  // A real swap.
+  rt.commitExternal(T0 + 1, 'swap', (st, emit) => { const a = st.muses.find(m => m.id === '01-sunny'), b = st.muses.find(m => m.id === '02-moss'); const x = a.inventory.pop(), y = b.inventory.pop(); a.inventory.push(y); b.inventory.push(x); emit({at: T0 + 1, source: 'rule', kind: 'trade_completed', muse: '01-sunny', other: '02-moss', data: {}, tags: ['ability_change']}); });
+  // The same items in another order is no change.
+  rt.commitExternal(T0 + 2, 'reorder', (st, emit) => { st.muses.find(m => m.id === '02-moss').inventory.reverse(); emit({at: T0 + 2, source: 'rule', kind: 'craft', muse: '02-moss', data: {}, tags: ['ability_change']}); });
+  const evs = allEvents(rt).filter(e => e.tags.includes('ability_change'));
+  assert.deepEqual(evs.map(e => e.data.beforeHash !== e.data.afterHash), [false, true, false]);
+  assert.deepEqual(evs[0].data.abilityOf, ['01-sunny', '02-moss']);
+  const rows = inputs(s.sql).slice(-3);
+  assert.notEqual(rows[0].before_hash, rows[0].after_hash, 'the world state did change in the first commit');
+  assert.equal(rt.autonomy({from: T0, to: T0 + 10}).values.abilities.value, '1 changes');
+  assert.equal(same(evs).abilities.value, '1 changes');
+  assert.equal(abilityHash(rt.state(), ['02-moss', '01-sunny']), abilityHash(rt.state(), ['01-sunny', '02-moss']));
+});
+
+/** Every key of `obj` that `table` does not name. */
+const unnamed = (obj, table, where, out) => { for (const k of Object.keys(obj ?? {})) if (!(k in table)) out.push(`${where}.${k}`); };
+function unlistedFields(st) {
+  const out = [], F = SNAPSHOT_FIELDS;
+  unnamed(st, F.state, 'state', out);
+  for (const m of st.muses) { unnamed(m, F.muse, 'muse', out); if (m.wants) unnamed(m.wants, F.wants, 'wants', out); if (m.beat) unnamed(m.beat, F.beat, 'beat', out); }
+  unnamed(st.owner, F.owner, 'owner', out); unnamed(st.inbox, F.inbox, 'inbox', out);
+  for (const [list, t] of [['tasks', 'task'], ['messages', 'message'], ['mail', 'mail'], ['notifications', 'notification']]) for (const x of st.inbox?.[list] ?? []) unnamed(x, F[t], t, out);
+  return [...new Set(out)];
+}
+test('review 5: the snapshot is an allow-list; every field of a lived-in world state is named, a new field fails here', async () => {
+  const m = model(), s = setup({fetcher: m.fetcher}), rt = s.rt;
+  arrange(rt, T0);
+  for (let i = 0; i < 30; i++) await rt.heartbeat(T0 + i * TICK_MS);
+  rt.commitExternal(T0 + 31 * TICK_MS, 'fill', st => {
+    st.muses[0].anchor = '1:2'; st.paused = {'06-ink': {at: T0, version: 2, by: 'owner'}};
+    st.items.tamper = {reason: 'broken_link', index: 0, since: T0, notified: st.day};
+    st.inbox.tasks.push({id: 't1', kind: 'meetup', from: '00-jolly', to: '01-sunny', status: 'pending', awaiting: '01-sunny', createdAt: T0, deadline: T0, updatedAt: T0, offer: {by: '00-jolly', give: 'coffee', want: 'tea'}, round: 0, candidate: {time: 'x', place: 'y', public_basis: 'z'}, answers: {}, history: [{by: '00-jolly', action: 'propose', at: T0}]});
+    st.inbox.messages.push({id: 'm1', from: '01-sunny', to: '00-jolly', kind: 'greet', at: T0, text: 'hi', item: null, blocked: ['x'], read: false});
+    st.inbox.mail.push({id: 'p1', from: '00-jolly', to: '02-moss', item: 'postcard:x', text: 'from here', sentAt: T0, deliverAt: T0 + 1, crossRegion: false, timed: {item: 'x', at: T0, expiresAt: T0 + 1}});
+    st.inbox.notifications.push({id: 'n1', kind: 'meetup_candidate', at: T0, line: 'needs approval', ref: 't1', other: '01-sunny', muse: '00-jolly', detail: {time: 'x'}});
+  });
+  const st = rt.state();
+  assert.deepEqual(unlistedFields(st), [], 'every field is named in SNAPSHOT_FIELDS (add a new one there with its rule)');
+  const withNew = structuredClone(st); withNew.secretField = 'new'; withNew.muses[0].diary = 'dear diary';
+  assert.deepEqual(unlistedFields(withNew), ['state.secretField', 'muse.diary'], 'a field the tables do not name is reported');
+  const pub = publicState(withNew);
+  assert.equal('secretField' in pub, false); assert.equal('diary' in pub.muses[0], false, 'and left out of the snapshot');
+  // Free text in the state is a hash in the snapshot.
+  const body = snapshotBody(st);
+  for (const t of ['hi', 'from here', 'needs approval', 'thinking']) assert.equal(body.includes(JSON.stringify(t)), false, t);
+  assert.equal(pub.inbox.messages.at(-1).text, textHash('hi'));
+  assert.ok(st.muses.some(x => x.memory.length || x.reflection), 'the lived-in state has memories or reflections');
+  for (const x of pub.muses) { for (const t of x.memory) assert.match(t, /^text-sha256:/); if (x.reflection) assert.match(x.reflection, /^text-sha256:/); assert.match(x.wants.goal, /^text-sha256:/); }
+});
+
+test('review 6: when the run_inputs INSERT throws, state, events, the command row and the nonce all roll back', async () => {
+  let fail = false;
+  const base = sqlite(), sql = {...base, exec(q, ...b) { if (fail && /^\s*INSERT INTO run_inputs/.test(q)) throw new Error('disk full'); return base.exec(q, ...b); }};
+  const trust = new Trust(sql); trust.init();
+  const s = setup({sql, key: undefined}), rt = s.rt;
+  const before = {state: JSON.stringify(rt.state()), events: allEvents(rt).length, inputs: inputs(sql).length, commands: sql.exec('SELECT COUNT(*) AS n FROM commands').toArray()[0].n};
+  fail = true;
+  assert.throws(() => rt.commitCommand(T0, 'cmd-x', {
+    guard: () => (trust.claimNonce('agent-x', 'nonce-1', 'msg-1', T0 + 60_000) ? null : 'replay'),
+    mutate: (st, emit) => { st.muses[0].inventory.push('relic_x'); emit({at: T0, source: 'live', kind: 'trade_completed', muse: st.muses[0].id, data: {}, tags: []}); return {ok: true}; },
+    record: v => ({actorId: 'agent-x', commandId: 'msg-1', action: 'give_gift', payload: {kind: 'give_gift', item: 'relic_x'}, row: {payloadHash: 'h', result: {ok: true, commandId: 'msg-1', worldVersion: v, eventIds: []}, output: null}}),
+  }), /disk full/);
+  await assert.rejects(rt.heartbeat(T0), /disk full/);
+  fail = false;
+  assert.equal(JSON.stringify(rt.state()), before.state, 'state');
+  assert.equal(allEvents(rt).length, before.events, 'events');
+  assert.equal(inputs(sql).length, before.inputs, 'run inputs');
+  assert.equal(sql.exec('SELECT COUNT(*) AS n FROM commands').toArray()[0].n, before.commands, 'command rows');
+  assert.equal(sql.exec('SELECT COUNT(*) AS n FROM ticks').toArray()[0].n, 0, 'the tick is not recorded');
+  assert.equal(trust.claimNonce('agent-x', 'nonce-1', 'msg-1', T0 + 60_000), true, 'the nonce was not spent');
+  // And the log continues normally afterwards.
+  assert.equal((await rt.heartbeat(T0)).status, 'committed');
+});
+
+test('review 6: init completes from a half-migrated events table (one of the two columns already there)', () => {
+  for (const have of ['run_id TEXT', 'input_seq INTEGER']) {
+    const sql = sqlite();
+    sql.exec(`CREATE TABLE events (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, tick INTEGER NOT NULL, at INTEGER NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, muse TEXT, other TEXT, place TEXT, line TEXT, data TEXT, tags TEXT NOT NULL, ${have})`);
+    const s = setup({sql, key: undefined});
+    const cols = sql.exec("SELECT name FROM pragma_table_info('events')").toArray().map(r => r.name);
+    assert.ok(cols.includes('run_id') && cols.includes('input_seq'), have);
+    s.rt.commitExternal(T0, 'x', (_st, emit) => emit({at: T0, source: 'rule', kind: 'note', muse: null, tags: []}));
+    assert.equal(allEvents(s.rt).at(-1).runId, s.rt.runLog.current.runId, have);
+  }
+});
+
+test('review 3: greet, postcard and wants text from a connected Muse never reach run_inputs or the run snapshot', async () => {
+  const {runTool} = await import('../worker/core/mcp-tools.ts');
+  const {makeHooks} = await import('../src/engine/rules.ts');
+  const now = Math.floor(Date.now() / 60_000) * 60_000; // delegations carry a real 24-hour expiry
+  const sql = sqlite(), trust = new Trust(sql); trust.init();
+  const pair = await crypto.subtle.generateKey({name: 'ECDSA', namedCurve: 'P-256'}, true, ['sign', 'verify']);
+  const ownerRoot = await crypto.subtle.exportKey('jwk', pair.privateKey);
+  await trust.ensureAgents(ownerRoot);
+  const s = setup({sql, key: undefined, now, hooks: makeHooks(), delegationValid: id => !trust.suspended(id)}), rt = s.rt;
+  rt.commitExternal(now, 'ready', st => { const m = st.muses.find(x => x.id === '00-jolly'); m.place = 'commons:cafe'; m.inventory.push('postage_stamp', 'postcard:commons:cafe', 'coffee'); st.muses.find(x => x.id === '01-sunny').place = 'commons:cafe'; });
+  const ctx = {trust, runtime: rt, hooks: makeHooks(), ownerRoot, ownerClaimed: true, baseUrl: 'https://musely.net', key: {id: 'key-1', muse: '00-jolly', signerKind: 'server_custodial', createdAt: now, lastUsedAt: null, revokedAt: null}, now: () => now};
+  const TEXTS = {greet: 'Lovely morning at the cafe 4417', postcard: 'Wish you were here 4417', goal: 'Collect every Bay postcard 4417'};
+  const results = [
+    await runTool(ctx, 'greet', {text: TEXTS.greet, to: '01-sunny'}),
+    await runTool(ctx, 'send_postcard', {to: '02-moss', item: 'postcard:commons:cafe', text: TEXTS.postcard}),
+    await runTool(ctx, 'update_wants', {goal: TEXTS.goal, items: ['postcard']}),
+  ];
+  for (const r of results) assert.equal(r.isError, false, JSON.stringify(r.structuredContent).slice(0, 200));
+  const events = JSON.stringify(sql.exec('SELECT line, data FROM events').toArray());
+  assert.ok(events.includes(TEXTS.greet) && events.includes(TEXTS.goal), 'the public events keep the text (the purge can anonymize them there)');
+  const cmds = inputs(sql).filter(r => r.kind === 'command').map(r => r.input);
+  assert.deepEqual(cmds.map(c => c.action), ['greet', 'send_postcard', 'update_wants']);
+  assert.deepEqual(cmds.map(c => c.omitted), [['text'], ['text'], ['goal']]);
+  assert.deepEqual(cmds[0].fields, {kind: 'greet', to: '01-sunny'}); assert.deepEqual(cmds[2].fields, {kind: 'update_wants', items: ['postcard']});
+  assert.ok(cmds.every(c => /^[0-9a-f]{64}$|^sha-256=/.test(c.payloadHash) || typeof c.payloadHash === 'string'));
+  // A deploy now: the new run's snapshot holds the state with that text, as hashes only.
+  s.sql.exec("UPDATE runs SET engine_version = 'engine-0'"); // test only: the stored run came from older code
+  new WorldRuntime(sql, {worldId: 'w', meetingGate: 'off', ledger: s.ledger, model: null}).init(now + 1);
+  const log = JSON.stringify(runs(sql)) + JSON.stringify(inputs(sql));
+  for (const t of Object.values(TEXTS)) assert.equal(log.includes(t), false, `${t} is in the run log`);
+  assert.ok(log.includes(textHash(TEXTS.goal)), 'the goal is named by its hash');
 });

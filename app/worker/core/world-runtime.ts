@@ -22,7 +22,7 @@ import {replayFor} from './replay.ts';
 import {isConnected} from '../../src/engine/inbox.ts';
 import {COMMANDS_TABLE, type CommandResult} from './commands.ts';
 import type {Ledger, Sql} from './ledger.ts';
-import {RunLog, evidenceIds, redact, type InputKind} from './run-log.ts';
+import {RunLog, evidenceIds, commandFields, outputFields, reasonCode, type InputKind, type CommitRecord} from './run-log.ts';
 import {recountAutonomy, values} from './autonomy-oracle.ts';
 
 /** The world's SQL handle plus the Durable Object storage transaction (ctx.storage.transactionSync). */
@@ -62,8 +62,9 @@ type Emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => void;
 /** A stored event: its log position, run and the input row that committed it (null for events before the run log). */
 export type LoggedEvent = WorldEvent & {seq: number; runId: string | null; inputSeq: number | null};
 const EV_COLS = 'seq, id, tick, at, source, kind, muse, other, place, line, data, tags, run_id AS runId, input_seq AS inputSeq';
-/** Largest server-side autonomy sample (a world day is about 15,000 events). */
-export const AUTONOMY_SAMPLE_MAX = 60_000;
+/** Largest server-side autonomy sample (a world day is about 15,000 events) and the longest period of one recount. */
+export const AUTONOMY_SAMPLE_MAX = 20_000;
+export const AUTONOMY_PERIOD_MAX_MS = 48 * 3_600_000;
 export type CommandRow = {payloadHash: string; result: CommandResult; output: unknown};
 export type HeartbeatResult = {status: 'committed' | 'skipped_duplicate' | 'skipped_early'; tick: number; events: number; spotlight?: {muse: string; source: string; reason?: string}; replies?: {live: number; rule: number}};
 
@@ -121,7 +122,18 @@ export class WorldRuntime {
   state(): WorldState { return JSON.parse(this.raw()); }
   /** Inserts a commit's events with their run and input row (C08); a repeated id is ignored (the log keeps the first). */
   private insertEvents(events: WorldEvent[], ref: {runId: string; seq: number} | null) {
-    for (const e of events) this.sql.exec('INSERT OR IGNORE INTO events (id, tick, at, source, kind, muse, other, place, line, data, tags, run_id, input_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', e.id, e.tick, e.at, e.source, e.kind, e.muse, e.other ?? null, e.place ?? null, e.line ?? null, JSON.stringify(e.data ?? {}), JSON.stringify(e.tags), ref?.runId ?? null, ref?.seq ?? null);
+    let inserted = 0;
+    for (const e of events) {
+      this.sql.exec('INSERT OR IGNORE INTO events (id, tick, at, source, kind, muse, other, place, line, data, tags, run_id, input_seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', e.id, e.tick, e.at, e.source, e.kind, e.muse, e.other ?? null, e.place ?? null, e.line ?? null, JSON.stringify(e.data ?? {}), JSON.stringify(e.tags), ref?.runId ?? null, ref?.seq ?? null);
+      inserted += Number(this.sql.exec('SELECT changes() AS n').toArray()[0]?.n ?? 0);
+    }
+    return inserted;
+  }
+  /** The run-log row and the events of one commit, in its transaction; the row counts the event rows really stored. */
+  private logCommit(c: CommitRecord) {
+    const p = this.runLog.prepare(c);
+    const inserted = this.insertEvents(c.events, p);
+    if (p) this.runLog.append(p, inserted);
   }
 
   /** One heartbeat. Safe to call again after a crash or an alarm retry. */
@@ -171,11 +183,11 @@ export class WorldRuntime {
       // every meeting answer with its source; ids of the model calls, never the prompt.
       const tickInput = {
         seed: state.seed, gate: canMeet ? 'checked' : 'off',
-        spotlight: {muse: turn.muse, priority: turn.priority, source: info.source, reason: info.reason ?? null, freedom: spot.freedom, used: !!usable, discarded: decision && lost ? lost : null,
-          decision: decision ? {source: decision.source, freedom: decision.freedom, output: redact(decision.output), evidence: evidenceIds(decision.evidence)} : null},
-        replies: answers.map(r => ({muse: r.muse, other: r.other, encounterId: r.encounterId, source: r.source, reason: r.reason ?? null, output: r.output ? redact(r.output) : null, evidence: evidenceIds(r.evidence), used: r.source === 'rule' || (replies.find(x => x.encounterId === r.encounterId && x.muse === r.muse)?.source !== 'rule' && answered.has(`${r.encounterId}>${r.muse}`))})),
+        spotlight: {muse: turn.muse, priority: turn.priority, source: info.source, reason: reasonCode(info.reason), freedom: spot.freedom, used: !!usable, discarded: decision && lost ? reasonCode(lost) : null,
+          decision: decision ? {source: decision.source, freedom: decision.freedom, output: outputFields(decision.output), evidence: evidenceIds(decision.evidence)} : null},
+        replies: answers.map(r => ({muse: r.muse, other: r.other, encounterId: r.encounterId, source: r.source, reason: reasonCode(r.reason), output: outputFields(r.output), evidence: evidenceIds(r.evidence), used: r.source === 'rule' || (replies.find(x => x.encounterId === r.encounterId && x.muse === r.muse)?.source !== 'rule' && answered.has(`${r.encounterId}>${r.muse}`))})),
       };
-      this.insertEvents(all, this.runLog.commit({at: now, kind: 'tick', label: `${current.day}:${current.tick}`, beforeRaw: raw, before: current, after: state, changed: true, events: all, input: tickInput}));
+      this.logCommit({at: now, kind: 'tick', label: `${current.day}:${current.tick}`, beforeRaw: raw, before: current, after: state, changed: true, events: all, input: tickInput});
       const said = all.filter(e => e.kind === 'encounter_reply');
       return {status: 'committed' as const, tick: current.tick, events: all.length, spotlight: {muse: turn.muse, priority: turn.priority, ...info}, replies: {live: said.filter(e => e.source === 'live').length, rule: said.filter(e => e.source === 'rule').length}};
       });
@@ -383,7 +395,7 @@ export class WorldRuntime {
         row = rec.row;
         // The command as an ordered input (C08): who, which id and action, the redacted payload (approvals and answers
         // are commands) and its result. The signed envelope stays in the events' evidence.
-        input = {actorId: rec.actorId, commandId: rec.commandId, action: rec.action, payloadHash: rec.row.payloadHash, payload: redact(rec.payload ?? null), ok: rec.row.result.ok, code: rec.row.result.error?.code ?? null, worldVersion: rec.row.result.worldVersion};
+        input = {actorId: rec.actorId, commandId: rec.commandId, action: rec.action, payloadHash: rec.row.payloadHash, ...commandFields(rec.action, rec.payload), ok: rec.row.result.ok, code: rec.row.result.error?.code ?? null, worldVersion: rec.row.result.worldVersion};
       });
       return {aborted: null, events: done.events, row: row!};
     });
@@ -404,9 +416,10 @@ export class WorldRuntime {
     synchronous(mutate(s, e => out.push({...e, id: `${s.day}:${s.tick}:${label}:${now}:${n++}`, tick: s.tick})) as unknown);
     const changed = JSON.stringify(s) !== raw, bumped = bump(changed);
     if (bumped) s.version += 1;
-    if (changed || bumped) this.sql.exec('UPDATE world SET state = ?, version = ? WHERE id = 1', JSON.stringify(s), s.version);
+    const afterRaw = JSON.stringify(s);
+    if (changed || bumped) this.sql.exec('UPDATE world SET state = ?, version = ? WHERE id = 1', afterRaw, s.version);
     after?.(s, out);
-    this.insertEvents(out, this.runLog.commit({at: now, kind, label, beforeRaw: raw, before: JSON.parse(raw), after: s, changed: changed || bumped, events: out, input: input?.() ?? null}));
+    this.logCommit({at: now, kind, label, beforeRaw: raw, before: JSON.parse(raw), after: s, afterRaw, changed: changed || bumped, events: out, input: input?.() ?? null});
     return {state: s, events: out};
   }
 
@@ -439,22 +452,43 @@ export class WorldRuntime {
     return {event: e, runId, runIdStored: e.runId != null, input: e.inputSeq != null ? this.runLog.input(Number(e.inputSeq)) : null, run: run ? {...head, initialSnapshot: {hash: initialSnapshot!.hash, bytes: initialSnapshot!.body.length}} : null};
   }
   /**
-   * The six autonomy measures recounted on the server from the run log (C09): one world, one period (`from`..`to`, or
-   * one world `day` as the panel loads it) and optionally one run. At most AUTONOMY_SAMPLE_MAX events; more makes the
-   * sample partial, never silently complete. Events written before the run log belong to the pre-run-log run.
+   * The six autonomy measures recounted on the server from the run log (C09): one world, one period and optionally one
+   * run. The period is `from`..`to` (ms, `to` exclusive) or one world `day` (Menlo Park; its ids start with the day, and
+   * the time range around that day bounds the index scan). At most AUTONOMY_PERIOD_MAX_MS (a longer request keeps its
+   * newest 48 hours) and AUTONOMY_SAMPLE_MAX events (the oldest ones); either limit makes the answer `partial`, never
+   * silently complete. Events written before the run log belong to the pre-run-log run.
    */
-  autonomy(q: {from?: number | null; to?: number | null; day?: string | null; runId?: string | null}) {
-    const day = q.day && /^\d{4}-\d{2}-\d{2}$/.test(q.day) ? q.day : null;
-    const from = q.from ?? 0, to = q.to ?? Number.MAX_SAFE_INTEGER;
+  autonomy(q: {from?: number | null; to?: number | null; day?: string | null; runId?: string | null}, now = Date.now()) {
+    const {sql, params, period, notes} = this.autonomyQuery(q, now);
+    const evs = period ? this.rows(sql, ...params) : [];
+    const capped = evs.length > AUTONOMY_SAMPLE_MAX, sample = (capped ? evs.slice(0, AUTONOMY_SAMPLE_MAX) : evs).sort((a, b) => a.seq - b.seq);
+    if (capped) notes.push(`more than ${AUTONOMY_SAMPLE_MAX} events in the period: the oldest ${AUTONOMY_SAMPLE_MAX} are counted`);
+    const pre = this.runLog.runs().find(r => r.origin === 'pre-run-log')?.runId ?? null;
+    const runIds = [...new Set(sample.map(e => e.runId ?? pre ?? 'unrecorded'))];
+    const scope = {worldId: this.opts.worldId, runIds, from: period?.from ?? null, to: period?.to ?? null, day: q.day ?? null, complete: !notes.length, partialReason: notes.length ? notes.join('; ') : null};
+    const result = recountAutonomy(sample, scope);
+    return {...result, partial: !scope.complete, values: values(result), byRun: runIds.length > 1 ? runIds.map(r => ({runId: r, values: values(recountAutonomy(sample.filter(e => (e.runId ?? pre ?? 'unrecorded') === r), {...scope, runIds: [r]}))})) : null};
+  }
+  /** The bounded sample query of autonomy() (exposed so the tests can EXPLAIN it): always an `at` range on an index. */
+  autonomyQuery(q: {from?: number | null; to?: number | null; day?: string | null; runId?: string | null}, now = Date.now()) {
+    const day = q.day && /^\d{4}-\d{2}-\d{2}$/.test(q.day) ? q.day : null, notes: string[] = [];
+    let from = q.from ?? null, to = q.to ?? null;
+    if (day) {
+      // A Menlo Park day starts 7 or 8 hours after UTC midnight; 2 hours either side cover events of that day committed
+      // just before or after the tick that turned the day.
+      const base = Date.parse(day + 'T00:00:00Z');
+      from = Math.max(from ?? -Infinity, base + 5 * 3_600_000); to = Math.min(to ?? Infinity, base + 34 * 3_600_000);
+    }
+    if (to === null) to = now;
+    if (from === null) from = to - 24 * 3_600_000;
+    if (to - from > AUTONOMY_PERIOD_MAX_MS) { from = to - AUTONOMY_PERIOD_MAX_MS; notes.push('the period is limited to 48 hours: the newest 48 hours are counted'); }
     const pre = this.runLog.runs().find(r => r.origin === 'pre-run-log')?.runId ?? null;
     const runId = q.runId ?? null;
     const runClause = runId ? (runId === pre ? ' AND (run_id = ? OR run_id IS NULL)' : ' AND run_id = ?') : '';
-    const evs = this.rows(`SELECT ${EV_COLS} FROM events WHERE at >= ? AND at < ? AND id LIKE ?${runClause} ORDER BY seq LIMIT ?`, from, to, day ? day + ':%' : '%', ...(runId ? [runId] : []), AUTONOMY_SAMPLE_MAX + 1);
-    const capped = evs.length > AUTONOMY_SAMPLE_MAX, sample = capped ? evs.slice(0, AUTONOMY_SAMPLE_MAX) : evs;
-    const runIds = [...new Set(sample.map(e => e.runId ?? pre ?? 'unrecorded'))];
-    const scope = {worldId: this.opts.worldId, runIds, from: q.from ?? null, to: q.to ?? null, day, complete: !capped, partialReason: capped ? `more than ${AUTONOMY_SAMPLE_MAX} events in the period` : null};
-    const result = recountAutonomy(sample, scope);
-    return {...result, values: values(result), byRun: runIds.length > 1 ? runIds.map(r => ({runId: r, values: values(recountAutonomy(sample.filter(e => (e.runId ?? pre ?? 'unrecorded') === r), {...scope, runIds: [r]}))})) : null};
+    // Ordered by time (the `at` index serves the range and the order); autonomy() puts the sample back in log order.
+    const sql = `SELECT ${EV_COLS} FROM events WHERE at >= ? AND at < ?${day ? ' AND id LIKE ?' : ''}${runClause} ORDER BY at, seq LIMIT ?`;
+    const params = [from, to, ...(day ? [day + ':%'] : []), ...(runId ? [runId] : []), AUTONOMY_SAMPLE_MAX + 1];
+    return {sql, params, period: from < to ? {from, to} : null, notes};
   }
   /** Compact public view for clients: positions, current beats, inventories, spotlight. */
   view(now: number) {
