@@ -29,8 +29,9 @@ async(page)=>{
    await p.evaluate(()=>{document.getElementById('pause').click();window.__world.seek(3);});await p.waitForTimeout(100);const seekZoom=await p.evaluate(()=>window.__world.map.getZoom());
    await p.evaluate(()=>window.__world.startStory());await p.waitForTimeout(3200);const manual=await p.evaluate(()=>({elapsed:window.__world.getMetrics().elapsed,zoom:window.__world.map.getZoom()}));
    const manualPreserved=Math.abs(seekZoom-(vp==='desktop'?11.079629629629629:10.429629629629629))<.01&&manual.elapsed>=2.7&&manual.elapsed<4&&manual.zoom<15;
-   cases.push({vp,pass:!!timeline.readable&&timeline.readable<=8000&&manualPreserved&&errors.length===0&&writes.length===0,network:{downloadBitsPerSecond:4000000,latencyMs:150,cacheDisabled:true,bypassServiceWorker:true},timeline,manual:{...manual,seekZoom,preserved:manualPreserved},transferredBytes:bytes,errors,writes,scope:'local cold diagnostic, not final release/device acceptance'});
-  }catch(e){cases.push({vp,pass:false,error:String(e),errors,writes});}
+   const pass=!!timeline.readable&&timeline.readable<=8000&&manualPreserved&&errors.length===0&&writes.length===0;
+   cases.push({vp,pass,ok:pass,network:{downloadBitsPerSecond:4000000,latencyMs:150,cacheDisabled:true,bypassServiceWorker:true},timeline,manual:{...manual,seekZoom,preserved:manualPreserved},transferredBytes:bytes,errors,writes,scope:'local cold diagnostic, not final release/device acceptance'});
+  }catch(e){cases.push({vp,pass:false,ok:false,error:String(e),errors,writes});}
   finally{await context.close();}
  }
  return {cases};
