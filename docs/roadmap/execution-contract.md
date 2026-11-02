@@ -159,3 +159,9 @@
   - 결정을 바꾸면 10절과 영향받는 이슈를 함께 갱신한다.
 - 과거 PRD의 M0~M8 순서는 착수 조건으로 쓰지 않는다. 순서는 [`execution-tasks.json`](execution-tasks.json)의 의존성만 따른다.
 - S1 경험의 승인(DEC-01, P-07) 없이 제품 방향을 확정하지 않는다. 제출·공개 전환(DEC-06·DEC-07)은 C12의 별도 실행 권한과 receipt를 따른다.
+
+## Implementation evidence updates
+
+### I-07 / C03·C04·C06 (2026-11-03)
+
+[Owner workflow acceptance](../../app/docs/OWNER_WORKFLOW_ACCEPTANCE.md) records the original five I-07criteria,150actual deployed owner/demo-peer checks, the machine-verified claim, and source-equivalence reuse from8b13to494. [Experience mapping](../../app/docs/EXPERIENCE_MATRIX.md#i-07-owner-workflow-evidence-update-2026-11-03) connects EXP-REWARD/EXP-MEETUP/EXP-COMMS/AUTONOMY. This updates the I-07 evidence for C03/C04/C06; C05 retains separate I-12/D-03 evidence. Contract requirements are unchanged. Local privacy/migration tests, original operating receipts and remaining personal Muse/webcam/S3 prerequisites stay distinct.
