@@ -51,7 +51,7 @@ export async function handleMuse(body: unknown, session: Session | null, ipHash:
   const reservation = await deps.ledger.reserve({id, tier: session.tier as Tier, session: session.sid, ip: ipHash, action, maxCostUsd: maxCostUsd(action, messages)});
   if (!reservation.ok) return fallback(reservation.reason);
 
-  const result = await callModel({...deps.model, key: deps.model.key, noBodyLogging: action === 'challenge' || action === 'negotiate'}, action, messages);
+  const result = await callModel({...deps.model, key: deps.model.key}, action, messages);
   if (!result.ok) {
     // Possibly billed failures with unknown usage keep the full reservation (see failureCostUsd).
     await deps.ledger.settle(id, failureCostUsd(result), result.kind === 'timeout' ? 'timeout' : 'error');

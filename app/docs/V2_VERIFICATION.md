@@ -73,7 +73,8 @@ OpenFreeMap TileJSON `https://tiles.openfreemap.org/planet` (v3.16.0, build 2026
 
 - Durable Objects on the Free plan are SQLite-backed only; alarms count as requests; each `setAlarm()` is a row write; alarms are at-least-once with up to 6 retries.
 - Rate Limiting binding: `ratelimits` in wrangler config, period 10 or 60 s, per-location and approximate.
-- Turnstile widgets can be created through the API; AI Gateway supports custom providers, and `cf-aig-collect-log-payload: false` keeps bodies out of logs.
+- Turnstile widgets can be created through the API.
+- AI Gateway supports custom providers, and `cf-aig-collect-log-payload: false` keeps bodies out of logs. **Decision (I-12, 2026-11-02): Musely does not use AI Gateway.** The Worker calls `https://api.meta.ai/v1` directly (`MODEL_BASE` in `wrangler.jsonc`) and sends only `authorization` and `content-type`; the earlier gateway-only header was removed from `worker/core/model.ts`. Direction v2 (15) planned a gateway for logs and caching; it was never set up. If a gateway is adopted later, challenge (webcam frames) and negotiate (personal signals) requests must first have gateway body logging off (`cf-aig-collect-log-payload: false`) and caching off (`cf-aig-skip-cache: true`), and that change needs its own test and an update here. `scripts/boundaries.test.mjs` fails if `MODEL_BASE` stops being `api.meta.ai` or a model request carries any other header.
 - Worker secrets set: `MODEL_API_KEY`, `OWNER_ROOT_JWK` (values never in the repository or the client bundle; the production HTML was re-checked for the key prefix after setting them).
 
 ## 6. Proxy limits in production (2026-11-01)
@@ -86,3 +87,45 @@ OpenFreeMap TileJSON `https://tiles.openfreemap.org/planet` (v3.16.0, build 2026
 | Key exposure | Served HTML scanned for key patterns and secret names | none |
 
 Measured cost: about $0.0018 per live call (169 calls = $0.31). Daily cap set to $12 (team credits $150 over 10 days, with room for development).
+
+## 7. I-12 operating boundaries (#60, 2026-11-02)
+
+### 7.1 Demo limits and what is not built
+
+The public wording is `static/terms.html`, section 5 "Limits in this demo" (`/terms#demo-limits`), linked from the About dialog. `scripts/boundaries.test.mjs` checks that wording against the constants below.
+
+Enforced now (server side):
+
+| Limit | Value | Where |
+|---|---|---|
+| Visitor session | Turnstile token checked on the server (allowed hostnames only), then a signed 24-hour session | `worker/core/session.ts` |
+| Visitor live calls | 3 per session per hour (`HOURLY_LIMITS.visitor`); the welcome ritual's challenge has its own 3 per hour (`CHALLENGE_HOURLY_LIMIT`); priority spotlight requests 3 per hour (`SPOTLIGHT_REQUESTS_PER_HOUR.visitor`) | `worker/core/ledger.ts`, `worker/core/world-runtime.ts` |
+| Visitor IP cap | 40 visitor calls per IP per hour (`IP_HOURLY_LIMIT`); the IP is kept only as a keyed hash | `worker/core/ledger.ts` |
+| Judge quota | 120 live calls per judge session per hour in total, including challenge calls (`HOURLY_LIMITS.judge`) | `worker/core/ledger.ts` |
+| Bursts | 20 requests per 60 s per key (Rate Limiting binding `BURST`, per location and approximate) | `wrangler.jsonc` |
+| Daily budget | `DAILY_BUDGET_USD` (12 at this commit), per UTC day, reserved before each call. At the cap, `/api/muse` answers a labelled replay or scenario (`reason: budget`) and the heartbeat runs on rules (`spotlight_fallback`, meeting answers by rule). Meeting answers already stop at 40% of the day's budget left | `worker/core/ledger.ts`, `worker/core/world-runtime.ts` |
+| Owners | one real owner (`owner:kim-sejun`, Jolly `00-jolly`) and two team-controlled system principals (`system:demo-peer` with `09-copper`, `system:reviewer` with `04-ember`). Agent keys are issued by the operators only | `worker/core/owner-session.ts`, `docs/DEPLOYMENT.md` |
+
+Not built (S4, G-01): general user accounts and connections, a 24-hour probation for newly connected Muses, per-owner rate limits and protection against mass registration. The demo limits above are session, IP and global-budget limits for one operator's demo. They are not those safeguards and are not claimed as them (`docs/roadmap/2026-11-01-four-stage-roadmap.md` section 7, row "24시간 수습·주인 단위 제한").
+
+### 7.2 Secret exposure checks
+
+`scripts/boundaries.test.mjs` uses fake values for `MODEL_API_KEY`, `SESSION_SECRET`, `JUDGE_TOKEN`, `OWNER_CONTROL_TOKEN`, `DEMO_PEER_CONTROL_TOKEN`, `REVIEWER_CONTROL_TOKEN`, `TURNSTILE_SECRET`, `THREADS_APP_SECRET`, `OWNER_ROOT_JWK` (whole value and its private `d`), a Threads token and an agent key issued during the test. It also searches for patterns: Model API key (`LLM_…`), agent key (`msly_` + 43 characters), private EC JWK member (`"d": "<43 characters>"`). Base64url runs are decoded and searched too, so a secret inside a cookie body is found.
+
+- Bundle: a copy of `app/` is built (`scripts/build.mjs`, then `wrangler deploy --dry-run`) with the fake values in the environment and in `.dev.vars` and `.env`. Every file of `dist/` and of the Worker bundle is searched. This checkout's own `dist/` and `.wrangler/dry-run/` are searched for the patterns.
+- Worker: through `worker/index.ts` with WorldDO on node:sqlite. Calls: `/api/status`, visitor/judge `/api/session`, owner/peer/reviewer `/api/owner/session`, agent key issue and list, `/mcp` (initialize, tools/list, eight tool calls, a wrong key), `/api/muse` (spotlight, the ritual challenge), a heartbeat, P0, demo checks, owner location, revoke and re-delegate, reviewer reset, the Threads claim (wrong account, owner account, re-check), `/api/world`, events, highlights, `/api/world/run` and `?snapshot=1`, run inputs, autonomy, one event, every Agent Card and its JWKS (from `jku`), and the key purge. Searched: every response's headers and body, every storage table (events, runs and run inputs included), every console line, and every outbound request.
+- Intended exceptions: the agent key appears exactly once, in its issue response. The Threads token is stored in `claims.token`. Resident and executor private keys are stored in `private_keys` (the owner root's `d` is not). The model key goes only to `api.meta.ai`, the Turnstile secret only to `challenges.cloudflare.com`, the Threads app secret and token only to `graph.threads.net`.
+- Not covered: Cloudflare's own logs and dashboards, the real secret values (checked by hand against production, see below), and text a user types into public fields.
+- `THREADS_APP_ID` is not a secret: it is the OAuth `client_id` in the authorize URL.
+
+### 7.3 Acceptance criteria and evidence
+
+| Criterion (#60) | Test (file: name) or record |
+|---|---|
+| Turnstile hostname, signed session, visitor 3/hour, judge quota | `proxy.test.mjs`: "Turnstile: success requires an allowed hostname"; "sessions: signed, expiring, tamper-evident; judge token compared in constant time"; "session quota exhaustion switches to replay without calling the model"; "the liveness challenge has its own allowance, separate from the 3-per-hour trial"; "I-12 quota boundaries: visitor 3/h and judge 120/h per session, 40 visitor calls/h per IP, the world unlimited; a late settle never charges twice". `world-runtime.test.mjs`: "I-05 #1 visitor priority: …". Production: section 6 (judge session, call 121 → `session_quota`) |
+| Budget reservation under concurrency, timeout/429/5xx/malformed, late settle | `proxy.test.mjs`: "ledger: concurrent reservations never exceed the cap; settle is idempotent; stale reservations are charged"; "the daily budget cap switches everyone to replay"; "429, 5xx, malformed output and a missing key fall back to replay"; "a timed-out call is aborted, charged in full, and its late answer is never used"; "failures with unknown usage keep the full reservation; refusals before generation cost nothing"; "I-12 quota boundaries: … a late settle never charges twice". `world-runtime.test.mjs`: "the daily budget cap keeps the world running on the scenario only"; "a timeout falls back (replay only when valid, else scenario) and is charged in full"; "I-05 #3 slots are released on every path: …". Production: section 6 (`budget` and `timeout` fallbacks) |
+| No key or token in bundle or logs; with a gateway, challenge body logging and cache off | `boundaries.test.mjs`: "I-12 bundle: fake secrets in the build environment and local secret files never reach dist/ or the Worker bundle"; "I-12 secrets: no key or token in Worker responses, events, run log, logs, storage or requests to other hosts"; "I-12 Gateway: model requests go straight to api.meta.ai with only authorization and content-type headers". `proxy.test.mjs`: "no Model API key appears in tracked sources or the built client". Gateway: not used (section 5) |
+| Demo limits told apart from the unbuilt 24-hour probation and per-owner limits | `boundaries.test.mjs`: "I-12 wording: terms, About and this record tell the demo limits apart from the unbuilt probation and per-owner limits"; section 7.1; `/terms#demo-limits` |
+
+Limits of this record: these are Node tests of the Worker code with stubbed outbound services, not a run on Cloudflare. A deployed quota, budget and fallback run was recorded on 2026-11-01 (section 6) for the earlier preview build of the same proxy. The main product deploy of this change still needs its own record.
+
