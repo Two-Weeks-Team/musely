@@ -97,14 +97,29 @@ test('an impostor with a self-signed look-alike card is refused; peer instructio
   }
 });
 
-test('while revoked and not re-delegated, live decisions for the owner Muse are discarded', async () => {
-  const {trust} = await setup();
-  await trust.executor(OWNER_SLOT, 'server_custodial', null).catch(() => null);
+test('a revocation suspends only that Muse, with or without an executor, until the owner delegates again', async () => {
+  // The live decision discarded at the commit point for a revoked Muse is tested in world-runtime.test.mjs.
   const {ctx} = await setup();
   await ctx.trust.executor(OWNER_SLOT, 'server_custodial', ctx.ownerRoot);
   await ctx.trust.revoke(OWNER_SLOT);
   assert.equal(ctx.trust.suspended(OWNER_SLOT), true);
   assert.equal(ctx.trust.suspended('02-moss'), false);
+  await assert.rejects(ctx.trust.executor(OWNER_SLOT, 'server_custodial', ctx.ownerRoot), /revoked/);
+  ctx.trust.redelegate(OWNER_SLOT);
+  assert.equal(ctx.trust.suspended(OWNER_SLOT), false);
+});
+
+test('P0 never picks a partner whose delegation is revoked', async () => {
+  const {ctx, runtime} = await setup();
+  const nearest = findOwnerTrade(runtime.state()).partner;
+  await revokeMuse(ctx, nearest, 'musely');
+  assert.notEqual(findOwnerTrade(runtime.state())?.partner, nearest, 'paused partners are skipped');
+  assert.notEqual(findOwnerTrade(runtime.state(), id => ctx.trust.suspended(id))?.partner, nearest);
+  const r = await runP0(ctx);
+  assert.equal(r.phase, 'valid');
+  assert.notEqual(r.plan?.partner, nearest);
+  assert.ok(r.plan, 'another partner is available');
+  assert.equal(r.before, 'verified', 'the chosen partner can answer');
 });
 
 test('P0 run twice in a row: both runs keep their refusal evidence (P0 refusals are never collapsed)', async () => {

@@ -17,7 +17,7 @@ export interface ConnectedStub {
   listAgentKeys(muse: string): MaybePromise<unknown>;
   agentKeyMuse(id: string): MaybePromise<string | null>;
   revokeAgentKey(id: string): MaybePromise<unknown | null>;
-  ownerNotifications(full: boolean): MaybePromise<unknown>;
+  ownerNotifications(detailFor: string[]): MaybePromise<unknown>;
   ownerRevoke(muse: string, by: string): MaybePromise<{ok: boolean; reason?: string}>;
   ownerRedelegate(muse: string, by: string): MaybePromise<{ok: boolean; reason?: string}>;
   delegationStatus(muses: string[]): MaybePromise<unknown>;
@@ -111,8 +111,8 @@ export async function connectedRoutes(request: Request, url: URL, auth: OwnerAut
     const r = await stub.setOwnerLocation(b);
     return r.ok ? json(r) : json({error: 'invalid_location', reason: r.reason}, 400);
   }
-  // Details (meetup candidate time and place) only for the owner of the Muse they belong to.
-  if (p === '/api/owner/notifications' && method === 'GET') return json(await stub.ownerNotifications(!!auth.owner && ownsMuse(auth.owner, OWNER_MUSE)));
+  // Details (meetup candidate time and place) only for the owner of the Muse each notification belongs to.
+  if (p === '/api/owner/notifications' && method === 'GET') return json(await stub.ownerNotifications(auth.owner ? PRINCIPALS[auth.owner.principal].muses : []));
 
   // ----- Musely agent keys (7.2): for the session's own Muse -----
   if (p === '/api/agent-keys' && method === 'POST') {

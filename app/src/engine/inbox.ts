@@ -35,7 +35,9 @@ export type Task = {
 };
 export type Message = {id: string; from: string; to: string; kind: 'greet' | 'postcard' | 'gift'; at: number; text: string | null; item?: string | null; blocked?: string[]; read: boolean};
 export type Mail = {id: string; from: string; to: string; item: string; text: string | null; sentAt: number; deliverAt: number; crossRegion: boolean};
-export type OwnerNotification = {id: string; kind: 'meetup_candidate' | 'trade_completed' | 'blocked'; at: number; line: string; ref: string | null; other: string | null; detail?: Record<string, unknown>};
+/** `muse`: the Muse whose owner this is for (its details go only to that owner's session). Older stored notifications have none: they were the owner Muse's. */
+export type OwnerNotification = {id: string; kind: 'meetup_candidate' | 'trade_completed' | 'blocked'; at: number; line: string; ref: string | null; other: string | null; muse?: string; detail?: Record<string, unknown>};
+export const notificationMuse = (n: OwnerNotification) => n.muse ?? '00-jolly';
 export type Inbox = {
   tasks: Task[];
   messages: Message[];
@@ -53,7 +55,7 @@ export const DAILY = {postcards: 3, gifts: 3} as const;
 export const isConnected = (inbox: Inbox | undefined, museId: string, now: number) => !!inbox && now - (inbox.connected[museId] ?? -Infinity) < CONNECTED_MS;
 export const nextId = (inbox: Inbox, prefix: string) => `${prefix}_${(++inbox.seq).toString(36)}`;
 
-export function notifyOwner(inbox: Inbox, n: Omit<OwnerNotification, 'id'>) {
+export function notifyOwner(inbox: Inbox, n: Omit<OwnerNotification, 'id'> & {muse: string}) {
   inbox.notifications.push({id: nextId(inbox, 'n'), ...n});
   if (inbox.notifications.length > KEEP) inbox.notifications.splice(0, inbox.notifications.length - KEEP);
 }
@@ -67,7 +69,7 @@ export function deliverMessage(inbox: Inbox, m: Omit<Message, 'id' | 'read' | 'b
   const msg: Message = {...m, id: nextId(inbox, 'm'), text: check.blocked ? null : m.text, blocked: check.blocked ? check.kinds : undefined, read: false};
   inbox.messages.push(msg);
   // Messages reach only connected Muses (the owner's); a blocked attempt is one of the three owner notifications.
-  if (check.blocked) notifyOwner(inbox, {kind: 'blocked', at: m.at, line: 'Blocked: a message that read like an instruction was not passed to your Muse', ref: msg.id, other: m.from, detail: {kinds: check.kinds}});
+  if (check.blocked) notifyOwner(inbox, {kind: 'blocked', at: m.at, line: 'Blocked: a message that read like an instruction was not passed to your Muse', ref: msg.id, other: m.from, muse: m.to, detail: {kinds: check.kinds}});
   if (inbox.messages.length > KEEP) inbox.messages.splice(0, inbox.messages.length - KEEP);
   return msg;
 }

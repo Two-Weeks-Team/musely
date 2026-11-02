@@ -172,16 +172,19 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   if (s.items.history.length > 200) s.items.history = s.items.history.slice(-200);
   // Inbox upkeep: overdue Tasks expire; postcards in transit arrive on the real clock.
   for (const t of expireTasks(s.inbox, now)) emit({at: now, source: 'rule', kind: 'task_expired', muse: t.awaiting, other: t.awaiting === t.from ? t.to : t.from, data: {task_id: t.id, task: t.kind}, tags: []});
-  for (const mail of s.inbox.mail.filter(x => x.deliverAt <= now)) {
+  const paused = (id: string) => !!s.paused?.[id];
+  // A postcard from or to a paused Muse (delegation revoked) waits in the queue; it is delivered on the first tick after
+  // the owner delegates again.
+  const due = s.inbox.mail.filter(x => x.deliverAt <= now && !paused(x.from) && !paused(x.to));
+  for (const mail of due) {
     const to = s.muses.find(m => m.id === mail.to);
     if (to) to.inventory.push(mail.item);
     deliverMessage(s.inbox, {from: mail.from, to: mail.to, kind: 'postcard', at: now, text: mail.text, item: mail.item});
     emit({at: now, source: 'rule', kind: 'postcard_delivered', muse: mail.to, other: mail.from, data: {item: mail.item, mail_id: mail.id, sentAt: mail.sentAt}, tags: mail.crossRegion ? ['cross_region_postcard'] : []});
   }
-  s.inbox.mail = s.inbox.mail.filter(x => x.deliverAt > now);
+  s.inbox.mail = s.inbox.mail.filter(x => !due.includes(x));
 
   const spot = spotlightFor(s, now);
-  const paused = (id: string) => !!s.paused?.[id];
   // 1. Spotlight: a recorded live/replay decision for this turn, or the scenario's own choice. A paused Muse's turn passes silently.
   const d = input.decision && input.decision.muse === spot.muse && !paused(spot.muse) ? input.decision : null;
   if (input.decision && !d) emit({at: now, source: input.decision.source, kind: 'decision_rejected', muse: input.decision.muse, data: {reason: paused(input.decision.muse) ? 'paused: the owner revoked this Muse\'s delegation' : 'not this Muse\'s spotlight turn'}, tags: []});
@@ -260,6 +263,8 @@ export function pauseMuse(s: WorldState, museId: string, p: Paused) {
   if (!m) return null;
   const stopped = {trip: m.travel?.to ?? null, beat: m.beat?.id ?? null, intent: m.intent?.kind ?? null};
   m.travel = null; m.beat = null; m.intent = null;
+  // Nobody keeps waiting to meet or trade with it: other Muses' intents aimed at it end too.
+  for (const o of s.muses) if (o.intent?.target === museId) o.intent = null;
   (s.paused ??= {})[museId] = p;
   return stopped;
 }

@@ -80,7 +80,7 @@ export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: M
   const ownerMuse = s.owner?.muse;
   if (ownerMuse && (a.id === ownerMuse || b.id === ownerMuse)) {
     const other = a.id === ownerMuse ? b.id : a.id, got = a.id === ownerMuse ? t.want : t.give, gave = a.id === ownerMuse ? t.give : t.want;
-    notifyOwner(inbox, {kind: 'trade_completed', at, line: `Your Muse traded ${itemName(gave)} for ${harnessById(other).name}'s ${itemName(got)}`, ref: null, other});
+    notifyOwner(inbox, {kind: 'trade_completed', at, line: `Your Muse traded ${itemName(gave)} for ${harnessById(other).name}'s ${itemName(got)}`, ref: null, other, muse: ownerMuse});
   }
   out.push({at, source: 'rule', kind: 'trade_completed', muse: a.id, other: b.id, place: place.id, line: `Traded ${itemName(t.give)} ↔ ${itemName(t.want)}`, data: {give: t.give, want: t.want, stage: 'swap', receipt: true}, tags: first ? ['first_trade', 'ability_change'] : ['ability_change']});
   a.reflection = `Traded with ${harnessById(b.id).name}: got ${itemName(t.want)}`;

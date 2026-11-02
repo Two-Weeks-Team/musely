@@ -35,7 +35,7 @@ Set with `npx wrangler secret put <NAME>` from `app/`. Values never go into the 
 | `OWNER_ROOT_JWK` | the owner's root key, `node scripts/owner-key.mjs --print-private` (`~/.config/musely/owner-root.jwk`) |
 | `SESSION_SECRET` | random, generated for this Worker |
 | `JUDGE_TOKEN` | random, generated for this Worker (kept in the owner's `~/.config/musely/app-judge-token`) |
-| `OWNER_CONTROL_TOKEN` | random (at least 32 characters), set by the owner. Exchanged at `POST /api/owner/session` for the owner session. Not the judge link |
+| `OWNER_CONTROL_TOKEN` | random (at least 32 characters; production uses 48), set by the owner. A token under 32 characters, or equal to `JUDGE_TOKEN`, makes owner control answer `503 not_configured`. Exchanged at `POST /api/owner/session` for the owner session. Not the judge link |
 | `DEMO_PEER_CONTROL_TOKEN` | random, different from `OWNER_CONTROL_TOKEN`. The team-controlled demo peer principal for the two-owner checks |
 | `TURNSTILE_SECRET` | the shared Turnstile widget; its hostnames now include `musely.net` and `www.musely.net` |
 | `THREADS_APP_ID`, `THREADS_APP_SECRET` | Meta app for Threads claims; the redirect `https://musely.net/api/threads/callback` must be added to that app. A claim post made for the preview is not reused here: reuse needs this deployment's full claim text, so the owner posts once for musely.net |
@@ -55,6 +55,7 @@ curl -sS -b peer.jar -H 'Origin: https://musely.net' -H 'content-type: applicati
 ```
 
 - Revocation closes the Muse's pending Tasks as `cancelled` and pauses it (no spotlight turn, beat, trip or meeting). Nothing delegates it again by itself: P0 after a revocation is refused with `delegation_revoked` on every run until the owner calls `POST /api/owner/redelegate`. To reset a demo, the owner re-delegates explicitly.
+- Limit: signing out (`DELETE /api/owner/session`) only clears the cookie. There is no server-side session list, so a copied cookie stays valid until its 1-hour expiry or until the control token is rotated.
 - `POST /api/owner/approvals` checks the session and the Task's Muse, then answers `501 capability_not_ready`: the approval workflow is I-07.
 
 ## Rollback

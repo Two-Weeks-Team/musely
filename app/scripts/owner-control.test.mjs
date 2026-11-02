@@ -91,7 +91,9 @@ test('owner session vs judge session: owner actions need the owner session; the 
   assert.equal((await t.go('POST', '/api/agent-keys', {}, h(owner))).status, 201);
   assert.equal((await t.go('GET', '/api/agent-keys', undefined, {cookie: owner})).body.keys.length, 1);
   assert.equal((await t.go('POST', '/api/owner/location', {source: 'virtual', preset: 'stanford'}, h(owner))).status, 200);
-  assert.equal((await t.go('POST', '/api/p0/run', undefined, {cookie: owner})).status, 200, 'the owner may run P0 too');
+  assert.equal((await t.go('POST', '/api/p0/run', undefined, {cookie: owner})).status, 403, 'P0 by the owner cookie needs our Origin');
+  assert.equal((await t.go('POST', '/api/p0/run', undefined, {cookie: owner, origin: 'https://evil.example'})).status, 403);
+  assert.equal((await t.go('POST', '/api/p0/run', undefined, h(owner))).status, 200, 'the owner may run P0 too');
 
   // CSRF: every owner write needs one of our origins, the session exchange included.
   for (const headers of [{cookie: owner}, {cookie: owner, origin: 'https://evil.example'}, {cookie: owner, origin: ORIGIN, 'sec-fetch-site': 'cross-site'}]) {
@@ -123,6 +125,20 @@ test('owner session: expires after one hour, ends when the control token is rota
   assert.equal((await t.go('POST', '/api/owner/session', {token: OWNER_TOKEN}, {origin: ORIGIN})).status, 503);
   const u = await boot({OWNER_CONTROL_TOKEN: undefined, DEMO_PEER_CONTROL_TOKEN: undefined});
   assert.equal((await u.go('POST', '/api/owner/session', {token: OWNER_TOKEN}, {origin: ORIGIN})).status, 503);
+});
+
+test('control tokens under 32 characters or equal to the judge link token are refused as not_configured', async () => {
+  const short = 'x'.repeat(31);
+  for (const extra of [{OWNER_CONTROL_TOKEN: short}, {DEMO_PEER_CONTROL_TOKEN: short}, {OWNER_CONTROL_TOKEN: JUDGE_TOKEN}, {DEMO_PEER_CONTROL_TOKEN: JUDGE_TOKEN}]) {
+    const t = await boot(extra);
+    for (const token of [extra.OWNER_CONTROL_TOKEN ?? extra.DEMO_PEER_CONTROL_TOKEN, OWNER_TOKEN]) {
+      const r = await t.go('POST', '/api/owner/session', {token}, {origin: ORIGIN});
+      assert.deepEqual([r.status, r.body.error, r.setCookie], [503, 'not_configured', null], JSON.stringify(Object.keys(extra)));
+    }
+  }
+  // 32 characters is enough; the production tokens are 48.
+  const ok = await boot({OWNER_CONTROL_TOKEN: 'y'.repeat(32), DEMO_PEER_CONTROL_TOKEN: 'z'.repeat(48)});
+  assert.equal((await ok.go('POST', '/api/owner/session', {token: 'y'.repeat(32)}, {origin: ORIGIN})).status, 200);
 });
 
 test('two demo principals: independent sessions; one cannot approve, revoke, re-delegate, move or revoke keys for the other', async () => {
@@ -253,6 +269,7 @@ test('no automatic re-delegation: P0, heartbeats and a restart leave a revoked M
   assert.equal(t.dobj.trust.suspended(OWNER), true);
   assert.ok(t.state().paused[OWNER], 'still paused after the restart');
   assert.equal(t.events().filter(e => e.kind === 'delegation_issued').length, 0, 'nothing delegated again by itself');
+  assert.equal(t.events().filter(e => e.kind === 'muse_resumed').length, 0, 'the start-up reconcile did not resume anything');
   assert.equal((await t.go('POST', '/api/owner/redelegate', {}, {cookie: owner, origin: ORIGIN})).status, 200);
   assert.equal(t.events().filter(e => e.kind === 'delegation_issued').length, 1);
   assert.equal((await t.go('POST', '/api/p0/run', undefined, {cookie: judge})).body.phase, 'valid');
@@ -317,8 +334,12 @@ test('a new visitor gains nothing by replaying the owner\'s claim or ritual reco
     assert.equal((await ritual(visitor)).r.body.source, 'live');
     assert.equal((await ritual(judge)).r.body.source, 'live');
     assert.equal((await t.go('GET', '/api/ritual/record')).body.record, null);
-    // The owner's run (visitor session + owner session) is the owner record; it still authenticates no one.
-    const own = await t.go('POST', '/api/muse', {action: 'challenge', input: {challengeId: ownerStart.id, frames}}, {cookie: ownerVisit + '; ' + ownerCookie});
+    // The owner cookie without our Origin is not an owner write: the run is judged but does not become the record.
+    const noOrigin = (await t.go('POST', '/api/ritual/start', undefined, {cookie: ownerVisit})).body;
+    assert.equal((await t.go('POST', '/api/muse', {action: 'challenge', input: {challengeId: noOrigin.id, frames}}, {cookie: ownerVisit + '; ' + ownerCookie})).body.source, 'live');
+    assert.equal((await t.go('GET', '/api/ritual/record')).body.record, null);
+    // The owner's run (visitor session + owner session, from our origin) is the owner record; it still authenticates no one.
+    const own = await t.go('POST', '/api/muse', {action: 'challenge', input: {challengeId: ownerStart.id, frames}}, {cookie: ownerVisit + '; ' + ownerCookie, origin: ORIGIN});
     assert.equal(own.body.source, 'live');
     const rec = (await t.go('GET', '/api/ritual/record')).body.record;
     assert.equal(rec.tier, 'owner'); assert.ok(rec.requestId);
@@ -326,8 +347,156 @@ test('a new visitor gains nothing by replaying the owner\'s claim or ritual reco
     const r = await t.go('POST', '/api/owner/session', {token: rec.requestId}, {origin: ORIGIN});
     assert.equal(r.status, 403, 'the ritual record is not a credential');
     const who = t.events().filter(e => e.kind === 'ritual_judged').map(e => e.data.who.split(' ')[0]);
-    assert.deepEqual(who, ['visitor', 'judge', 'owner']);
+    assert.deepEqual(who, ['visitor', 'judge', 'visitor', 'owner']);
   } finally {
     globalThis.fetch = realFetch;
+  }
+});
+
+// ---------- review follow-ups (PR #88) ----------
+const mcpClient = (t, key) => {
+  let id = 0;
+  const auth = {authorization: 'Bearer ' + key, accept: 'application/json, text/event-stream'};
+  const rpc = async (method, params) => (await t.go('POST', '/mcp', {jsonrpc: '2.0', id: ++id, method, params}, {...auth, 'mcp-protocol-version': '2025-06-18'})).body;
+  return {
+    init: async () => { await t.go('POST', '/mcp', {jsonrpc: '2.0', id: ++id, method: 'initialize', params: {protocolVersion: '2025-06-18', capabilities: {}, clientInfo: {name: 'owner-control', version: '1'}}}, auth); await t.go('POST', '/mcp', {jsonrpc: '2.0', method: 'notifications/initialized'}, {...auth, 'mcp-protocol-version': '2025-06-18'}); },
+    tool: async (name, args) => (await rpc('tools/call', {name, arguments: args})).result,
+  };
+};
+const claimOwner = t => t.dobj.setClaim('owner-muse', {agent: 'owner-muse', status: 'claimed', path: 'worker_token', handle: 'combba82', fingerprint: 'x', permalink: null, mediaId: null, postedText: null, verifiedAt: Date.now(), checkedAt: Date.now(), machineVerified: true, note: 'test'});
+
+test('owner notifications: each session gets the details of its own Muse\'s notifications only', async () => {
+  const t = await boot();
+  claimOwner(t);
+  const owner = await t.login(OWNER_TOKEN), peer = await t.login(PEER_TOKEN);
+  const key = (await t.go('POST', '/api/agent-keys', {}, {cookie: peer, origin: ORIGIN})).body;
+  assert.equal(key.muse, PEER_MUSE);
+  const c = mcpClient(t, key.key);
+  await c.init();
+  const meet = await c.tool('propose_meetup', {to: '01-sunny'});
+  assert.equal(meet.isError, false, JSON.stringify(meet.structuredContent));
+  const cand = meet.structuredContent.task.candidate;
+  assert.equal((await c.tool('answer_candidate', {task_id: meet.structuredContent.task.id, answer: 'accept'})).isError, false);
+  // An older stored notification has no muse: it was the owner Muse's.
+  t.edit(st => st.inbox.notifications.push({id: 'n_old', kind: 'meetup_candidate', at: Date.now(), line: 'old', ref: null, other: '02-moss', detail: {time: '07:30', place: 'old-place'}}));
+  const list = async cookie => (await t.go('GET', '/api/owner/notifications', undefined, cookie ? {cookie} : {})).body.notifications;
+  const peerN = (await list(peer)).find(n => n.kind === 'meetup_candidate' && n.muse === PEER_MUSE);
+  assert.equal(peerN.detail.time, cand.time, 'the demo peer sees its own Muse\'s candidate');
+  const ownerView = await list(owner);
+  assert.equal(ownerView.find(n => n.muse === PEER_MUSE && n.kind === 'meetup_candidate').detail, undefined, 'the owner does not see the peer\'s details');
+  assert.ok(!JSON.stringify(ownerView.filter(n => n.muse === PEER_MUSE)).includes(cand.time));
+  assert.equal(ownerView.find(n => n.id === 'n_old').detail.time, '07:30', 'an old notification counts as the owner Muse\'s');
+  assert.equal((await list(peer)).find(n => n.id === 'n_old').detail, undefined);
+  assert.ok((await list(null)).every(n => n.detail === undefined), 'no details without an owner session');
+});
+
+test('postcards from or to a paused Muse wait in the queue and are delivered on the first tick after re-delegation', async () => {
+  const t = await boot();
+  const h = {cookie: await t.login(OWNER_TOKEN), origin: ORIGIN};
+  assert.equal((await t.go('POST', '/api/owner/revoke', {}, h)).status, 200);
+  const now = Date.now();
+  t.edit(st => st.inbox.mail.push(
+    {id: 'mail_out', from: OWNER, to: '02-moss', item: 'postcard:commons:cafe', text: 'from Jolly', sentAt: now - 5 * TICK, deliverAt: now - TICK, crossRegion: false},
+    {id: 'mail_in', from: '03-ripple', to: OWNER, item: 'postcard:commons:garden', text: 'to Jolly', sentAt: now - 5 * TICK, deliverAt: now - TICK, crossRegion: false},
+    {id: 'mail_free', from: '03-ripple', to: '02-moss', item: 'postcard:commons:hq', text: 'between residents', sentAt: now - 5 * TICK, deliverAt: now - TICK, crossRegion: false}));
+  const inv = () => [t.muse(OWNER).inventory.join(','), t.muse('02-moss').inventory.join(',')];
+  const before = inv(), from = t.events().at(-1).seq;
+  let clock = Math.max(Date.now(), t.state().lastTickAt) + TICK;
+  for (let i = 0; i < 5; i++, clock += TICK) await t.dobj.runtime.heartbeat(clock);
+  const delivered = () => t.dobj.worldEvents(from, 2000).filter(e => e.kind === 'postcard_delivered').map(e => e.data.mail_id);
+  assert.deepEqual(delivered(), ['mail_free'], 'only the postcard between two active Muses arrives');
+  assert.deepEqual(t.state().inbox.mail.map(m => m.id).sort(), ['mail_in', 'mail_out']);
+  assert.equal(t.muse(OWNER).inventory.join(','), before[0], 'no inventory change for the paused Muse');
+  assert.ok(!t.muse('02-moss').inventory.includes('postcard:commons:cafe'), 'its outgoing postcard did not arrive either');
+  assert.equal((await t.go('POST', '/api/owner/redelegate', {}, h)).status, 200);
+  await t.dobj.runtime.heartbeat(clock);
+  assert.deepEqual(delivered().sort(), ['mail_free', 'mail_in', 'mail_out']);
+  assert.deepEqual(t.state().inbox.mail, []);
+  assert.ok(t.muse(OWNER).inventory.includes('postcard:commons:garden') && t.muse('02-moss').inventory.includes('postcard:commons:cafe'));
+});
+
+test('a revocation clears other Muses\' intents aimed at the paused Muse, so they go back to wandering', async () => {
+  const t = await boot();
+  const h = {cookie: await t.login(OWNER_TOKEN), origin: ORIGIN};
+  t.edit(st => { const m = st.muses.find(x => x.id === '02-moss'); m.intent = {kind: 'greet', target: OWNER}; m.travel = null; m.beat = null; st.muses.find(x => x.id === '05-bloom').intent = {kind: 'greet', target: '03-ripple'}; });
+  assert.equal((await t.go('POST', '/api/owner/revoke', {}, h)).status, 200);
+  assert.equal(t.muse('02-moss').intent, null);
+  assert.deepEqual(t.muse('05-bloom').intent, {kind: 'greet', target: '03-ripple'}, 'intents aimed at others stay');
+  const from = t.events().at(-1).seq;
+  let clock = Math.max(Date.now(), t.state().lastTickAt) + TICK, moved = false;
+  for (let i = 0; i < 60 && !moved; i++, clock += TICK) { await t.dobj.runtime.heartbeat(clock); moved = t.dobj.worldEvents(from, 2000).some(e => e.muse === '02-moss' && e.kind === 'depart'); }
+  assert.ok(moved, 'Moss wanders again');
+});
+
+test('a revocation survives a restart with a different OWNER_ROOT_JWK (new kid)', async () => {
+  const t = await boot();
+  const h = {cookie: await t.login(OWNER_TOKEN), origin: ORIGIN};
+  const oldKid = t.dobj.trust.agentByMuse(OWNER).agentId;
+  assert.equal((await t.go('POST', '/api/owner/revoke', {}, h)).status, 200);
+  const pair = await crypto.subtle.generateKey({name: 'ECDSA', namedCurve: 'P-256'}, true, ['sign', 'verify']);
+  t.env.OWNER_ROOT_JWK = JSON.stringify(await crypto.subtle.exportKey('jwk', pair.privateKey));
+  await t.start();
+  assert.notEqual(t.dobj.trust.agentByMuse(OWNER).agentId, oldKid, 'the owner root really changed');
+  assert.equal(t.dobj.trust.suspended(OWNER), true, 'still revoked under the new root');
+  assert.ok(t.state().paused[OWNER]);
+  assert.equal(t.events().filter(e => e.kind === 'muse_resumed').length, 0);
+  // The owner delegates again explicitly; P0 works under the new root.
+  assert.equal((await t.go('POST', '/api/owner/redelegate', {}, h)).status, 200);
+  assert.equal(t.dobj.trust.suspended(OWNER), false);
+  assert.equal((await t.go('POST', '/api/p0/run', undefined, h)).body.before, 'verified');
+});
+
+test('end to end: after revokeMuse paused the owner Muse, every /mcp write under its key is refused', async () => {
+  const t = await boot();
+  claimOwner(t);
+  const h = {cookie: await t.login(OWNER_TOKEN), origin: ORIGIN};
+  const key = (await t.go('POST', '/api/agent-keys', {}, h)).body;
+  const c = mcpClient(t, key.key);
+  await c.init();
+  assert.equal((await c.tool('greet', {text: 'Hello before'})).isError, false, 'a write works while delegated');
+  assert.equal((await t.go('POST', '/api/owner/revoke', {}, h)).status, 200);
+  assert.ok(t.state().paused[OWNER]);
+  const before = JSON.stringify(t.state().muses), greets = t.events().filter(e => e.kind === 'greet').length;
+  for (const [name, args] of [['greet', {text: 'Hello after'}], ['move', {to: 'commons:garden'}], ['propose_meetup', {to: '01-sunny'}]]) {
+    const r = await c.tool(name, args);
+    assert.equal(r.isError, true, name); assert.equal(r.structuredContent.refused, 'delegation_revoked', name);
+  }
+  assert.equal(JSON.stringify(t.state().muses), before, 'no Muse changed');
+  assert.equal(t.events().filter(e => e.kind === 'greet').length, greets);
+  assert.ok(t.state().paused[OWNER], 'still paused');
+  assert.equal((await c.tool('get_world_state', {})).isError, false, 'reads still work');
+});
+
+test('a revoke or re-delegation that failed after the registry write is completed by retrying; retries are idempotent', async () => {
+  const t = await boot();
+  const h = {cookie: await t.login(OWNER_TOKEN), origin: ORIGIN};
+  t.edit(st => st.inbox.tasks.push(task('task_r1', 'trade', '02-moss', OWNER, Date.now())));
+  const rt = t.dobj.runtime, real = rt.commitExternal.bind(rt);
+  const failOnce = () => { let n = 1; rt.commitExternal = (...a) => { if (n-- > 0) throw new Error('simulated commit failure'); return real(...a); }; };
+  const err = console.error; console.error = () => {};
+  try {
+    failOnce();
+    assert.equal((await t.go('POST', '/api/owner/revoke', {}, h)).status, 500);
+    assert.deepEqual([t.dobj.trust.suspended(OWNER), !!t.state().paused?.[OWNER], t.state().inbox.tasks.find(x => x.id === 'task_r1').status], [true, false, 'pending'], 'the registry moved, the world did not');
+    const v = t.dobj.trust.delegationVersion(t.dobj.trust.agentByMuse(OWNER).agentId);
+    const retry = await t.go('POST', '/api/owner/revoke', {}, h);
+    assert.deepEqual([retry.status, retry.body.already, retry.body.repaired, retry.body.cancelledTasks], [200, true, true, ['task_r1']]);
+    assert.ok(t.state().paused[OWNER]); assert.equal(t.state().inbox.tasks.find(x => x.id === 'task_r1').status, 'cancelled');
+    assert.equal(t.dobj.trust.delegationVersion(t.dobj.trust.agentByMuse(OWNER).agentId), v, 'the retry does not bump the version');
+    const n = t.events().length;
+    const again = await t.go('POST', '/api/owner/revoke', {}, h);
+    assert.deepEqual([again.body.already, again.body.repaired, t.events().length], [true, false, n], 'a further retry changes nothing');
+
+    failOnce();
+    assert.equal((await t.go('POST', '/api/owner/redelegate', {}, h)).status, 500);
+    assert.deepEqual([t.dobj.trust.suspended(OWNER), !!t.state().paused?.[OWNER]], [false, true]);
+    const rd = await t.go('POST', '/api/owner/redelegate', {}, h);
+    assert.deepEqual([rd.status, rd.body.already, rd.body.repaired], [200, true, true]);
+    assert.equal(t.state().paused?.[OWNER], undefined);
+    assert.equal(t.events().filter(e => e.kind === 'muse_resumed').length, 1);
+    const m = t.events().length;
+    assert.deepEqual([(await t.go('POST', '/api/owner/redelegate', {}, h)).body.repaired, t.events().length], [false, m]);
+  } finally {
+    console.error = err; rt.commitExternal = real;
   }
 });

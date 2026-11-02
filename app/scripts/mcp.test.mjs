@@ -197,7 +197,7 @@ test('write tools: each signs a server_custodial envelope, verifies, commits and
   assert.ok(t.muse(OWNER_SLOT).inventory.includes('fruit') && t.muse(OWNER_SLOT).inventory.includes('trade_receipt'));
   const done = t.events('trade_completed').at(-1);
   assert.equal(done.data.envelope === undefined, false, 'a live trade carries its envelope');
-  assert.ok(t.host.notifications(true).notifications.some(n => n.kind === 'trade_completed'));
+  assert.ok(t.host.notifications([OWNER_SLOT]).notifications.some(n => n.kind === 'trade_completed'));
   assert.equal((await t.call('propose_trade', {to: '06-ink', give: 'garden_pass', want: 'tea'})).structuredContent.refused, 'not_held');
 
   // send_postcard: uses a Postage Stamp, arrives later on the real clock
@@ -325,7 +325,7 @@ test('inbox: peer text that tries to instruct is blocked (stored without the tex
   assert.equal(hb.structuredContent.messages.length, 1);
   assert.equal(hb.structuredContent.messages[0].text, null);
   assert.ok(hb.structuredContent.messages[0].blocked.includes('role_marker'));
-  assert.equal(t.host.notifications(true).notifications.filter(n => n.kind === 'blocked').length, 1);
+  assert.equal(t.host.notifications([OWNER_SLOT]).notifications.filter(n => n.kind === 'blocked').length, 1);
   assert.equal((await t.call('heartbeat_check')).structuredContent.messages.length, 0, 'messages are marked read');
 });
 
@@ -418,7 +418,7 @@ test('key revocation stops MCP; the owner\'s delegation revocation stops writes 
   assert.equal(w.isError, true); assert.equal(w.structuredContent.refused, 'delegation_revoked');
   const refused = t.events('a2a_refused').at(-1);
   assert.equal(refused.data.step, 'delegation'); assert.equal(refused.data.envelope.signer_kind, 'server_custodial');
-  assert.ok(t.host.notifications(true).notifications.some(n => n.kind === 'blocked'));
+  assert.ok(t.host.notifications([OWNER_SLOT]).notifications.some(n => n.kind === 'blocked'));
   assert.equal((await t.call('get_world_state')).isError, false, 'reads still work');
   const reg = await t.call('register_agent');
   assert.equal(reg.structuredContent.delegation.status, 'revoked');

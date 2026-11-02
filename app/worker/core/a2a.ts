@@ -19,10 +19,11 @@ const nowOf = (c: Ctx) => (c.now ? c.now() : Date.now());
 export const envelopeEvidence = (s: Signed) => ({message_id: s.envelope.message_id, agent_id: s.envelope.agent_id, delegation_ref: s.envelope.delegation_ref, signer_kind: s.envelope.signer_kind, scope: s.envelope.scope, scope_hash: s.envelope.scope_hash, content_hash: s.envelope.content_hash, nonce: s.envelope.nonce, expires_at: s.envelope.expires_at, owner_claimed: s.envelope.owner_claimed});
 
 /** A trade the owner's Muse can actually make now: nearby partner, both items held and the rules allow it. */
-export function findOwnerTrade(s: WorldState) {
+export function findOwnerTrade(s: WorldState, revoked: (museId: string) => boolean = () => false) {
   const me = s.muses.find(m => m.id === OWNER_SLOT)!;
   const here = placeById(me.place);
-  const partners = s.muses.filter(m => m.id !== OWNER_SLOT && !m.travel).sort((a, b) => distanceM(here, placeById(a.place)) - distanceM(here, placeById(b.place)));
+  // A partner whose owner revoked its delegation (paused) cannot answer: it is never picked.
+  const partners = s.muses.filter(m => m.id !== OWNER_SLOT && !m.travel && !s.paused?.[m.id] && !revoked(m.id)).sort((a, b) => distanceM(here, placeById(a.place)) - distanceM(here, placeById(b.place)));
   for (const p of partners) for (const give of me.inventory) for (const want of p.inventory) {
     if (checkTrade(s.items, s.day, me, p, give, want).ok) return {partner: p.id, give, want};
   }
@@ -32,7 +33,7 @@ export function findOwnerTrade(s: WorldState) {
 /** Sends a signed trade proposal from the owner's Muse; it commits only through executeCommand. */
 export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; plan?: {partner: string; give: string; want: string}}) {
   const s = c.runtime.state();
-  const plan = opts.plan ?? findOwnerTrade(s);
+  const plan = opts.plan ?? findOwnerTrade(s, id => c.trust.suspended(id));
   if (!plan) return {ok: false as const, reason: 'no_valid_trade_now'};
   const exec = opts.stale ? await c.trust.storedExecutor(OWNER_SLOT, 'server_custodial') : await c.trust.executor(OWNER_SLOT, 'server_custodial', c.ownerRoot);
   const content = {kind: 'propose_trade', give: plan.give, want: plan.want, to: plan.partner};
@@ -81,7 +82,7 @@ export async function runP0(c: Ctx) {
     if (!('plan' in first)) return {ok: false as const, phase: 'valid' as const, reason: first.reason};
     return {ok: first.ok, phase: 'valid' as const, before: first.verdict, plan: first.plan, next: 'owner_revoke'};
   }
-  const job = lastP0Job(c) ?? findOwnerTrade(c.runtime.state());
+  const job = lastP0Job(c) ?? findOwnerTrade(c.runtime.state(), id => c.trust.suspended(id));
   if (!job) return {ok: false as const, phase: 'after_revoke' as const, reason: 'no_valid_trade_now'};
   const before = JSON.stringify(c.runtime.state());
   const second = await ownerTrade(c, {stale: true, label: 'p0-after-revoke', plan: job});

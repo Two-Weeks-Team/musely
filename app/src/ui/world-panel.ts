@@ -72,6 +72,7 @@ export function describe(e: Ev): string {
     case 'delegation_revoked': return `Owner revoked ${a}'s delegation`;
     case 'delegation_issued': return `Owner delegated ${a} again`;
     case 'muse_paused': return `${a} is paused until the owner delegates again`;
+    case 'muse_resumed': return `${a} resumed: the owner's delegation is current again`;
     case 'task_cancelled': return `A pending ${d.task ?? 'Task'} with ${b} was cancelled: the owner revoked ${a}'s delegation`;
     case 'impostor_rejected': return `A look-alike ${a} was refused before greeting`;
     case 'injection_blocked': return `An instruction from ${b} to ${a} was blocked`;

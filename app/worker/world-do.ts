@@ -97,7 +97,8 @@ export class WorldDO extends DurableObject<Env> {
    */
   ritualRecord(rec: RitualRecord, sessionTag: string, byOwner = false) {
     if (byOwner && rec.passed) this.ritual.saveOwnerRecord(rec);
-    return this.runtime.commitExternal(Date.now(), 'ritual', (_s, emit) => emit({at: Date.now(), source: rec.requestId ? 'live' : 'replay', kind: 'ritual_judged', muse: null, line: rec.passed ? 'Welcome ritual passed' : 'Welcome ritual not passed', data: {passed: rec.passed, results: rec.results, evidence: rec.requestId ? {model: rec.model, requestId: rec.requestId} : null, who: byOwner ? 'owner (owner session)' : rec.tier === 'judge' ? 'judge link ' + sessionTag : 'visitor ' + sessionTag, framesStored: false}, tags: ['ritual']}));
+    // A unique label: two rituals judged in the same millisecond must not share an event id (the second would be dropped).
+    return this.runtime.commitExternal(Date.now(), 'ritual-' + Math.random().toString(36).slice(2, 10), (_s, emit) => emit({at: Date.now(), source: rec.requestId ? 'live' : 'replay', kind: 'ritual_judged', muse: null, line: rec.passed ? 'Welcome ritual passed' : 'Welcome ritual not passed', data: {passed: rec.passed, results: rec.results, evidence: rec.requestId ? {model: rec.model, requestId: rec.requestId} : null, who: byOwner ? 'owner (owner session)' : rec.tier === 'judge' ? 'judge link ' + sessionTag : 'visitor ' + sessionTag, framesStored: false}, tags: ['ritual']}));
   }
   worldView() { return this.runtime.view(Date.now()); }
   worldEvents(since: number, limit: number, opts: {day?: string; tail?: number} = {}) { return this.runtime.events(since, Math.min(2000, Math.max(1, limit)), opts); }
@@ -115,7 +116,7 @@ export class WorldDO extends DurableObject<Env> {
   taskParticipants(taskId: string) { const t = this.runtime.state().inbox?.tasks.find(x => x.id === taskId); return t ? {from: t.from, to: t.to, status: t.status} : null; }
   ownerLocation() { return this.connected.ownerLocation(); }
   setOwnerLocation(input: unknown) { return this.connected.setOwnerLocation(input); }
-  ownerNotifications(full: boolean) { return this.connected.notifications(full); }
+  ownerNotifications(detailFor: string[]) { return this.connected.notifications(detailFor); }
   getClaim(agent: string): ClaimRecord | null {
     const r = this.ctx.storage.sql.exec('SELECT record FROM claims WHERE agent = ?', agent).toArray()[0];
     return r ? JSON.parse(String(r.record)) : null;

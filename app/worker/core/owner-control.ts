@@ -13,66 +13,103 @@ export type ControlCtx = {trust: Trust; runtime: WorldRuntime; now?: () => numbe
 const nowOf = (c: ControlCtx) => (c.now ? c.now() : Date.now());
 const uniq = () => Math.random().toString(36).slice(2, 8);
 
-export type RevokeResult = {ok: true; muse: string; already: boolean; version: number; cancelledTasks: string[]; stopped: {trip: string | null; beat: string | null; intent: string | null} | null} | {ok: false; reason: 'unknown_muse'};
-export type RedelegateResult = {ok: true; muse: string; already: boolean; version: number} | {ok: false; reason: 'unknown_muse'};
+export type RevokeResult = {ok: true; muse: string; already: boolean; repaired: boolean; version: number; cancelledTasks: string[]; stopped: {trip: string | null; beat: string | null; intent: string | null} | null} | {ok: false; reason: 'unknown_muse'};
+export type RedelegateResult = {ok: true; muse: string; already: boolean; repaired: boolean; version: number} | {ok: false; reason: 'unknown_muse'};
+type Emit = Parameters<Parameters<WorldRuntime['commitExternal']>[2]>[1];
+type State = ReturnType<WorldRuntime['state']>;
 
 const revoking = new WeakMap<Trust, Set<string>>();
+const hasPending = (s: State, museId: string) => (s.inbox?.tasks ?? []).some(t => t.status === 'pending' && (t.from === museId || t.to === museId));
+/** Does the world still show a revoked Muse as active (not paused, or with pending Tasks)? */
+const needsStop = (s: State, museId: string) => !s.paused?.[museId] || hasPending(s, museId);
+
+/**
+ * The world side of a revocation, idempotent: every pending Task of the Muse closes as cancelled, and the Muse is paused
+ * once (a Muse already paused keeps its pause record and place). Runs inside one world commit.
+ */
+function stopInWorld(st: State, emit: Emit, museId: string, version: number, by: string, now: number, repaired: boolean) {
+  const cancelled: string[] = [];
+  for (const t of cancelTasksFor((st.inbox ??= emptyInbox()), museId, now, by)) {
+    cancelled.push(t.id);
+    emit({at: now, source: 'rule', kind: 'task_cancelled', muse: museId, other: t.from === museId ? t.to : t.from, line: 'A pending Task was cancelled: the owner revoked the delegation', data: {task_id: t.id, task: t.kind, reason: 'delegation_revoked'}, tags: []});
+  }
+  let stopped: ReturnType<typeof pauseMuse> = null;
+  if (!st.paused?.[museId]) {
+    stopped = pauseMuse(st, museId, {at: now, version, by});
+    emit({at: now, source: 'rule', kind: 'muse_paused', muse: museId, line: 'Paused until the owner delegates again', data: {reason: 'delegation_revoked', stopped, repaired}, tags: []});
+  }
+  return {cancelled, stopped};
+}
 
 export async function revokeMuse(c: ControlCtx, museId: string, by: string): Promise<RevokeResult> {
   const agent = c.trust.agentByMuse(museId);
   if (!agent) return {ok: false, reason: 'unknown_muse'};
-  // Already revoked and not delegated again: nothing moves (a second revoke does not bump the version again).
   // A concurrent second revoke of the same Muse (both before the first finished) is the same as "already revoked".
   const busy = revoking.get(c.trust) ?? new Set<string>();
   revoking.set(c.trust, busy);
-  if (c.trust.suspended(museId) || busy.has(museId)) return {ok: true, muse: museId, already: true, version: c.trust.delegationVersion(agent.agentId), cancelledTasks: [], stopped: null};
+  if (busy.has(museId)) return {ok: true, muse: museId, already: true, repaired: false, version: c.trust.delegationVersion(agent.agentId), cancelledTasks: [], stopped: null};
+  if (c.trust.suspended(museId)) {
+    // Already revoked in the registry: the version does not move again. If an earlier attempt failed after the registry
+    // write (the world commit threw), the world is stopped now; when it already is, nothing changes.
+    const version = c.trust.delegationVersion(agent.agentId);
+    if (!needsStop(c.runtime.state(), museId)) return {ok: true, muse: museId, already: true, repaired: false, version, cancelledTasks: [], stopped: null};
+    const now = nowOf(c);
+    let out = {cancelled: [] as string[], stopped: null as ReturnType<typeof pauseMuse>};
+    c.runtime.commitExternal(now, `owner-revoke-repair-${museId}-${uniq()}`, (st, emit) => { out = stopInWorld(st, emit, museId, version, by, now, true); });
+    return {ok: true, muse: museId, already: true, repaired: true, version, cancelledTasks: out.cancelled, stopped: out.stopped};
+  }
   busy.add(museId);
   let version: number;
   try { version = await c.trust.revoke(museId); } finally { busy.delete(museId); }
   // Synchronous from here: the revocation and its world effects are committed together, before any other request runs.
   const now = nowOf(c);
-  const out: {cancelled: string[]; stopped: ReturnType<typeof pauseMuse>} = {cancelled: [], stopped: null};
+  let out = {cancelled: [] as string[], stopped: null as ReturnType<typeof pauseMuse>};
   c.runtime.commitExternal(now, `owner-revoke-${museId}-${uniq()}`, (st, emit) => {
     emit({at: now, source: 'live', kind: 'delegation_revoked', muse: museId, line: 'Owner revoked the delegation', data: {newVersion: version, by}, tags: ['revocation']});
-    for (const t of cancelTasksFor((st.inbox ??= emptyInbox()), museId, now, by)) {
-      out.cancelled.push(t.id);
-      emit({at: now, source: 'rule', kind: 'task_cancelled', muse: museId, other: t.from === museId ? t.to : t.from, line: 'A pending Task was cancelled: the owner revoked the delegation', data: {task_id: t.id, task: t.kind, reason: 'delegation_revoked'}, tags: []});
-    }
-    out.stopped = pauseMuse(st, museId, {at: now, version, by});
-    emit({at: now, source: 'rule', kind: 'muse_paused', muse: museId, line: 'Paused until the owner delegates again', data: {reason: 'delegation_revoked', stopped: out.stopped}, tags: []});
+    out = stopInWorld(st, emit, museId, version, by, now, false);
   });
-  return {ok: true, muse: museId, already: false, version, cancelledTasks: out.cancelled, stopped: out.stopped};
+  return {ok: true, muse: museId, already: false, repaired: false, version, cancelledTasks: out.cancelled, stopped: out.stopped};
 }
 
 export function redelegateMuse(c: ControlCtx, museId: string, by: string): RedelegateResult {
   const agent = c.trust.agentByMuse(museId);
   if (!agent) return {ok: false, reason: 'unknown_muse'};
-  if (!c.trust.suspended(museId)) return {ok: true, muse: museId, already: true, version: c.trust.delegationVersion(agent.agentId)};
+  if (!c.trust.suspended(museId)) {
+    // Delegated in the registry already. If an earlier attempt failed before the world resumed the Muse, resume it now.
+    const version = c.trust.delegationVersion(agent.agentId);
+    if (!c.runtime.state().paused?.[museId]) return {ok: true, muse: museId, already: true, repaired: false, version};
+    const now = nowOf(c);
+    c.runtime.commitExternal(now, `owner-redelegate-repair-${museId}-${uniq()}`, (st, emit) => {
+      resumeMuse(st, museId);
+      emit({at: now, source: 'live', kind: 'muse_resumed', muse: museId, line: 'Resumed: the owner\'s re-delegation is now applied to the world', data: {reason: 'redelegation_completed', version, by}, tags: []});
+    });
+    return {ok: true, muse: museId, already: true, repaired: true, version};
+  }
   const version = c.trust.redelegate(museId);
   const now = nowOf(c);
   c.runtime.commitExternal(now, `owner-redelegate-${museId}-${uniq()}`, (st, emit) => {
     resumeMuse(st, museId);
     emit({at: now, source: 'live', kind: 'delegation_issued', muse: museId, line: 'Owner delegated again', data: {version, by}, tags: []});
   });
-  return {ok: true, muse: museId, already: false, version};
+  return {ok: true, muse: museId, already: false, repaired: false, version};
 }
 
 /**
- * Keeps the world's paused set equal to the trust registry (at start-up): a Muse revoked in the registry is paused,
- * and a Muse whose delegation is current is not. Normally both change together in revokeMuse / redelegateMuse.
+ * Keeps the world equal to the trust registry (at start-up). A Muse revoked in the registry is paused with its pending
+ * Tasks cancelled; a Muse whose delegation is current is not paused. Normally both change together in revokeMuse /
+ * redelegateMuse, so neither branch runs; when one does, it leaves an event saying so.
  */
 export function reconcilePaused(c: ControlCtx) {
   const s = c.runtime.state(), now = nowOf(c);
-  const pause = s.muses.filter(m => c.trust.suspended(m.id) && !s.paused?.[m.id]).map(m => m.id);
+  const pause = s.muses.filter(m => c.trust.suspended(m.id) && needsStop(s, m.id)).map(m => m.id);
   const resume = s.muses.filter(m => !c.trust.suspended(m.id) && s.paused?.[m.id]).map(m => m.id);
   if (!pause.length && !resume.length) return {pause, resume};
   c.runtime.commitExternal(now, 'reconcile-paused', (st, emit) => {
-    for (const id of pause) {
-      const version = c.trust.delegationVersion(c.trust.agentByMuse(id)!.agentId);
-      for (const t of cancelTasksFor((st.inbox ??= emptyInbox()), id, now, 'musely')) emit({at: now, source: 'rule', kind: 'task_cancelled', muse: id, other: t.from === id ? t.to : t.from, data: {task_id: t.id, task: t.kind, reason: 'delegation_revoked'}, tags: []});
-      emit({at: now, source: 'rule', kind: 'muse_paused', muse: id, line: 'Paused until the owner delegates again', data: {reason: 'delegation_revoked', stopped: pauseMuse(st, id, {at: now, version, by: 'musely'})}, tags: []});
+    for (const id of pause) stopInWorld(st, emit, id, c.trust.delegationVersion(c.trust.agentByMuse(id)!.agentId), 'musely', now, true);
+    for (const id of resume) {
+      resumeMuse(st, id);
+      emit({at: now, source: 'rule', kind: 'muse_resumed', muse: id, line: 'Resumed: the registry shows a current delegation', data: {reason: 'registry_not_revoked'}, tags: []});
     }
-    for (const id of resume) resumeMuse(st, id);
   });
   return {pause, resume};
 }

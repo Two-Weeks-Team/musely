@@ -19,14 +19,23 @@ export const PRINCIPALS: Record<PrincipalId, Principal> = {
 export const ownsMuse = (s: OwnerSession, museId: string) => PRINCIPALS[s.principal].muses.includes(museId);
 
 export type OwnerSession = {sid: string; principal: PrincipalId; ownerId: string; exp: number; tk: string};
-export type OwnerTokens = {owner?: string; peer?: string};
+/** `judge`: the judge link token, given only so a control token equal to it is refused. */
+export type OwnerTokens = {owner?: string; peer?: string; judge?: string};
+export const MIN_TOKEN_LENGTH = 32;
 
 const tokenOf = (tokens: OwnerTokens, p: PrincipalId) => (p === 'owner' ? tokens.owner : tokens.peer) || '';
 const tokenTag = async (secret: string, token: string) => b64url(await hmac(secret, 'owner-token:' + token)).slice(0, 22);
 const sign = async (secret: string, body: string) => b64url(await hmac(secret, 'owner-session.' + body));
 
-/** The two control tokens must both differ; a deployment with the same value for both is misconfigured. */
-export const tokensConfigured = (t: OwnerTokens) => !!(t.owner || t.peer) && !(t.owner && t.peer && t.owner === t.peer);
+/**
+ * A usable setup: at least one control token; every configured one is at least 32 characters and is not the judge link
+ * token; the two differ. Anything else is misconfigured and no owner session is issued or read (503 not_configured).
+ */
+export function tokensConfigured(t: OwnerTokens) {
+  const set = [t.owner, t.peer].filter((x): x is string => !!x);
+  if (!set.length || set.some(x => x.length < MIN_TOKEN_LENGTH || (!!t.judge && x === t.judge))) return false;
+  return !(t.owner && t.peer && t.owner === t.peer);
+}
 
 /** Which principal a presented control token belongs to (constant-time compare), or null. */
 export function principalForToken(tokens: OwnerTokens, presented: unknown): PrincipalId | null {

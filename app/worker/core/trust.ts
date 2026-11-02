@@ -49,8 +49,14 @@ export class Trust implements TrustRegistry {
       const owner = await importPrivateJwk(ownerRootJwk);
       const existing = this.agentByMuse(OWNER_SLOT);
       if (!existing || existing.agentId !== owner.kid) {
+        // A new owner root (new kid) takes over the Muse's delegation state: a revoked Muse stays revoked across the swap.
+        const carried = existing ? {version: this.delegationVersion(existing.agentId), delegated: this.delegatedVersion(existing.agentId)} : null;
         this.sql.exec('DELETE FROM agents WHERE muse_id = ?', OWNER_SLOT);
         this.sql.exec('INSERT INTO agents (agent_id, muse_id, root_jwk, kind, label) VALUES (?, ?, ?, ?, ?)', owner.kid, OWNER_SLOT, JSON.stringify(owner.publicJwk), 'owner', "Kim Sejun's Muse");
+        if (carried) {
+          this.sql.exec('INSERT INTO delegation_versions (agent_id, version) VALUES (?, ?) ON CONFLICT(agent_id) DO UPDATE SET version = MAX(delegation_versions.version, excluded.version)', owner.kid, carried.version);
+          this.sql.exec('INSERT INTO delegated (agent_id, version) VALUES (?, ?) ON CONFLICT(agent_id) DO UPDATE SET version = MIN(delegated.version, excluded.version)', owner.kid, carried.delegated);
+        }
       }
     }
   }
