@@ -6,9 +6,9 @@ This is the D-01 working record for [the execution contract](../../docs/roadmap/
 
 ## Current evidence boundary
 
-The default [product observer](../scripts/product-e2e.browser.js) runs two fresh browser contexts (desktop and phone), disables service workers, starts without stored credentials and performs public GETs only. It observes the initial page, actual server Muse IDs and selection, source labels, owner-inbox denial, recorded-ritual label and reconnect. Screenshots show only the public Feed. Its report always says `acceptedD01: false`.
+The default [product observer](../scripts/product-e2e.browser.js) runs two fresh browser contexts (desktop and phone), disables service workers, starts without stored credentials and performs public GETs only. It observes the initial page, actual server Muse IDs and selection, source labels, owner-inbox denial and anonymous reconnect. Identity/claim/ritual UI is not opened: its claim-status GET can recheck Threads and persist authorization state. Screenshots show only the public Feed. Its report always says `acceptedD01: false`.
 
-A request guard rejects every non-GET, model/MCP endpoint, unknown API and off-origin request except the existing OpenFreeMap asset host. It does not click account, ritual, approval or revocation controls. A refused application write is a failed observer case, even though transport was blocked. The callback strips entry URL query/path and logs method/origin/path only. It retains no cookie, authorization, private response, webcam frame or private condition. Run it through a Playwright callback host with an existing page at the approved product origin or loopback origin; screenshots use the host's `output/` directory. No production write mode exists.
+A request guard rejects every non-GET, effectful claim GET, model/MCP endpoint, unknown API and off-origin request except the existing OpenFreeMap asset host. It does not click account, ritual, approval or revocation controls. A refused application write or attempted effectful claim GET is a failed observer case, even though transport was blocked. No synthetic 200, claim snapshot, blank key or fabricated credential substitutes for the excluded identity flow. The callback strips entry URL query/path and logs method/origin/path only. It retains no cookie, authorization, private response, webcam frame or private condition. Run it through a Playwright callback host with an existing page at the approved product origin or loopback origin; screenshots use the host's `output/` directory. No production write mode exists.
 
 Default production origin is `https://musely.net/`. Loopback defaults to `local-read-only`; pass `{environment: 'local-fixture'}` for locally fulfilled synthetic data. Origin/environment mismatches fail before a browser context opens. Other inputs are rejected except an optional operator-attested release pin.
 
@@ -60,7 +60,7 @@ A failed or unavailable step stays failed/pending with cause and unblock conditi
 | [replay browser](../scripts/replay.browser.js) | Actual writer fixture/public-state playback and write-zero checks; recorded provenance |
 | [owner-control regression](../scripts/owner-control.test.mjs) | Local state/auth model; not production owner receipt |
 
-## Executed validation
+## Original preparation validation at afa620f5 (before readonly guard repair)
 
 - Node 24 `npm run check`: **460/460 PASS**, typecheck/build/Worker dry-run PASS on the D01 preparation source (no deployment).
 - New offline evidence and guard regressions: **13/13 PASS**. Initial absent-module RED was retained before the evidence contract implementation.
@@ -69,3 +69,11 @@ A failed or unavailable step stays failed/pending with cause and unblock conditi
 - Final release tuple, actual account/Muse/webcam and both-owner artifacts: **unverified / absent**.
 
 These results establish preparation and local regression coverage only. D-01 remains open until the required actual receipts and same-build operational proof are audited.
+
+## Readonly claim-refresh repair
+
+The original local fixture made two GETs to `/api/claim/owner-muse` when opening Identity. In production that GET can read a stored Threads token, recheck a stale post and persist `setClaim` (including claim revocation). Its absence of HTTP POST was not enough to establish an effect-free observer. The default observer now blocks that endpoint, avoids the Identity tab, and explicitly fails its guard if such a GET is attempted. It does not modify Worker/runtime behavior or replace the response with a fake claim. Feed/source/selection/protected-inbox and anonymous reconnect observations remain real GET paths; claim, ritual UI and all 13 human receipt checks stay pending. The metadata helper still never authenticates a receipt or accepts D01.
+
+The original 26-case fixture report above is historical evidence from the previous source, not proof of the repaired callback or an actual account. The repair's fresh offline/full/browser logs and exact source hash are retained separately with the source pin; any subsequent fixture run remains local-fixture evidence, not production/real-owner/Muse/webcam acceptance.
+
+Fresh repair validation after merging main `4dfac70`: offline evidence/guard **14/14 PASS**, independent original claim-GET reproduction **1/1 GREEN**, and full `npm run check` **487/487 PASS** plus typecheck/build/Worker dry-run. The repaired actual local TLS Worker/WorldDO/SQLite fixture ran desktop and phone Chromium **25/25 PASS**: observer API GET 30, claim GET 0, API writes 0, MCP 0 and backend provider-fetch attempts 0. The fixture setup separately used two synthetic MCP reads; those are neither observer calls nor real-account proof. The exact copied callback matches this source. All 13 human gates remain pending, `acceptedD01: false`, and no production request, authentication or deployment was performed.
