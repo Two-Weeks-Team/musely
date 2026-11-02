@@ -35,7 +35,7 @@ export type MuseState = {
 };
 export type Wants = {goal: string; items: string[]; source: 'harness' | 'spark' | 'connected'; updatedAt: number};
 export type WorldEvent = {id: string; tick: number; at: number; source: Source; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data?: Record<string, unknown>; tags: string[]};
-export type WorldState = {worldId: string; day: string; seed: string; tick: number; version: number; muses: MuseState[]; spotlight: {cursor: number; visitorQueue: string[]}; lastTickAt: number;
+export type WorldState = {worldId: string; day: string; seed: string; tick: number; version: number; muses: MuseState[]; spotlight: {cursor: number; visitorQueue: string[]; /** Priority turns in a row (see MAX_PRIORITY_STREAK). */ streak?: number}; lastTickAt: number;
   /** Item rule counters (daily limits, pair trades). The append-only item history is the run log. */
   items: ItemLedger;
   /** Owner location source and cell (13.1). Older stored states get the default on the next tick. */
@@ -118,13 +118,15 @@ export function createWorld(worldId: string, now: number): WorldState {
 
 /** Priority requests waiting at once (8.2: a visitor's or a connected Muse goes ahead of the rotation). */
 export const SPOTLIGHT_QUEUE_MAX = 5;
+/** After this many priority turns in a row the next turn goes to the rotation, so the queue cannot hold the spotlight. */
+export const MAX_PRIORITY_STREAK = 2;
 /** Queued Muses that can still take a turn: known and not paused (a revoked Muse never gets one). */
 const queued = (s: WorldState) => s.spotlight.visitorQueue.filter(id => !s.paused?.[id] && s.muses.some(m => m.id === id));
 
 /** The Muse whose turn it is (visitor Muses queue ahead of residents), and the freedom it gets. */
 export function spotlightFor(s: WorldState, now: number): {muse: string; freedom: Freedom; priority: boolean} {
   const free = unlockedFreedoms(localClock(now).hour);
-  const first = queued(s)[0];
+  const first = (s.spotlight.streak ?? 0) >= MAX_PRIORITY_STREAK ? undefined : queued(s)[0];
   const muse = first ?? s.muses[s.spotlight.cursor % s.muses.length].id;
   return {muse, freedom: free[Math.floor(s.tick / s.muses.length) % free.length], priority: first !== undefined};
 }
@@ -193,10 +195,12 @@ export function tripMs(from: Place, to: Place, speed: Speed) {
 }
 
 /**
+ * With `spot` the turn goes to the Muse chosen when the heartbeat began (the runtime passes it: the queue may change while
+ * the model answers, and a paid answer must not lose its turn); without it the turn is computed from the state.
  * With `replies` (the runtime passes it, possibly empty) every meeting gets the other Muse's answer: the recorded
  * live answer for that meeting, or a rule answer. Without it (pure scenario runs) no answers are emitted.
  */
-export function tick(prev: WorldState, input: {now: number; decision?: Decision | null; replies?: EncounterReply[]}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
+export function tick(prev: WorldState, input: {now: number; decision?: Decision | null; replies?: EncounterReply[]; spot?: {muse: string; priority: boolean}}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
   const now = input.now, clock = localClock(now);
   const s: WorldState = structuredClone(prev);
   const events: WorldEvent[] = [];
@@ -236,7 +240,8 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   // Item upkeep (I-06): chain pending history, expire passes, spend Spotlight Tickets, trim the kept history.
   if (!itemFault) for (const e of itemUpkeep(s, now)) emit(e);
 
-  const spot = spotlightFor(s, now);
+  const computed = spotlightFor(s, now);
+  const spot = input.spot && s.muses.some(m => m.id === input.spot!.muse) ? {muse: input.spot.muse, priority: input.spot.priority, freedom: computed.freedom} : computed;
   // 1. Spotlight: a recorded live/replay decision for this turn, or the scenario's own choice. A paused Muse's turn passes silently.
   const d = input.decision && input.decision.muse === spot.muse && !paused(spot.muse) ? input.decision : null;
   if (input.decision && !d) emit({at: now, source: input.decision.source, kind: 'decision_rejected', muse: input.decision.muse, data: {reason: paused(input.decision.muse) ? 'paused: the owner revoked this Muse\'s delegation' : 'not this Muse\'s spotlight turn'}, tags: []});
@@ -304,9 +309,11 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     if (place.kind === 'campfire' && group.length >= 3 && clock.hour >= 17) emit({at: now, source: 'rule', kind: 'gathering', muse: group[0].id, place: placeId, data: {count: group.length, muses: group.map(m => m.id)}, tags: ['campfire_gathering_3plus']});
   }
 
-  // A priority turn leaves the queue (with any entry paused since); the rotation waits until the queue is empty.
+  // A priority turn leaves the queue (only its own entry, and any paused since); requests that arrived meanwhile stay
+  // for the next tick. The rotation waits during priority turns.
   if (spot.priority) s.spotlight.visitorQueue = s.spotlight.visitorQueue.filter(id => id !== spot.muse && !paused(id));
   else s.spotlight.cursor = (s.spotlight.cursor + 1) % s.muses.length;
+  s.spotlight.streak = spot.priority ? (s.spotlight.streak ?? 0) + 1 : 0;
   // Spotlight Tickets are spent after this turn was served, so the next heartbeat's spotlightFor sees the same queue.
   if (!itemFault) for (const e of spendSpotlightTickets(s, now, id => paused(id) || isConnected(s.inbox, id, now))) emit(e);
   s.tick += 1; s.version += 1; s.lastTickAt = now;

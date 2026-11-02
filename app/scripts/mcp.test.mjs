@@ -227,6 +227,10 @@ test('write tools: each signs a server_custodial envelope, verifies, commits and
   // I-05: Sunny's yes was a rule answer; the candidate records which side answered how.
   assert.equal(t.events('meetup_answer').find(e => e.muse === '01-sunny').source, 'rule');
   assert.deepEqual(t.events('meetup_candidate').at(-1).data.answers_via, {[OWNER_SLOT]: 'live', '01-sunny': 'rule'});
+  // A Task stored before answers recorded `via`: a resident's answer defaults to rule (it cannot have been a live call).
+  t.edit(st => { st.inbox.tasks.push({id: 'task_old', kind: 'meetup', from: OWNER_SLOT, to: '05-bloom', status: 'pending', awaiting: OWNER_SLOT, createdAt: t.clock.now, deadline: t.clock.now + 30 * 60_000, updatedAt: t.clock.now, round: 0, candidate: {time: '18:00', place: 'The Garden', public_basis: 'x'}, answers: {'05-bloom': 'accept'}, history: [{by: OWNER_SLOT, action: 'propose', at: t.clock.now}, {by: '05-bloom', action: 'answer', at: t.clock.now}]}); });
+  assert.equal((await t.call('answer_candidate', {task_id: 'task_old', answer: 'accept'})).isError, false);
+  assert.deepEqual(t.events('meetup_candidate').at(-1).data.answers_via, {[OWNER_SLOT]: 'live', '05-bloom': 'rule'});
   assert.equal((await t.call('answer_candidate', {task_id: task.id, answer: 'accept'})).structuredContent.refused, 'task_completed');
   const pub = await t.route('GET', '/api/owner/notifications', {session: null});
   const meetN = pub.body.notifications.find(n => n.kind === 'meetup_candidate');
@@ -563,6 +567,10 @@ test('I-05 #1 a connected Muse that acts gets a priority spotlight turn (dedupli
   assert.equal((await t.call('give_gift', {to: '08-orbit', item: 'gold_bar'})).isError ?? true, true);
   for (let i = 0; i < 2; i++) { await t.call('greet', {text: 'Hello again ' + i}); await t.runtime.heartbeat(T0 + (i + 1) * TICK_MS); }
   assert.equal(t.events('spotlight_requested').length, 3);
+  // Two priority turns in a row (T0, T0 + 1 min): the third tick went to the rotation, so the third request still waits.
+  assert.deepEqual(t.state().spotlight.visitorQueue, [OWNER_SLOT]);
+  await t.runtime.heartbeat(T0 + 3 * TICK_MS);
+  assert.deepEqual(t.state().spotlight.visitorQueue, []);
   await t.call('greet', {text: 'One more'});
   assert.equal(t.events('spotlight_requested').length, 3, 'hourly limit');
   assert.deepEqual(t.state().spotlight.visitorQueue, []);

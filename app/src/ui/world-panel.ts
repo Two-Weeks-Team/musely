@@ -21,6 +21,8 @@ import {isolation, enforceIsolation} from './isolation';
 import {mountReplay, replayPlayer, type ReplayEvent} from './replay';
 import {computeAutonomy} from './autonomy';
 import {EMPTY_FILTER, matchFilter, type Filter} from './replay-core';
+import {sourceLabel, modelNote} from './source-label';
+export {sourceLabel};
 
 type Ev = {seq: number; id: string; tick: number; at: number; source: 'live' | 'rule' | 'scripted' | 'replay'; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data: any; tags: string[]};
 type MuseView = {id: string; place: string; travel: {to: string; departAt: number; arriveAt: number; speed: string} | null; beat: {id: string; line: string | null} | null; inventory: string[]; reflection: string; wants?: {goal: string; items: string[]; source: string}};
@@ -38,15 +40,6 @@ const at = (ms: number) => new Intl.DateTimeFormat(undefined, {hour: '2-digit', 
 const viewerDay = (ms: number) => new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric'}).format(new Date(ms));
 const viewerZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'your time zone';
 
-export function sourceLabel(e: Pick<Ev, 'source' | 'data'>): {text: string; cls: string} {
-  if (e.source === 'live' && e.data?.actor === 'your Muse') return {text: 'LIVE · your Muse', cls: 'src-live'};
-  if (e.source === 'live' && e.data?.evidence?.requestId) return {text: 'LIVE · Muse Spark', cls: 'src-live'};
-  if (e.source === 'live' && e.data?.actorOrigin === 'trial') return {text: 'LIVE · visitor', cls: 'src-live'};
-  if (e.source === 'live') return {text: 'LIVE · verified', cls: 'src-live'};
-  if (e.source === 'replay') return {text: 'REPLAY', cls: 'src-replay'};
-  if (e.source === 'rule') return {text: 'RULE', cls: 'src-rule'};
-  return {text: 'SCRIPTED', cls: 'src-scripted'};
-}
 
 export function describe(e: Ev): string {
   const a = shortName(e.muse), b = shortName(e.other);
@@ -182,13 +175,6 @@ function museMarkers(map: LibreMap) {
 
 // ---------- Panel ----------
 type EvidenceEv = Ev & {fixture?: boolean};
-/** What to say about the model call behind an event that carries no request id: not applicable, or evidence that is missing. */
-function modelNote(e: EvidenceEv): string {
-  if (e.kind === 'spotlight' && (e.source === 'live' || e.source === 'replay')) return e.source === 'replay' ? 'Missing evidence — this replayed answer has no original request id recorded' : 'Missing evidence — no request id was recorded for this model answer';
-  if (e.source === 'scripted') return 'Not applicable — scripted, no model call';
-  if (e.source === 'rule') return 'Not applicable — rule, no model call';
-  return 'Not applicable — verification only, no model call';
-}
 const PARTS: [Filter['part'], string][] = [['', 'Any time'], ['night', 'Night 0–6'], ['morning', 'Morning 6–12'], ['afternoon', 'Afternoon 12–18'], ['evening', 'Evening 18–24']];
 
 export function mountWorldPanel(map: LibreMap) {

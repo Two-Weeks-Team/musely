@@ -521,7 +521,8 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         if (t.answers![otherId] === 'accept') {
           t.status = 'completed'; t.awaiting = null;
           // The last answer is this Muse's own call (live); the other side's answer keeps how it was made (a resident: rule).
-          const otherVia = [...t.history].reverse().find(h => h.by === otherId && h.action === 'answer')?.via ?? 'live';
+          // Older Tasks have no `via`: a resident (not connected) can only have answered by rule.
+          const otherVia = [...t.history].reverse().find(h => h.by === otherId && h.action === 'answer')?.via ?? (isConnected(inboxOf(st), otherId, at) ? 'live' : 'rule');
           live({at, source: 'live', kind: 'meetup_candidate', muse: me, other: otherId, line: `A meetup candidate with ${name(otherId)} is waiting for the owner's approval`, data: {task_id: t.id, candidate: 'private (owner only)', owner_approval: 'required', answers_via: {[me]: 'live', [otherId]: otherVia}}, tags: ['meetup_candidate']});
           notifyOwner(inboxOf(st), {kind: 'meetup_candidate', at, line: `A meetup candidate with ${name(otherId)} needs your approval`, ref: t.id, other: otherId, muse: me, detail: {...t.candidate!}});
           return {ok: true, data: {task: taskView(t, me), candidate: t.candidate, owner_approval: 'required'}};

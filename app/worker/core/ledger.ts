@@ -10,7 +10,8 @@ export interface Sql {
 export type Tier = 'visitor' | 'judge' | 'world';
 export type DenyReason = 'budget' | 'session_quota' | 'ip_quota';
 export type ReserveRequest = {id: string; tier: Tier; session: string; ip: string; action: string; maxCostUsd: number};
-export type ReserveResult = {ok: true; id: string} | {ok: false; reason: DenyReason};
+/** `existing`: this id was reserved before (a retry); the caller must not spend it again. */
+export type ReserveResult = {ok: true; id: string; existing?: true} | {ok: false; reason: DenyReason};
 export type Outcome = 'live' | 'timeout' | 'error' | 'rejected';
 
 // Unconnected visitors get a 3-per-hour trial of their harness run by the team key (direction v2, 8.8/15).
@@ -57,7 +58,7 @@ export class Ledger {
     if (!(req.maxCostUsd > 0) || !Number.isFinite(req.maxCostUsd)) throw new Error('maxCostUsd must be positive');
     this.expireStale(now);
     const existing = this.sql.exec('SELECT id FROM reservations WHERE id = ?', req.id).toArray();
-    if (existing.length) return {ok: true, id: req.id}; // idempotent retry of the same action
+    if (existing.length) return {ok: true, id: req.id, existing: true}; // idempotent retry of the same action
     const b = this.row(day);
     if (b.spent + b.reserved + req.maxCostUsd > this.opts.dailyCapUsd) return {ok: false, reason: 'budget'};
     if (req.tier !== 'world') {

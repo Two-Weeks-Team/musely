@@ -119,7 +119,7 @@ test('ledger: concurrent reservations never exceed the cap; settle is idempotent
   for (let i = 0; i < 20; i++) { const r = l.reserve({id: 'r' + i, tier: 'world', session: 'w', ip: '', action: 'spotlight', maxCostUsd: 0.003}); if (r.ok) ok.push(r.id); }
   assert.equal(ok.length, 3);
   assert.ok(l.status().reservedUsd <= 0.01);
-  assert.deepEqual(l.reserve({id: 'r0', tier: 'world', session: 'w', ip: '', action: 'spotlight', maxCostUsd: 0.003}), {ok: true, id: 'r0'}, 'same id is idempotent');
+  assert.deepEqual(l.reserve({id: 'r0', tier: 'world', session: 'w', ip: '', action: 'spotlight', maxCostUsd: 0.003}), {ok: true, id: 'r0', existing: true}, 'same id is idempotent and says it was reserved before (I-05: the runtime does not call again)');
   l.settle('r0', 0.001, 'live');
   assert.equal(l.settle('r0', 0.001, 'live').already, true);
   assert.equal(l.status().liveCalls, 1);

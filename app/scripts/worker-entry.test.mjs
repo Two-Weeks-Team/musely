@@ -96,7 +96,11 @@ test('Worker entry: /api/agent-keys → /mcp handshake and tools → owner locat
   assert.equal(view.nextSpotlight.priority, true);
   const reqEvent = dobj.worldEvents(0, 2000).find(e => e.kind === 'spotlight_requested' && e.muse === '06-ink');
   assert.equal(reqEvent.data.actorOrigin, 'trial');
-  assert.ok(!JSON.stringify(reqEvent).includes(judgeCookie.split('=')[1].split('.')[0]), 'no session id in the public event');
+  // The session token's body is the base64url JSON session: its real sid must not appear in the public event.
+  const sid = JSON.parse(Buffer.from(judgeCookie.split('=')[1].split('.')[0], 'base64url').toString()).sid;
+  assert.match(sid, /^[A-Za-z0-9_-]{16,}$/);
+  assert.ok(!JSON.stringify(reqEvent).includes(sid), 'no session id in the public event');
+  assert.ok(!JSON.stringify((await go('GET', '/api/world/events?limit=2000')).body).includes(sid), 'nor anywhere in the public log');
   await dobj.ownerRevoke('05-bloom', 'owner:test');
   assert.equal((await go('POST', '/api/world/spotlight', {muse: '05-bloom'}, {cookie: judgeCookie})).status, 409, 'a revoked Muse is not queued');
 
