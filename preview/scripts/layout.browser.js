@@ -21,7 +21,7 @@ async (page) => {
   const card = r('#muse-card');
   const body = document.querySelector('#muse-card .card-body');
   const candWanted = !document.getElementById('story-candidate').hidden, inCard = !!r('#card-candidate');
-  return {inner: innerWidth, scrollW: document.documentElement.scrollWidth, bodyShown: !!body && getComputedStyle(body).display !== 'none', bodyHeight: body ? body.getBoundingClientRect().height : 0, candWanted, cand: r('#card-candidate') || r('#story-candidate'), candInCard: inCard, header: r('header'), footer: r('footer'), card, story: r('#story-heading'), tools: r('.map-tools'), caption: r('.world-caption'), follow: card ? press('follow') : null, meetup: card ? press('meetup') : null};
+  return {inner: innerWidth, scrollW: document.documentElement.scrollWidth, bodyShown: !!body && getComputedStyle(body).display !== 'none', bodyHeight: body ? body.getBoundingClientRect().height : 0, bodyScroll: body ? body.scrollHeight : 0, candWanted, cand: r('#card-candidate') || r('#story-candidate'), candInCard: inCard, header: r('header'), footer: r('footer'), card, story: r('#story-heading'), tools: r('.map-tools'), caption: r('.world-caption'), follow: card ? press('follow') : null, meetup: card ? press('meetup') : null};
  };
  const strip = (w, h) => h <= 520 || (w <= 360 && h <= 600); // the sizes where the card is a compact strip (style.css)
  const judge = (m, w, h, story) => {
@@ -44,7 +44,7 @@ async (page) => {
    if (m.header && c[1] < m.header[1] + m.header[3] + 8) bad.push('card within 8 px of the header');
    if (m.footer && c[1] + c[3] > m.footer[1] - 8) bad.push('card within 8 px of the footer');
    if (strip(w, h) && m.bodyShown) bad.push('the full card shows where only the compact strip fits');
-   if (!strip(w, h) && (!m.bodyShown || m.bodyHeight < 24)) bad.push(`the card text is squeezed to ${Math.round(m.bodyHeight)} px`);
+   if (!strip(w, h) && (!m.bodyShown || m.bodyHeight < Math.min(m.bodyScroll, 48))) bad.push(`the card text is squeezed to ${Math.round(m.bodyHeight)} px`);
    if (m.follow === false) bad.push('Follow cannot be pressed');
    if (m.meetup === false) bad.push('the meet-up plan cannot be pressed');
   }
@@ -60,21 +60,21 @@ async (page) => {
    await p.goto(base.href, {waitUntil: 'domcontentloaded', timeout: 90000});
    await p.waitForFunction(() => window.__world?.getMetrics().ready, null, {timeout: 90000});
    await p.waitForTimeout(2500);
-   const bad = new Set(); let maxCard = 0, shownCard = 0, steps = 0, meetupSteps = 0, candSteps = 0;
+   const bad = new Set(); let maxCard = 0, shownCard = 0, steps = 0, meetupSteps = 0, candSteps = 0, minBody = Infinity;
    for (let t = 0; t <= 205; t += 7) {
     await p.evaluate(t => window.__world.seek(t), t); await p.waitForTimeout(150);
     const m = await p.evaluate(measure);
     steps++; for (const b of judge(m, w, h, true)) bad.add(b);
-    if (m.card) { maxCard = Math.max(maxCard, m.card[3]); shownCard++; }
+    if (m.card) { maxCard = Math.max(maxCard, m.card[3]); shownCard++; if (m.bodyShown) minBody = Math.min(minBody, Math.round(m.bodyHeight)); }
     if (m.meetup === true) meetupSteps++;
     if (m.candWanted) candSteps++;
    }
    // A card that never shows would pass every pair check above, so it has to show for a real part of the story.
    if (shownCard < 10) bad.add(`the card showed in only ${shownCard} of ${steps} steps`);
    // Pressable checks that skip hidden buttons, or a meet-up line that never appears, would pass without testing anything.
-   if (meetupSteps < 2) bad.add(`the meet-up plan was offered in only ${meetupSteps} steps`);
-   if (candSteps < 2) bad.add(`the meet-up line appeared in only ${candSteps} steps`);
-   check(vp, 'story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable', bad.size === 0, [...bad].join(' | ') || `card up to ${Math.round(maxCard)} px, shown in ${shownCard} of ${steps} steps, meet-up plan in ${meetupSteps}, meet-up line in ${candSteps}`);
+   if (meetupSteps < shownCard - 2) bad.add(`the meet-up plan was offered in only ${meetupSteps} of ${shownCard} card steps (the story keeps the first Muse selected)`);
+   if (candSteps < 6) bad.add(`the meet-up line appeared in only ${candSteps} steps`);
+   check(vp, 'story: page as wide as the screen; card, heading, map buttons clear of each other, the header and the footer; Follow and the meet-up plan pressable', bad.size === 0, [...bad].join(' | ') || `card up to ${Math.round(maxCard)} px, shown in ${shownCard} of ${steps} steps, meet-up plan in ${meetupSteps}, meet-up line in ${candSteps}, card text at least ${minBody === Infinity ? 'n/a (strip)' : minBody + ' px'}`);
    if (strip(w, h)) check(vp, 'story: a screen too small for the full card shows it as a compact strip, not hidden', shownCard >= 10, `card up to ${Math.round(maxCard)} px, shown in ${shownCard} steps`);
 
    // ---------- world mode, a Muse picked ----------
@@ -91,6 +91,28 @@ async (page) => {
    if (!shown || !mw.card) badW.add('the card did not show after picking a Muse');
    check(vp, 'world mode: same layout checks with a Muse picked', badW.size === 0, [...badW].join(' | ') || `card ${Math.round(mw.card[3])} px tall`);
    check(vp, 'no page errors', errors.length === 0, errors.join(' / '));
+  } catch (e) { check(vp, 'run', false, String(e).split('\n')[0]); }
+  await ctx.close();
+ }
+
+ // ---------- sweep: every phone size from 320x520 to 420x700, where the card changes between a column and a strip ----------
+ {
+  const vp = 'sweep 320-420 x 520-700';
+  const ctx = await browser.newContext({viewport: {width: 320, height: 520}, isMobile: true, hasTouch: true, deviceScaleFactor: 2});
+  const p = await ctx.newPage(), bad = new Set(); let points = 0, minBody = Infinity, minAt = '';
+  try {
+   await p.goto(base.href, {waitUntil: 'domcontentloaded', timeout: 90000});
+   await p.waitForFunction(() => window.__world?.getMetrics().ready, null, {timeout: 90000});
+   await p.waitForTimeout(2500);
+   await p.evaluate(() => window.__world.seek(95)); // the meet-up agreement is on screen for the next ~45 s
+   for (let w = 320; w <= 420; w += 20) for (let h = 520; h <= 700; h += 20) {
+    await p.setViewportSize({width: w, height: h}); await p.waitForTimeout(250);
+    const m = await p.evaluate(measure); points++;
+    for (const b of judge(m, w, h, true)) bad.add(`${w}x${h}: ${b}`);
+    if (!m.card) bad.add(`${w}x${h}: the card is not shown`);
+    else if (m.bodyShown && m.bodyHeight < minBody) { minBody = Math.round(m.bodyHeight); minAt = `${w}x${h}`; }
+   }
+   check(vp, 'every phone size in the sweep keeps the layout clear, the buttons pressable and the card text readable', bad.size === 0, [...bad].slice(0, 4).join(' | ') || `${points} sizes; card text at least ${minBody} px (at ${minAt})`);
   } catch (e) { check(vp, 'run', false, String(e).split('\n')[0]); }
   await ctx.close();
  }
@@ -128,20 +150,24 @@ async (page) => {
    for (const o of others) { await sel.selectOption(o); await p.waitForTimeout(200); counts.push(await p.locator('.replay-view .ev-list li').count()); }
    check(vp, 'the time-of-day filter follows the viewer\'s zone (this part has moments, the other three have none)', n > 0 && counts.every(x => x === 0), `${expectPart}: ${n} moments; ${others.map((o, i) => `${o}: ${counts[i]}`).join(', ')}`);
    // ---------- Feed and Highlights with events either side of the viewer's midnight (served from a stub, so the day is the same on every run) ----------
-   const T0 = Date.UTC(2026, 10, 1, 14, 50); // 23:50 on Nov 1 in Seoul, 14:50 in London, 07:50 in Los Angeles
+   const T0 = Date.UTC(2026, 10, 1, 14, 50); // 23:50 on Nov 1 in Seoul, 14:50 in London, 06:50 in Los Angeles (daylight time ended that morning)
    const stub = (n, min) => ({seq: n, id: `2026-11-01:${n}:0`, tick: n, at: T0 + min * 60000, source: 'scripted', kind: 'spotlight', muse: '00-jolly', other: null, place: 'commons:benches', line: `Line ${n}`, data: {}, tags: ['first_trade']});
    const evs = [stub(1, 0), stub(2, 20), stub(3, 30)];
    const dayOf = ms => new Intl.DateTimeFormat(locale, {timeZone: tz, month: 'short', day: 'numeric'}).format(ms);
    const days = [...new Set(evs.map(e => dayOf(e.at)))];
+   await p.close(); // one WebGL page at a time
    const f = await ctx.newPage();
-   await f.route('**/api/world/events*', r => r.fulfill({json: evs}));
-   await f.route('**/api/world/highlights*', r => r.fulfill({json: evs}));
+   // The feed polls with ?since=<last seq> every 10 s; the stub answers like the API, so a slow run never sees an event twice.
+   await f.route('**/api/world/events*', r => { const since = Number(new URL(r.request().url()).searchParams.get('since') || 0); return r.fulfill({json: evs.filter(e => e.seq > since)}); });
+   await f.route('**/api/world/highlights*', r => r.fulfill({json: [...evs].reverse()})); // the API lists the newest first
    await f.goto(new URL('?autoplay=0', base).href, {waitUntil: 'domcontentloaded', timeout: 90000});
    await f.waitForFunction(() => window.__world?.getMetrics().ready, null, {timeout: 90000});
    await f.click('#world-open'); await f.waitForSelector('#world-panel:popover-open'); await f.waitForSelector('.ev-list .ev-btn');
    const heads = (await f.locator('.ev-list .ev-day').allTextContents()).map(x => x.trim()), expectHeads = days.length > 1 ? [...days].reverse() : [];
    check(vp, 'Feed: events either side of the viewer\'s midnight get a day heading each (newest day first), none when they share a day', JSON.stringify(heads) === JSON.stringify(expectHeads), `${heads.join(' | ') || 'no headings'}; expected ${expectHeads.join(' | ') || 'none'}`);
    await f.click('#world-panel .tab[data-tab="highlights"]'); await f.waitForSelector('label.fld');
+   const hHeads = (await f.locator('.ev-list .ev-day').allTextContents()).map(x => x.trim());
+   check(vp, 'Highlights: the same day headings, newest first', JSON.stringify(hHeads) === JSON.stringify(expectHeads), `${hHeads.join(' | ') || 'no headings'}; expected ${expectHeads.join(' | ') || 'none'}`);
    const psel = f.locator('label.fld', {hasText: 'Time of day (your time)'}).locator('select'), got = {}, want = {};
    for (const pt of ['night', 'morning', 'afternoon', 'evening']) { want[pt] = evs.filter(e => part(tz, e.at) === pt).length; await psel.selectOption(pt); await f.waitForTimeout(150); got[pt] = await f.locator('.ev-list .ev-btn').count(); }
    check(vp, 'Highlights: the time-of-day filter counts moments in the viewer\'s zone', JSON.stringify(got) === JSON.stringify(want) && Object.values(want).some(x => x > 0), `got ${JSON.stringify(got)} expected ${JSON.stringify(want)}`);
