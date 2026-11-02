@@ -38,6 +38,10 @@ async function auditSource(pin){
  const files=[];for(const file of pin.files??[]){if(!/^[A-Za-z0-9_./-]+$/.test(file.path)||file.path.includes('..'))throw Error('invalid manifest path');const r=await fetch(pin.origin+'/'+file.path,{cache:'no-store'});const bytes=Buffer.from(await r.arrayBuffer());const digest=sha(bytes);if(!r.ok||digest!==file.sha256||bytes.length!==file.bytes)throw Error('asset pin mismatch '+file.path);files.push({path:file.path,sha256:digest,bytes:bytes.length});}
  return {at:new Date().toISOString(),url,htmlSHA256:sha(body),htmlBytes:body.length,statusCode:status.status,statusSHA256:sha(rawStatus),publicStatus:JSON.parse(rawStatus),deploymentIdentity:'release/config/worker identity is root-attested in the freeze pin; public status has no release identity endpoint',files};
 }
+// Pure report producers share the same serialized-output seam as the collector.
+const PROFILE_CACHE_POLICY='unchanged-profile-cache';
+export const createMeasurementReport=(opts,pin)=> ({kind:opts.kind,pin,conditions:{durationMs:DURATION_MS,dprCap:1.5,route:'story-manual-210',cachePolicy:opts.kind==='first-load'?'target cache disabled; service worker bypass;4Mbps/150ms':PROFILE_CACHE_POLICY,documentPolicy:opts.kind==='first-load'?'network document':'frozen HTML interception',globalCacheCleared:false},startedAt:new Date().toISOString(),complete:false,writes:[],errors:[],memory:{samples:[]},cleanup:{targetClosed:false,browserClosed:false,forwardChanged:false}});
+export const measurementContext=report=> ({model:report.model,android:report.android,chrome:report.chrome,viewport:report.device.viewport,dpr:report.device.dpr.applied,route:'story-manual-210',cachePolicy:PROFILE_CACHE_POLICY});
 export async function runMeasurement(opts,pin){
  const refusals=validateFreeze(pin,opts);if(refusals.length)throw Error('Measurement refused before CDP: '+refusals.join(', '));
  if(!opts.execute)throw Error('Measurement requires explicit --execute after root release freeze');
@@ -49,7 +53,7 @@ export async function runMeasurement(opts,pin){
  }
  if(!opts.out)throw Error('a new --out directory is required');if(existsSync(join(opts.out,'results.json')))throw Error('immutable result already exists');
  const targets=await(await fetch(opts.endpoint+'/json/list')).json();const target=targets.find(t=>t.id===opts.targetId&&t.type==='page');if(!target||new URL(target.url).origin!==pin.origin)throw Error('exact task target missing or wrong origin');
- mkdirSync(opts.out,{recursive:true});const report={kind:opts.kind,pin,conditions:{durationMs:DURATION_MS,dprCap:1.5,route:'story-manual-210',cachePolicy:opts.kind==='first-load'?'target cache disabled; service worker bypass;4Mbps/150ms':'unchanged-profile-cache; frozen HTML interception',globalCacheCleared:false},startedAt:new Date().toISOString(),complete:false,writes:[],errors:[],memory:{samples:[]},cleanup:{targetClosed:false,browserClosed:false,forwardChanged:false}};
+ mkdirSync(opts.out,{recursive:true});const report=createMeasurementReport(opts,pin);
  if(baseline){report.baselineSHA256=baselineSHA256;report.baselineArtifact=opts.baseline;report.baselineProvenance=baselineProvenance;}
  let c,networkChanged=false,intercepted=false,lifecycle=false;
  try{
@@ -87,7 +91,7 @@ export async function runMeasurement(opts,pin){
     report.gate={fps:report.performance.complete&&report.performance.medianFps>=(opts.kind==='desktop-210'?55:30),p95:report.performance.p95FrameMs<=(opts.kind==='desktop-210'?33:50),visible:raw.visibility.length===0};
     if(opts.kind==='mobile-210'){
      report.memory.samples.push({elapsed:(Date.now()-began)/1000,...samplePss(opts.serial)});const all=report.memory.samples.every(x=>x.complete);report.memory.complete=all;report.memory.peakKiB=all?Math.max(...report.memory.samples.map(x=>x.pssKiB)):null;report.memory.endKiB=all?report.memory.samples.at(-1).pssKiB:null;
-     if(opts.baseline){report.memory.comparison=comparePss(baseline.memory,report.memory);report.context={model:report.model,android:report.android,chrome:report.chrome,viewport:report.device.viewport,dpr:report.device.dpr.applied,route:'story-manual-210',cachePolicy:'unchanged-profile-cache'};report.contextMismatches=compareContext(pin.baselineContext,report.context);}
+     if(opts.baseline){report.memory.comparison=comparePss(baseline.memory,report.memory);report.context=measurementContext(report);report.contextMismatches=compareContext(pin.baselineContext,report.context);}
     }
    }else if(opts.kind==='eight-budget'){
     await until(c,'window.__world.getMetrics().characters?.every(x=>x.loadedLods.length===3)&&window.__world.getMetrics().characterUpgrade?.props');await c.evaluate("window.__world.startStory();document.getElementById('pause').click()");report.renderSamples=[];

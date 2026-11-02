@@ -120,3 +120,17 @@ test('runtime tag tokens retain quoted angles, skip raw text and honor only the 
  assert.deepEqual(externalCodePaths('<script>const x=\'<base href="/fake/"><script src="fake.js">\';</script><!-- <base href="/comment/"> --><script src="runtime.js"></script>',origin),['runtime.js']);
  for(const html of ['<base href="https://foreign.invalid/"><script src="runtime.js"></script>','<base href="/code/"><script src="runtime.js?v=1"></script>'])assert.throws(()=>externalCodePaths(html,origin),/not_pinned/);
 });
+
+test('a serialized collector report can be reused as a consistent baseline without editing its evidence',async()=>{
+ const {createMeasurementReport,measurementContext}=await import('./device-benchmark.mjs'),{compareBaselineContext}=await import('./device-metrics.mjs');
+ const report=createMeasurementReport(opts,await freezeFixture());
+ Object.assign(report,{model:'SM-S918N',android:'16',chrome:'156',device:{viewport:[411,742],dpr:{device:2.625,applied:1.5}}});
+ report.context=measurementContext(report);
+ const wire=JSON.stringify(report),baseline=JSON.parse(wire),result=compareBaselineContext(baseline,context);
+ assert.deepEqual(result.conflicts,[],'fresh collector output must not conflict with its own cache policy');
+ assert.equal(result.complete,true);assert.deepEqual(result.missing,[]);assert.deepEqual(result.mismatches,[]);
+ assert.equal(baseline.conditions.cachePolicy,'unchanged-profile-cache');assert.equal(baseline.context.cachePolicy,'unchanged-profile-cache');
+ assert.equal(baseline.conditions.documentPolicy,'frozen HTML interception');
+ assert.equal(JSON.stringify(baseline),wire,'baseline validation must not rewrite historical evidence');
+ const changed=JSON.parse(wire);changed.conditions.cachePolicy='cache-disabled';assert.ok(compareBaselineContext(changed,context).conflicts.includes('cachePolicy'),'a genuine conflicting policy must still be rejected');
+});
