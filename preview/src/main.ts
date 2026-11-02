@@ -87,8 +87,8 @@ const wantsLine=(i:number)=>{const id=RESIDENT_VARIANTS[i]??'00-jolly',g=(liveWa
 async function refreshWants(){if(isolation.replay)return;try{const r=await fetch('/api/world',{cache:'no-store'});if(!r.ok)return;const w=await r.json();liveWants=Object.fromEntries((w.muses??[]).filter((m:any)=>m?.wants?.goal).map((m:any)=>[m.id,{goal:String(m.wants.goal),source:String(m.wants.source)}]));}catch{}}
 void refreshWants();setInterval(refreshWants,60_000);
 function updateUI(){($('story-scrubber') as HTMLInputElement).value=String(clock.elapsed);const p=PEOPLE[selected],t=Math.min(lifeTime,DURATION),chapter=chapterAt(t),turn=conversationAt(t);$('muse-name').textContent=p.name;$('muse-role').textContent=(selected===0?'YOUR MUSE':'A FAMILIAR FACE')+' · '+stateAt(selected,lifeTime);$('avatar-large').style.setProperty('--muse',p.color);$('activity-title').textContent=chapter.title;$('muse-want-text').textContent=wantsLine(selected);$('activity-detail').textContent=turn?PEOPLE[turn.person].name+': '+turn.text:t<14?'Little stories are already unfolding around the Bay.':'Your Muse can connect. The next commitment is still yours.';$('meetup').hidden=selected!==0;$('muse-card').hidden=map.getZoom()<20.35;$('decision-state').textContent=ownerDecision==='approved'?'Local preview · approved':ownerDecision==='declined'?'Local preview · declined':'Your confirmation comes first';portraits.querySelectorAll('button').forEach((b,i)=>{b.classList.toggle('selected',i===selected);b.setAttribute('aria-pressed',String(i===selected));});$('welcome').hidden=document.body.classList.contains('story-mode')||map.getZoom()>20.5;$('place-line').textContent=map.getZoom()<14?'LITTLE STORIES AROUND THE BAY':map.getZoom()<20?'MENLO PARK · CALIFORNIA':'HQ · THE LITTLE COMMONS';pin.hidden=map.getZoom()>20.2||map.getZoom()<18.3;
-$('story-title').textContent=chapter.title;$('story-speaker').textContent=turn?PEOPLE[turn.person].name:'Around the Bay';const candidate=$('story-candidate');candidate.hidden=turn?.round===undefined;if(turn?.round!==undefined){const r=ROUNDS[turn.round];candidate.textContent=`${r.time} · ${r.place}    Jimin ${r.jimin?'✓ yes':'✕ no'} · Sora ✓ yes`;}
-updateContinuity();
+$('story-title').textContent=chapter.title;$('story-speaker').textContent=turn?PEOPLE[turn.person].name:'Around the Bay';const candidate=$('story-candidate');candidate.hidden=turn?.round===undefined;if(turn?.round!==undefined){const r=ROUNDS[turn.round];candidate.textContent=`${r.time} · ${r.place}    Jimin ${r.jimin?'✓ yes':'✕ no'} · Sora ✓ yes`;}$('card-candidate').hidden=candidate.hidden;$('card-candidate').textContent=candidate.textContent;
+updateContinuity();syncCardScroll();
 }
 updateUI();
 let spark:SparkStatus|null=null;
@@ -201,6 +201,14 @@ function updateCues(now:number){
 setFlowCue(previewCue);
 // Header height drives the caption and story heading offsets so wrapped header rows never cover them (390 px).
 const headerEl=document.querySelector('header')!;new ResizeObserver(()=>document.documentElement.style.setProperty('--header-h',headerEl.getBoundingClientRect().bottom+'px')).observe(headerEl);
+// The selected-Muse card lives between the header and the footer: both heights are measured, so a long line or a short screen never lets it cover either.
+const footerEl=document.querySelector('footer');
+// --footer-h is the footer's real height (the card follows it). The line under the portraits (#selected-line) comes and goes when the zoom crosses 20.35, which changes that height, so the map buttons follow --footer-full-h, the height WITH the line, and stay where they are while the user zooms.
+function syncFooter(){if(!footerEl)return;const root=document.documentElement.style,line=document.getElementById('selected-line'),real=footerEl.getBoundingClientRect().height;root.setProperty('--footer-h',real+'px');let full=real;if(line&&line.hidden){line.hidden=false;full=footerEl.getBoundingClientRect().height;line.hidden=true;}root.setProperty('--footer-full-h',full+'px');}
+if(footerEl)new ResizeObserver(syncFooter).observe(footerEl);
+// The card's text scrolls when it does not fit. It gets a keyboard stop only then, so a keyboard user can read all of it.
+function syncCardScroll(){const b=document.querySelector<HTMLElement>('#muse-card .card-body');if(!b)return;if(b.scrollHeight>b.clientHeight+1){b.tabIndex=0;b.setAttribute('role','group');b.setAttribute('aria-label','Muse details (scrolls)');}else{b.removeAttribute('tabindex');b.removeAttribute('role');b.removeAttribute('aria-label');}}
+const cardEl=document.getElementById('muse-card');if(cardEl)new ResizeObserver(syncCardScroll).observe(cardEl);
 markMode(mode);
 // Entry paths (P-02): watch, a local harness trial, or the staged connection walkthrough. Preview state only.
 // Mounted last: ?entry=watch calls onWatch (startStory) while mounting, which needs the mode controls and cue state above.

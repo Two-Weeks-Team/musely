@@ -73,7 +73,7 @@ export function mountReplay(body: HTMLElement, ctx: ReplayCtx): {destroy(): void
   const places = [...new Set(RUN.events.map(e => e.place).filter((id): id is string => !!id))];
   const museSelect = select('Muse', muses.map(id => [id, ctx.museName(id)]), v => { filter.muse = v; });
   const placeSelect = select('Place', places.map(id => [id, ctx.placeName(id)]), v => { filter.place = v; });
-  const partSelect = select('Time of day', [['night', 'Night (00–06)'], ['morning', 'Morning (06–12)'], ['afternoon', 'Afternoon (12–18)'], ['evening', 'Evening (18–24)']], v => { filter.part = v as Filter['part']; });
+  const partSelect = select('Time of day (your time)', [['night', 'Night (00–06)'], ['morning', 'Morning (06–12)'], ['afternoon', 'Afternoon (12–18)'], ['evening', 'Evening (18–24)']], v => { filter.part = v as Filter['part']; });
   const count = el('p', 'muted'); count.setAttribute('role', 'status');
   const empty = el('div'); empty.append(el('p', 'muted', 'No moment matches. Clear the filters.'));
   const clear = button('Clear filters'); clear.onclick = () => {
@@ -112,6 +112,7 @@ export function mountReplay(body: HTMLElement, ctx: ReplayCtx): {destroy(): void
         for (const tag of e.tags) b.append(el('span', 'tag', tag.replace(/_/g, ' ')));
         b.onclick = () => ctx.showEvidence(e, b); li.append(b); rows.set(e.id, li);
       }
+      const stamp = li.querySelector('.ev-time'), now = ctx.at(e.at); if (stamp && stamp.textContent !== now) stamp.textContent = now; // a device can change zone while the page stays open
       return li;
     });
     list.replaceChildren(...children);
@@ -135,7 +136,7 @@ export function mountReplay(body: HTMLElement, ctx: ReplayCtx): {destroy(): void
     toggle.textContent = state.playing ? 'Pause' : 'Play'; toggle.setAttribute('aria-pressed', String(state.playing));
     for (const [speed, b] of speedButtons) b.setAttribute('aria-pressed', String(state.speed === speed));
     range.value = String(state.cursor); range.setAttribute('aria-valuetext', `${formatT(state.cursor)} of ${formatT(state.durationSec)}`);
-    time.textContent = `${formatT(state.cursor)} / ${formatT(state.durationSec)} · ${state.speed}× · ${ctx.at(RUN.startAt + state.cursor * 1000)} Menlo Park`;
+    time.textContent = `${formatT(state.cursor)} / ${formatT(state.durationSec)} · ${state.speed}× · ${ctx.at(RUN.startAt + state.cursor * 1000)} your time`;
   }
   function stopTimer() { if (timer !== null) { clearInterval(timer); timer = null; } }
   function syncTimer() {

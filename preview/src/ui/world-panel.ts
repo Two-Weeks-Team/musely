@@ -10,7 +10,7 @@ import {HARNESSES, harnessById} from '../engine/harness';
 import {PLACES, PLACE_BY_ID} from '../engine/places';
 import {itemName} from '../engine/items';
 import {MUSE_VARIANTS} from '../character-kit/catalog';
-import {createWorld, tick, TICK_MS} from '../engine/world';
+import {createWorld, tick, TICK_MS, localClock} from '../engine/world';
 import {makeHooks} from '../engine/rules';
 import {ensureSession, sparkStatus} from '../live';
 import {ritualCard} from './ritual';
@@ -30,8 +30,12 @@ const museName = (id: string | null | undefined) => (id ? (id === '00-jolly' ? "
 const shortName = (id: string | null | undefined) => (id ? harnessById(id).name : 'World');
 const placeName = (id: string | null | undefined) => (id ? PLACE_BY_ID.get(id)?.name ?? id : '');
 const color = (id: string) => MUSE_VARIANTS.find(v => v.id === id)?.body ?? '#E8DDC7';
-const clockFmt = new Intl.DateTimeFormat('en-US', {timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit', hour12: false});
-const at = (ms: number) => clockFmt.format(new Date(ms));
+// Every time on screen is the viewer's own time (their device's time zone). The world itself keeps Menlo Park time for its day and its
+// beats; only what is shown is converted.
+// The formatters are made per call: a formatter keeps the zone it was built in, and a device can change zone during a session.
+const at = (ms: number) => new Intl.DateTimeFormat(undefined, {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}).format(new Date(ms));
+const viewerDay = (ms: number) => new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric'}).format(new Date(ms));
+const viewerZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'your time zone';
 
 export function sourceLabel(e: Pick<Ev, 'source' | 'data'>): {text: string; cls: string} {
   if (e.source === 'live' && e.data?.actor === 'your Muse') return {text: 'LIVE · your Muse', cls: 'src-live'};
@@ -245,7 +249,7 @@ export function mountWorldPanel(map: LibreMap) {
     const dl = el('dl', 'facts');
     const fact = (k: string, v: unknown) => { if (v === undefined || v === null || v === '') return; dl.append(el('dt', '', k), el('dd', '', typeof v === 'string' ? v : JSON.stringify(v))); };
     if (e.fixture) fact('Record', 'Preview fixture (SCRIPTED) — not a live record');
-    fact('When (Menlo Park)', at(e.at) + ` · tick ${e.tick} · event ${e.id}`);
+    fact(`When (your time · ${viewerZone()})`, `${viewerDay(e.at)}, ${at(e.at)}` + ` · tick ${e.tick} · event ${e.id}`);
     fact('Muse', museName(e.muse)); fact('Other', e.other ? museName(e.other) : null); fact('Place', placeName(e.place));
     const ev = e.data?.evidence;
     const orig = typeof ev?.replayOf === 'string' ? ev.replayOf : ev?.replayOf?.requestId, rec = typeof ev?.replayOf === 'object' ? ev.replayOf : null;
@@ -285,6 +289,12 @@ export function mountWorldPanel(map: LibreMap) {
   }
   evidence.addEventListener('toggle', ev => { if ((ev as ToggleEvent).newState === 'closed') void returnFromEvidence(); });
 
+  // A list that crosses the viewer's midnight gets a day heading per group, so 00:12 above 23:58 reads as the next day, not as a jump back.
+  function addRows(ul: HTMLElement, evs: Ev[]) {
+    const days = evs.map(e => viewerDay(e.at)), several = new Set(days).size > 1;
+    let shown = '';
+    evs.forEach((e, i) => { if (several && days[i] !== shown) { const hd = el('li', 'ev-day', days[i]); hd.setAttribute('role', 'heading'); hd.setAttribute('aria-level', '3'); ul.append(hd); shown = days[i]; } ul.append(row(e)); });
+  }
   function row(e: Ev) {
     const li = el('li', 'ev'); const s = sourceLabel(e);
     const b = el('button', 'ev-btn'); b.type = 'button'; b.dataset.eventId = e.id; b.onclick = () => openEvidence(e, b);
@@ -315,7 +325,7 @@ export function mountWorldPanel(map: LibreMap) {
     const draw = () => {
       ul.replaceChildren();
       const shown = hl.filter(e => matchFilter(e, hf));
-      for (const e of shown) ul.append(row(e));
+      addRows(ul, shown);
       status.textContent = shown.length ? `${shown.length} moment${shown.length === 1 ? '' : 's'}` : 'No moment matches. Clear the filters.';
       for (const c of chips) c.setAttribute('aria-pressed', String((c.dataset.tag ?? '') === hf.tag));
     };
@@ -331,7 +341,7 @@ export function mountWorldPanel(map: LibreMap) {
     const muses = [...new Set(hl.flatMap(e => [e.muse, e.other ?? null]).filter((m): m is string => !!m))].sort();
     const places = [...new Set(hl.map(e => e.place).filter((p): p is string => !!p))].sort();
     const fields = el('div', 'fields');
-    fields.append(field('Muse', [['', 'Any Muse'], ...muses.map(m => [m, shortName(m)] as [string, string])], 'muse'), field('Place', [['', 'Any place'], ...places.map(p => [p, placeName(p)] as [string, string])], 'place'), field('Time of day (Menlo Park)', PARTS, 'part'));
+    fields.append(field('Muse', [['', 'Any Muse'], ...muses.map(m => [m, shortName(m)] as [string, string])], 'muse'), field('Place', [['', 'Any place'], ...places.map(p => [p, placeName(p)] as [string, string])], 'place'), field('Time of day (your time)', PARTS, 'part'));
     const clear = el('button', 'secondary', 'Clear filters'); clear.type = 'button'; clear.onclick = () => { hf = {...EMPTY_FILTER}; void render(); };
     draw();
     return [bar, fields, clear, status, ul];
@@ -341,7 +351,7 @@ export function mountWorldPanel(map: LibreMap) {
   async function render() {
     // Each render owns a generation; a slower render for a previous tab never writes into the current one.
     const mine = ++generation, stale = () => mine !== generation;
-    const day = world?.day ?? new Date().toISOString().slice(0, 10);
+    const day = world?.day ?? localClock(Date.now()).date; // the world's own (Menlo Park) day
     tabs.querySelectorAll('button').forEach(b => { const on = (b as HTMLElement).dataset.tab === tab; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
     if (tab !== 'replay') leaveReplay();
     else if (replayView && body.querySelector('.replay-view')) return; // already on screen: keep playing
@@ -350,7 +360,7 @@ export function mountWorldPanel(map: LibreMap) {
       const evH = health.get('events'), s = resState(evH, events.length > 0);
       if (s === 'error') { body.append(stateCard('Feed unavailable', `${evH?.error} · there are no events to show yet.`, () => void refresh())); return; }
       if (s === 'stale') body.append(staleNote(`The feed could not be refreshed (${evH?.error}). Showing events up to ${events.length ? at(events[events.length - 1].at) : '—'}.`, () => void refresh()));
-      const ul = el('ul', 'ev-list'); for (const e of events.slice(-80).reverse()) ul.append(row(e));
+      const ul = el('ul', 'ev-list'); addRows(ul, events.slice(-80).reverse());
       body.append(ul.childNodes.length ? ul : el('p', 'muted', 'Waiting for the next heartbeat…'));
     } else if (tab === 'highlights') {
       const r = await load<Ev[]>('highlights', '/api/world/highlights?limit=200');

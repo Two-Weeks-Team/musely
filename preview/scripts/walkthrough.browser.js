@@ -17,7 +17,7 @@ async (page) => {
  for (const mobile of [false, true]) {
   const vp = mobile ? 'M' : 'D', size = mobile ? {width: 390, height: 844} : {width: 1440, height: 900};
   const run = async (exp, steps) => {
-   const ctx = await browser.newContext({viewport: size, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1});
+   const ctx = await browser.newContext({viewport: size, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: mobile ? 2 : 1, timezoneId: 'America/Los_Angeles'});
    await ctx.addInitScript(() => { window.__geoCalls = 0; const g = navigator.geolocation; if (g) for (const k of ['getCurrentPosition', 'watchPosition']) { const orig = g[k]?.bind(g); g[k] = (...a) => { window.__geoCalls++; return orig?.(...a); }; } });
    const p = await ctx.newPage(), errors = [], writes = [];
    p.on('pageerror', e => errors.push(e.message));

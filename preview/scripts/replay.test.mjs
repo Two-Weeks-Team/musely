@@ -28,13 +28,22 @@ test('formatT and visible events are a read-only time projection, including rewi
 test('filters match tags, either participant, place and Los Angeles time with AND semantics', () => {
   const e = {tags: ['first_trade'], muse: '00-jolly', other: '03-ripple', place: 'commons:cafe', at: Date.parse('2026-11-01T17:00:00Z')};
   assert.equal(matchFilter(e, EMPTY_FILTER), true);
-  for (const f of [{tag: 'first_trade'}, {muse: '03-ripple'}, {place: 'commons:cafe'}, {part: 'morning'}, {tag: 'first_trade', muse: '00-jolly', part: 'morning', place: 'commons:cafe'}]) assert.equal(matchFilter(e, {...EMPTY_FILTER, ...f}), true);
-  for (const f of [{tag: 'p0_trade'}, {muse: '02-moss'}, {place: 'commons:garden'}, {part: 'night'}, {tag: 'first_trade', part: 'evening'}]) assert.equal(matchFilter(e, {...EMPTY_FILTER, ...f}), false);
-  for (const [hour, part] of [[0, 'night'], [6, 'morning'], [12, 'afternoon'], [18, 'evening']]) assert.equal(matchFilter({...e, at: Date.parse('2026-11-02T08:00:00Z') + hour * 3600000}, {...EMPTY_FILTER, part}), true);
+  for (const f of [{tag: 'first_trade'}, {muse: '03-ripple'}, {place: 'commons:cafe'}, {part: 'morning'}, {tag: 'first_trade', muse: '00-jolly', part: 'morning', place: 'commons:cafe'}]) assert.equal(matchFilter(e, {...EMPTY_FILTER, ...f}, 'America/Los_Angeles'), true);
+  for (const f of [{tag: 'p0_trade'}, {muse: '02-moss'}, {place: 'commons:garden'}, {part: 'night'}, {tag: 'first_trade', part: 'evening'}]) assert.equal(matchFilter(e, {...EMPTY_FILTER, ...f}, 'America/Los_Angeles'), false);
+  for (const [hour, part] of [[0, 'night'], [6, 'morning'], [12, 'afternoon'], [18, 'evening']]) assert.equal(matchFilter({...e, at: Date.parse('2026-11-02T08:00:00Z') + hour * 3600000}, {...EMPTY_FILTER, part}, 'America/Los_Angeles'), true);
+});
+test('without a zone argument the time-of-day filter uses the viewer\'s own zone (the path the page takes)', () => {
+  const was = process.env.TZ, e = {tags: [], muse: '00-jolly', other: null, place: 'commons:cafe', at: Date.parse('2026-11-01T17:00:00Z')};
+  try {
+    for (const [tz, part] of [['Asia/Seoul', 'night'], ['Europe/London', 'afternoon'], ['America/Los_Angeles', 'morning']]) { // 02:00, 17:00, 09:00 local
+      process.env.TZ = tz;
+      for (const p of ['night', 'morning', 'afternoon', 'evening']) assert.equal(matchFilter(e, {...EMPTY_FILTER, part: p}), p === part, `${tz} ${p}`);
+    }
+  } finally { if (was === undefined) delete process.env.TZ; else process.env.TZ = was; }
 });
 test('fixture is a scoped, ordered scenario with catalog ids and genuine recorded model references', () => {
   const run = read('../fixtures/replay-run.json'), library = read('../fixtures/replay-library.json');
-  assert.equal(run.label, 'SCRIPTED · PREVIEW FIXTURE'); assert.equal(run.day, '2026-11-01'); assert.equal(run.durationSec, 1800);
+  assert.equal(run.label, 'SCRIPTED · PREVIEW FIXTURE'); assert.equal(run.day, '2026-11-01'); assert.equal(run.durationSec, 1800); assert.equal(run.startAt, 1793552400000); // layout.browser.js checks the clock against this start
   assert.match(run.note, /not.*real|not.*actual/i); assert.ok(run.events.length >= 24 && run.events.length <= 30);
   assert.equal(new Intl.DateTimeFormat('en-US', {timeZone: 'America/Los_Angeles', hour: 'numeric', hourCycle: 'h23'}).format(run.startAt), '09');
   assert.equal(new Set(run.events.map(e => e.id)).size, run.events.length);

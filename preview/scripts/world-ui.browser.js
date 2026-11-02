@@ -19,7 +19,7 @@ async (page) => {
  for (const mobile of [false, true]) {
   const vp = mobile ? 'mobile' : 'desktop', shot = n => `output/world-ui-${n}-${vp}.png`;
   const size = mobile ? {width: 390, height: 844} : {width: 1440, height: 900};
-  const ctx = await browser.newContext({viewport: size, isMobile: mobile, hasTouch: mobile});
+  const ctx = await browser.newContext({viewport: size, isMobile: mobile, hasTouch: mobile, timezoneId: 'America/Los_Angeles'});
   const p = await ctx.newPage(), errors = [], reqs = [];
   p.on('pageerror', e => errors.push(e.message));
   p.on('request', r => { const u = new URL(r.url()); if (u.pathname.startsWith('/api/') || u.pathname.startsWith('/.well-known/')) reqs.push({m: r.method(), p: u.pathname}); });
@@ -68,7 +68,7 @@ async (page) => {
    await p.waitForSelector('.world-body tr[data-row]', {timeout: 30000});
    const au = await p.evaluate(() => ({rows: [...document.querySelectorAll('.world-body tr[data-row]')].map(tr => ({key: tr.dataset.row, cells: [...tr.children].map(c => c.textContent), nm: tr.classList.contains('not-measured')})), head: [...document.querySelectorAll('.world-body th')].map(x => x.textContent), text: document.querySelector('.world-body')?.textContent ?? ''}));
    check(vp, 'autonomy: six rows, each with a value and a sample', au.rows.length === 6 && au.rows.every(r => r.cells[1] && r.cells[2]), au.rows.map(r => r.key).join(','));
-   check(vp, 'autonomy: columns Measure · Value · Sample · Note, period names day, world and run', au.head.join('|') === 'Measure|Value|Sample|Note' && /Menlo Park day/.test(au.text) && /worldId/.test(au.text) && /runId/.test(au.text), au.head.join('|'));
+   check(vp, 'autonomy: columns Measure · Value · Sample · Note, period names day, world and run', au.head.join('|') === 'Measure|Value|Sample|Note' && /Menlo Park world day/.test(au.text) && /worldId/.test(au.text) && /runId/.test(au.text), au.head.join('|'));
    check(vp, 'autonomy: what is not measured says so, never a 0% of 0', au.rows.filter(r => r.nm).every(r => r.cells[1] === 'Not measured') && !/of 0\b/.test(au.text), JSON.stringify(au.rows.filter(r => r.nm).map(r => r.key)));
 
    // ---------- B: highlights filters ----------
@@ -226,7 +226,7 @@ async (page) => {
   // ---------- A: failures injected in the browser (nothing is sent to the service) ----------
   const fail503 = r => r.fulfill({status: 503, contentType: 'text/plain', body: 'down'});
   const open = async (c, url) => { const q = await c.newPage(); q.on('pageerror', e => errors.push(e.message)); await q.goto(url, {waitUntil: 'domcontentloaded', timeout: 90000}); await q.waitForFunction(() => window.__world?.getMetrics().ready, null, {timeout: 60000}); return q; };
-  const mk = () => browser.newContext({viewport: size, isMobile: mobile, hasTouch: mobile});
+  const mk = () => browser.newContext({viewport: size, isMobile: mobile, hasTouch: mobile, timezoneId: 'America/Los_Angeles'});
   try {
    // A1: the first answer is an error. Nothing is shown as if it were data.
    const c1 = await mk(); await c1.route(/\/api\/(world|owner\/location|claim\/)/, fail503);
