@@ -21,6 +21,7 @@ register('data:text/javascript,' + encodeURIComponent(hooks));
 const {parseBusy, evaluateCandidates, suggestCandidate, approvalBody, submitDecision, loadOwnerInbox, loadConditions, saveConditions, PRIVATE_STORE_KEY} = await import('../src/ui/owner-inbox.ts');
 const {taskRecord, migrateInbox, syncTask, meetupCandidates, MAX_CANDIDATES, registerTaskKind} = await import('../worker/core/tasks.ts');
 const {verifyHistory} = await import('../src/engine/items.ts');
+const {publicState, SNAPSHOT_FIELDS, PRIVATE} = await import('../worker/core/run-log.ts');
 const {PLACES} = await import('../src/engine/places.ts');
 
 const ORIGIN = 'https://musely.net';
@@ -243,6 +244,13 @@ test('I-07 AC2 meetup: at most five public candidates, private conditions stay i
     for (const c of cands) assert.ok(!pub.includes(c.time) && !pub.includes(c.place), `${e.kind} leaks a candidate`);
   }
 
+  // The run log snapshot (I-10 allow-list): every version 2 field is named; candidates, hash, approvals, deciders and the
+  // chosen candidate are private, the revision and stage are kept.
+  const snapTask = publicState(t.state()).inbox.tasks.find(x => x.id === id);
+  assert.deepEqual(Object.keys(done).filter(k => !(k in SNAPSHOT_FIELDS.task)), []);
+  for (const k of ['candidates', 'contentHash', 'approvals', 'owners', 'confirmed']) assert.equal(snapTask[k], PRIVATE, k);
+  assert.deepEqual([snapTask.revision, snapTask.stage, snapTask.schema], [done.revision, 'owner_approval', 2]);
+
   // A resident (no owner signs in for Sunny) approves by rule; the owner's approval alone then confirms.
   const rid = await meetupToOwners(t, SUNNY);
   const rt = t.task(rid);
@@ -312,6 +320,18 @@ test('I-07 AC3 one owner declines, the deadline passes, a delegation is revoked,
   nothing(d);
   // Approved again on the new revision: now it confirms (the change alone blocked it).
   assert.equal((await t.decide('owner', body(v2b, 'approve', 'c1'))).body.confirmed, true);
+
+  // 5. A content change made by any commit (not only propose_meetup) is caught at the commit point: a new revision,
+  // and the approvals made before it (here the resident's rule approval) are dropped.
+  const e = await meetupToOwners(t, SUNNY);
+  const e1 = structuredClone(t.task(e));
+  assert.equal(e1.approvals[SUNNY].source, 'rule');
+  t.edit(st => { st.inbox.tasks.find(x => x.id === e).candidates[0].time = '23:30'; });
+  assert.deepEqual([t.task(e).revision, t.task(e).approvals], [e1.revision + 1, {}]);
+  assert.equal((await t.decide('owner', body(e1, 'approve', 'c1'))).body.error, 'stale_approval');
+  const e2 = await t.decide('owner', body(t.task(e), 'approve', 'c1'));
+  assert.deepEqual([e2.status, e2.body.confirmed], [200, false], 'the resident\'s rule approval of the old content no longer counts');
+  assert.equal(t.kinds('meetup_confirmed').filter(x => x.data.task_id === e).length, 0);
 });
 
 test('I-07 two owners: owner and demo peer decide from independent sessions; cross approval is refused', async () => {

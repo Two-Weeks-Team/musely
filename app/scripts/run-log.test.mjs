@@ -141,7 +141,8 @@ test('AC1 private conditions and raw frames never enter the run log (snapshot or
   for (const secret of [CELL, TIME, SPOT, FRAME, '37.1', '-122.1']) assert.equal(log.includes(secret), false, `${secret} is in the run log or events`);
   const snap = JSON.parse(all[1].snapshot);
   for (const k of ['cell', 'preset', 'target']) assert.equal(snap.owner[k], PRIVATE, k); assert.equal(snap.owner.source, 'gps'); assert.equal(snap.muses[0].anchor, PRIVATE);
-  assert.equal(snap.inbox.tasks[0].candidate, PRIVATE); assert.equal(snap.inbox.notifications.at(-1).detail, PRIVATE);
+  // I-07: the stored v1 `candidate` moved into the version 2 `candidates` at its commit; both are private.
+  assert.equal(snap.inbox.tasks[0].candidates, PRIVATE); assert.equal(snap.inbox.tasks[0].contentHash, PRIVATE); assert.equal(snap.inbox.notifications.at(-1).detail, PRIVATE);
   assert.equal(snap.inbox.tasks[0].id, 'task_1', 'the rest of the Task is kept');
   const cmd = inputs(s.sql).find(r => r.kind === 'command').input;
   assert.deepEqual(cmd.fields, {task_id: 'task_1', answer: 'accept'}); assert.deepEqual(cmd.omitted, ['candidate', 'frames', 'owner'], 'other keys are named, never stored');

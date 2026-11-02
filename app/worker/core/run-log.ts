@@ -88,7 +88,10 @@ export const SNAPSHOT_FIELDS: Record<'state' | 'muse' | 'wants' | 'beat' | 'owne
   // The owner location (cell, preset, target) is private; whether it is set and verified is not.
   owner: {source: 'copy', muse: 'copy', verified: 'copy', setAt: 'copy', cell: 'private', preset: 'private', target: 'private'},
   inbox: {} as Table,
-  task: {id: 'copy', kind: 'copy', from: 'copy', to: 'copy', status: 'copy', awaiting: 'copy', createdAt: 'copy', deadline: 'copy', updatedAt: 'copy', offer: 'copy', round: 'copy', candidate: 'private', answers: 'copy', history: 'copy'},
+  task: {id: 'copy', kind: 'copy', from: 'copy', to: 'copy', status: 'copy', awaiting: 'copy', createdAt: 'copy', deadline: 'copy', updatedAt: 'copy', offer: 'copy', round: 'copy', candidate: 'private', answers: 'copy', history: 'copy',
+    // Version 2 (I-07): the meetup candidates, the hash that fingerprints them, the owner decisions, who decides and
+    // the chosen candidate are private; the revision, the record version and the stage are not.
+    schema: 'copy', revision: 'copy', contentHash: 'private', candidates: 'private', approvals: 'private', stage: 'copy', owners: 'private', confirmed: 'private'},
   message: {id: 'copy', from: 'copy', to: 'copy', kind: 'copy', at: 'copy', text: 'text', item: 'copy', blocked: 'copy', read: 'copy'},
   mail: {id: 'copy', from: 'copy', to: 'copy', item: 'copy', text: 'text', sentAt: 'copy', deliverAt: 'copy', crossRegion: 'copy', timed: 'copy'},
   notification: {id: 'copy', kind: 'copy', at: 'copy', line: 'text', ref: 'copy', other: 'copy', muse: 'copy', detail: 'private'},
@@ -96,7 +99,7 @@ export const SNAPSHOT_FIELDS: Record<'state' | 'muse' | 'wants' | 'beat' | 'owne
 const F = SNAPSHOT_FIELDS;
 // A Muse's anchor is the owner's cell (13.1): private.
 Object.assign(F.muse, {id: 'copy', place: 'copy', travel: 'copy', beat: (v: unknown) => pick(v as Record<string, unknown>, F.beat), inventory: 'copy', memory: 'texts', reflection: 'text', lastMet: 'copy', intent: 'copy', wants: (v: unknown) => pick(v as Record<string, unknown>, F.wants), anchor: 'private'} satisfies Table);
-Object.assign(F.inbox, {tasks: each(F.task), messages: each(F.message), mail: each(F.mail), notifications: each(F.notification), connected: 'copy', sent: 'copy', seq: 'copy'} satisfies Table);
+Object.assign(F.inbox, {version: 'copy', tasks: each(F.task), messages: each(F.message), mail: each(F.mail), notifications: each(F.notification), connected: 'copy', sent: 'copy', seq: 'copy'} satisfies Table);
 Object.assign(F.state, {worldId: 'copy', day: 'copy', seed: 'copy', tick: 'copy', version: 'copy', lastTickAt: 'copy', spotlight: 'copy', items: 'copy', paused: 'copy', muses: each(F.muse), owner: (v: unknown) => pick(v as Record<string, unknown>, F.owner), inbox: (v: unknown) => pick(v as Record<string, unknown>, F.inbox)} satisfies Table);
 
 /**
