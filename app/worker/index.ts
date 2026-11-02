@@ -255,7 +255,13 @@ async function cachedRead(request: Request, env: Env, ip: string, read: () => Pr
   const cache = typeof caches !== 'undefined' ? (caches as unknown as {default?: Cache}).default : undefined;
   const key = new Request(request.url, {method: 'GET'});
   const hit = cache ? await cache.match(key) : undefined;
-  if (hit) return hit;
+  // The zone's browser cache TTL is applied to stored copies (a HIT came back with max-age=14400): answer a hit with
+  // the run-log TTL again, so browsers never keep a run summary longer than RUN_LOG_CACHE_SECONDS.
+  if (hit) {
+    const headers = new Headers(hit.headers);
+    headers.set('cache-control', `public, max-age=${RUN_LOG_CACHE_SECONDS}`);
+    return new Response(hit.body, {status: hit.status, headers});
+  }
   if (env.BURST && !(await env.BURST.limit({key: 'runlog:' + ip})).success) return json({error: 'slow_down'}, 429);
   const r = await read();
   if (r.status !== 200) return r;
