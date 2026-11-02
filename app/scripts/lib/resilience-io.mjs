@@ -19,7 +19,10 @@ export async function observeGet(url, {fetcher=fetch, timeoutMs=12000, maxBytes=
   } catch(error) {
     // Never retain the original message, stack, headers, URL or arbitrary cause object.
     const failure=new Error(reason);
-    failure.failure={errorName:ERROR_NAMES.has(error?.name)?error.name:null,causeCode:CAUSE_CODES.has(error?.cause?.code)?error.cause.code:null,stage};
+    let errorName=null,causeCode=null;
+    try {errorName=error?.name;} catch {}
+    try {causeCode=error?.cause?.code;} catch {}
+    failure.failure={errorName:ERROR_NAMES.has(errorName)?errorName:null,causeCode:CAUSE_CODES.has(causeCode)?causeCode:null,stage};
     throw failure;
   } finally {clearTimeout(timer);ctl.abort();if(reader)void reader.cancel().catch(()=>{});}
 }

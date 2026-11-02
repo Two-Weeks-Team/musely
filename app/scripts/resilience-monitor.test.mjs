@@ -140,3 +140,25 @@ test('actual monitor round persists sanitized request failure, four successful r
  assert.equal(calls.length,5);assert.ok(calls.every(r=>r.method==='GET'&&r.headers.Connection==='close'));
  assert.equal(tracker.summary().result,'failed');assert.equal(tracker.failures[0].reason,'observation_failed');
 });
+
+
+test('GET sanitizer checks and stores the same single-read name/code primitives for fetch and body errors',async()=>{
+ for(const stage of ['fetch','body']){
+  let names=0,codes=0;const cause={},original=new Error('DO_NOT_PERSIST_message',{cause});
+  Object.defineProperty(original,'name',{get(){return ++names===1?'TypeError':'DO_NOT_PERSIST_name';}});
+  Object.defineProperty(cause,'code',{get(){return ++codes===1?'UND_ERR_SOCKET':'DO_NOT_PERSIST_code';}});
+  const fetcher=async()=>{if(stage==='fetch')throw original;return new Response(new ReadableStream({start(c){c.error(original);}}));};
+  await assert.rejects(observeGet('https://musely.net/api/status',{fetcher}),e=>{assert.deepEqual(e.failure,{errorName:'TypeError',causeCode:'UND_ERR_SOCKET',stage});assert.equal(JSON.stringify(e).includes('DO_NOT_PERSIST'),false);return true;});
+  assert.equal(names,1);assert.equal(codes,1);
+ }
+});
+test('GET sanitizer contains throwing name/cause/code accessors without leaking their replacement error',async()=>{
+ for(const stage of ['fetch','body'])for(const field of ['name','cause','code']){
+  const original=new Error('DO_NOT_PERSIST_original'),fail=()=>{throw Error('DO_NOT_PERSIST_accessor');};
+  Object.defineProperty(original,'name',field==='name'?{get:fail}:{value:'TypeError'});
+  if(field==='cause')Object.defineProperty(original,'cause',{get:fail});
+  else {const cause={};Object.defineProperty(cause,'code',field==='code'?{get:fail}:{value:'UND_ERR_SOCKET'});original.cause=cause;}
+  const fetcher=async()=>{if(stage==='fetch')throw original;return new Response(new ReadableStream({start(c){c.error(original);}}));};
+  await assert.rejects(observeGet('https://musely.net/api/status',{fetcher}),e=>{assert.equal(e.message,'observation_failed');assert.deepEqual(e.failure,{errorName:field==='name'?null:'TypeError',causeCode:field==='name'?'UND_ERR_SOCKET':null,stage});assert.equal(JSON.stringify(e).includes('DO_NOT_PERSIST'),false);return true;});
+ }
+});
