@@ -83,3 +83,8 @@ The browser fixtures prove the rendering contract with fixed inputs. They are no
 - `mountWorldPanel(map, {onWorld?, onSelect?, isLive?, paused?})` adds optional presentation callbacks. Existing callers without options remain valid. `onWorld` receives the accepted snapshot plus the collected event tail; a replay still blocks polls through the existing isolation flag.
 
 Final source check: `npm run check` 342/342, typecheck, build and Worker dry-run exit 0. `preview/` and all character-kit asset bytes remain unchanged. All work is on the original `156a078` base; rebase/integration onto the later main must be verified by the coordinator.
+
+
+### Publication clock
+
+The world stores `data.publishedAt` on each committed event after asynchronous model work finishes. It preserves the business timestamp `at`. Cue scheduling uses `max(at, publishedAt) + CUE_DELAY_MS`, allowing the next ten-second poll to receive a slow heartbeat before its gesture starts. Older records without publication metadata use `at`. Replay retains this public timestamp and includes the final cue window. Selecting any live portrait focuses that actor’s projected server position, including places outside the commons.

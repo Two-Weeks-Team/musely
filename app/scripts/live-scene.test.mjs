@@ -188,3 +188,25 @@ test('I-09 a missing character kit cannot mislabel the legacy scripted actors as
   assert.equal(view.getMetrics().muses[0].rendered, false); assert.equal(view.getMetrics().errors.length, 10);
   view.dispose(); assert.equal(root.visible, true); assert.equal(scene.children.filter(o => o.name.startsWith('LiveEffect_')).length, 0);
 });
+
+
+test('I-09 publication time keeps a slow heartbeat cue ahead of the next poll, preserving the business event time', () => {
+  const e = event('spotlight', {data: {publishedAt: NOW + 16_000}, line: 'A delayed live reply'});
+  const cues = live.scheduleCues([e]);
+  assert.ok(cues.length > 0);
+  assert.equal(cues[0].start, NOW + 16_000 + live.CUE_DELAY_MS);
+  assert.ok(cues[0].end > NOW + 26_000, 'a 10s poll after publication can still show the cue');
+  assert.equal(e.at, NOW);
+  assert.equal(live.scheduleCues([event('spotlight', {data: {publishedAt: NOW - 1000}})])[0].start, NOW + live.CUE_DELAY_MS);
+});
+
+test('I-09 every original portrait selects the actual live actor instead of the fixed commons', async () => {
+  const {transform} = await import('esbuild');
+  const src = await readFile(new URL('../src/main.ts', import.meta.url), 'utf8');
+  const fn = src.slice(src.indexOf('function select(i:number)'), src.indexOf('function selectLive('));
+  const code = (await transform(fn, {loader: 'ts'})).code;
+  const ids = ['00-jolly','01-sunny','02-moss','03-ripple','05-bloom','06-ink','07-tempo','08-orbit'];
+  const picked = [];
+  Function('mode','RESIDENT_VARIANTS','selectLive','manual','updateUI','map','visit',code+';for(let i=0;i<8;i++)select(i);')('world',ids,id=>picked.push(id),()=>{},()=>{},{getZoom:()=>10},()=>{throw Error('fixed commons visit');});
+  assert.deepEqual(picked, ids);
+});

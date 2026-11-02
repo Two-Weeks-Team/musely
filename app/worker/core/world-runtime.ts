@@ -54,6 +54,8 @@ export type RuntimeOptions = {
   delegationValid?: (museId: string) => boolean;
   /** Test seam: runs between the model answer and the commit (e.g. to simulate a concurrent commit). */
   beforeCommit?: () => void;
+  /** Publication clock, normally wall time; recorded/test worlds inject the same clock as their commit inputs. */
+  publicationNow?: () => number;
   /**
    * Checks Agent Cards and delegations before the tick (async crypto) and returns the synchronous gate the
    * engine consults before each meeting. Missing → nobody meets (fail closed); 'off' only for tests.
@@ -134,6 +136,10 @@ export class WorldRuntime {
   }
   /** The run-log row and the events of one commit, in its transaction; the row counts the event rows really stored. */
   private logCommit(c: CommitRecord) {
+    // Business timestamps precede asynchronous model stages. Persist actual availability so client cues do not expire
+    // before publication; all observers/replay use the same clock and e.at remains the original event time.
+    const publishedAt = Math.max(c.at, (this.opts.publicationNow ?? Date.now)());
+    for (const e of c.events) e.data = {...e.data, publishedAt};
     const p = this.runLog.prepare(c);
     const inserted = this.insertEvents(c.events, p);
     if (p) this.runLog.append(p, inserted);

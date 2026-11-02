@@ -199,7 +199,9 @@ export function scheduleCues(events: readonly LiveEvent[]): Cue[] {
       const group = gathering ? ((e.data?.muses as string[] | undefined) ?? [e.muse]) : [e.muse];
       const other = gathering ? null : e.other ?? null;
       const people = [...group, ...(other ? [other] : [])];
-      let t = Math.max(e.at + CUE_DELAY_MS, ...people.map(m => busy.get(m) ?? 0));
+      const published = e.data?.publishedAt;
+      const availableAt = typeof published === 'number' && Number.isFinite(published) ? Math.max(e.at, published) : e.at;
+      let t = Math.max(availableAt + CUE_DELAY_MS, ...people.map(m => busy.get(m) ?? 0));
       p.phases.forEach((ph, k) => {
         const end = t + ph.seconds * 1000;
         const add = (who: string, part: Part, partner: string | null, role: 'muse' | 'other') => {
