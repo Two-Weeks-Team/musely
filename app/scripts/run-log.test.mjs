@@ -476,6 +476,8 @@ test('review 1: the day-mode recount scans an index on event time, never the who
   const plan = q => { const {sql, params} = rt.autonomyQuery(q, T0); return s.sql.exec('EXPLAIN QUERY PLAN ' + sql, ...params).toArray().map(r => r.detail).join(' | '); };
   const day = plan({day: '2026-11-03'});
   assert.match(day, /USING (COVERING )?INDEX events_at/, day); assert.doesNotMatch(day, /SCAN events(?! USING)/, day);
+  // The index also gives the order, so LIMIT stops the scan at the sample cap (no temporary sort of the whole range).
+  assert.doesNotMatch(day, /TEMP B-TREE/, day);
   const run = plan({day: '2026-11-03', runId: rt.runLog.current.runId});
   assert.match(run, /USING (COVERING )?INDEX events_(run_)?at/, run); assert.doesNotMatch(run, /SCAN events(?! USING)/, run);
   const q = rt.autonomyQuery({day: '2026-11-03'}, T0);
