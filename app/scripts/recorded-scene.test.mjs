@@ -36,3 +36,10 @@ test('I-11 only recorded public event.line speaks; private hashes never become d
  assert.equal(p.projection.frames(AT+12500).get('00-jolly').line,'A recorded public hello');
  f.events=[];f.snapshotHash='hash-1'; assert.equal(JSON.stringify(f),before,'render projection never mutates public checkpoints');
 });
+
+test('I-11 the displayed public line carries its own cue source rather than a later unrelated event source', () => {
+ const p=new recorded.SceneProjection(), f=frame(2,'commons:campfire',AT+12500);
+ f.events=[{id:'hello',seq:1,tick:1,at:AT,source:'live',kind:'greet',muse:'00-jolly',line:'Public model hello',data:{}}, {id:'arrival',seq:2,tick:2,at:AT+1000,source:'rule',kind:'arrive',muse:'00-jolly',line:null,data:{}}];
+ p.setRecordedFrame(f);const shown=p.projection.frames(f.recordedAt).get('00-jolly');
+ assert.equal(shown.line,'Public model hello');assert.equal(recorded.frameSource(p.projection,shown,'00-jolly'),'live');
+});

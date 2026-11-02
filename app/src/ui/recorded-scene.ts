@@ -1,6 +1,6 @@
 // One renderer, independent projection stores. Replay seeks never rewind or replace the live cache.
 import type {RecordedFrame} from '../replay/player.ts';
-import {LiveProjection, type LiveWorld, type LiveEvent} from './live-scene-core.ts';
+import {LiveProjection, type LiveWorld, type LiveEvent, type ActorFrame} from './live-scene-core.ts';
 export function recordedSceneFrame(frame: RecordedFrame): {world: LiveWorld; events: LiveEvent[]} {
   const state = frame.publicState;
   // Public checkpoints intentionally hash these strings. Neither hashes nor static harness text are dialogue.
@@ -29,4 +29,10 @@ export class SceneProjection {
   get projection() {return this.recorded ?? this.live;}
   get replay() {return this.recorded !== null;}
   get recordedAt() {return this.at;}
+}
+
+export function frameSource(projection: LiveProjection, frame: ActorFrame | undefined, id: string) {
+  const cueEvent = frame?.cue ? projection.events.find(e => e.id === frame.cue!.eventId) : null;
+  if (cueEvent?.source) return cueEvent.source;
+  return [...projection.events].reverse().find(e => e.muse === id || e.other === id)?.source ?? 'rule';
 }

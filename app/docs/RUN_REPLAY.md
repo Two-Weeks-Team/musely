@@ -25,15 +25,17 @@ The pure `loadRun(record)` player has `getState()`, `getFrame()`, `play()`, `pau
 
 `RecordedFrame` contains `replay:true`, `runId`, `worldId`, `recordedAt`, `snapshotAt`, `snapshotHash`, `publicState`, visible `events`, compact ordered `inputs`, `empty`, `playout` and `timeOrderAdjusted`. `worldPanel.onReplayFrame(listener)` publishes it and publishes `null` on return to live, fixture mode or teardown. Private markers and `text-sha256:` strings must not be rendered as recovered dialogue. Use the public event's line when present.
 
-The I-09 renderer uses one actor set with two pure projection stores. Live snapshot monotonicity is preserved while a separate recorded store is rebuilt at each selected checkpoint, so seeking backwards never overwrites live state. `recordedAt` drives actors and pins; cards and labels use the same active projection. Returning a null frame restores the preserved live projection and actor roots. Beat-line, reflection and wants hashes are excluded from the visual projection; only the recorded public event line can speak.
+The I-09 renderer uses one actor set with two pure projection stores. Live snapshot monotonicity is preserved while a separate recorded store is rebuilt at each selected checkpoint, so seeking backwards never overwrites live state. `recordedAt` drives actors and pins; cards and labels use the same active projection. Returning a null frame restores the preserved live projection and actor roots. Beat-line, reflection and wants hashes are excluded from the visual projection; only the recorded public event line can speak. An active cue keeps its own event source even when a later unrelated event has a different source.
 
-The final checkpoint is held through the last scheduled public animation cue. This read-only playout tail uses the same cue scheduler as live rendering (legacy records use `event.at`; newer event publication timestamps are used when supported by that scheduler). The UI distinguishes playback time from the stored commit time and explicitly states that no world tick is executed. The tail does not reconstruct private state or generate another input/event/reward.
+The final checkpoint is held through the last scheduled public animation cue. This read-only playout tail uses the same cue scheduler as live rendering (new records use `max(event.at, event.data.publishedAt)`; older records without that field use `event.at`). The UI distinguishes playback time from the stored commit time and explicitly states that no world tick is executed. The tail does not reconstruct private state or generate another input/event/reward.
 
 ## Read-only UI boundary
 
 The Replay tab retains its separately labelled scripted fixture without requests. Explicit recorded-run preparation has a restricted transport for same-origin GETs to the three log endpoints above. Playback and cached evidence make no further requests. The global replay barrier also refuses `/api/*`, `/mcp` and `/.well-known/*` requests; the dedicated record reader cannot call other paths or use a write method.
 
 Recorded event evidence includes the stored run/commit hashes, model request references or signature/verdict fields already in the record. It does not fetch new credentials or run a verification again. The evidence overlay pauses the correct clock and resumes it on return. Returning to live discards the recorded projection and fetches a fresh live view.
+
+The **View recorded scene** control folds the detail table into a small playback dock and removes the panel backdrop blur. It keeps play/pause, speed, seek, return-to-live and a way back to details on screen, so the recorded 3D scene can actually be viewed without leaving replay.
 
 ## Size bounds and observed workload
 

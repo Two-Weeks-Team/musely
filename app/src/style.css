@@ -156,3 +156,10 @@ body[data-mode="story"] [data-live-only]{display:none}
 @media(max-width:700px){body[data-mode="world"] .neighbors{min-width:0;max-width:100%;box-sizing:border-box}body[data-mode="world"] #portraits{gap:5px;min-width:0}body[data-mode="world"] #portraits>.portrait{flex:1 1 0;min-width:0}}
 
 body[data-mode="world"] #story-heading,body[data-mode="world"] #story-scrubber{display:none}
+
+/* Stored replay can show the actual 3D scene while its clock stays available. Closing the panel still leaves replay. */
+#world-panel.recorded-scene-view{inset:auto 20px 20px auto;width:min(500px,calc(100% - 24px));max-height:40dvh;padding:14px;overflow:auto}
+#world-panel.recorded-scene-view::backdrop{backdrop-filter:none;background:transparent}
+#world-panel.recorded-scene-view>:not(.world-body):not(.close),.recorded-scene-view .recorded-replay>:not(.recorded-browser-controls):not(.recorded-output),.recorded-scene-view .recorded-browser-controls>:not([data-scene-toggle]):not([data-return-live]),.recorded-scene-view .recorded-output>:not(.replay-controls):not(.recorded-time):not(.src){display:none}
+.recorded-scene-view .world-body{padding:0}.recorded-scene-view .recorded-browser-controls{padding-right:24px;margin-bottom:8px}.recorded-scene-view .recorded-output>.src{margin-bottom:8px}.recorded-scene-view .recorded-time{margin-bottom:0}
+@media(max-width:700px){#world-panel.recorded-scene-view{inset:auto 8px 12px 8px;width:auto;max-height:38dvh;padding:12px}.recorded-scene-view .recorded-browser-controls{gap:5px}}

@@ -2,7 +2,7 @@
 // The scripted eight-character scene stays intact; live mode reuses its matching IDs and adds Ember/Copper.
 import * as T from 'three';
 import type {RecordedFrame} from '../replay/player.ts';
-import {SceneProjection} from './recorded-scene.ts';
+import {SceneProjection, frameSource} from './recorded-scene.ts';
 import {loadMuseLight, type MaterialLibrary} from '../character-kit/MaterialLibrary.ts';
 import type {MuseActor} from '../character-kit/MuseActor.ts';
 import {MUSE_VARIANTS, propsUrl} from '../character-kit/catalog.ts';
@@ -67,7 +67,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
   }
   function accept(world: LiveWorld, events: readonly LiveEvent[]) {return !disposed && store.accept(world, events);}
   function setRecordedFrame(frame: RecordedFrame | null) {if (disposed) return; store.setRecordedFrame(frame); projection = store.projection; if (root) root.dataset.replay = String(store.replay);}
-  const sourceOf = (id: string) => [...projection.events].reverse().find(e => e.muse === id || e.other === id)?.source ?? 'rule';
+  const sourceOf = (id: string) => frameSource(projection, frames.get(id), id);
   function update(at: number, selectedId = selected) {
     now = at; selected = selectedId;
     if (disposed || !active || !projection.world) return;

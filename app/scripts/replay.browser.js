@@ -80,11 +80,15 @@ async (page) => {
    check(vp, 'frame callback carries read-only recorded projections', await p.evaluate(() => window.__replayFrames.some(f => f?.replay && f.runId === 'normal')));
    await position.fill('13.5'); await position.dispatchEvent('input');
    await p.waitForFunction(() => window.__world.getMetrics().live.at === Number(document.querySelector('.recorded-replay').dataset.recordedAt));
-   const spoken = await p.evaluate(() => {const m=window.__world.getMetrics().live.muses.find(m=>m.id==='00-jolly');return {line:m.frame.line,at:window.__world.getMetrics().live.at};});
-   check(vp, 'the final read-only playout displays the recorded public line rather than a checkpoint text hash', spoken.line === template.events[0].line && !spoken.line.includes('text-sha256:'), JSON.stringify(spoken));
+   const spoken = await p.evaluate(() => {const m=window.__world.getMetrics().live.muses.find(m=>m.id==='00-jolly');return {line:m.frame.line,source:m.source,at:window.__world.getMetrics().live.at};});
+   check(vp, 'the final read-only playout displays the recorded public line rather than a checkpoint text hash', spoken.source === template.events[0].source && spoken.line === template.events[0].line && !spoken.line.includes('text-sha256:'), JSON.stringify(spoken));
    await p.evaluate(() => {const W=window.__world,f=W.liveScene.frames.get('00-jolly');W.map.stop();W.map.jumpTo({center:W.alignmentAt(f.x,f.z).geo,zoom:21.7,pitch:54});}); await p.waitForTimeout(300);
    check(vp, 'recorded scene and toolbar fit the viewport', await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+   await root.getByRole('button', {name:'View recorded scene',exact:true}).click();
+   const sceneLayout = await p.locator('#world-panel').evaluate(e => ({height:e.getBoundingClientRect().height,top:e.getBoundingClientRect().top,compact:e.classList.contains('recorded-scene-view'),blur:getComputedStyle(e,'::backdrop').backdropFilter}));
+   check(vp, 'scene view exposes the unblurred 3D canvas while keeping the replay clock and controls', sceneLayout.compact && sceneLayout.blur === 'none' && sceneLayout.height <= height * .41 && sceneLayout.top > height * .5 && await root.getByRole('button',{name:'Play recorded run',exact:true}).isVisible() && requests.length === afterLoad, JSON.stringify(sceneLayout));
    await p.screenshot({path: `output/run-replay-${vp}.png`});
+   await root.getByRole('button',{name:'Show recording details',exact:true}).click();
    for (const [id, error] of [['old-v1', 'incompatible_record'], ['bad-hash', 'invalid_record'], ['missing', 'incomplete_record'], ['failed', 'load_failed']]) {
     await root.getByLabel('Recorded run', {exact: true}).selectOption(id); await root.getByRole('button', {name: 'Load recorded run', exact: true}).click();
     await p.waitForFunction(() => document.querySelector('.recorded-replay').dataset.status === 'error');

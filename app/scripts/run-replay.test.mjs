@@ -113,3 +113,11 @@ test('a hashed snapshot with malformed renderer clock or Muse travel is invalid_
   const r=record(), state=JSON.parse(r.initialSnapshot.body); change(state); r.initialSnapshot=snapshot(state); r.inputs[0].beforeHash=r.initialSnapshot.hash; rejects(r,'invalid_record');
  }
 });
+
+test('publishedAt selects the real publication cue clock while preserving the business event.at and final checkpoint', () => {
+ const r=record(); r.events[0].kind='greet';r.events[0].line='A published public hello';r.events[0].data.publishedAt=T0+20000;
+ const p=loadRun(r);assert.equal(p.getState().durationSec,36,'publication +12s delay +4s greeting');
+ p.seek(32.5);const frame=p.getFrame();assert.equal(frame.playout,true);assert.equal(frame.recordedAt,T0+32500);
+ assert.equal(frame.events[0].at,T0+1000);assert.equal(frame.events[0].data.publishedAt,T0+20000);
+ assert.equal(frame.snapshotAt,T0+2000);assert.equal(frame.snapshotHash,r.inputs.at(-1).afterHash);
+});
