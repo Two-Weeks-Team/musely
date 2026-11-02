@@ -44,6 +44,15 @@ export async function auditSource(pin){
 const PROFILE_CACHE_POLICY='unchanged-profile-cache';
 export const createMeasurementReport=(opts,pin)=> ({kind:opts.kind,pin,conditions:{durationMs:DURATION_MS,dprCap:1.5,route:'story-manual-210',cachePolicy:opts.kind==='first-load'?'target cache disabled; service worker bypass;4Mbps/150ms':PROFILE_CACHE_POLICY,documentPolicy:opts.kind==='first-load'?'network document':'frozen HTML interception',globalCacheCleared:false},startedAt:new Date().toISOString(),complete:false,writes:[],errors:[],memory:{samples:[]},cleanup:{targetClosed:false,browserClosed:false,forwardChanged:false}});
 export const measurementContext=report=> ({model:report.model,android:report.android,chrome:report.chrome,viewport:report.device.viewport,dpr:report.device.dpr.applied,route:'story-manual-210',cachePolicy:PROFILE_CACHE_POLICY});
+export class BrowserSourceAudit{
+ constructor(pin,documentUrl){this.pin=pin;this.documentUrl=documentUrl;this.rows=new Map();this.pending=[];}
+ response(e){if(e.type==='Document'||(this.pin.externalCodeFiles??[]).some(f=>f.url===e.response.url))this.rows.set(e.requestId,{requestId:e.requestId,type:e.type,url:e.response.url,status:e.response.status});}
+ async finished(id,read){const row=this.rows.get(id);if(!row)return;const task=(async()=>{try{const r=await read(id),bytes=Buffer.from(r.body,r.base64Encoded?'base64':'utf8');row.bytes=bytes.length;row.sha256=sha(bytes);}catch{row.error='browser_response_body_unavailable';}})();this.pending.push(task);await task;}
+ async verify(timeoutMs=10000){const began=Date.now(),expected=[{url:this.documentUrl,sha256:this.pin.htmlSHA256,bytes:this.pin.files.find(f=>f.path==='index.html').bytes},...(this.pin.externalCodeFiles??[])];
+  while(Date.now()-began<timeoutMs){await Promise.all(this.pending);if(expected.every(f=>[...this.rows.values()].some(r=>r.url===f.url&&(r.sha256||r.error))))break;await delay(50);}
+  await Promise.all(this.pending);const rows=[...this.rows.values()];if(rows.filter(r=>r.type==='Document').length!==1||expected.some(f=>{const matches=rows.filter(r=>r.url===f.url);return matches.length!==1||matches[0].status!==200||matches[0].bytes!==f.bytes||matches[0].sha256!==f.sha256||matches[0].error;}))throw Error('actual browser document or managed script does not match freeze');return {method:'CDP actual response bytes',documentUrl:this.documentUrl,rows};
+ }
+}
 export const deniedTelemetry=(row,origin)=>row.method==='POST'&&row.origin===origin&&row.path==='/cdn-cgi/rum'&&row.query===false&&row.fragment===false&&row.credentials===false&&row.action==='aborted';
 export const measurementPassed=report=> report.complete&&Array.isArray(report.metrics?.errors)&&report.metrics.errors.length===0&&!report.errors.length&&!report.writes.some(row=>!deniedTelemetry(row,report.pin.origin))&&!report.cleanup.restorationErrors?.length&&Object.values(report.gate??{}).every(x=>x===true)&&(report.kind!=='mobile-210'||report.memory.complete===true&&report.memory.comparison?.numericPass===true&&report.baselineProvenance?.complete===true)&&!(report.contextMismatches?.length);
 export async function finalizeMeasurement(report,c){
@@ -66,7 +75,7 @@ export async function runMeasurement(opts,pin){
  const targets=await(await fetch(opts.endpoint+'/json/list')).json();const target=targets.find(t=>t.id===opts.targetId&&t.type==='page');if(!target||new URL(target.url).origin!==pin.origin)throw Error('exact task target missing or wrong origin');
  mkdirSync(opts.out,{recursive:true});const report=createMeasurementReport(opts,pin);
  if(baseline){report.baselineSHA256=baselineSHA256;report.baselineArtifact=opts.baseline;report.baselineProvenance=baselineProvenance;}
- let c,networkChanged=false,intercepted=false,lifecycle=false;
+ let c,networkChanged=false,intercepted=false,lifecycle=false,browserAudit;
  try{
   report.sourceBefore=await auditSource(pin);if(!pin.htmlFile&&opts.kind!=='first-load')throw Error('frozen htmlFile required for baseline-equivalent 210s route');
   const frozen=pin.htmlFile?readFileSync(pin.htmlFile):null;if(frozen&&sha(frozen)!==pin.htmlSHA256)throw Error('local frozen HTML pin mismatch');
@@ -77,7 +86,9 @@ export async function runMeasurement(opts,pin){
   if(opts.kind==='desktop-210'&&pin.referenceDevice!=='MacBookPro18,2'||opts.kind==='mobile-210'&&pin.referenceDevice!=='SM-S918N')throw Error('measurement kind/reference mismatch');
   const loads=new Set();c.on('Page.lifecycleEvent',e=>loads.add(e.loaderId+':'+e.name));await c.send('Page.setLifecycleEventsEnabled',{enabled:true});lifecycle=true;
   c.on('Runtime.exceptionThrown',e=>report.errors.push(e.exceptionDetails?.text??'page exception'));
-  c.on('Network.loadingFinished',e=>{report.transferredBytes=(report.transferredBytes??0)+e.encodedDataLength;});
+  if(opts.kind==='first-load')browserAudit=new BrowserSourceAudit(pin,pin.origin+'/?dpr=1.5');
+  c.on('Network.responseReceived',e=>browserAudit?.response(e));
+  c.on('Network.loadingFinished',async e=>{report.transferredBytes=(report.transferredBytes??0)+e.encodedDataLength;await browserAudit?.finished(e.requestId,id=>c.send('Network.getResponseBody',{requestId:id}));});
   c.on('Fetch.requestPaused',async e=>{
    if(!['GET','HEAD'].includes(e.request.method)){const u=new URL(e.request.url),row={method:e.request.method,path:u.pathname,origin:u.origin,query:!!u.search,fragment:!!u.hash,credentials:!!(u.username||u.password),action:'abort-pending'};report.writes.push(row);await c.send('Fetch.failRequest',{requestId:e.requestId,errorReason:'BlockedByClient'});row.action='aborted';}
    else if(opts.kind!=='first-load'&&e.resourceType==='Document'&&e.request.url===pin.origin+'/?autoplay=0&perf=1&dpr=1.5')await c.send('Fetch.fulfillRequest',{requestId:e.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'text/html; charset=utf-8'}],body:frozen.toString('base64')});
@@ -115,6 +126,7 @@ export async function runMeasurement(opts,pin){
    report.layout=await c.evaluate(layoutExpression);
   }
   report.device??=await c.evaluate(metadataExpression);const image=await c.send('Page.captureScreenshot',{format:'png'});writeFileSync(join(opts.out,'end.png'),Buffer.from(image.data,'base64'));if(c.eventError)throw Error(c.eventError);
+  if(browserAudit){try{report.browserSource=await browserAudit.verify();}catch(error){report.browserSource={method:'CDP actual response bytes',rows:[...browserAudit.rows.values()]};throw error;}}
   report.sourceAfter=await auditSource(pin);report.complete=true;
  }catch(error){report.error=String(error);}
  finally{

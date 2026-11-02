@@ -192,3 +192,12 @@ test('source audit binds HTML content negotiation and the exact external script 
  let content=code,accepts=[];globalThis.fetch=async(target,opts={})=>{if(target===url)return new Response(content);if(target===origin+'/api/status')return new Response('{}');accepts.push(opts.headers?.Accept);return new Response(html);};
  try{const result=await auditSource(pin);assert.deepEqual(accepts,['text/html','text/html']);assert.equal(result.externalCodeFiles.length,1);assert.equal(result.externalCodeFiles[0].sha256,hash(code));content=code+' changed';await assert.rejects(()=>auditSource(pin),/external code pin mismatch/);}finally{globalThis.fetch=before;}
 });
+
+test('first-load attests actual browser response bytes, status and final URL, not a parallel Node probe',async()=>{
+ const {BrowserSourceAudit}=await import('./device-benchmark.mjs'),{createHash}=await import('node:crypto');const hash=x=>createHash('sha256').update(x).digest('hex');
+ const origin='https://musely.net',url=origin+'/?dpr=1.5',vendor='https://static.cloudflareinsights.com/beacon.min.js/v123abc',html='<html>actual browser</html>',code='/* versioned script */',pin={htmlSHA256:hash(html),files:[{path:'index.html',bytes:Buffer.byteLength(html)}],externalCodeFiles:[{url:vendor,sha256:hash(code),bytes:Buffer.byteLength(code)}]};
+ const build=async(change={})=>{const audit=new BrowserSourceAudit(pin,url);audit.response({requestId:'d',type:'Document',response:{url:change.url??url,status:change.status??200}});audit.response({requestId:'s',type:'Script',response:{url:vendor,status:200}});await audit.finished('d',async()=>({body:change.html??html,base64Encoded:false}));if(!change.missing)await audit.finished('s',async()=>({body:Buffer.from(change.code??code).toString('base64'),base64Encoded:true}));return audit;};
+ const positive=await build();assert.equal((await positive.verify(0)).rows.length,2);
+ for(const change of [{html:html+' changed'},{code:code+' changed'},{status:503},{url:origin+'/'},{missing:true}]){const audit=await build(change);await assert.rejects(()=>audit.verify(0),/actual browser/);}
+ const error=await build({missing:true});await error.finished('s',async()=>{throw Error('unavailable');});await assert.rejects(()=>error.verify(0),/actual browser/);
+});
