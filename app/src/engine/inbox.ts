@@ -31,7 +31,8 @@ export type Task = {
   /** Meetup: a candidate built from public information; answers are accept|reject only. */
   candidate?: {time: string; place: string; public_basis: string};
   answers?: Record<string, 'accept' | 'reject'>;
-  history: {by: string; action: 'propose' | 'counter' | 'accept' | 'reject' | 'expire' | 'answer' | 'cancel'; at: number; give?: string; want?: string}[];
+  /** `via`: how an answer was made (a resident's rule answer or a Muse's own live call); older entries have none. */
+  history: {by: string; action: 'propose' | 'counter' | 'accept' | 'reject' | 'expire' | 'answer' | 'cancel'; at: number; give?: string; want?: string; via?: 'live' | 'rule'}[];
 };
 export type Message = {id: string; from: string; to: string; kind: 'greet' | 'postcard' | 'gift'; at: number; text: string | null; item?: string | null; blocked?: string[]; read: boolean};
 export type Mail = {id: string; from: string; to: string; item: string; text: string | null; sentAt: number; deliverAt: number; crossRegion: boolean;
