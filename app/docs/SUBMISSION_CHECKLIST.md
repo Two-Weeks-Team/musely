@@ -16,18 +16,20 @@ Capture SHA-256: `ba508566504af4f492bff7ebd06ce2377e98fa1715c01c9be6c252597e7526
 |---|---|---|
 | Exact final release | **UNVERIFIED** | Commit SHA, deploy ID, URL, configuration version, tested time and same-release acceptance records |
 | Public repository | **Public access not established: anonymous draft check HTTP 404; final visibility UNVERIFIED** | Exact repository URL, explicit publication authorization, observed public visibility and logged-out source access |
-| Three-minute video | **UNVERIFIED** | Actual URL, duration, playback and anonymous access, content hash; cuts linked to the final build/run/events |
+| Three-minute video | **UNVERIFIED** | Our package requires exactly **180 seconds**; actual URL, playback and anonymous access, content hash; cuts linked to the final build/run/events. This package criterion does not establish the platform's duration tolerance |
 | Judge entry and fallback | **UNVERIFIED on final release** | Logged-out judge URL, source labels and behavior when a model/budget/record is unavailable; no staged scene relabelled live |
 | P0/P1/P2 and six measures | **Final-release evidence pending** | Revocation cause isolated with fresh IDs/nonces; controlled item-only comparison; scene→event→run/input→request or verdict; raw recount with scope/sample/missing notes |
 | Recorded replay | **Final-release integration unverified** | Actual supported record versions, public-only state, backward seek/end/return live, zero new model/MCP/write/reward effects |
 | Device and operational evidence | **UNVERIFIED here** | Named physical device, browser/OS/DPR and measured acceptance; actual wall-clock run evidence separate from simulation |
 | Actual Muse-account use | **UNVERIFIED here** | Account-owner action, supported connector addition/approval/auth path and real tool-call/response correlation; local MCP fixture does not suffice |
 | Account verification / OAuth | **Owner reports account verification complete; OAuth integration in progress** | Keep the account owner's report distinct from a same-release technical receipt. No new account/auth action is performed here |
-| Team / representative | **Confirm before execution** | Actual team roster, chosen track and representative authority; no private business evidence copied into the repository |
+| Team / representative | **UNVERIFIED — confirm before execution** | Actual roster; one track per participant and project; all members have read and agree to the rules. For Startup, the representative must be an active employee and authorized to represent the startup, receive notices and receive prize payment. Confirm those conditions privately; do not copy personal, employment or business evidence into the public repository |
 | Attribution / asset scope | **Existing notice preserved** | Code/asset licenses and exclusions reviewed for the actual submission. Attribution alone does not establish a separate asset permission or media-use grant |
 | Personal survey answers | **UNSET** | Representative's actual answers, including the two visible required opinion questions; no fabricated ratings or feedback |
 | Media-use permission | **UNSET / separate legal decision** | Authorized submitter reviews the exact grant and records their decision separately; no checkbox is accepted by this package |
 | Draft consistency | **Await final release** | README, field text, video, runtime/model, source labels, limitations and every cited artifact agree |
+
+The representative requirements above come from the [official rules](https://cerebralvalley.ai/e/meta-ai-developer-hackathon/waiver), including their Startup-specific condition. They remain unverified; selecting the track or preparing this document does not establish eligibility. The readiness schema enforces our exact 180-second video package criterion only when `submissionReady=true`; the actual video remains unset, and no official duration tolerance is inferred.
 
 Current runtime source config is **Meta direct `muse-spark-1.3` at `https://api.meta.ai/v1`**. This is separate from an actual successful live call on the final release. A2A, Tasks/inbox and MCP source/local tests are separate from a person's Muse installation. No custom-connector addition UI has yet been observed for the tested account; the platform-supported path is under verification. Unattended scheduling and public-directory approval are not inferred from local tests.
 

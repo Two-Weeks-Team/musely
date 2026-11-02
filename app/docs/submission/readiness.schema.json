@@ -410,7 +410,8 @@
               },
               "durationSeconds": {
                 "type": "number",
-                "exclusiveMinimum": 0
+                "const": 180,
+                "description": "Our submission package requires exactly 180 seconds when submissionReady is true; this does not establish the platform's duration tolerance."
               },
               "sha256": {
                 "type": "string",
