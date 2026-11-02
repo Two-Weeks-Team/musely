@@ -28,6 +28,11 @@ export function publicReadAllowed(url,origin,method='GET'){
  const allowed=new Set(['id','runId','snapshot','since','limit','tail','before','from','to','day']);return [...u.searchParams.keys()].every(k=>allowed.has(k));
  }catch{return false;}
 }
+// A view is a required filming side. Its ID is stable across retakes; takeId identifies one recording.
+export function cutViews(c){return c.views?.length?c.views:[{id:'main',runId:c.refs?.[0]?.runId,duration:c.duration,seekSec:c.seekSec,snapshotHash:c.snapshotHash}];}
+const canonical=x=>JSON.stringify(x===undefined?null:Array.isArray(x)?x.map(v=>JSON.parse(canonical(v))):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,JSON.parse(canonical(x[k]))])):x);
+const refKeys=refs=>refs.map(r=>canonical({eventId:r.eventId,runId:r.runId,inputSeq:r.inputSeq,originalSource:r.originalSource,requestId:r.requestId??null,signedVerdict:r.signedVerdict??null,role:r.role??'anchor'})).sort();
+const sources=refs=>[...new Set(refs.map(r=>r.originalSource))].sort();
 export function validatePlan(p){
  const e=[];if(p.schema!=='musely-demo-plan-1')e.push('bad_schema');
  if(!p.release?.frozen)e.push('release_not_frozen');
@@ -40,8 +45,15 @@ export function validatePlan(p){
  if(c.id!==SHOTS[i]?.[0]||!Number.isFinite(c.duration)||c.duration<=0)e.push('bad_cut_order_or_duration');
  if(c.label!=='REPLAY')e.push(c.id+':replay_label_required');if(c.virtual!==true)e.push(c.id+':virtual_label_required');
  if(!Array.isArray(c.refs)||!c.refs.length)e.push(c.id+':missing_refs');
- const views=c.views?.length?c.views:[{seekSec:c.seekSec,snapshotHash:c.snapshotHash}];
- for(const v of views){if(!Number.isFinite(v.seekSec)||v.seekSec<0)e.push(c.id+':missing_recorded_seek');if(!/^[a-f0-9]{64}$/.test(v.snapshotHash??''))e.push(c.id+':missing_snapshot_hash');}
+ const views=cutViews(c);
+ if(new Set(views.map(v=>v.id)).size!==views.length||views.reduce((n,v)=>n+v.duration,0)!==c.duration)e.push(c.id+':bad_view_set');
+ if(c.id==='s05'&&(new Set(views.map(v=>canonical([v.runId,v.seekSec,v.snapshotHash]))).size!==2||views.length!==2||!['before','after'].every((id,i)=>views[i]?.id===id&&views[i]?.duration===10)))e.push('s05:before_after_views_required');
+ for(const v of views){
+ if(!/^[A-Za-z0-9_-]+$/.test(v.id??'')||typeof v.runId!=='string'||!v.runId||!Number.isFinite(v.duration)||v.duration<=0)e.push(c.id+':bad_view_identity_or_duration');
+ if(!Number.isFinite(v.seekSec)||v.seekSec<0)e.push(c.id+':missing_recorded_seek');if(!/^[a-f0-9]{64}$/.test(v.snapshotHash??''))e.push(c.id+':missing_snapshot_hash');
+ if(!c.refs?.some(r=>r.runId===v.runId))e.push(c.id+':view_missing_refs');
+ }
+ if(c.refs?.some(r=>!views.some(v=>v.runId===r.runId)))e.push(c.id+':unfilmed_reference_run');
  }
  for(const key of ['p0SameJob','p1ControlledPair','labelsAndAttribution','noPrivateContent','releaseAndAccountReceipts'])if(p.review?.[key]!==true)e.push('human_review_required:'+key);
  return e;
@@ -95,28 +107,40 @@ export async function calibrate(ffmpeg,dir){
  const receipt={kind:'local_synthetic_calibration_not_acceptance',path,sha256:sha(await readFile(path)),durationExpectedSeconds:2,decoded:true,audio:'none',finalAcceptance:'not_measured'};
  await writeNew(resolve(dir,'calibration.json'),JSON.stringify(receipt,null,2)+'\n');return receipt;
 }
+// Preflight the complete assembly before any encoder is called. A media row and its capture receipt
+// must bind the same bytes, filming side, exact evidence and frozen release.
+export async function verifyMedia(p,dir){
+ const rows=[],takeIds=new Set();
+ for(const c of p.cuts){
+  const views=cutViews(c),segments=Array.isArray(c.media)?c.media:[c.media];
+  if(segments.length!==views.length||new Set(segments.map(s=>s?.viewId)).size!==views.length||views.some((v,i)=>segments[i]?.viewId!==v.id))throw Error(c.id+':view_set_mismatch');
+  for(const segment of segments){
+   const view=views.find(v=>v.id===segment.viewId),refs=c.refs.filter(r=>r.runId===view.runId);
+   if(!refs.length||segment.runId!==view.runId||segment.duration!==view.duration||!segment.takeId||takeIds.has(segment.takeId))throw Error(c.id+':view_identity_or_duration_mismatch');
+   takeIds.add(segment.takeId);
+   const clip=inside(dir,segment.file),raw=await readFile(clip);if(sha(raw)!==segment.sha256)throw Error(c.id+':media_hash_mismatch');
+   const receipt=JSON.parse(await readFile(inside(dir,segment.receipt),'utf8'));
+   if(receipt.media?.file!==segment.file||receipt.media?.sha256!==segment.sha256||receipt.media?.bytes!==raw.length)throw Error(c.id+':media_binding_mismatch');
+   if(receipt.schema!=='musely-demo-capture-2'||receipt.kind!=='recorded_public_capture'||receipt.cutId!==c.id||receipt.viewId!==view.id||receipt.takeId!==segment.takeId||receipt.runId!==view.runId||receipt.durationSeconds!==view.duration||canonical(receipt.release)!==canonical(p.release)||!Number.isFinite(receipt.startOffsetSec)||receipt.startOffsetSec<0||receipt.blockedRequests!==0||receipt.label!=='REPLAY'||receipt.virtual!==true||canonical(receipt.originalSources)!==canonical(sources(refs))||receipt.observed?.runId!==view.runId||receipt.observed?.label!==true||receipt.observed?.hash!==view.snapshotHash||receipt.seekSec!==view.seekSec)throw Error(c.id+':capture_receipt_mismatch');
+   if(!Array.isArray(receipt.refs)||!Array.isArray(segment.refs)||canonical(refKeys(receipt.refs))!==canonical(refKeys(refs))||canonical(refKeys(segment.refs))!==canonical(refKeys(refs)))throw Error(c.id+':captured_refs_mismatch');
+   rows.push({cut:c,view,segment,receipt,clip});
+  }
+ }
+ return rows;
+}
 export async function render(p,dir,ffmpeg,font){
  const errors=await verifyBundle(p,dir);if(errors.length)throw Error(errors.join('\n'));
- const parts=[];await mkdir(resolve(dir,'render'),{recursive:true});
- for(const c of p.cuts){
- const segments=Array.isArray(c.media)?c.media:[{...c.media,duration:c.duration}];
- if(segments.reduce((n,s)=>n+s.duration,0)!==c.duration)throw Error(c.id+':take_duration_mismatch');
- for(const [index,segment] of segments.entries()){
- const clip=inside(dir,segment.file),raw=await readFile(clip);if(sha(raw)!==segment.sha256)throw Error(c.id+':media_hash_mismatch');
- const receipt=JSON.parse(await readFile(inside(dir,segment.receipt),'utf8'));
- if(receipt.cutId!==c.id||receipt.sourceSha!==p.release.sourceSha||receipt.deployId!==p.release.deployId||receipt.htmlSha256!==p.release.htmlSha256||receipt.configVersion!==p.release.configVersion||!Number.isFinite(receipt.startOffsetSec)||receipt.blockedRequests!==0||receipt.kind!=='recorded_public_capture')throw Error(c.id+':capture_receipt_mismatch');
- if(!receipt.refs?.length||receipt.refs.some(r=>!c.refs.some(x=>x.eventId===r.eventId&&x.runId===r.runId&&x.inputSeq===r.inputSeq)))throw Error(c.id+':captured_refs_mismatch');
- const expectedView=c.views?.find(v=>v.runId===receipt.runId)??c;
- if(receipt.observed?.hash!==expectedView.snapshotHash||receipt.seekSec!==expectedView.seekSec)throw Error(c.id+':captured_snapshot_mismatch');
+ const rows=await verifyMedia(p,dir),parts=[];await mkdir(resolve(dir,'render'),{recursive:true});
+ for(const [index,{cut:c,segment,receipt,clip}] of rows.entries()){
  const target=resolve(dir,'render',c.id+'-'+index+'.mp4'),text=resolve(dir,'render',c.id+'-'+index+'.txt');
- await writeNew(text,`REPLAY | original: ${[...new Set(c.refs.map(r=>r.originalSource))].join(', ')} | VIRTUAL LOCATION (DEMO)\n${c.title} | Meta Muse Spark | build ${p.release.sourceSha.slice(0,12)}`);
+ await writeNew(text,`REPLAY | original: ${receipt.originalSources.join(', ')} | VIRTUAL LOCATION (DEMO)\n${c.title} | Meta Muse Spark | build ${p.release.sourceSha.slice(0,12)}`);
  const esc=s=>s.replaceAll('\\','\\\\').replaceAll(':','\\:').replaceAll("'","'\\''");
  const vf=`scale=1920:960:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:0:color=black,drawtext=fontfile='${esc(resolve(font))}':textfile='${esc(text)}':fontcolor=white:fontsize=28:x=24:y=978:line_spacing=8`;
  await run(ffmpeg,['-hide_banner','-loglevel','error','-n','-ss',String(receipt.startOffsetSec),'-i',clip,'-t',String(segment.duration),'-an','-vf',vf,'-r','30','-c:v','libx264','-pix_fmt','yuv420p','-movflags','+faststart',target]);parts.push(target);
- }}
+ }
  const list=resolve(dir,'render','concat.txt');await writeNew(list,parts.map(p=>"file '"+p.replaceAll("'","'\\''")+"'").join('\n')+'\n');
  const video=resolve(dir,'musely-180s-review.mp4');await run(ffmpeg,['-hide_banner','-loglevel','error','-n','-f','concat','-safe','0','-i',list,'-c','copy','-movflags','+faststart',video]);
  const decoded=await run(ffmpeg,['-v','error','-i',video,'-progress','pipe:1','-f','null','-']);const times=[...decoded.stdout.matchAll(/out_time_us=(\d+)/g)].map(x=>Number(x[1])/1e6);const seconds=Math.max(...times);
  if(Math.abs(seconds-180)>.1)throw Error('decoded_duration_not_180:'+seconds);
- const receipt={kind:'rendered_needs_human_playback_review',durationSeconds:seconds,sha256:sha(await readFile(video)),release:p.release,finalAcceptance:'not_measured',audio:'none'};await writeNew(resolve(dir,'render-receipt.json'),JSON.stringify(receipt,null,2)+'\n');return receipt;
+ const receipt={kind:'rendered_needs_human_playback_review',durationSeconds:seconds,sha256:sha(await readFile(video)),release:p.release,finalAcceptance:'not_measured',audio:'none',takes:rows.map(({cut,view,segment})=>({cutId:cut.id,viewId:view.id,takeId:segment.takeId,runId:view.runId,duration:segment.duration,file:segment.file,sha256:segment.sha256,receipt:segment.receipt}))};await writeNew(resolve(dir,'render-receipt.json'),JSON.stringify(receipt,null,2)+'\n');return receipt;
 }
