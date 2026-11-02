@@ -11,7 +11,7 @@ const help=`D05 local preparation (no publication or browser launch)
   node scripts/demo-video.mjs render PLAN.json /absolute/evidence-dir /absolute/ffmpeg /absolute/local-font
 Collect performs bounded public GETs only, no credentials. Preparation is not acceptance.
 Capture requires a separately authorized browser slot: import captureDemoCut from demo-capture.mjs.
-Frozen release, actual record links and completed human causal/privacy review are required before capture/render.
+Frozen release, actual record links and completed coordinator causal/privacy review are required before capture/render.
 `;
 try{
  if(!command||['help','--help','-h'].includes(command)){console.log(help);}

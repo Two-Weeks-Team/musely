@@ -55,7 +55,7 @@ export function validatePlan(p){
  }
  if(c.refs?.some(r=>!views.some(v=>v.runId===r.runId)))e.push(c.id+':unfilmed_reference_run');
  }
- for(const key of ['p0SameJob','p1ControlledPair','labelsAndAttribution','noPrivateContent','releaseAndAccountReceipts'])if(p.review?.[key]!==true)e.push('human_review_required:'+key);
+ for(const key of ['p0SameJob','p1ControlledPair','labelsAndAttribution','noPrivateContent','releaseAndAccountReceipts'])if(p.review?.[key]!==true)e.push('coordinator_review_required:'+key);
  return e;
 }
 export function signedVerdict(e){
@@ -133,7 +133,7 @@ export async function render(p,dir,ffmpeg,font){
  const rows=await verifyMedia(p,dir),parts=[];await mkdir(resolve(dir,'render'),{recursive:true});
  for(const [index,{cut:c,segment,receipt,clip}] of rows.entries()){
  const target=resolve(dir,'render',c.id+'-'+index+'.mp4'),text=resolve(dir,'render',c.id+'-'+index+'.txt');
- await writeNew(text,`REPLAY | original: ${receipt.originalSources.join(', ')} | VIRTUAL LOCATION (DEMO)\n${c.title} | Meta Muse Spark | build ${p.release.sourceSha.slice(0,12)}`);
+ await writeNew(text,`REPLAY${c.id==='s05'?' | CONTROLLED COMPARISON (SIMULATION)':''} | original: ${receipt.originalSources.join(', ')} | VIRTUAL LOCATION (DEMO)\n${c.title} | Meta Muse Spark | build ${p.release.sourceSha.slice(0,12)}`);
  const esc=s=>s.replaceAll('\\','\\\\').replaceAll(':','\\:').replaceAll("'","'\\''");
  const vf=`scale=1920:960:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:0:color=black,drawtext=fontfile='${esc(resolve(font))}':textfile='${esc(text)}':fontcolor=white:fontsize=28:x=24:y=978:line_spacing=8`;
  await run(ffmpeg,['-hide_banner','-loglevel','error','-n','-ss',String(receipt.startOffsetSec),'-i',clip,'-t',String(segment.duration),'-an','-vf',vf,'-r','30','-c:v','libx264','-pix_fmt','yuv420p','-movflags','+faststart',target]);parts.push(target);
@@ -142,5 +142,5 @@ export async function render(p,dir,ffmpeg,font){
  const video=resolve(dir,'musely-180s-review.mp4');await run(ffmpeg,['-hide_banner','-loglevel','error','-n','-f','concat','-safe','0','-i',list,'-c','copy','-movflags','+faststart',video]);
  const decoded=await run(ffmpeg,['-v','error','-i',video,'-progress','pipe:1','-f','null','-']);const times=[...decoded.stdout.matchAll(/out_time_us=(\d+)/g)].map(x=>Number(x[1])/1e6);const seconds=Math.max(...times);
  if(Math.abs(seconds-180)>.1)throw Error('decoded_duration_not_180:'+seconds);
- const receipt={kind:'rendered_needs_human_playback_review',durationSeconds:seconds,sha256:sha(await readFile(video)),release:p.release,finalAcceptance:'not_measured',audio:'none',takes:rows.map(({cut,view,segment})=>({cutId:cut.id,viewId:view.id,takeId:segment.takeId,runId:view.runId,duration:segment.duration,file:segment.file,sha256:segment.sha256,receipt:segment.receipt}))};await writeNew(resolve(dir,'render-receipt.json'),JSON.stringify(receipt,null,2)+'\n');return receipt;
+ const receipt={kind:'rendered_needs_playback_review',durationSeconds:seconds,sha256:sha(await readFile(video)),release:p.release,finalAcceptance:'not_measured',audio:'none',takes:rows.map(({cut,view,segment})=>({cutId:cut.id,viewId:view.id,takeId:segment.takeId,runId:view.runId,duration:segment.duration,file:segment.file,sha256:segment.sha256,receipt:segment.receipt}))};await writeNew(resolve(dir,'render-receipt.json'),JSON.stringify(receipt,null,2)+'\n');return receipt;
 }
