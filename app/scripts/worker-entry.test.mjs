@@ -22,21 +22,28 @@ test('Worker entry: /api/agent-keys → /mcp handshake and tools → owner locat
   let depth = 0;
   const transactionSync = fn => { const sp = 'tx' + depth++; db.exec('SAVEPOINT ' + sp); try { const r = fn(); if (r && typeof r.then === 'function') throw new Error('transactionSync callback must be synchronous'); db.exec('RELEASE ' + sp); return r; } catch (e) { db.exec('ROLLBACK TO ' + sp); db.exec('RELEASE ' + sp); throw e; } finally { depth--; } };
   const ctx = {storage: {sql, transactionSync, getAlarm: async () => alarm, setAlarm: async t => { alarm = t; }}, blockConcurrencyWhile: fn => (ready = fn())};
-  const env = {MODEL_ID: 'muse-spark-1.3', MODEL_BASE: 'https://api.meta.ai/v1', DAILY_BUDGET_USD: '1', TURNSTILE_SITEKEY: 'x', ALLOWED_HOSTS: 'musely.net,www.musely.net', PUBLIC_ORIGIN: 'https://musely.net', SESSION_SECRET: 'e2e-secret'};
+  const env = {MODEL_ID: 'muse-spark-1.3', MODEL_BASE: 'https://api.meta.ai/v1', DAILY_BUDGET_USD: '1', TURNSTILE_SITEKEY: 'x', ALLOWED_HOSTS: 'musely.net,www.musely.net', PUBLIC_ORIGIN: 'https://musely.net', SESSION_SECRET: 'e2e-secret', OWNER_CONTROL_TOKEN: 'e2e-owner-control-token-000000000001'};
   const dobj = new WorldDO(ctx, env);
   await ready;
   env.WORLD = {idFromName: () => 'id', get: () => dobj};
   env.ASSETS = {fetch: async () => new Response('asset')};
-  const cookie = sessionCookie((await issueSession(env.SESSION_SECRET, 'judge')).token).split(';')[0];
+  const judgeCookie = sessionCookie((await issueSession(env.SESSION_SECRET, 'judge')).token).split(';')[0];
   const go = async (method, path, body, headers = {}) => {
     const r = await worker.fetch(new Request('https://musely.net' + path, {method, body: body ? JSON.stringify(body) : undefined, headers: {'content-type': 'application/json', ...headers}}), env);
     const t = await r.text();
-    return {status: r.status, body: t ? JSON.parse(t) : null};
+    return {status: r.status, body: t ? JSON.parse(t) : null, setCookie: r.headers.get('set-cookie')};
   };
+  // Owner control is an owner session (C06), exchanged for the control token from our origin; the judge link is not an owner.
+  const origin = 'https://musely.net';
+  const login = await go('POST', '/api/owner/session', {token: env.OWNER_CONTROL_TOKEN}, {origin});
+  assert.equal(login.status, 200); assert.equal(login.body.owner.principal, 'owner');
+  const cookie = login.setCookie.split(';')[0];
+  assert.equal((await go('POST', '/api/agent-keys', null, {cookie: judgeCookie, origin})).status, 401, 'the judge session is not an owner');
 
-  const k = await go('POST', '/api/agent-keys', null, {cookie});
+  const k = await go('POST', '/api/agent-keys', null, {cookie, origin});
   assert.equal(k.status, 201); assert.match(k.body.key, /^msly_[A-Za-z0-9_-]{43}$/);
-  assert.equal((await go('POST', '/api/agent-keys')).status, 403, 'judge session required');
+  assert.equal((await go('POST', '/api/agent-keys', null, {origin})).status, 401, 'owner session required');
+  assert.equal((await go('POST', '/api/agent-keys', null, {cookie})).status, 403, 'an owner write without our Origin is refused');
   const auth = {authorization: 'Bearer ' + k.body.key, accept: 'application/json, text/event-stream'};
   const v = {...auth, 'mcp-protocol-version': '2025-06-18'};
   assert.equal((await go('POST', '/mcp', {jsonrpc: '2.0', id: 1, method: 'initialize', params: {}})).status, 401);
@@ -67,16 +74,18 @@ test('Worker entry: /api/agent-keys → /mcp handshake and tools → owner locat
   }
   const publicN = (await go('GET', '/api/owner/notifications')).body.notifications.find(n => n.kind === 'meetup_candidate');
   assert.ok(publicN && !JSON.stringify(publicN).includes(cand.time));
-  const judgeN = (await go('GET', '/api/owner/notifications', null, {cookie})).body.notifications.find(n => n.kind === 'meetup_candidate');
-  assert.equal(judgeN.detail.time, cand.time, 'the judge (owner) session sees the details');
+  const judgeN = (await go('GET', '/api/owner/notifications', null, {cookie: judgeCookie})).body.notifications.find(n => n.kind === 'meetup_candidate');
+  assert.equal(judgeN.detail, undefined, 'the judge session no longer sees owner details');
+  const ownerN = (await go('GET', '/api/owner/notifications', null, {cookie})).body.notifications.find(n => n.kind === 'meetup_candidate');
+  assert.equal(ownerN.detail.time, cand.time, 'the owner session sees the details');
 
-  const loc = await go('POST', '/api/owner/location', {source: 'virtual', preset: 'stanford'}, {cookie});
+  const loc = await go('POST', '/api/owner/location', {source: 'virtual', preset: 'stanford'}, {cookie, origin});
   assert.equal(loc.status, 200); assert.equal(loc.body.follow.mode, 'walking');
   const pub = await go('GET', '/api/owner/location');
   assert.equal(pub.body.cell_label, 'Stanford'); assert.ok(pub.body.muse.eta_ms > 0);
   assert.equal((await go('GET', '/api/owner/notifications')).status, 200);
 
-  assert.equal((await go('DELETE', '/api/agent-keys/' + k.body.id, null, {cookie})).status, 200);
+  assert.equal((await go('DELETE', '/api/agent-keys/' + k.body.id, null, {cookie, origin})).status, 200);
   assert.equal((await go('POST', '/mcp', {jsonrpc: '2.0', id: 4, method: 'tools/list'}, v)).status, 401);
   const kinds = dobj.worldEvents(0, 500).filter(e => e.muse === '00-jolly').map(e => e.kind);
   for (const kind of ['agent_key_issued', 'agent_connected', 'greet', 'owner_location_set', 'depart', 'agent_key_revoked']) assert.ok(kinds.includes(kind), kind);

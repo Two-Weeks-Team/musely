@@ -34,7 +34,7 @@ export class ConnectedHost {
     return {...ownerView(owner, s.muses.find(m => m.id === owner.muse), now), presets: PRESETS.map(p => ({id: p.id, label: p.label}))};
   }
 
-  /** Judge/owner session only (checked by the Worker route). GPS coordinates are reduced to a cell and dropped. */
+  /** Owner session only (checked by the Worker route). GPS coordinates are reduced to a cell and dropped. */
   setOwnerLocation(input: unknown) {
     const now = this.now(), s = this.d.runtime.state();
     const next = nextOwnerLocation(s.owner ?? defaultOwner(OWNER_MUSE, now), input, now);
@@ -70,6 +70,9 @@ export class ConnectedHost {
     });
     return {id: after.id, revoked_at: after.revokedAt, muse: after.muse};
   }
+
+  /** The Muse a key belongs to (for the owner route's ownership check), or null. */
+  keyMuse(id: string) { return this.keys.byId(id)?.muse ?? null; }
 
   listKeys(muse = OWNER_MUSE) { return this.keys.list(muse).map(k => ({id: k.id, created_at: k.createdAt, last_used_at: k.lastUsedAt, revoked_at: k.revokedAt, signer_kind: k.signerKind})); }
 

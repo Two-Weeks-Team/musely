@@ -35,9 +35,14 @@ export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; 
   const plan = opts.plan ?? findOwnerTrade(s);
   if (!plan) return {ok: false as const, reason: 'no_valid_trade_now'};
   const exec = opts.stale ? await c.trust.storedExecutor(OWNER_SLOT, 'server_custodial') : await c.trust.executor(OWNER_SLOT, 'server_custodial', c.ownerRoot);
-  if (!exec) return {ok: false as const, reason: 'no_executor'};
-  const partner = c.trust.agentByMuse(plan.partner)!;
   const content = {kind: 'propose_trade', give: plan.give, want: plan.want, to: plan.partner};
+  if (!exec) {
+    // Revoked before any executor was issued: nothing can be signed, so the request is refused at the delegation step.
+    if (!opts.stale || !c.trust.suspended(OWNER_SLOT)) return {ok: false as const, reason: 'no_executor'};
+    const events = c.runtime.commitRefusal(nowOf(c), `p0-refused-${Math.random().toString(36).slice(2, 8)}`, `${OWNER_SLOT}>${plan.partner}:delegation_revoked:delegation`, (_st, emit) => emit({at: nowOf(c), source: 'live', kind: 'a2a_refused', muse: OWNER_SLOT, other: plan.partner, line: 'Refused: delegation revoked', data: {step: 'delegation', reason: 'delegation_revoked', envelope: null, content, label: opts.label}, tags: ['p0_refused']}), false);
+    return {ok: false, verdict: 'delegation_revoked', events: events.map(e => e.id), command: null, plan};
+  }
+  const partner = c.trust.agentByMuse(plan.partner)!;
   const cmd = await signCommand(exec, {worldId: c.runtime.worldId, expectedVersion: s.version, action: 'propose_trade', payload: content, recipient: partner.agentId, scope: 'world_item_trade', ownerClaimed: c.ownerClaimed, now: nowOf(c)});
   const evidence = envelopeEvidence(cmd.signed);
   const out = await executeCommand(c, cmd, {
@@ -62,23 +67,34 @@ export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; 
   return {ok: committed, verdict, events: out.result.eventIds, command: out.result, plan};
 }
 
-/** P0 (direction 2.1): valid delegation → trade commits; owner revokes; the same request → refused. */
+/**
+ * P0 (direction 2.1, C04, I-02). Each run is one step, decided by the owner Muse's delegation state; it never
+ * revokes and never delegates again (both are owner actions at /api/owner/revoke and /api/owner/redelegate):
+ *  - delegation active → the owner Muse's signed trade is verified and committed ("valid")
+ *  - revoked by the owner → the same request content (the last valid P0 job), signed again with a new message id
+ *    and nonce under the revoked delegation, is refused with delegation_revoked and the world state is unchanged
+ *    ("after_revoke"). It stays that way on every further run until the owner delegates again.
+ */
 export async function runP0(c: Ctx) {
-  // Running P0 is an owner action: if a previous run stopped between revoke and re-delegation, delegate first.
-  if (c.trust.suspended(OWNER_SLOT)) c.trust.redelegate(OWNER_SLOT);
-  const first = await ownerTrade(c, {label: 'p0-valid'});
-  if (!('plan' in first)) return {ok: false, reason: first.reason};
-  // P0 shows a committed trade first; without one there is nothing to revoke against.
-  if (!first.ok) return {ok: false, reason: first.verdict, before: first.verdict};
-  const version = await c.trust.revoke(OWNER_SLOT);
-  c.runtime.commitExternal(nowOf(c), 'p0-revoke', (_s, emit) => emit({at: nowOf(c), source: 'live', kind: 'delegation_revoked', muse: OWNER_SLOT, line: 'Owner revoked the delegation', data: {newVersion: version}, tags: ['revocation']}));
-  // The same request content, re-signed with the delegation that was just revoked.
-  const second = await ownerTrade(c, {stale: true, label: 'p0-after-revoke', plan: first.plan});
-  // The owner delegates again (explicitly) so the Muse can keep living in the world; a new version, a new executor.
-  c.trust.redelegate(OWNER_SLOT);
-  const fresh = await c.trust.executor(OWNER_SLOT, 'server_custodial', c.ownerRoot);
-  c.runtime.commitExternal(nowOf(c), 'p0-redelegate', (_s, emit) => emit({at: nowOf(c), source: 'live', kind: 'delegation_issued', muse: OWNER_SLOT, line: 'Owner delegated again', data: {version: fresh.d.version, signer_kind: fresh.d.signer_kind, executor_kid: fresh.d.executor_kid}, tags: []}));
-  return {ok: true, before: first.verdict, afterRevoke: 'verdict' in second ? second.verdict : second.reason};
+  if (!c.trust.suspended(OWNER_SLOT)) {
+    const first = await ownerTrade(c, {label: 'p0-valid'});
+    if (!('plan' in first)) return {ok: false as const, phase: 'valid' as const, reason: first.reason};
+    return {ok: first.ok, phase: 'valid' as const, before: first.verdict, plan: first.plan, next: 'owner_revoke'};
+  }
+  const job = lastP0Job(c) ?? findOwnerTrade(c.runtime.state());
+  if (!job) return {ok: false as const, phase: 'after_revoke' as const, reason: 'no_valid_trade_now'};
+  const before = JSON.stringify(c.runtime.state());
+  const second = await ownerTrade(c, {stale: true, label: 'p0-after-revoke', plan: job});
+  const unchanged = JSON.stringify(c.runtime.state()) === before;
+  const afterRevoke = 'verdict' in second ? second.verdict : second.reason;
+  return {ok: afterRevoke === 'delegation_revoked' && unchanged, phase: 'after_revoke' as const, afterRevoke, stateUnchanged: unchanged, worldVersion: c.runtime.state().version, plan: job, redelegated: false, next: 'owner_redelegate'};
+}
+
+/** The request content of the newest committed valid P0 run ("the same job" the owner then revokes). */
+function lastP0Job(c: Ctx): {partner: string; give: string; want: string} | null {
+  const e = c.runtime.recentOfKind('a2a_verified', 50).find(x => x.muse === OWNER_SLOT && x.data?.label === 'p0-valid');
+  const content = e?.data?.content as {give?: unknown; want?: unknown; to?: unknown} | undefined;
+  return content && typeof content.give === 'string' && typeof content.want === 'string' && typeof content.to === 'string' ? {partner: content.to, give: content.give, want: content.want} : null;
 }
 
 // ---------- credentials before side effects (C04) ----------

@@ -18,7 +18,8 @@ export type Task = {
   kind: 'trade' | 'meetup';
   from: string;            // who opened the Task
   to: string;
-  status: 'pending' | 'completed' | 'rejected' | 'expired' | 'failed';
+  /** cancelled: closed because the owner revoked a participant's delegation (C06 maps failed to cancelled). */
+  status: 'pending' | 'completed' | 'rejected' | 'expired' | 'failed' | 'cancelled';
   /** Whose answer the Task waits for. */
   awaiting: string | null;
   createdAt: number;
@@ -30,7 +31,7 @@ export type Task = {
   /** Meetup: a candidate built from public information; answers are accept|reject only. */
   candidate?: {time: string; place: string; public_basis: string};
   answers?: Record<string, 'accept' | 'reject'>;
-  history: {by: string; action: 'propose' | 'counter' | 'accept' | 'reject' | 'expire' | 'answer'; at: number; give?: string; want?: string}[];
+  history: {by: string; action: 'propose' | 'counter' | 'accept' | 'reject' | 'expire' | 'answer' | 'cancel'; at: number; give?: string; want?: string}[];
 };
 export type Message = {id: string; from: string; to: string; kind: 'greet' | 'postcard' | 'gift'; at: number; text: string | null; item?: string | null; blocked?: string[]; read: boolean};
 export type Mail = {id: string; from: string; to: string; item: string; text: string | null; sentAt: number; deliverAt: number; crossRegion: boolean};
@@ -83,6 +84,15 @@ export function expireTasks(inbox: Inbox, now: number): Task[] {
   // Keep the open Tasks and the most recent closed ones.
   const closed = inbox.tasks.filter(t => t.status !== 'pending');
   if (closed.length > KEEP) { const drop = new Set(closed.slice(0, closed.length - KEEP)); inbox.tasks = inbox.tasks.filter(t => !drop.has(t)); }
+  return out;
+}
+
+/** The owner revoked this Muse's delegation: every pending Task it takes part in is closed as cancelled. */
+export function cancelTasksFor(inbox: Inbox, museId: string, now: number, by: string): Task[] {
+  const out: Task[] = [];
+  for (const t of inbox.tasks) if (t.status === 'pending' && (t.from === museId || t.to === museId)) {
+    t.status = 'cancelled'; t.awaiting = null; t.updatedAt = now; t.history.push({by, action: 'cancel', at: now}); out.push(t);
+  }
   return out;
 }
 

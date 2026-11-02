@@ -163,6 +163,8 @@ export class WorldRuntime {
   }
 
   private async liveSpotlight(s: WorldState, muse: string, freedom: Decision['freedom'], now: number): Promise<{decision: Decision | null; info: {source: string; reason?: string; requestId?: string | null}}> {
+    // A paused Muse (owner revoked its delegation) has no turn: no model call, no fallback, no event.
+    if (s.paused?.[muse]) return {decision: null, info: {source: 'scripted'}};
     // The world must never stop on one bad input: if the spotlight input cannot be built, the scenario continues.
     let input;
     try { input = validate('spotlight', spotlightInput(s, muse, freedom, now)); }
@@ -251,6 +253,11 @@ export class WorldRuntime {
     return this.sql.exec('SELECT seq, id, tick, at, source, kind, muse, other, place, line, data, tags FROM events WHERE tick = ? AND kind = ? ORDER BY seq', tick, kind).toArray()
       .map(r => ({...r, data: JSON.parse(String(r.data)), tags: JSON.parse(String(r.tags))}) as WorldEvent & {seq: number});
   }
+  /** The newest events of one kind, newest first. */
+  recentOfKind(kind: string, limit = 20) {
+    return this.sql.exec('SELECT seq, id, tick, at, source, kind, muse, other, place, line, data, tags FROM events WHERE kind = ? ORDER BY seq DESC LIMIT ?', kind, limit).toArray()
+      .map(r => ({...r, data: JSON.parse(String(r.data)), tags: JSON.parse(String(r.tags))}) as WorldEvent & {seq: number});
+  }
   highlights(limit = 100) {
     return this.sql.exec("SELECT seq, id, tick, at, source, kind, muse, other, place, line, data, tags FROM events WHERE tags != '[]' ORDER BY seq DESC LIMIT ?", limit).toArray()
       .map(r => ({...r, data: JSON.parse(String(r.data)), tags: JSON.parse(String(r.tags))}));
@@ -258,6 +265,6 @@ export class WorldRuntime {
   /** Compact public view for clients: positions, current beats, inventories, spotlight. */
   view(now: number) {
     const s = this.state();
-    return {worldId: s.worldId, day: s.day, tick: s.tick, version: s.version, lastTickAt: s.lastTickAt, nextSpotlight: spotlightFor(s, now), muses: s.muses.map(m => ({id: m.id, place: m.place, travel: m.travel, beat: m.beat, inventory: m.inventory, reflection: m.reflection, wants: m.wants}))};
+    return {worldId: s.worldId, day: s.day, tick: s.tick, version: s.version, lastTickAt: s.lastTickAt, nextSpotlight: spotlightFor(s, now), muses: s.muses.map(m => ({id: m.id, place: m.place, travel: m.travel, beat: m.beat, inventory: m.inventory, reflection: m.reflection, wants: m.wants, paused: s.paused?.[m.id] ?? null}))};
   }
 }

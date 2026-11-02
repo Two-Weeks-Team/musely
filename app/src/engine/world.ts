@@ -41,7 +41,13 @@ export type WorldState = {worldId: string; day: string; seed: string; tick: numb
   /** Owner location source and cell (13.1). Older stored states get the default on the next tick. */
   owner?: OwnerLocation;
   /** Agent inbox, mail in transit and owner notifications (7.2, 12.3). */
-  inbox?: Inbox};
+  inbox?: Inbox;
+  /**
+   * Muses whose owner revoked the delegation (C06, I-02). A paused Muse takes no spotlight turn, starts no beat or
+   * trip and meets nobody, until its owner delegates again. Set and cleared only by pauseMuse / resumeMuse.
+   */
+  paused?: Record<string, Paused>};
+export type Paused = {at: number; version: number; by: string};
 export type Decision = {muse: string; freedom: Freedom; source: 'live' | 'replay'; output: {decision: string; target_place: string; target_agent: string; offer_item: string; want_item: string; public_reason: string; line: string}; evidence?: Record<string, unknown>};
 export type Hooks = {
   /** Item discovery etc. when a Muse arrives somewhere (task 4 rules). */
@@ -175,14 +181,17 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   s.inbox.mail = s.inbox.mail.filter(x => x.deliverAt > now);
 
   const spot = spotlightFor(s, now);
-  // 1. Spotlight: a recorded live/replay decision for this turn, or the scenario's own choice.
-  const d = input.decision && input.decision.muse === spot.muse ? input.decision : null;
-  if (input.decision && !d) emit({at: now, source: input.decision.source, kind: 'decision_rejected', muse: input.decision.muse, data: {reason: 'not this Muse\'s spotlight turn'}, tags: []});
+  const paused = (id: string) => !!s.paused?.[id];
+  // 1. Spotlight: a recorded live/replay decision for this turn, or the scenario's own choice. A paused Muse's turn passes silently.
+  const d = input.decision && input.decision.muse === spot.muse && !paused(spot.muse) ? input.decision : null;
+  if (input.decision && !d) emit({at: now, source: input.decision.source, kind: 'decision_rejected', muse: input.decision.muse, data: {reason: paused(input.decision.muse) ? 'paused: the owner revoked this Muse\'s delegation' : 'not this Muse\'s spotlight turn'}, tags: []});
   if (d) applyDecision(s, d, spot.freedom, now, emit, hooks);
-  else emit({at: now, source: 'scripted', kind: 'spotlight', muse: spot.muse, data: {freedom: spot.freedom, live: false}, tags: []});
+  else if (!paused(spot.muse)) emit({at: now, source: 'scripted', kind: 'spotlight', muse: spot.muse, data: {freedom: spot.freedom, live: false}, tags: []});
 
   // 2. Every Muse advances: arrivals, then a new beat or a trip when the current beat ends.
   for (const m of s.muses) {
+    // A paused Muse (owner revoked its delegation) stays where it stopped: no arrival, beat or trip.
+    if (paused(m.id)) continue;
     const rand = rngFor(s.seed, s.tick, m.id);
     // A connected Muse (8.8) decides in its owner's runtime: requested trips still arrive and running beats
     // still finish, but the scenario never picks a trip or a beat for it.
@@ -216,7 +225,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
 
   // 3. Encounters: Muses at the same place, not travelling, who have not met in the last 30 minutes.
   const byPlace = new Map<string, MuseState[]>();
-  for (const m of s.muses) if (!m.travel) byPlace.set(m.place, [...(byPlace.get(m.place) ?? []), m]);
+  for (const m of s.muses) if (!m.travel && !paused(m.id)) byPlace.set(m.place, [...(byPlace.get(m.place) ?? []), m]);
   for (const [placeId, group] of byPlace) {
     for (let i = 0; i < group.length; i++) for (let j = i + 1; j < group.length; j++) {
       const a = group[i], b = group[j];
@@ -240,6 +249,25 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   if (s.spotlight.visitorQueue[0] === spot.muse) s.spotlight.visitorQueue.shift(); else s.spotlight.cursor = (s.spotlight.cursor + 1) % s.muses.length;
   s.tick += 1; s.version += 1; s.lastTickAt = now;
   return {state: s, events};
+}
+
+/**
+ * The owner revoked this Muse's delegation (C06): it stops where it is. A trip in progress ends at the place it left
+ * (it never arrived), the current beat and intent end. Returns what was stopped, for the event.
+ */
+export function pauseMuse(s: WorldState, museId: string, p: Paused) {
+  const m = s.muses.find(x => x.id === museId);
+  if (!m) return null;
+  const stopped = {trip: m.travel?.to ?? null, beat: m.beat?.id ?? null, intent: m.intent?.kind ?? null};
+  m.travel = null; m.beat = null; m.intent = null;
+  (s.paused ??= {})[museId] = p;
+  return stopped;
+}
+/** The owner delegated again: the Muse rejoins the scenario on the next tick. */
+export function resumeMuse(s: WorldState, museId: string) {
+  if (!s.paused?.[museId]) return false;
+  delete s.paused[museId];
+  return true;
 }
 
 function remember(m: MuseState, line: string) { m.memory = [line, ...m.memory.filter(x => x !== line)].slice(0, 6); }

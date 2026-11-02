@@ -6,6 +6,7 @@ import {WorldRuntime} from '../worker/core/world-runtime.ts';
 import {Trust, OWNER_SLOT} from '../worker/core/trust.ts';
 import {runP0, verifyMeeting, impostorCheck, injectionCheck, findOwnerTrade} from '../worker/core/a2a.ts';
 import {makeHooks} from '../src/engine/rules.ts';
+import {revokeMuse, redelegateMuse} from '../worker/core/owner-control.ts';
 
 // Like Durable Object SQL: transaction statements are refused (only transactionSync opens a transaction).
 const TX_SQL = /^\s*(BEGIN|SAVEPOINT|COMMIT|ROLLBACK|RELEASE|END)\b/i;
@@ -24,22 +25,55 @@ async function setup() {
   return {trust, runtime, ctx: {trust, runtime, ownerRoot, ownerClaimed: true, baseUrl: 'https://musely.net'}};
 }
 
-test('P0: a valid delegation commits the trade; after revocation the same request is refused; then re-delegated', async () => {
+test('P0: valid → the owner revokes → the same job with a new nonce is refused, state unchanged → no automatic re-delegation', async () => {
   const {ctx, runtime, trust} = await setup();
   assert.ok(findOwnerTrade(runtime.state()), 'a nearby valid trade exists');
-  const r = await runP0(ctx);
-  assert.deepEqual([r.before, r.afterRevoke], ['verified', 'delegation_revoked']);
-  const ev = runtime.events(0, 500).filter(e => ['a2a_verified', 'trade_completed', 'delegation_revoked', 'a2a_refused', 'delegation_issued'].includes(e.kind));
-  assert.deepEqual(ev.map(e => e.kind), ['a2a_verified', 'trade_completed', 'delegation_revoked', 'a2a_refused', 'delegation_issued']);
-  const verified = ev[0], refused = ev[3];
+  const r1 = await runP0(ctx);
+  assert.deepEqual([r1.phase, r1.before], ['valid', 'verified']);
+  assert.equal(trust.suspended(OWNER_SLOT), false, 'running P0 revokes nothing by itself');
+  // The owner's own, separate action.
+  const rv = await revokeMuse(ctx, OWNER_SLOT, 'owner:kim-sejun');
+  assert.equal(rv.ok && rv.already, false);
+  const before = JSON.stringify(runtime.state());
+  const r2 = await runP0(ctx);
+  assert.deepEqual([r2.phase, r2.afterRevoke, r2.stateUnchanged, r2.redelegated], ['after_revoke', 'delegation_revoked', true, false]);
+  assert.equal(JSON.stringify(runtime.state()), before, 'inventories, places, Tasks and the world version did not change');
+  assert.equal(trust.suspended(OWNER_SLOT), true, 'P0 did not delegate again');
+  // Running it again changes nothing either: still revoked until the owner delegates.
+  const r3 = await runP0(ctx);
+  assert.deepEqual([r3.phase, r3.afterRevoke, r3.stateUnchanged], ['after_revoke', 'delegation_revoked', true]);
+  assert.equal(trust.suspended(OWNER_SLOT), true);
+  const kinds = ['a2a_verified', 'trade_completed', 'delegation_revoked', 'a2a_refused', 'delegation_issued'];
+  const ev = runtime.events(0, 500).filter(e => kinds.includes(e.kind));
+  assert.deepEqual(ev.map(e => e.kind), ['a2a_verified', 'trade_completed', 'delegation_revoked', 'a2a_refused', 'a2a_refused'], 'no delegation_issued: nothing re-delegated');
+  const [verified, , revoked, refused, refusedAgain] = ev;
+  assert.equal(revoked.data.by, 'owner:kim-sejun');
   assert.equal(verified.data.envelope.signer_kind, 'server_custodial');
-  assert.deepEqual(refused.data.content, verified.data.content, 'the same request content');
+  assert.deepEqual(refused.data.content, verified.data.content, 'the same job');
+  assert.deepEqual(refusedAgain.data.content, verified.data.content);
   assert.notEqual(refused.data.envelope.message_id, verified.data.envelope.message_id);
+  assert.notEqual(refused.data.envelope.nonce, verified.data.envelope.nonce, 'a new nonce');
+  assert.notEqual(refusedAgain.data.envelope.nonce, refused.data.envelope.nonce);
   assert.equal(refused.data.step, 'delegation');
   assert.ok(ev[1].tags.includes('p0_trade') && refused.tags.includes('p0_refused'));
-  assert.equal(trust.suspended(OWNER_SLOT), false, 'a new delegation was issued');
-  const owner = runtime.state().muses.find(m => m.id === OWNER_SLOT);
-  assert.ok(owner.inventory.includes('trade_receipt'));
+  assert.ok(runtime.state().muses.find(m => m.id === OWNER_SLOT).inventory.includes('trade_receipt'));
+  // Only the owner's explicit re-delegation brings P0 back to the valid step.
+  const rd = redelegateMuse(ctx, OWNER_SLOT, 'owner:kim-sejun');
+  assert.equal(rd.ok && rd.already, false);
+  assert.equal(runtime.events(0, 500).filter(e => e.kind === 'delegation_issued').length, 1);
+  assert.equal((await runP0(ctx)).phase, 'valid');
+});
+
+test('P0 after a revocation made before any executor existed: refused at the delegation step, nothing signed', async () => {
+  const {ctx, runtime, trust} = await setup();
+  await revokeMuse(ctx, OWNER_SLOT, 'owner:kim-sejun');
+  assert.equal(await trust.storedExecutor(OWNER_SLOT, 'server_custodial'), null);
+  const before = JSON.stringify(runtime.state());
+  const r = await runP0(ctx);
+  assert.deepEqual([r.phase, r.afterRevoke, r.stateUnchanged], ['after_revoke', 'delegation_revoked', true]);
+  assert.equal(JSON.stringify(runtime.state()), before);
+  assert.equal(runtime.events(0, 500).filter(e => e.kind === 'a2a_refused').at(-1).data.envelope, null);
+  assert.equal(trust.suspended(OWNER_SLOT), true);
 });
 
 test('meeting: both Agent Cards verify against the trusted roots', async () => {
@@ -76,10 +110,14 @@ test('while revoked and not re-delegated, live decisions for the owner Muse are 
 test('P0 run twice in a row: both runs keep their refusal evidence (P0 refusals are never collapsed)', async () => {
   const {ctx, runtime} = await setup();
   const first = await runP0(ctx);
-  assert.deepEqual([first.before, first.afterRevoke], ['verified', 'delegation_revoked']);
-  // A second valid trade with the same partner (so both refusals share actor, other side, code and step):
-  // clear today's pair counter and give the owner's Muse something new to offer.
+  assert.deepEqual([first.phase, first.before], ['valid', 'verified']);
+  await revokeMuse(ctx, OWNER_SLOT, 'owner:kim-sejun');
+  // Two P0 runs while revoked: the same actor, other side, code and step, yet each run keeps its own refusal.
+  for (let i = 0; i < 2; i++) assert.equal((await runP0(ctx)).afterRevoke, 'delegation_revoked');
   const partner = runtime.events(0, 2000).find(e => e.kind === 'a2a_refused').other;
+  // The owner delegates again and P0 commits a second valid trade with the same partner: clear today's pair
+  // counter and give the owner's Muse something new to offer. Then the owner revokes again.
+  redelegateMuse(ctx, OWNER_SLOT, 'owner:kim-sejun');
   runtime.commitExternal(T0, 'second-run', st => {
     st.items.trades = {};
     const me = st.muses.find(m => m.id === OWNER_SLOT), p = st.muses.find(m => m.id === partner);
@@ -89,10 +127,12 @@ test('P0 run twice in a row: both runs keep their refusal evidence (P0 refusals 
   const plan = findOwnerTrade(runtime.state());
   assert.equal(plan?.partner, partner, 'the second run trades with the same partner');
   const second = await runP0(ctx);
-  assert.deepEqual([second.before, second.afterRevoke], ['verified', 'delegation_revoked'], JSON.stringify(second));
+  assert.deepEqual([second.phase, second.before], ['valid', 'verified'], JSON.stringify(second));
+  await revokeMuse(ctx, OWNER_SLOT, 'owner:kim-sejun');
+  assert.equal((await runP0(ctx)).afterRevoke, 'delegation_revoked');
   const refused = runtime.events(0, 2000).filter(e => e.kind === 'a2a_refused');
-  assert.equal(refused.length, 2, 'one refusal per run');
-  assert.equal(refused[1].other, partner);
-  assert.ok(refused.every(e => e.tags.includes('p0_refused') && e.data.label === 'p0-after-revoke'));
-  assert.notEqual(refused[0].data.envelope.message_id, refused[1].data.envelope.message_id);
+  assert.equal(refused.length, 3, 'one refusal per run');
+  assert.ok(refused.every(e => e.other === partner && e.tags.includes('p0_refused') && e.data.label === 'p0-after-revoke'));
+  assert.equal(new Set(refused.map(e => e.data.envelope.message_id)).size, 3);
+  assert.deepEqual(refused.map(e => e.data.content.give), [first.plan.give, first.plan.give, second.plan.give], 'each refusal re-sends the latest valid job');
 });

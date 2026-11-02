@@ -4,8 +4,10 @@ import {issueSession, readSession, cookieValue, sessionCookie, hashIp, timingSaf
 import type {Env} from './env.ts';
 import {authorizeUrl, claimViaWorker, recheck, ownerDirectRecord, ThreadsError, ClaimStepError, type ThreadsConfig} from './core/threads.ts';
 import ownerClaim from '../fixtures/owner-claim.json' with {type: 'json'};
-import {connectedRoutes} from './core/owner-api.ts';
+import {connectedRoutes, requireOwner, type OwnerConfig} from './core/owner-api.ts';
+import {readOwnerSession, ownerOrigins, OWNER_COOKIE, type OwnerTokens} from './core/owner-session.ts';
 import {handleMcpHttp} from './core/mcp-server.ts';
+import {OWNER_SLOT} from './core/trust.ts';
 export {WorldDO} from './world-do.ts';
 
 const MODEL_TIMEOUT_MS = 8000;
@@ -22,6 +24,11 @@ async function readJson(request: Request, limit: number) {
 async function api(request: Request, env: Env, url: URL): Promise<Response> {
   const ip = request.headers.get('cf-connecting-ip') ?? '';
   const session = await readSession(env.SESSION_SECRET ?? '', cookieValue(request.headers.get('cookie')));
+  // The owner session (C06) is a separate cookie and a separate check; a judge session is never an owner.
+  const tokens: OwnerTokens = {owner: env.OWNER_CONTROL_TOKEN, peer: env.DEMO_PEER_CONTROL_TOKEN};
+  const owner = await readOwnerSession(env.SESSION_SECRET ?? '', cookieValue(request.headers.get('cookie'), OWNER_COOKIE), tokens);
+  const ownerCfg: OwnerConfig = {secret: env.SESSION_SECRET ?? '', tokens, origins: ownerOrigins(env.PUBLIC_ORIGIN, env.ALLOWED_HOSTS), rateLimit: env.BURST ? async key => (await env.BURST!.limit({key})).success : undefined, clientKey: url.pathname === '/api/owner/session' ? await hashIp(env.SESSION_SECRET ?? 'unset', ip) : undefined};
+  const realOwner = owner?.principal === 'owner';
 
   if (url.pathname === '/api/status' && request.method === 'GET') {
     const budget = await world(env).status();
@@ -30,6 +37,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
       budget,
       turnstile: {sitekey: env.TURNSTILE_SITEKEY, configured: !!env.TURNSTILE_SECRET},
       session: session ? {tier: session.tier, expiresAt: session.exp, quota: await world(env).quota(session.sid, session.tier)} : null,
+      owner: owner ? {principal: owner.principal, expiresAt: owner.exp} : null,
       aiGateway: env.MODEL_BASE.includes('gateway.ai.cloudflare.com'),
     });
   }
@@ -79,7 +87,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     if (!isRitual || !session) return res;
     const out = await res.clone().json().catch(() => null) as any;
     const results = Array.isArray(out?.output?.results) ? out.output.results.map((r: any) => ({step: String(r.step).slice(0, 40), passed: r.passed === true, confidence: Number(r.confidence) || 0})) : [];
-    if (out && results.length === 3) await stub.ritualRecord({at: Date.now(), passed: out.source === 'live' && results.every((r: any) => r.passed), results, requestId: out.evidence?.requestId ?? null, model: out.evidence?.model ?? null, tier: session.tier}, session.sid.slice(0, 6));
+    if (out && results.length === 3) await stub.ritualRecord({at: Date.now(), passed: out.source === 'live' && results.every((r: any) => r.passed), results, requestId: out.evidence?.requestId ?? null, model: out.evidence?.model ?? null, tier: realOwner ? 'owner' : session.tier}, session.sid.slice(0, 6), realOwner);
     return res;
   }
 
@@ -91,8 +99,9 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   // Identity (direction v2, 6): signed A2A Agent Cards and the P0 / demo checks.
   const cardMatch = /^\/api\/agents\/(0\d-[a-z]+)\/card$/.exec(url.pathname);
   if (cardMatch && request.method === 'GET') { const card = await world(env).agentCard(cardMatch[1]); return card ? json(card) : json({error: 'unknown_agent'}, 404); }
+  // P0 demonstration (judge link or the owner). It never revokes or delegates: those are the owner's own actions.
   if (url.pathname === '/api/p0/run' && request.method === 'POST') {
-    if (session?.tier !== 'judge') return json({error: 'judge_session_required'}, 403);
+    if (session?.tier !== 'judge' && !realOwner) return json({error: 'judge_session_required'}, 403);
     return json(await world(env).p0());
   }
   const demo = /^\/api\/demo\/(impostor|injection)$/.exec(url.pathname);
@@ -106,7 +115,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   }
 
   // Connected Muse (direction v2, 7.2, 12.3, 13.1): owner location, agent keys, owner notifications.
-  const connected = await connectedRoutes(request, url, session, world(env));
+  const connected = await connectedRoutes(request, url, {owner}, world(env), ownerCfg);
   if (connected) return connected;
 
   // Owner claim (direction v2, 6.3). Only the owner Muse's claim exists in the demo.
@@ -155,7 +164,10 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     }
   }
 
+  // Owner-direct claim (visual check only): the real owner's session, from our origin. A visitor cannot write the claim record.
   if (url.pathname === '/api/claim/permalink' && request.method === 'POST') {
+    const gate = requireOwner(request, {owner}, ownerCfg, {write: true, muse: OWNER_SLOT});
+    if (gate instanceof Response) return gate;
     let body: {permalink?: string};
     try { body = await readJson(request, 2048); } catch { return json({error: 'bad_request'}, 400); }
     const record = ownerDirectRecord(ownerClaim.agent, ownerClaim.handle, ownerClaim.fingerprint_display, body.permalink ?? '');

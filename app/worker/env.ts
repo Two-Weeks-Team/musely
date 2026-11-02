@@ -18,6 +18,10 @@ export interface Env {
   TURNSTILE_SECRET?: string;
   SESSION_SECRET?: string;
   JUDGE_TOKEN?: string;
+  /** Owner control (C06): exchanged at POST /api/owner/session for a 1-hour owner session. Not the judge link. */
+  OWNER_CONTROL_TOKEN?: string;
+  /** The team-controlled demo peer principal's control token (two-owner checks); must differ from OWNER_CONTROL_TOKEN. */
+  DEMO_PEER_CONTROL_TOKEN?: string;
   OWNER_ROOT_JWK?: string;
   THREADS_APP_ID?: string;
   THREADS_APP_SECRET?: string;

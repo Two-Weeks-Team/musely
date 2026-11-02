@@ -11,6 +11,8 @@ import {ConnectedHost} from '../worker/core/connected.ts';
 import {handleMcpHttp} from '../worker/core/mcp-server.ts';
 import {connectedRoutes} from '../worker/core/owner-api.ts';
 import {issueSession, readSession} from '../worker/core/session.ts';
+import {issueOwnerSession, readOwnerSession} from '../worker/core/owner-session.ts';
+import {revokeMuse, redelegateMuse, delegationStatus} from '../worker/core/owner-control.ts';
 import {TOOL_NAMES} from '../worker/core/mcp-tools.ts';
 import {makeHooks, resolveMeeting} from '../src/engine/rules.ts';
 import {placeById} from '../src/engine/places.ts';
@@ -25,6 +27,9 @@ const sqlite = () => { const db = new DatabaseSync(':memory:'); let depth = 0; r
 const T0 = Math.floor(Date.now() / 60_000) * 60_000;
 const SECRET = 'test-session-secret';
 const HOST = 'https://musely.net';
+// Owner control (C06): owner writes need an owner session (not the judge tier) and one of our origins.
+const TOKENS = {owner: 'owner-control-token-for-tests-000001', peer: 'demo-peer-control-token-for-tests-02'};
+const OWNER_CFG = {secret: SECRET, tokens: TOKENS, origins: [HOST, 'https://www.musely.net']};
 
 async function setup({claimed = true} = {}) {
   const clock = {now: T0};
@@ -43,11 +48,14 @@ async function setup({claimed = true} = {}) {
   const stub = {
     mcp: (...a) => host.mcp(...a), issueAgentKey: () => host.issueKey(), listAgentKeys: () => host.listKeys(), revokeAgentKey: id => host.revokeKey(id),
     ownerLocation: () => host.ownerLocation(), setOwnerLocation: i => host.setOwnerLocation(i), ownerNotifications: f => host.notifications(f),
+    agentKeyMuse: id => host.keyMuse(id), ownerRevoke: (m, by) => revokeMuse({trust, runtime}, m, by), ownerRedelegate: (m, by) => redelegateMuse({trust, runtime}, m, by),
+    delegationStatus: ms => delegationStatus({trust, runtime}, ms), taskParticipants: id => { const x = runtime.state().inbox?.tasks.find(k => k.id === id); return x ? {from: x.from, to: x.to, status: x.status} : null; },
   };
-  const judge = await sessionFor('judge'), visitor = await sessionFor('visitor');
-  const route = async (method, path, {session = judge, body} = {}) => {
-    const req = new Request(HOST + path, {method, body: body === undefined ? undefined : JSON.stringify(body), headers: {'content-type': 'application/json'}});
-    const res = await connectedRoutes(req, new URL(req.url), session, stub);
+  const judge = await sessionFor('judge'), visitor = await sessionFor('visitor'), owner = await ownerFor('owner'), peer = await ownerFor('demo-peer');
+  // `session`: an owner session counts as the owner; a judge or visitor session is never an owner (it reaches the route as no owner).
+  const route = async (method, path, {session = owner, body, origin = HOST} = {}) => {
+    const req = new Request(HOST + path, {method, body: body === undefined ? undefined : JSON.stringify(body), headers: {'content-type': 'application/json', ...(origin ? {origin} : {})}});
+    const res = await connectedRoutes(req, new URL(req.url), {owner: session?.principal ? session : null}, stub, OWNER_CFG);
     return {status: res.status, body: await res.json()};
   };
   const issued = await route('POST', '/api/agent-keys');
@@ -61,9 +69,10 @@ async function setup({claimed = true} = {}) {
   const muse = id_ => state().muses.find(m => m.id === id_);
   const edit = fn => runtime.commitExternal(clock.now, 'test-' + Math.random(), st => fn(st));
   const events = kind => runtime.events(0, 500).filter(e => !kind || e.kind === kind);
-  return {ownerRoot, clock, trust, runtime, host, stub, route, key, keyId: issued.body.id, http, rpc, call, state, muse, edit, events, judge, visitor};
+  return {ownerRoot, clock, trust, runtime, host, stub, route, key, keyId: issued.body.id, http, rpc, call, state, muse, edit, events, judge, visitor, owner, peer};
 }
 async function sessionFor(tier) { const {token} = await issueSession(SECRET, tier); return readSession(SECRET, token); }
+async function ownerFor(principal) { const {token} = await issueOwnerSession(SECRET, TOKENS, principal); return readOwnerSession(SECRET, token, TOKENS); }
 const place = (st, id, p) => { const m = st.muses.find(x => x.id === id); m.place = p; m.travel = null; m.beat = null; };
 
 test('MCP handshake: initialize → notifications/initialized → tools/list → tools/call', async () => {
@@ -125,8 +134,9 @@ test('transport and auth: 401 without a valid key, 405 for GET, 403 for a foreig
   const keys = await t.route('GET', '/api/agent-keys');
   assert.equal(keys.body.keys.length, 1);
   assert.ok(!JSON.stringify(keys.body).includes(t.key));
-  assert.equal((await t.route('POST', '/api/agent-keys', {session: t.visitor})).status, 403);
-  assert.equal((await t.route('POST', '/api/agent-keys', {session: null})).status, 403);
+  assert.equal((await t.route('POST', '/api/agent-keys', {session: t.visitor})).status, 401);
+  assert.equal((await t.route('POST', '/api/agent-keys', {session: t.judge})).status, 401, 'the judge tier is not an owner');
+  assert.equal((await t.route('POST', '/api/agent-keys', {session: null})).status, 401);
 });
 
 test('write tools: each signs a server_custodial envelope, verifies, commits and logs evidence (happy paths + refusals)', async () => {
@@ -323,7 +333,8 @@ test('virtual location: the owner cell moves, the Muse walks with an ETA; discov
   const t = await setup();
   const before = await t.route('GET', '/api/owner/location', {session: null});
   assert.equal(before.body.source, 'virtual'); assert.equal(before.body.preset, 'hq');
-  assert.equal((await t.route('POST', '/api/owner/location', {session: t.visitor, body: {source: 'virtual', preset: 'stanford'}})).status, 403);
+  assert.equal((await t.route('POST', '/api/owner/location', {session: t.visitor, body: {source: 'virtual', preset: 'stanford'}})).status, 401);
+  assert.equal((await t.route('POST', '/api/owner/location', {session: t.judge, body: {source: 'virtual', preset: 'stanford'}})).status, 401, 'the judge tier is not an owner');
   assert.equal((await t.route('POST', '/api/owner/location', {body: {source: 'virtual', preset: 'paris'}})).status, 400);
   const set = await t.route('POST', '/api/owner/location', {body: {source: 'virtual', preset: 'stanford'}});
   assert.equal(set.status, 200);
@@ -411,7 +422,7 @@ test('key revocation stops MCP; the owner\'s delegation revocation stops writes 
   assert.equal((await t.call('get_world_state')).isError, false, 'reads still work');
   const reg = await t.call('register_agent');
   assert.equal(reg.structuredContent.delegation.status, 'revoked');
-  // The owner delegates again (as the P0 flow does): writes work again.
+  // The owner delegates again (an explicit owner action): writes work again.
   await assert.rejects(t.trust.executor(OWNER_SLOT, 'server_custodial', t.ownerRoot), /revoked/, 'no silent re-issue');
   t.trust.redelegate(OWNER_SLOT);
   assert.equal((await t.call('greet', {text: 'Back again'})).isError, false);
@@ -422,7 +433,7 @@ test('key revocation stops MCP; the owner\'s delegation revocation stops writes 
   assert.equal(after.status, 401);
   assert.equal(t.state().inbox.connected[OWNER_SLOT], undefined, 'no active key → not connected');
   assert.equal((await t.route('DELETE', '/api/agent-keys/ak_doesnotexist', {})).status, 404);
-  assert.equal((await t.route('DELETE', '/api/agent-keys/' + t.keyId, {session: t.visitor})).status, 403);
+  assert.equal((await t.route('DELETE', '/api/agent-keys/' + t.keyId, {session: t.visitor})).status, 401);
 });
 
 test('pending_claim: looking around works, trading is refused', async () => {

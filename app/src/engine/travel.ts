@@ -42,6 +42,8 @@ export function followOwner(s: WorldState, now: number, emit: Emit, hooks: Hooks
   const m = s.muses.find(x => x.id === owner.muse);
   if (!m) return null;
   m.anchor = owner.cell;
+  // A paused Muse (delegation revoked) does not follow; the owner cell is still recorded.
+  if (s.paused?.[m.id]) return {mode: 'paused' as const};
   if (placeCell(m.place) === owner.cell && !m.travel) return {mode: 'stay' as const};
   if (m.travel && placeCell(m.travel.to) === owner.cell) return {mode: 'walking' as const, etaMs: Math.max(0, m.travel.arriveAt - now)};
   const target = placeById(owner.target);
