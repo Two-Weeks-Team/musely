@@ -19,13 +19,21 @@ export function compareContext(a,b){
 }
 export function validateFreeze(pin,opts){
  const errors=[],hex=(s,n)=>new RegExp('^[a-f0-9]{'+n+'}$').test(s??'');
+ const local=pin.environment==='local-read-only-pair';
  if(pin.status!=='frozen')errors.push('release_not_frozen');
  if(!hex(pin.releaseSHA,40))errors.push('release_sha_required');
- if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(pin.workerVersion??''))errors.push('worker_version_required');
- if(!hex(pin.configSHA256,64))errors.push('config_sha_required');if(!hex(pin.htmlSHA256,64))errors.push('html_sha_required');
+ if(local){
+  if(opts.kind!=='mobile-210'||!['baseline-capture','candidate'].includes(pin.role))errors.push('invalid_local_pair_role');
+  if(pin.workerVersion!=null||pin.configSHA256!=null)errors.push('local_pair_is_not_a_worker');
+  if(!hex(pin.localPair?.serverConfigSHA256,64)||!hex(pin.localPair?.datasetSHA256,64))errors.push('local_pair_identity_required');
+ }else{
+  if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(pin.workerVersion??''))errors.push('worker_version_required');
+  if(!hex(pin.configSHA256,64))errors.push('config_sha_required');
+ }
+ if(!hex(pin.htmlSHA256,64))errors.push('html_sha_required');
  if(pin.htmlAccept!==undefined&&!['*/*','text/html'].includes(pin.htmlAccept))errors.push('unsupported_html_representation');
  if(!validExternalCodeFiles(pin.externalCodeFiles??[]))errors.push('invalid_external_code_pin');
- try{const u=new URL(pin.origin);if(u.protocol!=='https:'||u.origin!==pin.origin)throw Error();}catch{errors.push('https_origin_required');}
+ try{const u=new URL(pin.origin);if(local){if(u.protocol!=='http:'||u.hostname!=='127.0.0.1'||!u.port||Number(u.port)!==pin.localPair?.port||u.origin!==pin.origin)throw Error();}else if(u.protocol!=='https:'||u.origin!==pin.origin)throw Error();}catch{errors.push(local?'exact_loopback_origin_required':'https_origin_required');}
  try{const u=new URL(opts.endpoint);if(!['127.0.0.1','localhost','[::1]'].includes(u.hostname)||u.username||u.password)throw Error();}catch{errors.push('nonlocal_cdp');}
  if(!pin.targetId||opts.targetId!==pin.targetId)errors.push('wrong_target');
  if(!['MacBookPro18,2','SM-S918N'].includes(pin.referenceDevice))errors.push('approved_reference_required');
