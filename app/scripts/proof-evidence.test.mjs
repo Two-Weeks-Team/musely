@@ -70,3 +70,56 @@ test('D02 blank C10 evidence fields cannot be promoted to a release acceptance r
 test('D02 P0 full-state digest must also stay unchanged, beyond the public allow-list',async()=>{
  const {p0}=await buildControlledProof();p0.fullStateAfterHash='changed-private-state';assert.throws(()=>verifyP0(p0),/full state/);
 });
+
+async function publicFixture(){
+ const b=await buildControlledProof(),events=b.events,runId=b.p2.record.runId,from=Math.min(...events.map(e=>e.at)),to=Math.max(...events.map(e=>e.at))+1;
+ const local=recountEvidence(events,{worldId:'d02-local-simulation',runIds:[runId],from,to,day:null,complete:true});
+ const meta={classification:'live',issueId:62,owner:'local test',commitSha:'a'.repeat(40),environment:'mock',configVersion:'test',testedAt:'now',command:'test',result:'fixture',artifact:'test',limitations:['Synthetic only'],deployId:'test',URL:'https://example.invalid'};
+ const response=(change=()=>{})=>async url=>{const path=new URL(url).pathname;let body;
+ if(path==='/api/world/run')body={...b.p2.record.run,readThrough:{eventSeq:events.at(-1).seq,events:events.length}};
+ else if(path==='/api/world/events')body=events;
+ else if(path==='/api/world/autonomy'){body={...structuredClone(local.oracle),values:structuredClone(local.values)};change(body);}else body=b.p2.record;
+ return new Response(JSON.stringify(body));};return {b,events,runId,from,to,meta,response};
+}
+test('D02 P2 rejects another run input even if sequence/version/hash match',async()=>{
+ const b=await buildControlledProof(),r=structuredClone(b.p2.record);r.input.runId='foreign';assert.throws(()=>correlateP2(b.p2.scene,r),/mismatch/);
+});
+test('D02 declared origin is bound before any collection request',async()=>{
+ const {collectPublicProof}=await import('./proof/collect.mjs'),t=await publicFixture();let called=false;
+ await assert.rejects(()=>collectPublicProof({base:'https://other.invalid',...t},async()=>{called=true;return new Response('{}');}),/origin/);assert.equal(called,false);
+});
+test('D02 complete oracle metadata mismatches cannot hide behind equal six values',async()=>{
+ const {collectPublicProof}=await import('./proof/collect.mjs'),t=await publicFixture();
+ for(const change of [s=>s.sample.received++,s=>s.sample.duplicateIds++,s=>s.sample.duplicateEncounters++,s=>s.sample.duplicateVerifications++,s=>s.sample.firstAt--,s=>s.sample.lastAt++,s=>s.sources.live++,s=>s.origins.connected++,s=>s.starts.meetings++,s=>s.models.liveWithoutId++])assert.equal((await collectPublicProof({base:t.meta.URL,...t},t.response(change))).status,'partial-or-mismatch');
+});
+test('D02 preserves original GET bytes, hashes and parsed input/run cohort',async()=>{
+ const {publicReader}=await import('./proof/collect.mjs'),text=' { "event":{"id":"e","runId":"r","inputSeq":2},"runId":"r","run":{"worldId":"w"},"input":{"runId":"r","seq":2} }\n';
+ const r=publicReader('https://example.invalid',async(_u,init)=>{assert.equal(init.credentials,'omit');return new Response(text);});await r.read('/api/world/event?id=e');const receipt=r.receipts[0];
+ assert.equal(Buffer.from(receipt.rawBodyBase64,'base64').toString(),text);assert.equal(receipt.requestOrigin,'https://example.invalid');assert.equal(receipt.cohort.inputRunId,'r');assert.equal(receipt.cohort.inputSeq,2);
+ const {createHash}=await import('node:crypto');assert.equal(receipt.rawSha256,createHash('sha256').update(text).digest('hex'));assert.equal(receipt.rawSource,'response-body-bytes');
+});
+test('D02 bounds response bytes, total bytes and fetch/body time',async()=>{
+ const {publicReader}=await import('./proof/collect.mjs');
+ const large=publicReader('https://example.invalid',async()=>new Response(JSON.stringify({padding:'a'.repeat(100)})),{maxBodyBytes:32});await assert.rejects(()=>large.read('/api/world/run'),/body_limit/);
+ const total=publicReader('https://example.invalid',async()=>new Response('{"a":1}'),{maxBodyBytes:20,maxTotalBytes:10});await total.read('/api/world/run');await assert.rejects(()=>total.read('/api/world/run'),/total_limit/);
+ const slow=publicReader('https://example.invalid',async()=>{await new Promise(r=>setTimeout(r,80));return new Response('{}');},{timeoutMs:10});await assert.rejects(()=>slow.read('/api/world/run'),/timeout/);
+ const slowBody=publicReader('https://example.invalid',async()=>new Response(new ReadableStream({start(c){c.enqueue(new TextEncoder().encode('{}'));setTimeout(()=>{try{c.close();}catch{}},80);}})),{timeoutMs:10});await assert.rejects(()=>slowBody.read('/api/world/run'),/timeout/);
+});
+
+test('D02 timeout never adds a late receipt from an injected fetch that ignored abort',async()=>{
+ const {publicReader}=await import('./proof/collect.mjs'),r=publicReader('https://example.invalid',async()=>{await new Promise(r=>setTimeout(r,30));return new Response('{}');},{timeoutMs:5});
+ await assert.rejects(()=>r.read('/api/world/run'),/timeout/);await new Promise(r=>setTimeout(r,50));assert.equal(r.receipts.length,0);
+});
+test('D02 string complete flags and altered day never declare matched evidence',async()=>{
+ const {collectPublicProof}=await import('./proof/collect.mjs'),t=await publicFixture();
+ for(const change of [s=>s.scope.complete='false',s=>s.scope.day='invented',s=>s.partial=true,s=>s.scope.partialReason='unexpected partial reason'])assert.equal((await collectPublicProof({base:t.meta.URL,...t},t.response(change))).status,'partial-or-mismatch');
+});
+test('D02 retains whole raw pages outside selected interval and rejects scenes outside its frozen cohort',async()=>{
+ const {collectPublicProof}=await import('./proof/collect.mjs'),t=await publicFixture(),from=t.from+1;
+ const selected=t.events.filter(e=>e.at>=from),counts=recountEvidence(selected,{worldId:'d02-local-simulation',runIds:[t.runId],from,to:t.to,day:null,complete:true});
+ const reader=async url=>new URL(url).pathname==='/api/world/autonomy'?new Response(JSON.stringify({...counts.oracle,values:counts.values})):t.response()(url);
+ const r=await collectPublicProof({base:t.meta.URL,...t,from},reader);assert.equal(r.status,'raw-recount-matched');
+ const page=r.receipts.find(r=>new URL(r.URL).pathname==='/api/world/events'),raw=JSON.parse(Buffer.from(page.rawBodyBase64,'base64'));
+ assert.equal(raw.length,t.events.length);assert.ok(raw.length>r.events.length);assert.deepEqual(page.cohort.eventIds,raw.map(e=>e.id));
+ await assert.rejects(()=>collectPublicProof({base:t.meta.URL,...t,from,scenes:[t.b.p2.scene]},reader),/frozen event cohort/);
+});

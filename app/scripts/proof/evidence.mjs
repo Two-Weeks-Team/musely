@@ -32,7 +32,7 @@ export function verifyP1(p) {
 export function correlateP2(scene, record) {
  const {event,input,run,runId}=record;
  requireProof(scene.eventId===event.id && scene.runId===runId && runId===run?.runId && event.runId===runId,'P2 scene/event/run mismatch');
- requireProof(scene.worldId===run.worldId && scene.version===input?.versionAfter && event.inputSeq===input?.seq,'P2 world/version/commit mismatch');
+ requireProof(scene.worldId===run.worldId && input?.runId===runId && scene.version===input?.versionAfter && event.inputSeq===input?.seq,'P2 world/version/commit mismatch');
  requireProof(input.beforeHash && input.afterHash && scene.snapshotHash===input.afterHash,'P2 snapshot/commit hash mismatch');
  requireProof(['live','replay','simulation'].includes(scene.classification),'P2 scene classification');
  const ev=event.data?.evidence;
@@ -51,7 +51,7 @@ export function recountEvidence(events,scope) {
  const one=(sample,runIds)=>{
   const oracle=recountAutonomy(sample,{...scope,runIds}), expected=values(oracle);
   const ui=computeAutonomy(sample,{...scope,day:scope.day??'explicit interval',label:'D-02 raw record',runId:runIds.join(',' )});
-  requireProof(ui.rows.every(r=>r.value===expected[r.key].value && r.measured===expected[r.key].measured),'C09 panel/oracle mismatch');
+  requireProof(ui.rows.every(r=>r.value===expected[r.key].value && r.measured===expected[r.key].measured) && ui.eventCount===oracle.sample.events && ui.duplicates===oracle.sample.duplicateIds && hash(ui.sources)===hash(oracle.sources) && hash(ui.origins)===hash(oracle.origins),'C09 panel/oracle mismatch');
   return {oracle,values:expected,ui,classification:'raw-record-recount'};
  };
  return {...one(events,scope.runIds),byRun:scope.runIds.map(runId=>({runId,...one(events.filter(e=>e.runId===runId),[runId])}))};
