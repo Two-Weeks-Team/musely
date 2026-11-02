@@ -60,6 +60,15 @@ export function tokensConfigured(t: OwnerTokens) {
   return coreConfigured(t) || reviewerConfigured(t);
 }
 
+/**
+ * Ownership is stable even when its control token is missing or broken. An unavailable owner still has to approve:
+ * configuration failure must never turn an owned Muse into a resident whose consent can be supplied by rule.
+ */
+export function ownerIdForMuse(_tokens: OwnerTokens, museId: string): string | null {
+  const p = PRINCIPAL_IDS.find(id => PRINCIPALS[id].muses.includes(museId));
+  return p ? PRINCIPALS[p].ownerId : null;
+}
+
 /** Which principal a presented control token belongs to (constant-time compare), or null. */
 export function principalForToken(tokens: OwnerTokens, presented: unknown): PrincipalId | null {
   if (typeof presented !== 'string' || !presented || presented.length > 512 || !tokensConfigured(tokens)) return null;

@@ -14,10 +14,13 @@ import {followOwner} from '../../src/engine/travel.ts';
 import {emptyInbox, notificationMuse, CONNECTED_MS} from '../../src/engine/inbox.ts';
 import {REVIEWER_MUSE} from './owner-session.ts';
 import {purgeKeyData} from './data-retention.ts';
+import {decideApproval, ownerInbox, definedOwnerOf, type DecisionInput, type DecisionOutcome, type OwnerOf} from './tasks.ts';
 
 export type ConnectedDeps = {
   sql: Sql; trust: Trust; runtime: WorldRuntime; hooks: Hooks; baseUrl: string;
   ownerRoot: () => JsonWebKey | null; ownerClaimed: () => boolean; now?: () => number;
+  /** Who decides a meetup for a Muse (its owner id, when that owner can sign in here), or null for a resident (rule). */
+  ownerOf?: OwnerOf;
 };
 const CONNECTED_REFRESH_MS = 10 * 60_000;
 /** World actions (not reads or inbox polling): a connected Muse that acts asks for a priority spotlight turn (8.2). */
@@ -103,6 +106,33 @@ export class ConnectedHost {
     })};
   }
 
+  // ----- owner approvals and the owner inbox (C06, I-07) -----
+  /**
+   * One owner decision (the Worker route checked the owner session, its Origin and that `muse` is the session's own
+   * participant of the Task). The decision is tried on a copy first: a refusal that changes nothing writes nothing
+   * (no commit, no world version change); otherwise it runs again inside one world commit, which is the result.
+   */
+  ownerApprove(i: DecisionInput): DecisionOutcome {
+    const now = this.now();
+    // A revoked Muse's Tasks are cancelled already; its owner's decisions are refused before anything is read for writing.
+    if (this.d.trust.suspended(i.muse)) return {ok: false, status: 409, code: 'delegation_revoked', retryable: false, changed: false};
+    const task = this.d.runtime.state().inbox?.tasks.find(t => t.id === i.taskId);
+    if (i.decision === 'approve' && task) {
+      const parties = [task.from, task.to];
+      if (parties.some(m => this.d.trust.suspended(m))) return {ok: false, status: 409, code: 'delegation_revoked', retryable: false, changed: false};
+      // A peer's final decision cannot confirm an owned Muse whose account claim was revoked while waiting.
+      if (parties.includes(OWNER_MUSE) && !this.d.ownerClaimed()) return {ok: false, status: 409, code: 'pending_claim', retryable: false, changed: false};
+    }
+    const dry = decideApproval(structuredClone(this.d.runtime.state()), i, now, () => {});
+    if (!dry.changed) return dry;
+    let out: DecisionOutcome = dry;
+    this.d.runtime.commitExternal(now, 'owner-approval-' + uniq(), (st, emit) => { out = decideApproval(st, i, now, e => emit(tagLocation(st.owner, e))); }, () => ({action: 'owner_approval', payload: {taskId: i.taskId, museId: i.muse, decision: i.decision, revision: i.revision, approvalRef: out.ok ? out.task.yours?.approval_ref ?? null : null}}));
+    return out;
+  }
+  /** The owner inbox of these Muses (the session's own): approvals waiting, recent decisions, the three notification kinds. */
+  ownerInbox(muses: readonly string[]) { return ownerInbox(this.d.runtime.state(), muses, this.now()); }
+  ownerOf(museId: string) { return (this.d.ownerOf ?? definedOwnerOf)(museId); }
+
   // ----- MCP -----
   /** Key check only (active, not revoked): no last-use, no connected flag. The transport asks before it refuses a message it will not dispatch. */
   authenticate(keyHash: string) { return this.keys.findActive(keyHash) !== null; }
@@ -120,7 +150,7 @@ export class ConnectedHost {
     // The Threads claim proves the real owner's Muse. The reviewer's Muse is a team-controlled resident whose Agent Card
     // already says owner_claimed (like every resident), so its own actions do not wait on the owner's claim. The real
     // claim value stays in ownerClaimed for Agent Cards and credential checks.
-    const ctx: ToolCtx = {trust: this.d.trust, runtime: this.d.runtime, hooks: this.d.hooks, ownerRoot: this.d.ownerRoot(), ownerClaimed: this.d.ownerClaimed(), claimExempt: key.muse === REVIEWER_MUSE, baseUrl: this.d.baseUrl, key, now: () => this.now()};
+    const ctx: ToolCtx = {trust: this.d.trust, runtime: this.d.runtime, hooks: this.d.hooks, ownerRoot: this.d.ownerRoot(), ownerClaimed: this.d.ownerClaimed(), claimExempt: key.muse === REVIEWER_MUSE, baseUrl: this.d.baseUrl, key, now: () => this.now(), ownerOf: m => this.ownerOf(m)};
     try {
       const out = await dispatch(method, params, {list: toolList, call: (n, a) => runTool(ctx, n, a), isInvalidParams: e => e instanceof InvalidParams});
       // A successful world action puts the Muse in the priority queue (deduplicated, 3 per hour); a revoked Muse never.

@@ -77,7 +77,7 @@ test('Worker entry: /api/agent-keys → /mcp handshake and tools → owner locat
   const judgeN = (await go('GET', '/api/owner/notifications', null, {cookie: judgeCookie})).body.notifications.find(n => n.kind === 'meetup_candidate');
   assert.equal(judgeN.detail, undefined, 'the judge session no longer sees owner details');
   const ownerN = (await go('GET', '/api/owner/notifications', null, {cookie})).body.notifications.find(n => n.kind === 'meetup_candidate');
-  assert.equal(ownerN.detail.time, cand.time, 'the owner session sees the details');
+  assert.equal(ownerN.detail.candidates[0].time, cand.time, 'the owner session sees the details');
 
   const loc = await go('POST', '/api/owner/location', {source: 'virtual', preset: 'stanford'}, {cookie, origin});
   assert.equal(loc.status, 200); assert.equal(loc.body.follow.mode, 'walking');

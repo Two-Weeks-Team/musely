@@ -2,7 +2,7 @@
 // open the evidence behind it. Everything is built with textContent; nothing from the server is parsed as HTML.
 //  - Header: "Live world" button and the spotlight chip (who holds the turn, which freedom, live/replay)
 //  - Map: the ten Muses at their real places, moving along trips in real time
-//  - Panel tabs: Feed (source badges) · Highlights · P1 before/after · Autonomy (2.2) · Identity (claim, P0,
+//  - Panel tabs: Feed (source badges) · Highlights · P1 before/after · Autonomy (2.2) · Identity (claim, owner inbox, P0,
 //    impostor/injection checks) · Location (virtual location, 13.1)
 //  - Evidence view (P2): request id, model, envelope, verification steps, raw JSON, and the run log behind the event
 //    (run id, the commit that wrote it, state hashes) from /api/world/event
@@ -17,6 +17,7 @@ import {makeHooks} from '../engine/rules';
 import {ensureSession, sparkStatus} from '../live';
 import {ritualCard} from './ritual';
 import {ownerControlCard, p0Text} from './identity';
+import {ownerInboxCard} from './owner-inbox';
 import {renderFlows, flowState, selectFlow} from './preview-flows';
 import {fetchJson, newHealth, track, resState, stateText, loadLog, BLOCKED, type Health} from './resource-state';
 import {isolation, enforceIsolation} from './isolation';
@@ -223,6 +224,7 @@ export function mountWorldPanel(map: LibreMap) {
   document.body.append(evidence);
 
   let world: WorldView | null = null, events: Ev[] = [], tab = 'feed', hf: Filter = {...EMPTY_FILTER};
+  let ownerInboxView: ReturnType<typeof ownerInboxCard> | null = null;
   const pins = museMarkers(map);
 
   const stateCard = (heading: string, detail: string, retry: () => void) => {
@@ -407,6 +409,7 @@ export function mountWorldPanel(map: LibreMap) {
     tabs.querySelectorAll('button').forEach(b => { const on = (b as HTMLElement).dataset.tab === tab; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
     if (tab !== 'replay') leaveReplay();
     else if (replayView && body.querySelector('.replay-view')) return; // already on screen: keep playing
+    ownerInboxView = null;
     body.replaceChildren();
     if (tab === 'feed') {
       const evH = health.get('events'), s = resState(evH, events.length > 0);
@@ -503,7 +506,8 @@ export function mountWorldPanel(map: LibreMap) {
       catch (err) { result.textContent = 'Could not run: ' + (err as Error).message; }
       b.disabled = false; }; return b; };
     actions.append(run('Try an impostor', '/api/demo/impostor'), run('Try an instruction injection', '/api/demo/injection'), run('Run P0 step (judge link or owner)', '/api/p0/run', p0Text));
-    body.append(card, ownerControlCard(() => void refresh()), ritualCard(() => void refresh()), el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it. P0 is two runs: the first commits a signed trade, then the owner revokes (owner control above), then the second run re-sends the same job and is refused. P0 itself never revokes or delegates again.'), actions, result);
+    ownerInboxView = ownerInboxCard(() => void refresh(), (u, i) => fetch(u, i), () => !stale() && !isolation.replay);
+    body.append(card, ownerControlCard(() => void refresh()), ownerInboxView, ritualCard(() => void refresh()), el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it. P0 is two runs: the first commits a signed trade, then the owner revokes (owner control above), then the second run re-sends the same job and is refused. P0 itself never revokes or delegates again.'), actions, result);
   }
 
   // The Location tab is drawn again after a move and on every poll while it is open: an unsent preset/verify choice and the last
@@ -558,6 +562,7 @@ export function mountWorldPanel(map: LibreMap) {
     // Replay makes no requests: nothing refreshes while it is on screen, whoever asked (a poll, a Retry, or a button chain that
     // began before it opened). The next refresh after the replay asks again.
     if (isolation.replay) return;
+    if (panel.matches(':popover-open') && tab === 'identity' && !ret) void ownerInboxView?.refresh();
     // The location chip has its own answer: the rest of the refresh does not wait for it. An answer that arrives while the replay
     // is open is not applied (the chip also ignores a request the replay refused).
     void load<OwnerLocationView>('location', '/api/owner/location').then(lr => { if (!isolation.replay) locChip.update(lr); });

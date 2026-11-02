@@ -171,14 +171,17 @@ test('two demo principals: independent sessions; one cannot approve, revoke, re-
   assert.deepEqual([t.dobj.trust.suspended(PEER_MUSE), t.dobj.trust.suspended(OWNER)], [true, false]);
   assert.equal((await t.go('POST', '/api/owner/redelegate', {}, h(peer))).status, 200);
 
-  // Cross approval: the peer cannot approve a Task of the owner's Muse. The approval workflow itself is I-07:
-  // for the Muse's own owner the route says capability_not_ready and approves nothing.
+  // Cross approval: the peer cannot approve a Task of the owner's Muse. The approval workflow itself is I-07
+  // (scripts/tasks.test.mjs): a meetup still in negotiation is not ready for approval, and nothing is approved.
   t.edit(st => { st.inbox.tasks.push(task('task_x1', 'meetup', OWNER, '01-sunny', Date.now())); st.inbox.tasks.push(task('task_x2', 'trade', '02-moss', PEER_MUSE, Date.now())); });
   const crossApprove = await t.go('POST', '/api/owner/approvals', {taskId: 'task_x1', revision: 1, contentHash: 'h', decision: 'approve'}, h(peer));
   assert.equal(crossApprove.status, 403); assert.equal(crossApprove.body.error, 'not_your_muse');
   assert.equal((await t.go('POST', '/api/owner/approvals', {taskId: 'task_x2', decision: 'approve'}, h(owner))).status, 403);
-  const ownApprove = await t.go('POST', '/api/owner/approvals', {taskId: 'task_x1', decision: 'approve'}, h(owner));
-  assert.deepEqual([ownApprove.status, ownApprove.body.error], [501, 'capability_not_ready']);
+  // This fixture isolates principal authorization; the owned Muse must also have a valid claim before approval.
+  t.dobj.setClaim('owner-muse', {agent: 'owner-muse', status: 'claimed', path: 'worker_token', handle: 'combba82', fingerprint: 'x', permalink: null, mediaId: null, postedText: null, verifiedAt: Date.now(), checkedAt: Date.now(), machineVerified: true, note: 'test'});
+  const x1 = t.state().inbox.tasks.find(x => x.id === 'task_x1');
+  const ownApprove = await t.go('POST', '/api/owner/approvals', {taskId: 'task_x1', revision: x1.revision, contentHash: x1.contentHash, decision: 'approve'}, h(owner));
+  assert.deepEqual([ownApprove.status, ownApprove.body.error], [409, 'not_ready_for_approval']);
   assert.equal(t.state().inbox.tasks.find(x => x.id === 'task_x1').status, 'pending', 'nothing was approved');
   assert.equal((await t.go('POST', '/api/owner/approvals', {taskId: 'task_zz', decision: 'approve'}, h(owner))).status, 404);
 
@@ -381,7 +384,7 @@ test('owner notifications: each session gets the details of its own Muse\'s noti
   t.edit(st => st.inbox.notifications.push({id: 'n_old', kind: 'meetup_candidate', at: Date.now(), line: 'old', ref: null, other: '02-moss', detail: {time: '07:30', place: 'old-place'}}));
   const list = async cookie => (await t.go('GET', '/api/owner/notifications', undefined, cookie ? {cookie} : {})).body.notifications;
   const peerN = (await list(peer)).find(n => n.kind === 'meetup_candidate' && n.muse === PEER_MUSE);
-  assert.equal(peerN.detail.time, cand.time, 'the demo peer sees its own Muse\'s candidate');
+  assert.equal(peerN.detail.candidates[0].time, cand.time, 'the demo peer sees its own Muse\'s candidate');
   const ownerView = await list(owner);
   assert.equal(ownerView.find(n => n.muse === PEER_MUSE && n.kind === 'meetup_candidate').detail, undefined, 'the owner does not see the peer\'s details');
   assert.ok(!JSON.stringify(ownerView.filter(n => n.muse === PEER_MUSE)).includes(cand.time));

@@ -59,7 +59,7 @@ export function ownerControlCard(onChange: () => void) {
       const res = await call('POST', '/api/owner/session', {token});
       go.disabled = false;
       result.textContent = res.ok ? 'Owner session started for one hour.' : why(res);
-      if (res.ok) await paint();
+      if (res.ok) { await paint(); onChange(); }
     };
     box.replaceChildren(head, el('h4', '', 'Not signed in as an owner'),
       el('p', 'muted', 'Revoking a Muse\'s delegation and delegating again are owner actions. They need the owner session, which lasts one hour. A judge link or a visitor session does not give it, and neither does a claim post or a ritual record.'),
@@ -103,7 +103,7 @@ export function ownerControlCard(onChange: () => void) {
       parts.push(card, actions);
     }
     const out = el('button', 'secondary', 'End owner session'); out.type = 'button';
-    out.onclick = async () => { const res = await call('DELETE', '/api/owner/session'); result.textContent = res.ok ? 'Owner session ended.' : why(res); await paint(); };
+    out.onclick = async () => { const res = await call('DELETE', '/api/owner/session'); result.textContent = res.ok ? 'Owner session ended.' : why(res); await paint(); if (res.ok) onChange(); };
     const tail = el('div', 'id-actions'); tail.append(out);
     parts.push(tail, result);
     box.replaceChildren(...parts);

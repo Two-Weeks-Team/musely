@@ -21,6 +21,7 @@ import {callModel, type ModelConfig} from './model.ts';
 import {replayFor} from './replay.ts';
 import {isConnected} from '../../src/engine/inbox.ts';
 import {COMMANDS_TABLE, type CommandResult} from './commands.ts';
+import {syncTasks} from './tasks.ts';
 import type {Ledger, Sql} from './ledger.ts';
 import {RunLog, evidenceIds, commandFields, outputFields, reasonCode, type InputKind, type CommitRecord} from './run-log.ts';
 import {recountAutonomy, values} from './autonomy-oracle.ts';
@@ -170,6 +171,8 @@ export class WorldRuntime {
         return {muse: r.muse, other: r.other, place: r.place, encounterId: r.encounterId, source: 'rule' as const, output: null, reason: 'discarded: ' + why};
       });
       const {state, events} = tick(current, {now, decision: usable, replies, spot: turn}, canMeet ? {...this.opts.hooks, canMeet: this.dedupMeetings(canMeet)} : this.opts.hooks);
+      // Task records (C06, I-07): revision and contentHash follow any content change the tick made.
+      syncTasks(state.inbox);
       // A model answer to a meeting that did not happen in the committed tick is not used.
       const answered = new Set(events.filter(e => e.kind === 'encounter_reply').map(e => `${e.data?.encounterId}>${e.muse}`));
       for (const r of replies) if (r.source !== 'rule' && !answered.has(`${r.encounterId}>${r.muse}`)) discard(r, 'the meeting did not happen at commit');
@@ -376,8 +379,9 @@ export class WorldRuntime {
    * Commit point for actions outside the heartbeat (A2A trades, revocations, demo checks): the mutator runs
    * synchronously on the current state, then state, version and events are written together.
    */
-  commitExternal(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void) {
-    return this.commit(now, label, mutate, () => true, 'external').events;
+  commitExternal(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void, input?: () => {action: string; payload: unknown}) {
+    // External decisions use the same per-action allow-list as signed commands; never store raw private inputs.
+    return this.commit(now, label, mutate, () => true, 'external', input ? () => { const i = input(); return {action: i.action, ...commandFields(i.action, i.payload)}; } : undefined).events;
   }
   /**
    * Command commit point (C03), one transaction: `guard` runs first (stored-row re-check, nonce claim) and
@@ -414,6 +418,9 @@ export class WorldRuntime {
     const s: WorldState = JSON.parse(raw), out: WorldEvent[] = [];
     let n = 0;
     synchronous(mutate(s, e => out.push({...e, id: `${s.day}:${s.tick}:${label}:${now}:${n++}`, tick: s.tick})) as unknown);
+    // Task records (C06, I-07): revision and contentHash follow any content change this commit made (a counter, new
+    // meetup candidates), and the approvals made on the old content are dropped, in the same transaction.
+    syncTasks(s.inbox);
     const changed = JSON.stringify(s) !== raw, bumped = bump(changed);
     if (bumped) s.version += 1;
     const afterRaw = JSON.stringify(s);
