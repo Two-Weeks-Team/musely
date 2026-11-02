@@ -50,7 +50,7 @@ export type CommandHandler<T = unknown> = {
 };
 export type CommandOutcome = {result: CommandResult; output: unknown; duplicate: boolean; verified: boolean; refused: Refused | null};
 /** deadlineMs bounds think and counterparty (default STEP_DEADLINE_MS). */
-export type CommandCtx = {trust: Trust; runtime: WorldRuntime; deadlineMs?: number};
+export type CommandCtx = {trust: Trust; runtime: WorldRuntime; deadlineMs?: number; now?: () => number};
 export const STEP_DEADLINE_MS = 15_000;
 const within = <T>(p: Promise<T>, ms: number): Promise<T> => {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -127,18 +127,23 @@ export async function executeCommand<T>(c: CommandCtx, cmd: WorldCommand, h: Com
       try { const t = await within(h.think(), deadline); thought = t.thought; settle = t.settle; } catch { return refuse('think', 'decision_unavailable', {verified: true}); }
     }
     // 7. Commit point: one storage transaction.
+    // MCP supplies a live server clock. Peer/model awaits may cross a Task or credential deadline;
+    // the request-start timestamp must never grant extra time to the mutation or its nonce claim.
+    const atCommit = c.now ? c.now() : now;
     const box: {applied: Applied} = {applied: {ok: false, code: 'not_applied'}};
     const label = `cmd-${cmd.actorId}-${id}`;
-    const done = c.runtime.commitCommand(now, label, {
+    const done = c.runtime.commitCommand(atCommit, label, {
       guard: () => {
         const again = c.runtime.commandRow(cmd.actorId, cmd.commandId);
         if (again) return again.payloadHash === hash ? 'duplicate' : 'command_conflict';
         if (stale()) return 'stale_world';
-        if (!current() || (peer?.ok && !peer.current(now))) return 'delegation_revoked';
+        if (!current() || (peer?.ok && !peer.current(atCommit))) return 'delegation_revoked';
+        if (sig.delegation.exp <= atCommit) return 'delegation_expired';
+        if (e.expires_at <= atCommit) return 'expired';
         // Last: the nonce is spent only by the commit that uses it (rolled back with it on a throw).
         return c.trust.claimNonce(e.agent_id, e.nonce, e.message_id, e.expires_at) ? null : 'replay';
       },
-      mutate: (st, emit) => (box.applied = h.apply(st, emit, now, thought)),
+      mutate: (st, emit) => (box.applied = h.apply(st, emit, atCommit, thought)),
       record: (version, events) => {
         const a = box.applied;
         const result: CommandResult = {ok: a.ok, commandId: cmd.commandId, worldVersion: version, eventIds: events.map(x => x.id), ...(a.ok ? {} : {error: {code: a.code, retryable: false}})};

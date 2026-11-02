@@ -150,7 +150,7 @@ export class ConnectedHost {
     // The Threads claim proves the real owner's Muse. The reviewer's Muse is a team-controlled resident whose Agent Card
     // already says owner_claimed (like every resident), so its own actions do not wait on the owner's claim. The real
     // claim value stays in ownerClaimed for Agent Cards and credential checks.
-    const ctx: ToolCtx = {trust: this.d.trust, runtime: this.d.runtime, hooks: this.d.hooks, ownerRoot: this.d.ownerRoot(), ownerClaimed: this.d.ownerClaimed(), claimExempt: key.muse === REVIEWER_MUSE, baseUrl: this.d.baseUrl, key, now: () => this.now(), ownerOf: m => this.ownerOf(m)};
+    const ctx: ToolCtx = {trust: this.d.trust, runtime: this.d.runtime, hooks: this.d.hooks, ownerRoot: this.d.ownerRoot(), ownerClaimed: this.d.ownerClaimed(), ownerClaimedNow: () => this.d.ownerClaimed(), claimExempt: key.muse === REVIEWER_MUSE, baseUrl: this.d.baseUrl, key, now: () => this.now(), ownerOf: m => this.ownerOf(m)};
     try {
       const out = await dispatch(method, params, {list: toolList, call: (n, a) => runTool(ctx, n, a), isInvalidParams: e => e instanceof InvalidParams});
       // A successful world action puts the Muse in the priority queue (deduplicated, 3 per hour); a revoked Muse never.

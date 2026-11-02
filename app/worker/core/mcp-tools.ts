@@ -34,6 +34,8 @@ export type ToolCtx = {
   trust: Trust; runtime: WorldRuntime; hooks: Hooks; ownerRoot: JsonWebKey | null;
   /** The owner's real Threads claim (Agent Cards and credential checks use this). */
   ownerClaimed: boolean;
+  /** Re-read the claim at the commit point after async signing and peer checks. */
+  ownerClaimedNow?: () => boolean;
   /** The key's Muse is not gated by the owner claim (the reviewer's resident Muse): claim gate, envelope and register_agent only. */
   claimExempt?: boolean;
   baseUrl: string;
@@ -44,7 +46,10 @@ export type ToolCtx = {
 export type ToolResult = {content: {type: 'text'; text: string}[]; structuredContent: Record<string, unknown>; isError: boolean};
 export class InvalidParams extends Error {}
 /** Whether this key's Muse counts as claimed for its own actions (never for another Muse's Agent Card). */
-const claimedFor = (c: ToolCtx) => !!c.claimExempt || c.ownerClaimed;
+const currentClaim = (c: ToolCtx) => c.ownerClaimedNow ? c.ownerClaimedNow() : c.ownerClaimed;
+const claimedFor = (c: ToolCtx) => !!c.claimExempt || currentClaim(c);
+const CLAIMED_WRITES = new Set(['propose_trade', 'counter_trade', 'accept_trade', 'send_postcard', 'give_gift', 'propose_meetup', 'answer_candidate', 'invite_campfire', 'propose_help', 'answer_help']);
+const OTHER_ONLY = new Set(['greet', 'propose_trade', 'send_postcard', 'give_gift', 'propose_meetup']);
 
 // ---------- strict input schemas (JSON Schema subset; the same object is published in tools/list) ----------
 type Prop = {type: 'string'; enum?: readonly string[]; pattern?: string; minLength?: number; maxLength?: number; description?: string}
@@ -54,9 +59,9 @@ type Prop = {type: 'string'; enum?: readonly string[]; pattern?: string; minLeng
 type Schema = {type: 'object'; properties: Record<string, Prop>; required: string[]; additionalProperties: false};
 const obj = (properties: Record<string, Prop>, required: string[] = []): Schema => ({type: 'object', properties, required, additionalProperties: false});
 
-const OTHER_MUSES = HARNESS_IDS.filter(id => id !== '00-jolly');
 const ITEM_PATTERN = '^([a-z0-9_]{1,40}|postcard:[A-Za-z0-9:/_.-]{1,80})$';
-const museProp = (description: string): Prop => ({type: 'string', enum: OTHER_MUSES, description});
+// The list is shared by every caller. Self-targeting is a runtime rule, not a fixed owner-Muse exclusion.
+const museProp = (description: string): Prop => ({type: 'string', enum: HARNESS_IDS, description});
 const itemProp = (description: string): Prop => ({type: 'string', pattern: ITEM_PATTERN, maxLength: 90, description});
 const taskProp: Prop = {type: 'string', pattern: '^task_[0-9a-z]{1,10}$', description: 'Task id from heartbeat_check'};
 const textProp = (max: number, description: string): Prop => ({type: 'string', minLength: 1, maxLength: max, description});
@@ -197,12 +202,17 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
       const upkeep: Emit = e => tag({...e, source: 'rule'});
       // Passes that expired since the last tick stop working before this tool reads the inventory (I-06). A tampered
       // item history refuses item writes (history_tamper) and skips the sweep; other writes still run.
-      const fault = historyFault(st.items, false, at2);
-      if (!fault) for (const e of sweepExpired(st, at2)) upkeep(e);
+      const selfRefusal = recipientMuse === me ? (tool.name === 'propose_help' ? 'self_help' : OTHER_ONLY.has(tool.name) ? 'invalid_target' : null)
+        : tool.name === 'invite_campfire' && (content.to as string[]).includes(me) ? 'self_invite' : null;
+      const precondition = selfRefusal ?? (CLAIMED_WRITES.has(tool.name) && !claimedFor(c) ? 'pending_claim'
+        : peer?.kind === 'owner' && !currentClaim(c) ? 'counterparty_pending_claim' : null);
+      const fault = precondition ? null : historyFault(st.items, false, at2);
+      if (!precondition && !fault) for (const e of sweepExpired(st, at2)) upkeep(e);
       // Rejecting a help Task moves nothing, like reject_trade: it still works while the item history is held.
       const itemWrite = (ITEM_WRITES.has(tool.name) && !(tool.name === 'answer_help' && content.answer === 'reject')) || (tool.name === 'move' && content.mode === 'teleport');
       let o: ReturnType<Apply>;
-      if (fault && itemWrite) o = {ok: false, reason: 'history_tamper'};
+      if (precondition) o = {ok: false, reason: precondition};
+      else if (fault && itemWrite) o = {ok: false, reason: 'history_tamper'};
       else try { o = apply(st, live, rule, at2); } catch (e) { if (!(e instanceof HistoryTamperError)) throw e; o = {ok: false, reason: 'history_tamper'}; }
       if (!o.ok && !o.extra?.logged) live({at: at2, source: 'live', kind: 'action_refused', muse: me, other: recipientMuse, line: null, data: {reason: o.reason, content}, tags: []});
       return o.ok ? {ok: true, output: {outcome: o, envelope}} : {ok: false, code: o.reason, output: {outcome: o, envelope}};
@@ -355,8 +365,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
   }
 
   // ---------- write tools ----------
-  const needsClaim = ['propose_trade', 'counter_trade', 'accept_trade', 'send_postcard', 'give_gift', 'propose_meetup', 'answer_candidate', 'invite_campfire', 'propose_help', 'answer_help'];
-  const claimGate = (): Outcome | null => (needsClaim.includes(tool.name) && !claimedFor(c) ? {ok: false, reason: 'pending_claim'} : null);
+  const claimGate = (): Outcome | null => (CLAIMED_WRITES.has(tool.name) && !claimedFor(c) ? {ok: false, reason: 'pending_claim'} : null);
   const write_ = (recipientMuse: string | null, content: Record<string, unknown>, apply: Apply, counterparty?: CommandOpts['counterparty']) => signedWrite(c, tool, recipientMuse, content, apply, {commandId: args.command_id as string | undefined, expectedVersion: args.expected_version as number | undefined, counterparty});
   const ownerMuse = me;
 
@@ -416,6 +425,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
       const text = cleanText(String(args.text)), to = args.to as string | undefined;
       if (!text) throw new InvalidParams('text is empty');
       return write_(to ?? null, {kind: 'greet', text, to: to ?? null}, (st, live, _rule, at) => {
+        if (to === me) return {ok: false, reason: 'invalid_target'};
         const m = museOf(st, me);
         const check = detectInjection(text);
         if (check.blocked) { live({at, source: 'live', kind: 'injection_blocked', muse: me, other: to ?? null, line: 'A greeting that reads like an instruction was not sent', data: {kinds: check.kinds, direction: 'outgoing', limit: INJECTION_LIMIT_NOTE}, tags: ['injection_blocked']}); return {ok: false, reason: 'injection_blocked', extra: {kinds: check.kinds, logged: true}}; }
@@ -428,6 +438,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
     case 'propose_trade': {
       const to = String(args.to), give = knownItem(String(args.give)), want = knownItem(String(args.want));
       return write_(to, {kind: 'propose_trade', to, give, want}, (st, live, rule, at) => {
+        if (to === me) return {ok: false, reason: 'invalid_target'};
         const gate = claimGate(); if (gate) return gate;
         const a = museOf(st, me), b = museOf(st, to), inbox = inboxOf(st);
         if (a.travel || b.travel) return {ok: false, reason: 'travelling'};
@@ -497,7 +508,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
       // that fails is unavailable for this invite instead of refusing it for everyone.
       const creds = new Map<string, Credential | null>();
       const counterparty = async (): Promise<PeerCheck> => { for (const id of to) creds.set(id, await museCredential(c, id, now)); return {ok: true, current: () => true}; };
-      return write_(null, {kind: 'invite_campfire', to, text}, (st, live, rule, at) => claimGate() ?? inviteCampfire(st, me, {to, text}, (id, at2) => credentialProblem(c.trust, creds.get(id), at2), live, rule, at), counterparty);
+      return write_(null, {kind: 'invite_campfire', to, text}, (st, live, rule, at) => claimGate() ?? inviteCampfire(st, me, {to, text}, (id, at2) => c.trust.agentByMuse(id)?.kind === 'owner' && !currentClaim(c) ? 'card_unclaimed' : credentialProblem(c.trust, creds.get(id), at2), live, rule, at), counterparty);
     }
     case 'propose_help': {
       const to = String(args.to), item = knownItem(String(args.item)), needs = args.needs === undefined ? null : knownItem(String(args.needs));
