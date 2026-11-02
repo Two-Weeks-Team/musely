@@ -196,7 +196,10 @@ test('write tools: each signs a server_custodial envelope, verifies, commits and
   assert.equal(trade.isError, false); assert.equal(trade.structuredContent.result, 'completed');
   assert.ok(t.muse(OWNER_SLOT).inventory.includes('fruit') && t.muse(OWNER_SLOT).inventory.includes('trade_receipt'));
   const done = t.events('trade_completed').at(-1);
-  assert.equal(done.data.envelope === undefined, false, 'a live trade carries its envelope');
+  assert.equal(done.data.envelope === undefined, false, 'the swap carries the envelope of the signed proposal it committed under');
+  // I-05: Moss accepted by rule, so the swap is a rule answer, never shown as live.
+  assert.deepEqual([done.source, done.data.accepted_via, done.data.accepted_by], ['rule', 'rule', '02-moss']);
+  assert.equal(t.events('trade_proposed').at(-1).source, 'live', 'the proposal itself was the connected Muse\'s own call');
   assert.ok(t.host.notifications([OWNER_SLOT]).notifications.some(n => n.kind === 'trade_completed'));
   assert.equal((await t.call('propose_trade', {to: '06-ink', give: 'garden_pass', want: 'tea'})).structuredContent.refused, 'not_held');
 
@@ -221,6 +224,13 @@ test('write tools: each signs a server_custodial envelope, verifies, commits and
   const yes = await t.call('answer_candidate', {task_id: task.id, answer: 'accept'});
   assert.equal(yes.structuredContent.owner_approval, 'required');
   assert.ok(t.events('meetup_candidate').at(-1).tags.includes('meetup_candidate'));
+  // I-05: Sunny's yes was a rule answer; the candidate records which side answered how.
+  assert.equal(t.events('meetup_answer').find(e => e.muse === '01-sunny').source, 'rule');
+  assert.deepEqual(t.events('meetup_candidate').at(-1).data.answers_via, {[OWNER_SLOT]: 'live', '01-sunny': 'rule'});
+  // A Task stored before answers recorded `via`: a resident's answer defaults to rule (it cannot have been a live call).
+  t.edit(st => { st.inbox.tasks.push({id: 'task_old', kind: 'meetup', from: OWNER_SLOT, to: '05-bloom', status: 'pending', awaiting: OWNER_SLOT, createdAt: t.clock.now, deadline: t.clock.now + 30 * 60_000, updatedAt: t.clock.now, round: 0, candidate: {time: '18:00', place: 'The Garden', public_basis: 'x'}, answers: {'05-bloom': 'accept'}, history: [{by: OWNER_SLOT, action: 'propose', at: t.clock.now}, {by: '05-bloom', action: 'answer', at: t.clock.now}]}); });
+  assert.equal((await t.call('answer_candidate', {task_id: 'task_old', answer: 'accept'})).isError, false);
+  assert.deepEqual(t.events('meetup_candidate').at(-1).data.answers_via, {[OWNER_SLOT]: 'live', '05-bloom': 'rule'});
   assert.equal((await t.call('answer_candidate', {task_id: task.id, answer: 'accept'})).structuredContent.refused, 'task_completed');
   const pub = await t.route('GET', '/api/owner/notifications', {session: null});
   const meetN = pub.body.notifications.find(n => n.kind === 'meetup_candidate');
@@ -281,7 +291,8 @@ test('accept_trade completes a countered Task atomically', async () => {
   const me = t.muse(OWNER_SLOT), moss = t.muse('02-moss');
   assert.ok(me.inventory.includes('fruit') && !me.inventory.includes('wildflower'));
   assert.ok(moss.inventory.includes('wildflower') && !moss.inventory.includes('fruit'));
-  assert.equal(t.events('trade_completed').at(-1).source, 'live');
+  const done = t.events('trade_completed').at(-1);
+  assert.deepEqual([done.source, done.data.accepted_via], ['live', 'live'], 'the connected Muse accepted with its own call');
 });
 
 test('inbox: a resident proposal to a connected Muse becomes a pending Task with a deadline; heartbeat_check expires it', async () => {
@@ -532,4 +543,42 @@ test('I-06: a pass past its 24 h expiry is swept before an MCP tool reads it, so
   const {verifyHistory} = await import('../src/engine/items.ts');
   assert.equal(verifyHistory(t.state().items).ok, true);
   assert.deepEqual(t.state().items.history.filter(h => h.via === 'expired' || h.via === 'gift').map(h => [h.via, h.item]), [['expired', 'garden_pass'], ['gift', 'night_pass']]);
+});
+
+test('I-05 #1 a connected Muse that acts gets a priority spotlight turn (deduplicated, 3 per hour); reads, polls and a revoked Muse do not', async () => {
+  const t = await setup();
+  await t.call('get_world_state');
+  await t.call('heartbeat_check');
+  assert.deepEqual(t.state().spotlight.visitorQueue, [], 'reads and inbox polls ask for nothing');
+  const g = await t.call('greet', {text: 'Morning, neighbors'});
+  assert.equal(g.isError, false);
+  assert.deepEqual(t.state().spotlight.visitorQueue, [OWNER_SLOT]);
+  const req = t.events('spotlight_requested');
+  assert.equal(req.length, 1); assert.equal(req[0].data.actorOrigin, 'connected');
+  await t.call('greet', {text: 'Still here'});
+  assert.equal(t.events('spotlight_requested').length, 1, 'already waiting: no second entry');
+  // The next heartbeat gives the owner's Muse the turn before the rotation (cursor 0 is also Jolly, so move it on first).
+  t.edit(st => { st.spotlight.cursor = 4; });
+  await t.runtime.heartbeat(T0);
+  assert.equal(t.runtime.events(0, 500).filter(e => e.kind === 'spotlight' || e.kind === 'spotlight_fallback').at(-1).muse, OWNER_SLOT);
+  assert.deepEqual(t.state().spotlight.visitorQueue, []);
+  assert.equal(t.state().spotlight.cursor, 4, 'the rotation waited');
+  // A refused action asks for nothing; after three requests in the hour the fourth is not queued.
+  assert.equal((await t.call('give_gift', {to: '08-orbit', item: 'gold_bar'})).isError ?? true, true);
+  for (let i = 0; i < 2; i++) { await t.call('greet', {text: 'Hello again ' + i}); await t.runtime.heartbeat(T0 + (i + 1) * TICK_MS); }
+  assert.equal(t.events('spotlight_requested').length, 3);
+  // Two priority turns in a row (T0, T0 + 1 min): the third tick went to the rotation, so the third request still waits.
+  assert.deepEqual(t.state().spotlight.visitorQueue, [OWNER_SLOT]);
+  await t.runtime.heartbeat(T0 + 3 * TICK_MS);
+  assert.deepEqual(t.state().spotlight.visitorQueue, []);
+  await t.call('greet', {text: 'One more'});
+  assert.equal(t.events('spotlight_requested').length, 3, 'hourly limit');
+  assert.deepEqual(t.state().spotlight.visitorQueue, []);
+  // Revoked: its calls never queue it.
+  t.clock.now = T0 + 2 * 3_600_000;
+  await t.route('POST', '/api/owner/revoke', {body: {muse: OWNER_SLOT}});
+  assert.ok(t.trust.suspended(OWNER_SLOT));
+  await t.call('greet', {text: 'Am I still here?'});
+  assert.deepEqual(t.state().spotlight.visitorQueue, []);
+  assert.equal(t.events('spotlight_requested').length, 3);
 });

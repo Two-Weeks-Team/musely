@@ -35,7 +35,7 @@ export type MuseState = {
 };
 export type Wants = {goal: string; items: string[]; source: 'harness' | 'spark' | 'connected'; updatedAt: number};
 export type WorldEvent = {id: string; tick: number; at: number; source: Source; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data?: Record<string, unknown>; tags: string[]};
-export type WorldState = {worldId: string; day: string; seed: string; tick: number; version: number; muses: MuseState[]; spotlight: {cursor: number; visitorQueue: string[]}; lastTickAt: number;
+export type WorldState = {worldId: string; day: string; seed: string; tick: number; version: number; muses: MuseState[]; spotlight: {cursor: number; visitorQueue: string[]; /** Priority turns in a row (see MAX_PRIORITY_STREAK). */ streak?: number}; lastTickAt: number;
   /** Item rule counters (daily limits, pair trades). The append-only item history is the run log. */
   items: ItemLedger;
   /** Owner location source and cell (13.1). Older stored states get the default on the next tick. */
@@ -49,6 +49,11 @@ export type WorldState = {worldId: string; day: string; seed: string; tick: numb
   paused?: Record<string, Paused>};
 export type Paused = {at: number; version: number; by: string};
 export type Decision = {muse: string; freedom: Freedom; source: 'live' | 'replay'; output: {decision: string; target_place: string; target_agent: string; offer_item: string; want_item: string; public_reason: string; line: string}; evidence?: Record<string, unknown>};
+/**
+ * The other Muse's answer when two Muses meet (8.3, C05: one answer per encounter). It is a recorded input like
+ * `Decision`: live (a model answer, with evidence) or rule (no model answer; `reason` says why). `muse` answers `other`.
+ */
+export type EncounterReply = {muse: string; other: string; place: string; encounterId: string; source: 'live' | 'replay' | 'rule'; output: {intent: string; item: string; line: string; public_reason: string; injection_suspected: boolean} | null; reason?: string; evidence?: Record<string, unknown>};
 export type Hooks = {
   /** Item discovery etc. when a Muse arrives somewhere (task 4 rules). */
   onArrive?: (s: WorldState, m: MuseState, place: Place, rand: () => number, at: number) => Omit<WorldEvent, 'id' | 'tick'>[];
@@ -111,11 +116,35 @@ export function createWorld(worldId: string, now: number): WorldState {
   };
 }
 
+/** Priority requests waiting at once (8.2: a visitor's or a connected Muse goes ahead of the rotation). */
+export const SPOTLIGHT_QUEUE_MAX = 5;
+/** After this many priority turns in a row the next turn goes to the rotation, so the queue cannot hold the spotlight. */
+export const MAX_PRIORITY_STREAK = 2;
+/** Queued Muses that can still take a turn: known and not paused (a revoked Muse never gets one). */
+const queued = (s: WorldState) => s.spotlight.visitorQueue.filter(id => !s.paused?.[id] && s.muses.some(m => m.id === id));
+
 /** The Muse whose turn it is (visitor Muses queue ahead of residents), and the freedom it gets. */
-export function spotlightFor(s: WorldState, now: number): {muse: string; freedom: Freedom} {
+export function spotlightFor(s: WorldState, now: number): {muse: string; freedom: Freedom; priority: boolean} {
   const free = unlockedFreedoms(localClock(now).hour);
-  const muse = s.spotlight.visitorQueue[0] ?? s.muses[s.spotlight.cursor % s.muses.length].id;
-  return {muse, freedom: free[Math.floor(s.tick / s.muses.length) % free.length]};
+  const first = (s.spotlight.streak ?? 0) >= MAX_PRIORITY_STREAK ? undefined : queued(s)[0];
+  const muse = first ?? s.muses[s.spotlight.cursor % s.muses.length].id;
+  return {muse, freedom: free[Math.floor(s.tick / s.muses.length) % free.length], priority: first !== undefined};
+}
+
+/**
+ * Puts a Muse at the back of the priority queue (8.2). Pure: the caller commits it. Refused for an unknown or
+ * paused (revoked) Muse and when the queue is full; a Muse already waiting keeps its place (no duplicates).
+ */
+export function requestSpotlight(s: WorldState, museId: string): {ok: true; position: number} | {ok: false; reason: 'unknown_muse' | 'paused' | 'already_queued' | 'queue_full'; position?: number} {
+  if (!s.muses.some(m => m.id === museId)) return {ok: false, reason: 'unknown_muse'};
+  if (s.paused?.[museId]) return {ok: false, reason: 'paused'};
+  // Entries that can no longer take a turn (paused since) do not hold a place.
+  s.spotlight.visitorQueue = queued(s);
+  const at = s.spotlight.visitorQueue.indexOf(museId);
+  if (at >= 0) return {ok: false, reason: 'already_queued', position: at + 1};
+  if (s.spotlight.visitorQueue.length >= SPOTLIGHT_QUEUE_MAX) return {ok: false, reason: 'queue_full'};
+  s.spotlight.visitorQueue.push(museId);
+  return {ok: true, position: s.spotlight.visitorQueue.length};
 }
 
 const SAFE = /[^\p{L}\p{N} &'.,()#_\-/:]/gu;
@@ -136,6 +165,18 @@ export function spotlightInput(s: WorldState, museId: string, freedom: Freedom, 
   };
 }
 
+/** Structured input for the other Muse's encounter answer (validated again with validate('encounter')). */
+export function encounterInput(s: WorldState, museId: string, otherId: string, placeId: string, incoming: string | null, now: number) {
+  const m = s.muses.find(x => x.id === museId)!, o = s.muses.find(x => x.id === otherId)!;
+  const items = (x: MuseState) => [...new Set(x.inventory.map(i => (i.startsWith('postcard:') ? 'postcard' : i)))].slice(0, 12);
+  return {
+    muse: museId, other: otherId, place: safeName(placeById(placeId).name), localTime: localClock(now).hhmm, items: items(m), otherItems: items(o),
+    memory: [m.reflection, ...m.memory].filter(Boolean).slice(0, 5).map(t => t.slice(0, 100)), ...(incoming ? {incoming: incoming.slice(0, 280)} : {}),
+  };
+}
+/** Identifies one meeting (C09): the sorted pair and the tick it happened in. */
+export const encounterId = (s: Pick<WorldState, 'day' | 'tick'>, a: string, b: string) => `${s.day}:${s.tick}:${[a, b].sort().join('|')}`;
+
 function eligibleBeats(m: MuseState, place: Place, hour: number) {
   return BEATS.filter(b => b.kinds.includes(place.kind) && inHours(b, hour) && (b.needs ?? []).every(n => m.inventory.includes(n)));
 }
@@ -153,7 +194,13 @@ export function tripMs(from: Place, to: Place, speed: Speed) {
   return Math.max(TICK_MS / 2, (distanceM(from, to) / mps) * 1000);
 }
 
-export function tick(prev: WorldState, input: {now: number; decision?: Decision | null}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
+/**
+ * With `spot` the turn goes to the Muse chosen when the heartbeat began (the runtime passes it: the queue may change while
+ * the model answers, and a paid answer must not lose its turn); without it the turn is computed from the state.
+ * With `replies` (the runtime passes it, possibly empty) every meeting gets the other Muse's answer: the recorded
+ * live answer for that meeting, or a rule answer. Without it (pure scenario runs) no answers are emitted.
+ */
+export function tick(prev: WorldState, input: {now: number; decision?: Decision | null; replies?: EncounterReply[]; spot?: {muse: string; priority: boolean}}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
   const now = input.now, clock = localClock(now);
   const s: WorldState = structuredClone(prev);
   const events: WorldEvent[] = [];
@@ -193,7 +240,8 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   // Item upkeep (I-06): chain pending history, expire passes, spend Spotlight Tickets, trim the kept history.
   if (!itemFault) for (const e of itemUpkeep(s, now)) emit(e);
 
-  const spot = spotlightFor(s, now);
+  const computed = spotlightFor(s, now);
+  const spot = input.spot && s.muses.some(m => m.id === input.spot!.muse) ? {muse: input.spot.muse, priority: input.spot.priority, freedom: computed.freedom} : computed;
   // 1. Spotlight: a recorded live/replay decision for this turn, or the scenario's own choice. A paused Muse's turn passes silently.
   const d = input.decision && input.decision.muse === spot.muse && !paused(spot.muse) ? input.decision : null;
   if (input.decision && !d) emit({at: now, source: input.decision.source, kind: 'decision_rejected', muse: input.decision.muse, data: {reason: paused(input.decision.muse) ? 'paused: the owner revoked this Muse\'s delegation' : 'not this Muse\'s spotlight turn'}, tags: []});
@@ -247,9 +295,12 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       const gate = hooks.canMeet?.(s, initiator, other, placeById(placeId), now);
       if (gate && !gate.ok) { if (gate.event) emit(gate.event); continue; }
       a.lastMet[b.id] = b.lastMet[a.id] = now;
-      emit({at: now, source: 'rule', kind: 'encounter', muse: initiator.id, other: other.id, place: placeId, data: {initiatedByIntent: !!initiator.intent, stage: 'recognize'}, tags: []});
+      const meeting = encounterId(s, a.id, b.id);
+      emit({at: now, source: 'rule', kind: 'encounter', muse: initiator.id, other: other.id, place: placeId, data: {encounterId: meeting, initiatedByIntent: !!initiator.intent, stage: 'recognize'}, tags: []});
       if (gate?.event) emit(gate.event);
       for (const e of hooks.onEncounter?.(s, initiator, other, placeById(placeId), rngFor(s.seed, s.tick, initiator.id, other.id, 'meet'), now) ?? []) emit(e);
+      // The other Muse answers (8.3). A connected Muse answers from its owner's runtime, so nothing is said for it here.
+      if (input.replies && !isConnected(s.inbox, other.id, now)) replyTo(other, initiator, placeId, meeting, input.replies.find(r => r.encounterId === meeting && r.muse === other.id && r.other === initiator.id), now, emit);
       if (initiator.intent?.target === other.id) initiator.intent = null;
       remember(a, `Met ${harnessById(b.id).name} at ${placeById(placeId).name}`);
       remember(b, `Met ${harnessById(a.id).name} at ${placeById(placeId).name}`);
@@ -258,7 +309,11 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     if (place.kind === 'campfire' && group.length >= 3 && clock.hour >= 17) emit({at: now, source: 'rule', kind: 'gathering', muse: group[0].id, place: placeId, data: {count: group.length, muses: group.map(m => m.id)}, tags: ['campfire_gathering_3plus']});
   }
 
-  if (s.spotlight.visitorQueue[0] === spot.muse) s.spotlight.visitorQueue.shift(); else s.spotlight.cursor = (s.spotlight.cursor + 1) % s.muses.length;
+  // A priority turn leaves the queue (only its own entry, and any paused since); requests that arrived meanwhile stay
+  // for the next tick. The rotation waits during priority turns.
+  if (spot.priority) s.spotlight.visitorQueue = s.spotlight.visitorQueue.filter(id => id !== spot.muse && !paused(id));
+  else s.spotlight.cursor = (s.spotlight.cursor + 1) % s.muses.length;
+  s.spotlight.streak = spot.priority ? (s.spotlight.streak ?? 0) + 1 : 0;
   // Spotlight Tickets are spent after this turn was served, so the next heartbeat's spotlightFor sees the same queue.
   if (!itemFault) for (const e of spendSpotlightTickets(s, now, id => paused(id) || isConnected(s.inbox, id, now))) emit(e);
   s.tick += 1; s.version += 1; s.lastTickAt = now;
@@ -277,6 +332,7 @@ export function pauseMuse(s: WorldState, museId: string, p: Paused) {
   // Nobody keeps waiting to meet or trade with it: other Muses' intents aimed at it end too.
   for (const o of s.muses) if (o.intent?.target === museId) o.intent = null;
   (s.paused ??= {})[museId] = p;
+  s.spotlight.visitorQueue = s.spotlight.visitorQueue.filter(id => id !== museId);
   return stopped;
 }
 /** The owner delegated again: the Muse rejoins the scenario on the next tick. */
@@ -287,6 +343,22 @@ export function resumeMuse(s: WorldState, museId: string) {
 }
 
 function remember(m: MuseState, line: string) { m.memory = [line, ...m.memory.filter(x => x !== line)].slice(0, 6); }
+
+/**
+ * One answer per meeting. A recorded model answer keeps its source and evidence and becomes the Muse's reflection;
+ * anything else is a rule answer with the reason it is not live (no key, budget, limits, invalid output, discarded).
+ * A rule answer never carries model evidence.
+ */
+function replyTo(m: MuseState, to: MuseState, placeId: string, meeting: string, r: EncounterReply | undefined, now: number, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void) {
+  const toName = harnessById(to.id).name;
+  if (r && r.source !== 'rule' && r.output) {
+    const o = r.output;
+    emit({at: now, source: r.source, kind: 'encounter_reply', muse: m.id, other: to.id, place: placeId, line: o.line || null, data: {encounterId: meeting, intent: o.intent, item: o.item || null, public_reason: o.public_reason, injection_suspected: o.injection_suspected, evidence: r.evidence ?? null}, tags: []});
+    m.reflection = `With ${toName}: ${o.public_reason || o.line}`.slice(0, 100);
+    return;
+  }
+  emit({at: now, source: 'rule', kind: 'encounter_reply', muse: m.id, other: to.id, place: placeId, line: `Nice to see you, ${toName}.`, data: {encounterId: meeting, intent: 'greet', item: null, reason: r?.reason ?? 'no_answer_requested'}, tags: []});
+}
 
 function startBeat(m: MuseState, beat: Beat, place: Place, now: number, source: Source, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void, s: WorldState) {
   const clip = beat.clips[0];

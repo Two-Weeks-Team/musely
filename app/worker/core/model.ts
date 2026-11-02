@@ -14,13 +14,16 @@ export async function callModel(cfg: ModelConfig, action: Action, messages: unkn
   const headers: Record<string, string> = {authorization: 'Bearer ' + cfg.key, 'content-type': 'application/json'};
   // AI Gateway: keep bodies of challenge/personal-signal requests out of logs (metadata only).
   if (cfg.noBodyLogging) headers['cf-aig-collect-log-payload'] = 'false';
+  // The deadline holds even if a fetch implementation ignores the abort signal: the wait itself is cut off.
+  const deadline = new Promise<never>((_, reject) => controller.signal.addEventListener('abort', () => reject(new Error('deadline')), {once: true}));
+  deadline.catch(() => {});
   try {
-    const res = await (cfg.fetcher ?? fetch)(cfg.base.replace(/\/$/, '') + '/chat/completions', {
+    const res = await Promise.race([(cfg.fetcher ?? fetch)(cfg.base.replace(/\/$/, '') + '/chat/completions', {
       method: 'POST', headers, signal: controller.signal,
       body: JSON.stringify({model: cfg.model, messages, max_tokens: ACTION_LIMITS[action].maxTokens, reasoning_effort: ACTION_LIMITS[action].effort, response_format: OUTPUT_SCHEMAS[action]}),
-    });
+    }), deadline]);
     const requestId = res.headers.get('x-request-id');
-    const body = await res.text();
+    const body = await Promise.race([res.text(), deadline]);
     const latencyMs = Date.now() - started;
     if (res.status === 429) return {ok: false, kind: 'rate_limited', status: 429, latencyMs, requestId};
     if (!res.ok) return {ok: false, kind: 'upstream', status: res.status, latencyMs, requestId};

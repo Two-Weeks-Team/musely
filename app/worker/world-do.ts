@@ -69,7 +69,7 @@ export class WorldDO extends DurableObject<Env> {
   async alarm() {
     try {
       const r = await this.runtime.heartbeat(Date.now());
-      if (r.status === 'committed') console.log('heartbeat', r.tick, r.spotlight?.muse, r.spotlight?.source, r.spotlight?.reason ?? '');
+      if (r.status === 'committed') console.log('heartbeat', r.tick, r.spotlight?.muse, r.spotlight?.source, r.spotlight?.reason ?? '', 'replies', r.replies?.live ?? 0, 'live', r.replies?.rule ?? 0, 'rule');
     } finally {
       // Always schedule the next beat, even if this one threw (the runtime is idempotent per tick).
       await this.ctx.storage.setAlarm(Date.now() + TICK_MS);
@@ -101,6 +101,11 @@ export class WorldDO extends DurableObject<Env> {
     return this.runtime.commitExternal(Date.now(), 'ritual-' + Math.random().toString(36).slice(2, 10), (_s, emit) => emit({at: Date.now(), source: rec.requestId ? 'live' : 'replay', kind: 'ritual_judged', muse: null, line: rec.passed ? 'Welcome ritual passed' : 'Welcome ritual not passed', data: {passed: rec.passed, results: rec.results, evidence: rec.requestId ? {model: rec.model, requestId: rec.requestId} : null, who: byOwner ? 'owner (owner session)' : rec.tier === 'judge' ? 'judge link ' + sessionTag : 'visitor ' + sessionTag, framesStored: false}, tags: ['ritual']}));
   }
   worldView() { return this.runtime.view(Date.now()); }
+  /** A visitor's priority spotlight request (8.2); the Worker route checks the session and passes an opaque requester id. */
+  requestSpotlight(muse: string, origin: 'visitor' | 'judge', requester: string) {
+    if (this.trust.suspended(muse)) return {ok: false as const, reason: 'paused' as const};
+    return this.runtime.requestSpotlight(muse, Date.now(), {origin, requester});
+  }
   worldEvents(since: number, limit: number, opts: {day?: string; tail?: number} = {}) { return this.runtime.events(since, Math.min(2000, Math.max(1, limit)), opts); }
   worldHighlights(limit: number) { return this.runtime.highlights(Math.min(300, Math.max(1, limit))); }
   // Connected Muse (direction v2, 7.2, 12.3, 13.1): MCP dispatch, agent keys, owner location, notifications.

@@ -58,7 +58,8 @@ export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; 
       const check = historyFault(st.items, false, at) ? {ok: false as const, reason: 'history_tamper'} : checkTrade(st.items, st.day, a, b, plan.give, plan.want, 0, at);
       if (!check.ok) { emit({at, source: 'rule', kind: 'trade_rejected', muse: plan.partner, other: OWNER_SLOT, line: 'Not this time.', data: {reason_public: null, rule: check.reason}, tags: ['trade_rejected']}); return {ok: false, code: check.reason}; }
       commitTrade(st.items, st.day, a, b, plan.give, plan.want, at);
-      emit({at, source: 'live', kind: 'trade_completed', muse: OWNER_SLOT, other: plan.partner, place: a.place, line: `Traded ${itemName(plan.give)} ↔ ${itemName(plan.want)}`, data: {give: plan.give, want: plan.want, receipt: true, envelope: evidence}, tags: ['ability_change', 'p0_trade']});
+      // The resident accepts by rule (the trade rules allow it): the swap is a rule answer under the verified request.
+      emit({at, source: 'rule', kind: 'trade_completed', muse: OWNER_SLOT, other: plan.partner, place: a.place, line: `Traded ${itemName(plan.give)} ↔ ${itemName(plan.want)}`, data: {give: plan.give, want: plan.want, receipt: true, envelope: evidence, accepted_by: plan.partner, accepted_via: 'rule'}, tags: ['ability_change', 'p0_trade']});
       return {ok: true};
     },
     refused: (_st, emit, r, at) => emit({at, source: 'live', kind: quietRefusal(r.code) ? 'command_refused' : 'a2a_refused', muse: OWNER_SLOT, other: plan.partner, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, envelope: evidence, content, label: opts.label}, tags: quietRefusal(r.code) ? [] : ['p0_refused']}),

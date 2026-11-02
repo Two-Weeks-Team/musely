@@ -189,6 +189,8 @@ export function checkOutput(action: Action, input: ActionInput, out: any): strin
   if (structural) return structural;
   const i = input as any;
   if (action === 'spotlight' && out.freedom !== i.freedom) return 'freedom mismatch';
+  // An encounter answer may only name an item the answering Muse holds (it is shown in public).
+  if (action === 'encounter' && out.item && !i.items.includes(out.item)) return 'item not held';
   if (action === 'negotiate') {
     if (!Array.isArray(out.candidates) || out.candidates.length !== 5) return 'need five candidates';
     for (const c of out.candidates) {

@@ -7,7 +7,7 @@ import type {Trust} from './trust.ts';
 import type {Hooks} from '../../src/engine/world.ts';
 import {OWNER_MUSE} from '../../src/engine/world.ts';
 import {AgentKeys} from './agent-keys.ts';
-import {runTool, toolList, ownerView, InvalidParams, type ToolCtx} from './mcp-tools.ts';
+import {runTool, toolList, ownerView, InvalidParams, TOOLS, type ToolCtx} from './mcp-tools.ts';
 import {dispatch, type McpOutcome} from './mcp-server.ts';
 import {defaultOwner, nextOwnerLocation, ownerLabel, tagLocation, PRESETS} from '../../src/engine/location.ts';
 import {followOwner} from '../../src/engine/travel.ts';
@@ -18,6 +18,8 @@ export type ConnectedDeps = {
   ownerRoot: () => JsonWebKey | null; ownerClaimed: () => boolean; now?: () => number;
 };
 const CONNECTED_REFRESH_MS = 10 * 60_000;
+/** World actions (not reads or inbox polling): a connected Muse that acts asks for a priority spotlight turn (8.2). */
+const ACTION_TOOLS = new Set(TOOLS.filter(t => t.write && t.name !== 'heartbeat_check').map(t => t.name));
 const uniq = () => Math.random().toString(36).slice(2, 10);
 
 export class ConnectedHost {
@@ -97,7 +99,11 @@ export class ConnectedHost {
     if (!method) return {status: 'ok', result: {}};
     const ctx: ToolCtx = {trust: this.d.trust, runtime: this.d.runtime, hooks: this.d.hooks, ownerRoot: this.d.ownerRoot(), ownerClaimed: this.d.ownerClaimed(), baseUrl: this.d.baseUrl, key, now: () => this.now()};
     try {
-      return {status: 'ok', ...(await dispatch(method, params, {list: toolList, call: (n, a) => runTool(ctx, n, a), isInvalidParams: e => e instanceof InvalidParams}))};
+      const out = await dispatch(method, params, {list: toolList, call: (n, a) => runTool(ctx, n, a), isInvalidParams: e => e instanceof InvalidParams});
+      // A successful world action puts the Muse in the priority queue (deduplicated, 3 per hour); a revoked Muse never.
+      const tool = method === 'tools/call' ? String((params as {name?: unknown} | null)?.name ?? '') : '';
+      if (ACTION_TOOLS.has(tool) && (out.result as {isError?: boolean} | undefined)?.isError === false && !this.d.trust.suspended(key.muse)) this.d.runtime.requestSpotlight(key.muse, this.now(), {origin: 'connected', requester: 'connected:' + key.muse});
+      return {status: 'ok', ...out};
     } catch (e) {
       console.error('mcp tool error', method, e);
       return {status: 'ok', error: {code: -32603, message: 'Internal error'}};

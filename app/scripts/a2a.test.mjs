@@ -56,6 +56,9 @@ test('P0: valid → the owner revokes → the same job with a new nonce is refus
   assert.notEqual(refusedAgain.data.envelope.nonce, refused.data.envelope.nonce);
   assert.equal(refused.data.step, 'delegation');
   assert.ok(ev[1].tags.includes('p0_trade') && refused.tags.includes('p0_refused'));
+  // I-05: the verification is live; the partner's acceptance is a rule answer under that verified request.
+  assert.deepEqual([verified.source, ev[1].source, ev[1].data.accepted_via], ['live', 'rule', 'rule']);
+  assert.equal(ev[1].data.envelope.message_id, verified.data.envelope.message_id);
   assert.ok(runtime.state().muses.find(m => m.id === OWNER_SLOT).inventory.includes('trade_receipt'));
   // Only the owner's explicit re-delegation brings P0 back to the valid step.
   const rd = redelegateMuse(ctx, OWNER_SLOT, 'owner:kim-sejun');

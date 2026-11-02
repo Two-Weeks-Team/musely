@@ -8,6 +8,7 @@ import {connectedRoutes, requireOwner, type OwnerConfig} from './core/owner-api.
 import {readOwnerSession, ownerOrigins, originAllowed, OWNER_COOKIE, type OwnerTokens} from './core/owner-session.ts';
 import {handleMcpHttp} from './core/mcp-server.ts';
 import {OWNER_SLOT} from './core/trust.ts';
+import {HARNESS_IDS} from '../src/engine/harness.ts';
 export {WorldDO} from './world-do.ts';
 
 const MODEL_TIMEOUT_MS = 8000;
@@ -96,6 +97,19 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   // Shared world (direction v2, 8): read-only views for every visitor.
   if (url.pathname === '/api/world' && request.method === 'GET') return json(await world(env).worldView());
   if (url.pathname === '/api/world/events' && request.method === 'GET') return json(await world(env).worldEvents(Number(url.searchParams.get('since')) || 0, Number(url.searchParams.get('limit')) || 200, {day: url.searchParams.get('day') ?? undefined, tail: Number(url.searchParams.get('tail')) || undefined}));
+  // Visitor priority (8.2): a session asks for a Muse's next spotlight turn, ahead of the rotation (3 per hour for visitors).
+  if (url.pathname === '/api/world/spotlight' && request.method === 'POST') {
+    if (!session) return json({error: 'session_required'}, 401);
+    if (env.BURST && !(await env.BURST.limit({key: 'spotlight:' + session.sid})).success) return json({error: 'slow_down'}, 429);
+    let body: {muse?: unknown};
+    try { body = await readJson(request, 1024); } catch { return json({error: 'bad_request'}, 400); }
+    if (typeof body.muse !== 'string' || !HARNESS_IDS.includes(body.muse)) return json({error: 'unknown_muse'}, 400);
+    // The public event carries an opaque requester id, never the session id.
+    const requester = (await hashIp(env.SESSION_SECRET ?? 'unset', 'spotlight:' + session.sid)).slice(0, 16);
+    const r = await world(env).requestSpotlight(body.muse, session.tier, requester);
+    if (r.ok) return json({queued: true, muse: r.muse, position: r.position, already: r.already});
+    return json({error: r.reason}, r.reason === 'paused' ? 409 : r.reason === 'unknown_muse' ? 400 : 429);
+  }
   if (url.pathname === '/api/world/highlights' && request.method === 'GET') return json(await world(env).worldHighlights(Number(url.searchParams.get('limit')) || 100));
 
   // Identity (direction v2, 6): signed A2A Agent Cards and the P0 / demo checks.

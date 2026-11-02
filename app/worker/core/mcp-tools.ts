@@ -167,11 +167,14 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
     apply: (st, emit, at2) => {
       const tag = (e: Omit<WorldEvent, 'id' | 'tick'>) => emit(tagLocation(st.owner, e));
       const live: Emit = e => tag({...e, source: 'live', data: {...(e.data ?? {}), actor: 'your Muse', tool: tool.name, key_id: c.key.id, envelope}});
-      const rule: Emit = e => tag({...e, source: 'rule'});
+      // A resident's rule answer inside this commit: source rule, with the signed command it committed under.
+      const rule: Emit = e => tag({...e, source: 'rule', data: {...(e.data ?? {}), envelope}});
+      // World upkeep run before the tool (pass expiry) is not an answer to this command: rule, without the envelope.
+      const upkeep: Emit = e => tag({...e, source: 'rule'});
       // Passes that expired since the last tick stop working before this tool reads the inventory (I-06). A tampered
       // item history refuses item writes (history_tamper) and skips the sweep; other writes still run.
       const fault = historyFault(st.items, false, at2);
-      if (!fault) for (const e of sweepExpired(st, at2)) rule(e);
+      if (!fault) for (const e of sweepExpired(st, at2)) upkeep(e);
       const itemWrite = ITEM_WRITES.has(tool.name) || (tool.name === 'move' && content.mode === 'teleport');
       let o: ReturnType<Apply>;
       if (fault && itemWrite) o = {ok: false, reason: 'history_tamper'};
@@ -223,10 +226,10 @@ function completeTrade(st: WorldState, t: Task, acceptor: string, live: Emit, ru
   const offer = t.offer!, a = museOf(st, offer.by), b = museOf(st, acceptor);
   const first = st.items.history.filter(h => h.via === 'trade').length === 0;
   commitTrade(st.items, st.day, a, b, offer.give, offer.want, at);
-  t.status = 'completed'; t.awaiting = null; t.updatedAt = at; t.history.push({by: acceptor, action: 'accept', at});
-  // The swap commits under the signed write that led to it, so it always carries that envelope evidence.
-  void rule;
-  live({at, source: 'live', kind: 'trade_completed', muse: a.id, other: b.id, place: a.place, line: `Traded ${itemName(offer.give)} ↔ ${itemName(offer.want)}`, data: {task_id: t.id, give: offer.give, want: offer.want, round: t.round, receipt: true, stage: 'swap', accepted_by: acceptor, accepted_via: by}, tags: first ? ['first_trade', 'ability_change'] : ['ability_change']});
+  t.status = 'completed'; t.awaiting = null; t.updatedAt = at; t.history.push({by: acceptor, action: 'accept', at, via: by});
+  // The swap commits under the signed write that led to it, so it always carries that envelope evidence. Its source is
+  // who accepted: the connected Muse's own call (live) or a resident's rule answer (rule, never shown as live).
+  (by === 'rule' ? rule : live)({at, source: by, kind: 'trade_completed', muse: a.id, other: b.id, place: a.place, line: `Traded ${itemName(offer.give)} ↔ ${itemName(offer.want)}`, data: {task_id: t.id, give: offer.give, want: offer.want, round: t.round, receipt: true, stage: 'swap', accepted_by: acceptor, accepted_via: by}, tags: first ? ['first_trade', 'ability_change'] : ['ability_change']});
   const other = a.id === ownerMuse ? b.id : a.id, got = a.id === ownerMuse ? offer.want : offer.give, gave = a.id === ownerMuse ? offer.give : offer.want;
   notifyOwner(inboxOf(st), {kind: 'trade_completed', at, line: `Your Muse traded ${itemName(gave)} for ${name(other)}'s ${itemName(got)}`, ref: t.id, other, muse: ownerMuse});
   a.reflection = `Traded with ${name(b.id)}: got ${itemName(offer.want)}`;
@@ -498,7 +501,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         live({at, source: 'live', kind: 'meetup_proposed', muse: me, other: to, line: `Asked ${name(to)} about a meetup`, data: {task_id: t.id, candidate: 'private (owner only)'}, tags: []});
         if (!isConnected(inbox, to, at)) {
           const yes = likesB.includes(place.kind) || rngFor(st.seed, st.tick, t.id)() < .5;
-          t.answers![to] = yes ? 'accept' : 'reject'; t.history.push({by: to, action: 'answer', at});
+          t.answers![to] = yes ? 'accept' : 'reject'; t.history.push({by: to, action: 'answer', at, via: 'rule'});
           rule({at, source: 'rule', kind: 'meetup_answer', muse: to, other: me, line: yes ? 'Yes.' : 'No.', data: {task_id: t.id, answer: t.answers![to]}, tags: []});
           if (yes) { t.awaiting = me; t.deadline = at + TASK_TTL_MS; } else { t.status = 'rejected'; t.awaiting = null; }
         }
@@ -512,12 +515,15 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         const gate = claimGate(); if (gate) return gate;
         const t = openTaskFor(st, id, me, 'meetup', at); if (typeof t === 'string') return {ok: false, reason: t};
         const otherId = t.from === me ? t.to : t.from;
-        t.answers![me] = answer; t.updatedAt = at; t.history.push({by: me, action: 'answer', at});
+        t.answers![me] = answer; t.updatedAt = at; t.history.push({by: me, action: 'answer', at, via: 'live'});
         live({at, source: 'live', kind: 'meetup_answer', muse: me, other: otherId, line: answer === 'accept' ? 'Yes.' : 'No.', data: {task_id: t.id, answer}, tags: []});
         if (answer === 'reject') { t.status = 'rejected'; t.awaiting = null; return {ok: true, data: {task: taskView(t, me)}}; }
         if (t.answers![otherId] === 'accept') {
           t.status = 'completed'; t.awaiting = null;
-          live({at, source: 'live', kind: 'meetup_candidate', muse: me, other: otherId, line: `A meetup candidate with ${name(otherId)} is waiting for the owner's approval`, data: {task_id: t.id, candidate: 'private (owner only)', owner_approval: 'required'}, tags: ['meetup_candidate']});
+          // The last answer is this Muse's own call (live); the other side's answer keeps how it was made (a resident: rule).
+          // Older Tasks have no `via`: a resident (not connected) can only have answered by rule.
+          const otherVia = [...t.history].reverse().find(h => h.by === otherId && h.action === 'answer')?.via ?? (isConnected(inboxOf(st), otherId, at) ? 'live' : 'rule');
+          live({at, source: 'live', kind: 'meetup_candidate', muse: me, other: otherId, line: `A meetup candidate with ${name(otherId)} is waiting for the owner's approval`, data: {task_id: t.id, candidate: 'private (owner only)', owner_approval: 'required', answers_via: {[me]: 'live', [otherId]: otherVia}}, tags: ['meetup_candidate']});
           notifyOwner(inboxOf(st), {kind: 'meetup_candidate', at, line: `A meetup candidate with ${name(otherId)} needs your approval`, ref: t.id, other: otherId, muse: me, detail: {...t.candidate!}});
           return {ok: true, data: {task: taskView(t, me), candidate: t.candidate, owner_approval: 'required'}};
         }

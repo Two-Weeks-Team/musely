@@ -97,7 +97,9 @@ test('I-01 #1: an ordinary resident meeting verifies both cards and delegations 
 
   // Revoked while the model was answering: the cards were fine at prepare time, the commit re-check refuses.
   let release;
-  const slow = async (_u, init) => { await new Promise(r => { release = r; }); const out = {freedom: 'where', decision: 'stay', target_place: '', target_agent: '', offer_item: '', want_item: '', public_reason: 'here', line: 'Staying'}; void init; return new Response(JSON.stringify({id: 'c', usage: {prompt_tokens: 10, completion_tokens: 10}, choices: [{message: {content: JSON.stringify(out)}}]})); };
+  // Only the spotlight call waits; later calls (other meetings' answers) return at once.
+  let waiting = true;
+  const slow = async (_u, init) => { if (waiting) { waiting = false; await new Promise(r => { release = r; }); } const out = {freedom: 'where', decision: 'stay', target_place: '', target_agent: '', offer_item: '', want_item: '', public_reason: 'here', line: 'Staying'}; void init; return new Response(JSON.stringify({id: 'c', usage: {prompt_tokens: 10, completion_tokens: 10}, choices: [{message: {content: JSON.stringify(out)}}]})); };
   const rev = await setup({meetings: true, model: {base: 'https://api.meta.ai/v1', key: 'k', model: 'muse-spark-1.3', timeoutMs: 5000, fetcher: (...a) => slow(...a)}});
   rev.edit(arrangeMeeting);
   const prepared = new Promise(r => { rev.gate.prepared = r; });

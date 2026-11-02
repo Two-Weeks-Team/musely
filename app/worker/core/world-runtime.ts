@@ -6,7 +6,13 @@
 // - Late answers: if the world version moved or the actor's delegation was revoked while the model was
 //   thinking, the answer is logged and not executed. Timed-out calls are aborted and charged in full.
 // - Every commit runs inside the storage transaction (transactionSync): a throw anywhere rolls all of it back.
-import {createWorld, tick, spotlightFor, spotlightInput, TICK_MS, type WorldState, type WorldEvent, type Decision, type Hooks} from '../../src/engine/world.ts';
+// - Encounter answers (8.3, C05): after the spotlight answer, the tick is dry-run on the same state to find this tick's
+//   meetings; the other Muse of each meeting answers with one model call (reserved and settled like the spotlight),
+//   or by rule with the reason. The answers enter the committed tick as recorded inputs, so a dry run and the commit
+//   agree unless the world moved; answers that no longer apply are logged as discarded.
+// - Concurrency (C05): at most MAX_MODEL_CALLS model calls run at once per world. A call that finds no free slot
+//   falls back at once (never waits); every slot is released in a finally block.
+import {createWorld, tick, spotlightFor, spotlightInput, encounterInput, requestSpotlight, TICK_MS, type WorldState, type WorldEvent, type Decision, type EncounterReply, type Hooks} from '../../src/engine/world.ts';
 import {validate, buildMessages, maxCostUsd, actualCostUsd, failureCostUsd, checkOutput} from './actions.ts';
 import {callModel, type ModelConfig} from './model.ts';
 import {replayFor} from './replay.ts';
@@ -18,6 +24,19 @@ import type {Ledger, Sql} from './ledger.ts';
 export type TxSql = Sql & {transactionSync<T>(fn: () => T): T};
 /** Repeats of one refusal inside this window collapse into its first event (the count is kept in `refusals`). */
 export const REFUSAL_WINDOW_MS = 10 * 60_000;
+/** C05: model calls in progress at once, per world (one Durable Object). */
+export const MAX_MODEL_CALLS = 2;
+/** C05: meetings per tick whose answer may be a model call (the rest answer by rule). */
+export const MAX_ENCOUNTER_REPLIES = 5;
+/** Meeting answers are model calls only while at least this share of the day's budget is left (the rest is kept for visitors). */
+export const ENCOUNTER_BUDGET_FLOOR = 0.4;
+/** After this many meeting-answer timeouts in a row, meeting answers stop calling the model for ENCOUNTER_CIRCUIT_MS. */
+export const ENCOUNTER_TIMEOUTS_TO_OPEN = 3;
+export const ENCOUNTER_CIRCUIT_MS = 10 * 60_000;
+/** 8.2: priority spotlight requests per requester per hour (visitors: the free 3 per hour). */
+export const SPOTLIGHT_REQUESTS_PER_HOUR: Record<SpotlightOrigin, number> = {visitor: 3, judge: 120, connected: 3};
+export type SpotlightOrigin = 'visitor' | 'judge' | 'connected';
+export type SpotlightRequestResult = {ok: true; muse: string; position: number; already: boolean; eventIds: string[]} | {ok: false; reason: 'unknown_muse' | 'paused' | 'queue_full' | 'hourly_limit'};
 
 export type RuntimeOptions = {
   worldId: string;
@@ -36,7 +55,7 @@ export type RuntimeOptions = {
 };
 type Emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => void;
 export type CommandRow = {payloadHash: string; result: CommandResult; output: unknown};
-export type HeartbeatResult = {status: 'committed' | 'skipped_duplicate' | 'skipped_early'; tick: number; events: number; spotlight?: {muse: string; source: string; reason?: string}};
+export type HeartbeatResult = {status: 'committed' | 'skipped_duplicate' | 'skipped_early'; tick: number; events: number; spotlight?: {muse: string; source: string; reason?: string}; replies?: {live: number; rule: number}};
 
 /** A transaction callback must finish synchronously; an async mutation would commit half-done. */
 const synchronous = <T>(r: T): T => {
@@ -49,6 +68,19 @@ export class WorldRuntime {
   private opts: RuntimeOptions;
   /** Commands between their lookup and their commit, per actor:commandId (one DO instance runs them all). */
   readonly pending = new Set<string>();
+  private slotsInUse = 0;
+  /** Model calls running now (never above MAX_MODEL_CALLS). */
+  get modelCallsInFlight() { return this.slotsInUse; }
+  /**
+   * Takes one model-call slot, or null when MAX_MODEL_CALLS are already running (the caller falls back at once).
+   * The returned release is idempotent; callers release it in a finally block.
+   */
+  modelSlot(): (() => void) | null {
+    if (this.slotsInUse >= MAX_MODEL_CALLS) return null;
+    this.slotsInUse += 1;
+    let held = true;
+    return () => { if (held) { held = false; this.slotsInUse -= 1; } };
+  }
   constructor(sql: TxSql, opts: RuntimeOptions) { this.sql = sql; this.opts = opts; }
   get worldId() { return this.opts.worldId; }
 
@@ -58,6 +90,8 @@ export class WorldRuntime {
     // Append-only run log (8.6): no UPDATE or DELETE statements touch this table.
     this.sql.exec('CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, tick INTEGER NOT NULL, at INTEGER NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, muse TEXT, other TEXT, place TEXT, line TEXT, data TEXT, tags TEXT NOT NULL)');
     this.sql.exec('CREATE INDEX IF NOT EXISTS events_tags ON events (tags) WHERE tags != \'[]\'');
+    // Lookups by kind and time (spotlight request limits, recent events of one kind); IF NOT EXISTS migrates old worlds.
+    this.sql.exec('CREATE INDEX IF NOT EXISTS events_kind_at ON events (kind, at)');
     this.sql.exec(COMMANDS_TABLE);
     this.sql.exec('CREATE TABLE IF NOT EXISTS refusals (key TEXT PRIMARY KEY, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, count INTEGER NOT NULL)');
     if (!this.sql.exec('SELECT id FROM world WHERE id = 1').toArray().length) {
@@ -76,8 +110,11 @@ export class WorldRuntime {
     // before any model call: the tick is committed or its spotlight reservation already exists.
     if (this.tickTaken(before)) return {status: 'skipped_duplicate', tick: before.tick, events: 0};
     try {
-      const spot = spotlightFor(before, now);
+      // The turn is fixed here and passed to the commit: queue requests made while the model answers wait for the next tick.
+      const spot = spotlightFor(before, now), turn = {muse: spot.muse, priority: spot.priority};
       const [{decision, info}, canMeet] = await Promise.all([this.liveSpotlight(before, spot.muse, spot.freedom, now), this.meetingGate(before, now)]);
+      // The spotlight slot is free again: this tick's meetings, and the other Muse's answer to each.
+      const answers = await this.encounterReplies(before, now, decision, canMeet, turn);
       this.opts.beforeCommit?.();
       // Commit point: everything below is synchronous and one storage transaction.
       return this.sql.transactionSync(() => {
@@ -85,17 +122,32 @@ export class WorldRuntime {
       if (current.tick !== before.tick || current.day !== before.day || this.sql.exec('SELECT 1 FROM ticks WHERE day = ? AND tick = ?', before.day, before.tick).toArray().length) return {status: 'skipped_duplicate', tick: before.tick, events: 0};
       let usable = decision;
       const late: Omit<WorldEvent, 'id' | 'tick'>[] = [];
-      if (decision && current.version !== before.version) { late.push({at: now, source: decision.source, kind: 'decision_discarded', muse: decision.muse, data: {reason: 'world changed while the model was answering', evidence: decision.evidence ?? null}, tags: []}); usable = null; }
-      if (decision && this.opts.delegationValid && !this.opts.delegationValid(decision.muse)) { late.push({at: now, source: decision.source, kind: 'decision_discarded', muse: decision.muse, data: {reason: 'delegation revoked before commit', evidence: decision.evidence ?? null}, tags: []}); usable = null; }
-      const {state, events} = tick(current, {now, decision: usable}, canMeet ? {...this.opts.hooks, canMeet: this.dedupMeetings(canMeet)} : this.opts.hooks);
+      // The answer keeps its turn unless its Muse was paused or revoked, or the world itself moved (a queue request does
+      // not move it). One discard event, with the most specific reason.
+      const lost = !decision ? null : current.paused?.[decision.muse] ? 'paused before commit' : this.opts.delegationValid && !this.opts.delegationValid(decision.muse) ? 'delegation revoked before commit' : current.version !== before.version ? 'world changed while the model was answering' : null;
+      if (decision && lost) { late.push({at: now, source: decision.source, kind: 'decision_discarded', muse: decision.muse, data: {reason: lost, evidence: decision.evidence ?? null}, tags: []}); usable = null; }
+      // Same checks for every model answer to a meeting: a revoked answerer or a moved world discards it (it was paid for).
+      const discard = (r: EncounterReply, reason: string) => late.push({at: now, source: r.source as WorldEvent['source'], kind: 'encounter_reply_discarded', muse: r.muse, other: r.other, place: r.place, data: {reason, encounterId: r.encounterId, evidence: r.evidence ?? null}, tags: []});
+      const replies = answers.map(r => {
+        if (r.source === 'rule') return r;
+        const why = current.paused?.[r.muse] ? 'paused before commit' : this.opts.delegationValid && !this.opts.delegationValid(r.muse) ? 'delegation revoked before commit' : current.version !== before.version ? 'world changed while the model was answering' : null;
+        if (!why) return r;
+        discard(r, why);
+        return {muse: r.muse, other: r.other, place: r.place, encounterId: r.encounterId, source: 'rule' as const, output: null, reason: 'discarded: ' + why};
+      });
+      const {state, events} = tick(current, {now, decision: usable, replies, spot: turn}, canMeet ? {...this.opts.hooks, canMeet: this.dedupMeetings(canMeet)} : this.opts.hooks);
+      // A model answer to a meeting that did not happen in the committed tick is not used.
+      const answered = new Set(events.filter(e => e.kind === 'encounter_reply').map(e => `${e.data?.encounterId}>${e.muse}`));
+      for (const r of replies) if (r.source !== 'rule' && !answered.has(`${r.encounterId}>${r.muse}`)) discard(r, 'the meeting did not happen at commit');
       // Refusal windows that closed (here or during the tick) leave one summary with their repeat count.
       const repeats = [...this.closedRepeats.splice(0), ...this.closeRefusalWindows(now)].map((e, i) => ({...e, id: `${current.day}:${current.tick}:repeats${i}`, tick: current.tick}));
       const all = [...events, ...late.map((e, i) => ({...e, id: `${current.day}:${current.tick}:late${i}`, tick: current.tick})), ...repeats];
       if (!usable && info.reason) all.push({at: now, source: info.source as WorldEvent['source'], kind: 'spotlight_fallback', muse: spot.muse, data: {reason: info.reason}, tags: [], id: `${current.day}:${current.tick}:fallback`, tick: current.tick});
       this.sql.exec('UPDATE world SET state = ?, version = ? WHERE id = 1', JSON.stringify(state), state.version);
-      this.sql.exec('INSERT INTO ticks (day, tick, committed_at, spotlight) VALUES (?, ?, ?, ?)', current.day, current.tick, now, JSON.stringify({muse: spot.muse, ...info}));
+      this.sql.exec('INSERT INTO ticks (day, tick, committed_at, spotlight) VALUES (?, ?, ?, ?)', current.day, current.tick, now, JSON.stringify({muse: turn.muse, priority: turn.priority, ...info}));
       for (const e of all) this.sql.exec('INSERT OR IGNORE INTO events (id, tick, at, source, kind, muse, other, place, line, data, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', e.id, e.tick, e.at, e.source, e.kind, e.muse, e.other ?? null, e.place ?? null, e.line ?? null, JSON.stringify(e.data ?? {}), JSON.stringify(e.tags));
-      return {status: 'committed' as const, tick: current.tick, events: all.length, spotlight: {muse: spot.muse, ...info}};
+      const said = all.filter(e => e.kind === 'encounter_reply');
+      return {status: 'committed' as const, tick: current.tick, events: all.length, spotlight: {muse: turn.muse, priority: turn.priority, ...info}, replies: {live: said.filter(e => e.source === 'live').length, rule: said.filter(e => e.source === 'rule').length}};
       });
     } finally {
       this.inFlight.delete(this.reservationId(before));
@@ -179,17 +231,103 @@ export class WorldRuntime {
     // A connected Muse thinks in its owner's runtime (8.8): the team key never decides for it.
     if (isConnected(s.inbox, muse, now)) return {decision: null, info: {source: 'scripted', reason: 'connected_muse'}};
     if (!this.opts.model?.key) return fallback('not_connected');
-    const messages = buildMessages('spotlight', input);
-    const id = this.reservationId(s);
-    const res = this.opts.ledger.reserve({id, tier: 'world', session: 'world', ip: '', action: 'spotlight', maxCostUsd: maxCostUsd('spotlight', messages)});
-    if (!res.ok) return fallback(res.reason);
-    const result = await callModel({...this.opts.model, key: this.opts.model.key}, 'spotlight', messages);
-    if (!result.ok) { this.opts.ledger.settle(id, failureCostUsd(result), result.kind === 'timeout' ? 'timeout' : 'error'); return fallback(result.kind); }
-    const problem = checkOutput('spotlight', input, result.output);
-    this.opts.ledger.settle(id, actualCostUsd(result.usage), problem ? 'rejected' : 'live');
-    if (problem) return fallback('output_rejected:' + problem);
-    const evidence = {model: this.opts.model.model, requestId: result.requestId, responseId: result.responseId, latencyMs: result.latencyMs, reservationId: id};
-    return {decision: {muse, freedom, source: 'live', output: result.output as Decision['output'], evidence}, info: {source: 'live', requestId: result.requestId}};
+    const call = await this.modelCall('spotlight', input, this.reservationId(s));
+    if (!call.ok) return fallback(call.reason);
+    return {decision: {muse, freedom, source: 'live', output: call.output as Decision['output'], evidence: call.evidence}, info: {source: 'live', requestId: call.evidence.requestId as string | null}};
+  }
+
+  /**
+   * One model call for the world (C05): a free slot or no call, the maximum cost reserved under a deterministic id
+   * (an alarm retry cannot reserve twice), the 8-second model deadline, then the real cost settled whatever the
+   * answer was. The slot is released in every path, including a throw.
+   */
+  private async modelCall(action: 'spotlight' | 'encounter', input: Record<string, unknown>, id: string): Promise<{ok: true; output: unknown; evidence: Record<string, unknown>} | {ok: false; reason: string}> {
+    const model = this.opts.model;
+    if (!model?.key) return {ok: false, reason: 'not_connected'};
+    const release = this.modelSlot();
+    if (!release) return {ok: false, reason: 'concurrency_limit'};
+    try {
+      const messages = buildMessages(action, input);
+      const res = this.opts.ledger.reserve({id, tier: 'world', session: 'world', ip: '', action, maxCostUsd: maxCostUsd(action, messages)});
+      if (!res.ok) return {ok: false, reason: res.reason};
+      // Reserved before (a retried tick after a crash): that call was already made or paid for; never call twice.
+      if (res.existing) return {ok: false, reason: 'already_reserved'};
+      const result = await callModel({...model, key: model.key}, action, messages);
+      if (!result.ok) { this.opts.ledger.settle(id, failureCostUsd(result), result.kind === 'timeout' ? 'timeout' : 'error'); return {ok: false, reason: result.kind}; }
+      const problem = checkOutput(action, input, result.output);
+      this.opts.ledger.settle(id, actualCostUsd(result.usage), problem ? 'rejected' : 'live');
+      if (problem) return {ok: false, reason: 'output_rejected:' + problem};
+      return {ok: true, output: result.output, evidence: {model: model.model, requestId: result.requestId, responseId: result.responseId, latencyMs: result.latencyMs, reservationId: id}};
+    } finally {
+      release();
+    }
+  }
+
+  /**
+   * This tick's meetings (a dry run of the same pure tick on the same state, with the spotlight answer) and the other
+   * Muse's answer to each: live when a slot and the budget allow, else rule with the reason. A connected Muse is not
+   * answered for. Nothing is written here; the dry run's meeting gate is the undeduplicated one.
+   */
+  private async encounterReplies(s: WorldState, now: number, decision: Decision | null, canMeet: Hooks['canMeet'], turn: {muse: string; priority: boolean}): Promise<EncounterReply[]> {
+    let dry: WorldEvent[];
+    try { dry = tick(s, {now, decision, replies: [], spot: turn}, canMeet ? {...this.opts.hooks, canMeet} : this.opts.hooks).events; } catch (e) {
+      console.error('encounter dry run failed', e);
+      return [];
+    }
+    const meetings = dry.filter(e => e.kind === 'encounter' && e.other && e.muse && !isConnected(s.inbox, e.other, now));
+    // Budget kept for visitors, and a breaker after repeated timeouts: both answer by rule without a call.
+    const budget = meetings.length ? this.opts.ledger.status() : null;
+    const held = budget && budget.remainingUsd < ENCOUNTER_BUDGET_FLOOR * budget.capUsd ? 'budget_reserved_for_visitors' : now < this.circuitOpenUntil ? 'circuit_open' : null;
+    // Every slot is taken (or refused) before the first await, so the cap holds across this batch.
+    return Promise.all(meetings.map((e, i) => {
+      const muse = e.other!, other = e.muse!, place = e.place ?? s.muses.find(m => m.id === muse)!.place, meeting = String(e.data?.encounterId);
+      const base = {muse, other, place, encounterId: meeting};
+      const rule = (reason: string): EncounterReply => ({...base, source: 'rule', output: null, reason});
+      if (i >= MAX_ENCOUNTER_REPLIES) return rule('turn_limit');
+      if (held) return rule(held);
+      const greeting = dry.find(g => g.kind === 'greet' && g.muse === other && g.other === muse)?.line ?? null;
+      let input;
+      try { input = validate('encounter', encounterInput(s, muse, other, place, greeting, now)); } catch (err) { return rule('input_invalid: ' + String((err as Error).message).slice(0, 80)); }
+      return this.modelCall('encounter', input, `${this.opts.worldId}:${s.day}:${s.tick}:encounter:${muse}>${other}`)
+        .then((c): EncounterReply => { this.noteEncounterCall(c.ok ? 'ok' : c.reason, now); return c.ok ? {...base, source: 'live', output: c.output as EncounterReply['output'], evidence: {...c.evidence, encounterId: meeting}} : rule(c.reason); })
+        .catch((err): EncounterReply => { console.error('encounter answer failed', err); return rule('error'); });
+    }));
+  }
+
+  /** Meeting-answer timeouts in a row, and when the breaker closes again (memory only: a restart closes it). */
+  private encounterTimeouts = 0;
+  private circuitOpenUntil = 0;
+  /** True while meeting answers are held by the breaker. */
+  encounterCircuitOpen(now: number) { return now < this.circuitOpenUntil; }
+  private noteEncounterCall(outcome: string, now: number) {
+    // Only calls that reached the model count: a missing slot, budget or reservation says nothing about its health.
+    if (['concurrency_limit', 'not_connected', 'budget', 'session_quota', 'ip_quota', 'already_reserved'].includes(outcome)) return;
+    if (outcome !== 'timeout') { this.encounterTimeouts = 0; return; }
+    this.encounterTimeouts += 1;
+    if (this.encounterTimeouts >= ENCOUNTER_TIMEOUTS_TO_OPEN) { this.encounterTimeouts = 0; this.circuitOpenUntil = now + ENCOUNTER_CIRCUIT_MS; }
+  }
+
+  /**
+   * A visitor's (or a connected Muse's) request for the next spotlight turn (8.2): queued ahead of the rotation,
+   * at most SPOTLIGHT_REQUESTS_PER_HOUR per requester. A Muse already waiting keeps its place and nothing is
+   * written; a paused (revoked) Muse is refused. `requester` is an opaque id (never a raw session id). The world
+   * version does not move (the queue is not part of any command's plan).
+   */
+  requestSpotlight(museId: string, now: number, by: {origin: SpotlightOrigin; requester: string}): SpotlightRequestResult {
+    const recent = Number(this.sql.exec("SELECT COUNT(*) AS n FROM events WHERE kind = 'spotlight_requested' AND at > ? AND json_extract(data, '$.requester') = ?", now - 3_600_000, by.requester).toArray()[0]?.n ?? 0);
+    const box: {out: SpotlightRequestResult} = {out: {ok: false, reason: 'unknown_muse'}};
+    const done = this.commit(now, `spotlight-request-${museId}-${Math.random().toString(36).slice(2, 8)}`, (st, emit) => {
+      const r = requestSpotlight(st, museId);
+      if (!r.ok && r.reason === 'already_queued') { box.out = {ok: true, muse: museId, position: r.position!, already: true, eventIds: []}; return; }
+      if (!r.ok) { box.out = {ok: false, reason: r.reason === 'already_queued' ? 'queue_full' : r.reason}; return; }
+      // The limit is checked after the duplicate: asking again for a Muse already waiting costs nothing.
+      if (recent >= SPOTLIGHT_REQUESTS_PER_HOUR[by.origin]) { st.spotlight.visitorQueue.pop(); box.out = {ok: false, reason: 'hourly_limit'}; return; }
+      box.out = {ok: true, muse: museId, position: r.position, already: false, eventIds: []};
+      emit({at: now, source: 'live', kind: 'spotlight_requested', muse: museId, line: null, data: {origin: by.origin, actorOrigin: by.origin === 'connected' ? 'connected' : 'trial', requester: by.requester, position: r.position}, tags: []});
+      // The version does not move: the queue changes no command's validity, so a plan made against it stays current.
+    }, () => false);
+    const out = box.out;
+    return out.ok && !out.already ? {...out, eventIds: done.events.map(e => e.id)} : out;
   }
 
   /**
@@ -265,6 +403,6 @@ export class WorldRuntime {
   /** Compact public view for clients: positions, current beats, inventories, spotlight. */
   view(now: number) {
     const s = this.state();
-    return {worldId: s.worldId, day: s.day, tick: s.tick, version: s.version, lastTickAt: s.lastTickAt, nextSpotlight: spotlightFor(s, now), muses: s.muses.map(m => ({id: m.id, place: m.place, travel: m.travel, beat: m.beat, inventory: m.inventory, reflection: m.reflection, wants: m.wants, paused: s.paused?.[m.id] ?? null}))};
+    return {worldId: s.worldId, day: s.day, tick: s.tick, version: s.version, lastTickAt: s.lastTickAt, nextSpotlight: spotlightFor(s, now), spotlightQueue: s.spotlight.visitorQueue.filter(id => !s.paused?.[id]), muses: s.muses.map(m => ({id: m.id, place: m.place, travel: m.travel, beat: m.beat, inventory: m.inventory, reflection: m.reflection, wants: m.wants, paused: s.paused?.[m.id] ?? null}))};
   }
 }

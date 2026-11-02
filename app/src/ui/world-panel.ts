@@ -21,10 +21,12 @@ import {isolation, enforceIsolation} from './isolation';
 import {mountReplay, replayPlayer, type ReplayEvent} from './replay';
 import {computeAutonomy} from './autonomy';
 import {EMPTY_FILTER, matchFilter, type Filter} from './replay-core';
+import {sourceLabel, modelNote} from './source-label';
+export {sourceLabel};
 
 type Ev = {seq: number; id: string; tick: number; at: number; source: 'live' | 'rule' | 'scripted' | 'replay'; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data: any; tags: string[]};
 type MuseView = {id: string; place: string; travel: {to: string; departAt: number; arriveAt: number; speed: string} | null; beat: {id: string; line: string | null} | null; inventory: string[]; reflection: string; wants?: {goal: string; items: string[]; source: string}};
-type WorldView = {worldId: string; day: string; tick: number; lastTickAt: number; nextSpotlight: {muse: string; freedom: string}; muses: MuseView[]};
+type WorldView = {worldId: string; day: string; tick: number; lastTickAt: number; nextSpotlight: {muse: string; freedom: string; priority?: boolean}; muses: MuseView[]};
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const museName = (id: string | null | undefined) => (id ? (id === '00-jolly' ? "Jolly · Kim Sejun's Muse" : harnessById(id).name) : 'World');
@@ -38,14 +40,6 @@ const at = (ms: number) => new Intl.DateTimeFormat(undefined, {hour: '2-digit', 
 const viewerDay = (ms: number) => new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric'}).format(new Date(ms));
 const viewerZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'your time zone';
 
-export function sourceLabel(e: Pick<Ev, 'source' | 'data'>): {text: string; cls: string} {
-  if (e.source === 'live' && e.data?.actor === 'your Muse') return {text: 'LIVE · your Muse', cls: 'src-live'};
-  if (e.source === 'live' && e.data?.evidence?.requestId) return {text: 'LIVE · Muse Spark', cls: 'src-live'};
-  if (e.source === 'live') return {text: 'LIVE · verified', cls: 'src-live'};
-  if (e.source === 'replay') return {text: 'REPLAY', cls: 'src-replay'};
-  if (e.source === 'rule') return {text: 'RULE', cls: 'src-rule'};
-  return {text: 'SCRIPTED', cls: 'src-scripted'};
-}
 
 export function describe(e: Ev): string {
   const a = shortName(e.muse), b = shortName(e.other);
@@ -59,12 +53,15 @@ export function describe(e: Ev): string {
     case 'arrive': return `${a} arrives at ${placeName(e.place)}${d.speed === 'taxi' ? ' by teleport' : ''}`;
     case 'beat': return `${a} at ${placeName(e.place)}: ${(d.beat ?? '').replace(/_/g, ' ')}`;
     case 'encounter': return `${a} meets ${b} at ${placeName(e.place)}`;
+    case 'encounter_reply': return e.source === 'rule' ? `${a} answers ${b} by rule (${String(d.reason ?? 'no model answer').replace(/_/g, ' ')})` : `${a} answers ${b}: ${e.line ?? d.intent ?? ''}`;
+    case 'encounter_reply_discarded': return `${a}'s late answer to ${b} was discarded: ${d.reason}`;
+    case 'spotlight_requested': return `${a} asked for the next spotlight turn (${d.origin === 'connected' ? 'your Muse' : 'visitor'}, #${d.position} in line)`;
     case 'cards_verified': return `${a} and ${b} verified each other's Agent Card`;
     case 'greet': return `${a} greets ${b}`;
     case 'discover': return `${a} found ${itemName(d.item)} at ${placeName(e.place)}`;
     case 'craft': return `${a} crafted ${itemName(d.item)}`;
     case 'trade_proposed': return `${a} offers ${itemName(d.give)} for ${b}'s ${itemName(d.want)}`;
-    case 'trade_completed': return `${a} ↔ ${b}: ${itemName(d.give)} for ${itemName(d.want)}`;
+    case 'trade_completed': return `${a} ↔ ${b}: ${itemName(d.give)} for ${itemName(d.want)}${d.accepted_via === 'rule' ? ` (${b} accepted by rule)` : ''}`;
     case 'trade_rejected': return `${a} declined (no reason shared)`;
     case 'gathering': return `${d.count} Muses gathered at the campfire`;
     case 'a2a_verified': return `${a}'s signed request passed every check`;
@@ -178,13 +175,6 @@ function museMarkers(map: LibreMap) {
 
 // ---------- Panel ----------
 type EvidenceEv = Ev & {fixture?: boolean};
-/** What to say about the model call behind an event that carries no request id: not applicable, or evidence that is missing. */
-function modelNote(e: EvidenceEv): string {
-  if (e.kind === 'spotlight' && (e.source === 'live' || e.source === 'replay')) return e.source === 'replay' ? 'Missing evidence — this replayed answer has no original request id recorded' : 'Missing evidence — no request id was recorded for this model answer';
-  if (e.source === 'scripted') return 'Not applicable — scripted, no model call';
-  if (e.source === 'rule') return 'Not applicable — rule, no model call';
-  return 'Not applicable — verification only, no model call';
-}
 const PARTS: [Filter['part'], string][] = [['', 'Any time'], ['night', 'Night 0–6'], ['morning', 'Morning 6–12'], ['afternoon', 'Afternoon 12–18'], ['evening', 'Evening 18–24']];
 
 export function mountWorldPanel(map: LibreMap) {
@@ -497,7 +487,7 @@ export function mountWorldPanel(map: LibreMap) {
     const last = [...events].reverse().find(e => e.kind === 'spotlight' || e.kind === 'spotlight_fallback');
     if (world) {
       const live = last && last.source === 'live', stalled = !wr.ok;
-      spot.textContent = `Spotlight · ${shortName(world.nextSpotlight.muse)} next · ${world.nextSpotlight.freedom}${last ? ' · last: ' + (live ? 'LIVE' : last.source.toUpperCase()) : ''}${stalled ? ' · not updating' : ''}`;
+      spot.textContent = `Spotlight · ${shortName(world.nextSpotlight.muse)} next${world.nextSpotlight.priority ? ' (priority)' : ''} · ${world.nextSpotlight.freedom}${last ? ' · last: ' + (live ? 'LIVE' : last.source.toUpperCase()) : ''}${stalled ? ' · not updating' : ''}`;
       spot.dataset.state = stalled ? 'stale' : live ? 'live' : 'other';
       spot.title = stalled ? `The world did not answer (${wr.error}); this is the last data we received.` : last ? describe(last) : '';
       document.body.dataset.worldReady = '1';
