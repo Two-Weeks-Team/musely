@@ -128,9 +128,10 @@ test('reviewer principal: its session controls only the reviewer Muse; owner and
   assert.deepEqual([(await reg(rk)).muse, (await reg(ok)).muse], [REVIEWER, OWNER]);
 });
 
-test('an unset REVIEWER_CONTROL_TOKEN disables only the reviewer (503 on its route); a misconfigured one follows the existing rule', async () => {
+test('a missing or invalid REVIEWER_CONTROL_TOKEN turns off only the reviewer (503 on its route); owner and demo-peer control keep working', async () => {
   const t = await boot({REVIEWER_CONTROL_TOKEN: undefined});
-  assert.deepEqual([(await t.go('POST', '/api/owner/reset', {}, {origin: ORIGIN})).status, (await t.go('POST', '/api/owner/reset', {}, {origin: ORIGIN})).body.error], [503, 'not_configured']);
+  const off = await t.go('POST', '/api/owner/reset', {}, {origin: ORIGIN});
+  assert.deepEqual([off.status, off.body.error], [503, 'not_configured']);
   const owner = await t.login(OWNER_TOKEN), peer = await t.login(PEER_TOKEN);
   assert.equal((await t.go('POST', '/api/owner/reset', {}, h(owner))).status, 503, 'the reviewer route is off, for everyone');
   assert.equal((await t.key(owner)).muse, OWNER, 'the owner works');
@@ -138,14 +139,31 @@ test('an unset REVIEWER_CONTROL_TOKEN disables only the reviewer (503 on its rou
   const r = await t.go('POST', '/api/owner/session', {token: REVIEWER_TOKEN}, {origin: ORIGIN});
   assert.deepEqual([r.status, r.body.error], [403, 'owner_token_invalid'], 'no reviewer session without its token');
   assert.equal((await t.go('POST', '/api/p0/run', undefined, h(owner))).status, 200);
-  // Set but invalid: like any control token, under 32 characters, equal to the judge link or to another control token.
+  // Set but invalid (under 32 characters, the judge link token, another principal's token): the reviewer alone is off.
   for (const bad of ['x'.repeat(31), JUDGE_TOKEN, OWNER_TOKEN, PEER_TOKEN]) {
     const u = await boot({REVIEWER_CONTROL_TOKEN: bad});
-    const s = await u.go('POST', '/api/owner/session', {token: OWNER_TOKEN}, {origin: ORIGIN});
-    assert.deepEqual([s.status, s.body.error], [503, 'not_configured'], bad.slice(0, 12));
+    const o = await u.login(OWNER_TOKEN), p = await u.login(PEER_TOKEN);
+    assert.deepEqual([(await u.go('GET', '/api/owner/session', undefined, {cookie: o})).body.owner.principal, (await u.go('GET', '/api/owner/session', undefined, {cookie: p})).body.owner.principal], ['owner', 'demo-peer'], bad.slice(0, 12));
+    assert.equal((await u.key(o)).muse, OWNER);
+    const reset = await u.go('POST', '/api/owner/reset', {}, h(o));
+    assert.deepEqual([reset.status, reset.body.error], [503, 'not_configured'], bad.slice(0, 12));
+    if (bad !== OWNER_TOKEN && bad !== PEER_TOKEN) assert.equal((await u.go('POST', '/api/owner/session', {token: bad}, {origin: ORIGIN})).status, 403, 'an invalid reviewer token opens nothing');
   }
-  const fine = await boot({REVIEWER_CONTROL_TOKEN: 'r'.repeat(32)});
-  assert.equal((await fine.go('POST', '/api/owner/session', {token: 'r'.repeat(32)}, {origin: ORIGIN})).body.owner.principal, 'reviewer');
+  // A reviewer session issued while the token was valid ends when the token is replaced by an invalid one.
+  const v = await boot();
+  const rev = await v.login(REVIEWER_TOKEN);
+  assert.equal((await v.go('GET', '/api/owner/session', undefined, {cookie: rev})).body.owner.principal, 'reviewer');
+  v.env.REVIEWER_CONTROL_TOKEN = 'short';
+  assert.equal((await v.go('GET', '/api/owner/session', undefined, {cookie: rev})).body.owner, null);
+  // The owner and demo-peer rule is unchanged: a broken owner or demo-peer token stops owner control as a whole.
+  for (const extra of [{OWNER_CONTROL_TOKEN: 'x'.repeat(31)}, {DEMO_PEER_CONTROL_TOKEN: OWNER_TOKEN}]) {
+    const u = await boot(extra);
+    for (const token of [OWNER_TOKEN, REVIEWER_TOKEN]) assert.equal((await u.go('POST', '/api/owner/session', {token}, {origin: ORIGIN})).status, 503, Object.keys(extra)[0]);
+  }
+  // Only a valid reviewer token: the reviewer works alone.
+  const only = await boot({OWNER_CONTROL_TOKEN: undefined, DEMO_PEER_CONTROL_TOKEN: undefined, REVIEWER_CONTROL_TOKEN: 'r'.repeat(32)});
+  assert.equal((await only.go('POST', '/api/owner/session', {token: 'r'.repeat(32)}, {origin: ORIGIN})).body.owner.principal, 'reviewer');
+  assert.equal((await only.go('POST', '/api/owner/session', {token: OWNER_TOKEN}, {origin: ORIGIN})).status, 403);
 });
 
 test('reviewer key: every /mcp write tool acts as the reviewer Muse, without waiting on the owner\'s Threads claim', async () => {
@@ -278,10 +296,12 @@ test('purge: the key\'s free text and envelopes leave events, command rows and i
   t.edit(st => { place(st, PEER_MUSE, 'commons:campfire'); place(st, '02-moss', 'osm:node/2611183817'); st.muses.find(m => m.id === REVIEWER).inventory.push(second, 'postage_stamp'); });
   const first = t.muse(REVIEWER).inventory.find(i => i.startsWith('postcard:') && i !== second);
   const ok = async (c, name, args) => { const r = await c.tool(name, args); assert.equal(r.isError, false, `${name}: ${JSON.stringify(r.structuredContent)}`); return r; };
-  // Under key A: a greeting delivered to a connected Muse, a refused greeting that carries its text, wants, two postcards
+  // Under key A: a greeting delivered to a connected Muse, a refused greeting that carries its text, a meetup a resident
+  // answers by rule, wants, two postcards
   // (one delivered, one still in transit) and an accepted trade with its owner notification.
   await ok(a, 'greet', {text: 'A-greet secret', to: PEER_MUSE});
   assert.equal((await a.tool('greet', {text: 'A-far secret', to: '02-moss'})).structuredContent.refused, 'too_far');
+  await ok(a, 'propose_meetup', {to: '01-sunny'}); // Sunny answers by rule in the same commit, under A's envelope
   await ok(a, 'update_wants', {goal: 'A-goal secret'});
   await ok(a, 'send_postcard', {to: PEER_MUSE, item: first, text: 'A-note-one secret'});
   await t.dobj.runtime.heartbeat(Math.max(Date.now(), t.state().lastTickAt) + 3 * 3_600_000);
@@ -299,11 +319,18 @@ test('purge: the key\'s free text and envelopes leave events, command rows and i
   const aEvents = t.events().filter(e => e.data?.key_id === A.id);
   const aCommands = aEvents.map(e => e.data.envelope?.message_id).filter(Boolean);
   const aNonces = aEvents.map(e => e.data.envelope?.nonce).filter(Boolean);
-  assert.deepEqual(aEvents.map(e => e.kind), ['agent_key_issued', 'greet', 'action_refused', 'wants_updated', 'postcard_sent', 'postcard_sent', 'trade_completed']);
-  assert.ok(aCommands.length === 6 && aNonces.length === 6);
+  assert.deepEqual(aEvents.map(e => e.kind), ['agent_key_issued', 'greet', 'action_refused', 'meetup_proposed', 'wants_updated', 'postcard_sent', 'postcard_sent', 'trade_completed']);
+  assert.deepEqual([aCommands.length, aNonces.length], [7, 7]);
+  const aRule = t.events().filter(e => e.source === 'rule' && aCommands.includes(e.data?.envelope?.message_id));
+  assert.deepEqual(aRule.map(e => [e.kind, e.muse]), [['meetup_answer', '01-sunny']], 'the resident\'s answer carries A\'s envelope, not its key id');
   const rows = () => t.commands(REVIEWER);
-  const aRows = rows().filter(r => aCommands.includes(r.command_id)).length, bRows = rows().length - aRows;
-  assert.ok(aRows >= 5 && bRows >= 2);
+  // Two command rows with no envelope of A: one points at an A event by its event ids (it goes), one at nothing of A's (it stays).
+  const putRow = (id, eventIds) => t.sql.exec('INSERT INTO commands (actor_id, command_id, payload_hash, action, result, output, at) VALUES (?, ?, ?, ?, ?, ?, ?)', t.agent(REVIEWER), id, 'h', 'greet', JSON.stringify({ok: true, commandId: id, worldVersion: 1, eventIds}), 'null', Date.now());
+  putRow('event-linked-row', [aEvents[1].id]); putRow('no-key-events-row', []);
+  const aRows = rows().filter(r => aCommands.includes(r.command_id)).length, bRows = rows().length - aRows - 1;
+  assert.deepEqual([aRows, bRows], [7, 3], 'A: seven calls; kept: B\'s two calls and the row without A events');
+  // A notification of another Muse that happens to point at one of A's command ids is not A's.
+  t.edit(st => st.inbox.notifications.push({id: 'n_other', kind: 'blocked', at: Date.now(), line: 'other Muse notice', ref: aCommands[0], other: null, muse: OWNER}));
   const before = new Map(t.events().map(e => [e.id, e]));
 
   // Nobody else can purge it, a purge needs our Origin, and purge takes only 1.
@@ -317,19 +344,23 @@ test('purge: the key\'s free text and envelopes leave events, command rows and i
   const r = await t.go('DELETE', `/api/agent-keys/${A.id}?purge=1`, undefined, h(rev));
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual([r.body.id, r.body.muse, r.body.purged, typeof r.body.revoked_at], [A.id, REVIEWER, true, 'number']);
-  assert.deepEqual(r.body.deleted, {events_anonymized: aEvents.length + 1, commands_deleted: aRows, messages_redacted: 2, mail_redacted: 1, notifications_redacted: 1, wants_reset: false, key_record: 'hash_and_last_use_removed'}, 'the revoke event is anonymized too');
-  assert.equal(r.body.kept.events, aEvents.length + 1);
-  assert.ok(r.body.kept.unlinked.agent_connected_events >= 1 && r.body.kept.unlinked.messages_to_muse >= 1);
+  assert.deepEqual(r.body.deleted, {events_anonymized: aEvents.length + 1, rule_events_anonymized: 1, commands_deleted: aRows + 1, messages_redacted: 2, mail_redacted: 1, notifications_redacted: 1, wants_reset: false, key_record: 'hash_and_last_use_removed'}, 'the revoke event is anonymized too');
+  assert.deepEqual(r.body.kept, {events: aEvents.length + 2, key_record: 'id_muse_created_revoked', unlinked: {agent_connected_events: 1, messages_to_muse: 1}});
+  assert.deepEqual(rows().map(x => x.command_id).filter(x => x.endsWith('-row')), ['no-key-events-row']);
+  assert.equal(t.state().inbox.notifications.find(n => n.id === 'n_other').line, 'other Muse notice', 'another Muse\'s notification stays');
+  const answer = t.events().find(e => e.id === aRule[0].id);
+  assert.deepEqual([answer.kind, answer.source, answer.muse, answer.data.envelope, answer.data.redacted, answer.data.task_id], ['meetup_answer', 'rule', '01-sunny', '[deleted]', true, aRule[0].data.task_id]);
 
   // Gone from events, command rows, inboxes, mail and Muse state.
   const everything = () => JSON.stringify([t.events(), rows(), t.state().inbox, t.state().muses]);
   const all = everything();
   for (const s of ['A-greet secret', 'A-far secret', 'A-goal secret', 'A-note-one secret', 'A-note-two secret', A.id, ...aNonces]) assert.ok(!all.includes(s), 'still present: ' + s.slice(0, 20));
   // Event ids are kept (the order and counts depend on them); a command id survives only inside the id of its event.
-  const withoutIds = JSON.stringify([t.events().map(({id: _i, ...e}) => e), rows(), t.state().inbox, t.state().muses]);
+  // (n_other is the planted notification of another Muse that reuses one of those ids; it is not A's and stays.)
+  const inboxNow = t.state().inbox, withoutIds = JSON.stringify([t.events().map(({id: _i, ...e}) => e), rows(), {...inboxNow, notifications: inboxNow.notifications.filter(n => n.id !== 'n_other')}, t.state().muses]);
   for (const s of aCommands) assert.ok(!withoutIds.includes(s), 'command id still linked: ' + s);
   for (const s of ['B-greet keep', 'B-goal keep', 'P-greet keep']) assert.ok(all.includes(s), 'kept: ' + s);
-  assert.equal(rows().length, bRows, 'key B\'s command rows stay');
+  assert.equal(rows().length, bRows, 'key B\'s command rows and the row without A events stay');
   assert.ok(rows().every(x => !aCommands.includes(x.command_id)));
   // The rows stay with their id, tick, time, source and kind; nothing else changed.
   const after = new Map(t.events().map(e => [e.id, e]));
@@ -341,7 +372,7 @@ test('purge: the key\'s free text and envelopes leave events, command rows and i
       assert.deepEqual([x.data.key_id, x.data.redacted], ['[deleted]', true]);
       if (e.data.envelope) assert.equal(x.data.envelope, '[deleted]');
       if (e.kind === 'greet') assert.equal(x.line, '[deleted]');
-    } else if (e.kind !== 'agent_key_revoked') assert.deepEqual(x, e, 'unrelated event unchanged: ' + e.kind);
+    } else if (e.kind !== 'agent_key_revoked' && !aRule.some(y => y.id === id)) assert.deepEqual(x, e, 'unrelated event unchanged: ' + e.kind);
   }
   const greet = t.events().find(e => e.id === aEvents.find(x => x.kind === 'greet').id);
   assert.deepEqual([greet.kind, greet.source, greet.line], ['greet', 'live', '[deleted]']);
@@ -365,9 +396,10 @@ test('purge: the key\'s free text and envelopes leave events, command rows and i
   assert.equal(t.sql.exec('SELECT hash FROM agent_keys WHERE id = ?', A.id).toArray()[0].hash, 'purged:' + A.id);
   assert.equal((await t.go('GET', '/api/agent-keys', undefined, {cookie: rev})).body.keys.find(k => k.id === A.id).revoked_at, rec.revokedAt);
 
-  // Again: nothing is left to remove. Then key B: its wants were the current ones, so they go back to the harness.
+  // Again: nothing is left to remove, and nothing is logged. Then key B: its wants were the current ones, so they go back.
   const again = await t.go('DELETE', `/api/agent-keys/${A.id}?purge=1`, undefined, h(rev));
-  assert.deepEqual([again.status, again.body.deleted.events_anonymized, again.body.deleted.commands_deleted], [200, 0, 0]);
+  assert.deepEqual([again.status, again.body.deleted], [200, {events_anonymized: 0, rule_events_anonymized: 0, commands_deleted: 0, messages_redacted: 0, mail_redacted: 0, notifications_redacted: 0, wants_reset: false, key_record: 'hash_and_last_use_removed'}]);
+  assert.equal(t.events().filter(e => e.kind === 'data_deleted').length, 1, 'an empty purge writes no data_deleted event');
   const rb = await t.go('DELETE', `/api/agent-keys/${B.id}?purge=1`, undefined, h(rev));
   assert.equal(rb.body.deleted.wants_reset, true);
   const final = everything();
@@ -397,4 +429,127 @@ test('retention: command result rows go 7 days after they were written (a row ex
   put('stale2', Date.now() - 8 * DAY_MS);
   await t.dobj.alarm();
   assert.deepEqual(ids(), ['new', 'stale2'], 'not again within the hour');
+});
+
+// ---------- review follow-ups (PR #91) ----------
+
+test('reviewer reset: the start pass gets a fresh 24-hour clock, old pass clocks and a queued extra turn go, the item history stays intact', async () => {
+  const {verifyHistory} = await import('../src/engine/items.ts');
+  const t = await boot();
+  const rev = await t.login(REVIEWER_TOKEN), key = await t.key(rev), c = mcpClient(t, key.key);
+  await c.init(); // connected: the world neither moves Ember nor trades for it while the clock runs
+  const now = Date.now(), H = 3_600_000;
+  t.edit(st => {
+    st.muses.find(m => m.id === REVIEWER).inventory.push('garden_pass', 'transit_pass');
+    (st.items.expiry ??= {})[REVIEWER] = [{item: 'garden_pass', at: now - 20 * H, expiresAt: now + 4 * H}, {item: 'transit_pass', at: now - 20 * H, expiresAt: now + 4 * H}];
+    st.spotlight.visitorQueue.push(REVIEWER);
+  });
+  const r = await t.go('POST', '/api/owner/reset', {}, h(rev));
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.cleared.queued_turns, 1);
+  const resetAt = t.events().find(e => e.kind === 'muse_reset').at;
+  assert.deepEqual(t.state().items.expiry[REVIEWER], [{item: 'garden_pass', at: resetAt, expiresAt: resetAt + DAY_MS}], 'one record: the start pass, from the reset');
+  assert.ok(!t.state().spotlight.visitorQueue.includes(REVIEWER));
+  // Five hours on, past the old clock: the pass still works.
+  const from = t.events().at(-1).seq;
+  await t.dobj.runtime.heartbeat(Math.max(Date.now(), t.state().lastTickAt) + 5 * H);
+  const s = t.state();
+  assert.ok(t.muse(REVIEWER).inventory.includes('garden_pass'));
+  assert.deepEqual(t.dobj.worldEvents(from, 2000).filter(e => e.muse === REVIEWER && e.kind === 'item_expired'), []);
+  assert.equal(s.items.expiry[REVIEWER].find(x => x.item === 'garden_pass').expiresAt, resetAt + DAY_MS);
+  assert.deepEqual([s.items.tamper, verifyHistory(s.items).ok], [undefined, true], 'no history_tamper');
+  assert.equal(t.events().filter(e => e.kind === 'history_tamper').length, 0);
+  assert.ok(!s.spotlight.visitorQueue.includes(REVIEWER));
+});
+
+test('claim exemption: reviewer actions are not gated on the owner claim, but Agent Cards report the real claim', async () => {
+  const t = await boot();
+  const rev = await t.login(REVIEWER_TOKEN);
+  assert.equal((await t.go('POST', '/api/owner/reset', {}, h(rev))).status, 200);
+  const key = await t.key(rev), c = mcpClient(t, key.key);
+  await c.init();
+  const ownerCard = async () => (await c.tool('get_agent_card', {muse: OWNER})).structuredContent.card['x-musely'].owner_claimed;
+  assert.equal(await ownerCard(), false, 'the owner claim is pending, and the reviewer key does not change that');
+  assert.equal((await c.tool('get_agent_card', {})).structuredContent.card['x-musely'].owner_claimed, true, 'Ember is a resident');
+  assert.equal((await c.tool('register_agent')).structuredContent.claim.status, 'claimed');
+  t.edit(st => place(st, '01-sunny', 'commons:cafe'));
+  const gift = await c.tool('give_gift', {to: '01-sunny', item: 'tea'});
+  assert.equal(gift.isError, false, 'a claim-gated write works');
+  assert.equal(t.events().find(e => e.kind === 'gift' && e.data?.key_id === key.id).data.envelope.owner_claimed, true);
+  t.dobj.setClaim('owner-muse', {agent: 'owner-muse', status: 'claimed', path: 'worker_token', handle: 'combba82', fingerprint: 'x', permalink: null, mediaId: null, postedText: null, verifiedAt: Date.now(), checkedAt: Date.now(), machineVerified: true, note: 'test'});
+  assert.equal(await ownerCard(), true, 'once the owner claims, the card says so');
+});
+
+test('world panel wording: a reset-cancelled Task is not called a revocation; an anonymized envelope reads as deleted', async () => {
+  const {taskCancelledText, envelopeFacts} = await import('../src/ui/evidence-text.ts');
+  assert.equal(taskCancelledText({task: 'trade', reason: 'muse_reset'}, 'Ember', 'Moss'), 'A pending trade with Moss was cancelled: Ember was reset by the operators');
+  assert.equal(taskCancelledText({task: 'trade', reason: 'delegation_revoked'}, 'Jolly', 'Moss'), "A pending trade with Moss was cancelled: the owner revoked Jolly's delegation");
+  assert.equal(taskCancelledText({}, 'Jolly', 'Moss'), "A pending Task with Moss was cancelled: the owner revoked Jolly's delegation", 'older events without a reason');
+  assert.deepEqual(envelopeFacts('[deleted]'), [['Signed envelope', "deleted (the agent key's data was deleted)"]]);
+  assert.deepEqual(envelopeFacts(null), []);
+  const facts = envelopeFacts({message_id: 'm1', signer_kind: 'server_custodial', delegation_ref: 'd1', scope: 'walk_and_greet', scope_hash: 'sh', content_hash: 'ch', owner_claimed: true});
+  assert.deepEqual(facts.map(f => f[0]), ['Message id', 'Signer', 'Delegation ref', 'Scope', 'Content hash', 'Owner claimed']);
+  assert.ok(facts.every(([, v]) => v !== undefined && !String(v).includes('undefined')));
+  // The panel uses both helpers.
+  const {readFileSync} = await import('node:fs');
+  const panel = readFileSync(new URL('../src/ui/world-panel.ts', import.meta.url), 'utf8');
+  assert.ok(panel.includes("case 'task_cancelled': return taskCancelledText(d, a, b);") && panel.includes('for (const [k, v] of envelopeFacts(env)) fact(k, v);'));
+});
+
+test('purge: the wants goal the key wrote is reset even after the items, source or time changed; a goal written since stays', async () => {
+  const t = await boot();
+  const rev = await t.login(REVIEWER_TOKEN);
+  assert.equal((await t.go('POST', '/api/owner/reset', {}, h(rev))).status, 200);
+  const A = await t.key(rev), a = mcpClient(t, A.key);
+  await a.init();
+  assert.equal((await a.tool('update_wants', {goal: 'A-goal secret'})).isError, false);
+  // The world (a Spark decision) later changes the items only: the goal is still A's text, under another source and time.
+  t.edit(st => { const m = st.muses.find(x => x.id === REVIEWER); m.wants = {...m.wants, items: ['tea'], source: 'spark', updatedAt: m.wants.updatedAt + 60_000}; });
+  const r = await t.go('DELETE', `/api/agent-keys/${A.id}?purge=1`, undefined, h(rev));
+  assert.equal(r.body.deleted.wants_reset, true);
+  assert.deepEqual([t.muse(REVIEWER).wants.goal, t.muse(REVIEWER).wants.source], ['Gather people around a story tonight', 'harness']);
+  assert.ok(!JSON.stringify(t.state()).includes('A-goal secret'));
+  // A goal someone else wrote after the key's stays.
+  const B = await t.key(rev), b = mcpClient(t, B.key);
+  await b.init();
+  assert.equal((await b.tool('update_wants', {goal: 'B-goal'})).isError, false);
+  t.edit(st => { const m = st.muses.find(x => x.id === REVIEWER); m.wants = {...m.wants, goal: 'A later goal from Spark', source: 'spark'}; });
+  const rb = await t.go('DELETE', `/api/agent-keys/${B.id}?purge=1`, undefined, h(rev));
+  assert.deepEqual([rb.body.deleted.wants_reset, t.muse(REVIEWER).wants.goal], [false, 'A later goal from Spark']);
+});
+
+test('retention: a command id repeated within 7 days is a duplicate, after 7 days a new command; a failing prune still schedules the next alarm', async () => {
+  const {pruneCommands} = await import('../worker/core/data-retention.ts');
+  const t = await boot();
+  const rev = await t.login(REVIEWER_TOKEN);
+  assert.equal((await t.go('POST', '/api/owner/reset', {}, h(rev))).status, 200);
+  const key = await t.key(rev), c = mcpClient(t, key.key);
+  await c.init();
+  const args = {text: 'Hello once', command_id: 'retention-cmd-0001'};
+  const greets = () => t.events().filter(e => e.kind === 'greet' && e.data?.key_id === key.id).length;
+  const first = await c.tool('greet', args);
+  assert.deepEqual([first.isError, first.structuredContent.command.duplicate, greets()], [false, false, 1]);
+  assert.equal((await c.tool('greet', args)).structuredContent.command.duplicate, true);
+  const age = ms => t.sql.exec('UPDATE commands SET at = at - ? WHERE command_id = ?', ms, args.command_id);
+  age(6 * DAY_MS);
+  assert.equal(pruneCommands(t.sql, Date.now()), 0, 'six days old: kept');
+  const six = await c.tool('greet', args);
+  assert.deepEqual([six.structuredContent.command.duplicate, greets()], [true, 1], 'still the first result');
+  age(1.5 * DAY_MS);
+  assert.equal(pruneCommands(t.sql, Date.now()), 1, 'seven and a half days old: deleted');
+  t.sql.exec('UPDATE nonces SET exp = 0'); // replay-protection records expire two minutes after an action; a week has passed
+  const later = await c.tool('greet', args);
+  assert.deepEqual([later.isError, later.structuredContent.command.duplicate, greets()], [false, false, 2], 'a new command');
+
+  // A prune that throws does not stop the heartbeat: the next alarm is still set.
+  const real = t.sql.exec, err = console.error;
+  t.sql.exec = (q, ...b) => { if (/FROM commands WHERE at </.test(q)) throw new Error('simulated prune failure'); return real.call(t.sql, q, ...b); };
+  console.error = () => {};
+  try {
+    await t.ctx.storage.setAlarm(null);
+    await t.dobj.alarm();
+    assert.ok((await t.ctx.storage.getAlarm()) > Date.now(), 'the next beat is scheduled');
+  } finally {
+    t.sql.exec = real; console.error = err;
+  }
 });

@@ -32,21 +32,39 @@ const tokenOf = (tokens: OwnerTokens, p: PrincipalId) => (p === 'owner' ? tokens
 const tokenTag = async (secret: string, token: string) => b64url(await hmac(secret, 'owner-token:' + token)).slice(0, 22);
 const sign = async (secret: string, body: string) => b64url(await hmac(secret, 'owner-session.' + body));
 
+const usable = (x: string, judge?: string) => x.length >= MIN_TOKEN_LENGTH && !(judge && x === judge);
+/** Owner and demo peer (the existing rule): at least one is set; each is at least 32 characters and not the judge link token; they differ. */
+function coreConfigured(t: OwnerTokens) {
+  const set = [t.owner, t.peer].filter((x): x is string => !!x);
+  if (!set.length || set.some(x => !usable(x, t.judge))) return false;
+  return !(t.owner && t.peer && t.owner === t.peer);
+}
+/** An owner or demo-peer token is set but breaks the rule: owner control as a whole is off (fail closed). */
+const coreBroken = (t: OwnerTokens) => !!(t.owner || t.peer) && !coreConfigured(t);
 /**
- * A usable setup: at least one control token; every configured one is at least 32 characters and is not the judge link
- * token; all of them differ. Anything else is misconfigured and no owner session is issued or read (503 not_configured).
+ * The reviewer is on only with its own valid token: at least 32 characters, not the judge link token, not equal to the
+ * owner's or the demo peer's. A missing or invalid reviewer token turns off the reviewer alone; owner control goes on.
+ */
+export function reviewerConfigured(t: OwnerTokens) {
+  const r = t.reviewer;
+  return !!r && usable(r, t.judge) && r !== t.owner && r !== t.peer && !coreBroken(t);
+}
+/** The token that currently signs a principal in, or '' when that principal is off. */
+const activeToken = (t: OwnerTokens, p: PrincipalId) => (p === 'reviewer' ? (reviewerConfigured(t) ? t.reviewer! : '') : coreConfigured(t) ? tokenOf(t, p) : '');
+
+/**
+ * A usable setup: the owner/demo-peer rule holds, or only a valid reviewer token is set. Otherwise no owner session is
+ * issued or read (503 not_configured).
  */
 export function tokensConfigured(t: OwnerTokens) {
-  const set = [t.owner, t.peer, t.reviewer].filter((x): x is string => !!x);
-  if (!set.length || set.some(x => x.length < MIN_TOKEN_LENGTH || (!!t.judge && x === t.judge))) return false;
-  return new Set(set).size === set.length;
+  return coreConfigured(t) || reviewerConfigured(t);
 }
 
 /** Which principal a presented control token belongs to (constant-time compare), or null. */
 export function principalForToken(tokens: OwnerTokens, presented: unknown): PrincipalId | null {
   if (typeof presented !== 'string' || !presented || presented.length > 512 || !tokensConfigured(tokens)) return null;
   let found: PrincipalId | null = null;
-  for (const p of PRINCIPAL_IDS) { const t = tokenOf(tokens, p); if (t && timingSafeEqual(presented, t)) found = p; }
+  for (const p of PRINCIPAL_IDS) { const t = activeToken(tokens, p); if (t && timingSafeEqual(presented, t)) found = p; }
   return found;
 }
 
@@ -66,7 +84,7 @@ export async function readOwnerSession(secret: string, token: string | null | un
     const s = JSON.parse(new TextDecoder().decode(unb64url(body))) as OwnerSession;
     const p = PRINCIPALS[s.principal as PrincipalId];
     if (!p || s.ownerId !== p.ownerId || typeof s.sid !== 'string' || typeof s.exp !== 'number' || s.exp <= now || s.exp - now > OWNER_SESSION_TTL_MS + 60_000) return null;
-    const current = tokenOf(tokens, s.principal);
+    const current = activeToken(tokens, s.principal);
     if (!current || typeof s.tk !== 'string' || !timingSafeEqual(s.tk, await tokenTag(secret, current))) return null;
     return s;
   } catch {

@@ -5,7 +5,7 @@
 // every owner write must come from one of our origins (CSRF). A judge session is not an owner: it keeps reads and the
 // P0 demonstration only. The owner id comes from the session, never from the request body. Agent keys are shown once.
 import {
-  PRINCIPALS, ownsMuse, principalForToken, issueOwnerSession, ownerCookie, clearOwnerCookie, originAllowed, ownerSessionView, tokensConfigured,
+  PRINCIPALS, ownsMuse, principalForToken, issueOwnerSession, ownerCookie, clearOwnerCookie, originAllowed, ownerSessionView, tokensConfigured, reviewerConfigured,
   type OwnerSession, type OwnerTokens,
 } from './owner-session.ts';
 import {OWNER_MUSE} from '../../src/engine/world.ts';
@@ -91,7 +91,7 @@ export async function connectedRoutes(request: Request, url: URL, auth: OwnerAut
   // ----- reviewer Muse reset (G-08): the reviewer session only, for its own Muse -----
   if (p === '/api/owner/reset' && method === 'POST') {
     if (!originAllowed(request, cfg.origins)) return json({error: 'origin_not_allowed'}, 403);
-    if (!cfg.tokens.reviewer) return json({error: 'not_configured', detail: 'The reviewer principal is not configured (REVIEWER_CONTROL_TOKEN).'}, 503);
+    if (!reviewerConfigured(cfg.tokens)) return json({error: 'not_configured', detail: 'The reviewer principal is not configured: REVIEWER_CONTROL_TOKEN is missing or invalid.'}, 503);
     const pre = gate({write: true});
     if (pre instanceof Response) return pre;
     if (pre.principal !== 'reviewer') return json({error: 'reviewer_only', detail: 'Only the reviewer session can reset its Muse.'}, 403);

@@ -37,7 +37,7 @@ Set with `npx wrangler secret put <NAME>` from `app/`. Values never go into the 
 | `JUDGE_TOKEN` | random, generated for this Worker (kept in the owner's `~/.config/musely/app-judge-token`) |
 | `OWNER_CONTROL_TOKEN` | random (at least 32 characters; production uses 48), set by the owner. A token under 32 characters, or equal to `JUDGE_TOKEN`, makes owner control answer `503 not_configured`. Exchanged at `POST /api/owner/session` for the owner session. Not the judge link |
 | `DEMO_PEER_CONTROL_TOKEN` | random, different from `OWNER_CONTROL_TOKEN`. The team-controlled demo peer principal for the two-owner checks |
-| `REVIEWER_CONTROL_TOKEN` | random (at least 32 characters), different from the other control tokens and `JUDGE_TOKEN`. The connector directory reviewer principal. Unset: only the reviewer is off. Set but invalid: owner control as a whole answers `503 not_configured`, as for the other tokens |
+| `REVIEWER_CONTROL_TOKEN` | random (at least 32 characters), different from the other control tokens and `JUDGE_TOKEN`. The connector directory reviewer principal. Unset or invalid (under 32 characters, equal to `JUDGE_TOKEN`, or equal to another control token): only the reviewer is off (`POST /api/owner/reset` answers `503 not_configured`, the token opens no session) and the owner and demo peer work as before. The owner and demo-peer tokens keep their own rule: if one of them is invalid, owner control as a whole answers `503 not_configured` |
 | `TURNSTILE_SECRET` | the shared Turnstile widget; its hostnames now include `musely.net` and `www.musely.net` |
 | `THREADS_APP_ID`, `THREADS_APP_SECRET` | Meta app for Threads claims; the redirect `https://musely.net/api/threads/callback` must be added to that app. A claim post made for the preview is not reused here: reuse needs this deployment's full claim text, so the owner posts once for musely.net |
 
@@ -72,6 +72,7 @@ curl -sS -b reviewer.jar -H 'Origin: https://musely.net' -H 'content-type: appli
 ```
 
 - Reset on request or before the review: `POST /api/owner/reset` (reviewer session only). It restores Ember's place, inventory and wants, cancels its pending Tasks and clears its share of today's counters; see `docs/MCP_TOOLS.md`, "Reviewer access". It is refused while Ember is revoked.
+- The start inventory has one time-limited item, the Garden Pass. It works for 24 hours from the reset and then expires like any pass, so reset again before a review session that starts more than a day later.
 - End of review: `DELETE /api/agent-keys/{id}?purge=1` with the reviewer session revokes the key and anonymizes what was made with it.
 
 ## Data deletion (G-09)

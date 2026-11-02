@@ -83,7 +83,7 @@ export class ConnectedHost {
     const row = this.keys.byId(id);
     if (!row) return null;
     if (row.revokedAt === null) this.revokeKey(id);
-    const report = purgeKeyData({sql: this.d.sql, runtime: this.d.runtime, trust: this.d.trust, keys: this.keys}, {id, muse: row.muse}, by, this.now());
+    const report = purgeKeyData({sql: this.d.sql, runtime: this.d.runtime, trust: this.d.trust, keys: this.keys}, {id, muse: row.muse, createdAt: row.createdAt}, by, this.now());
     const after = this.keys.byId(id)!;
     return {id, muse: row.muse, revoked_at: after.revokedAt, purged: true, ...report};
   }
@@ -113,9 +113,9 @@ export class ConnectedHost {
     if (!this.d.trust.suspended(key.muse)) this.markConnected(key.muse, now);
     if (!method) return {status: 'ok', result: {}};
     // The Threads claim proves the real owner's Muse. The reviewer's Muse is a team-controlled resident whose Agent Card
-    // already says owner_claimed (like every resident), so the directory review does not wait on the owner's claim.
-    const ownerClaimed = key.muse === REVIEWER_MUSE ? true : this.d.ownerClaimed();
-    const ctx: ToolCtx = {trust: this.d.trust, runtime: this.d.runtime, hooks: this.d.hooks, ownerRoot: this.d.ownerRoot(), ownerClaimed, baseUrl: this.d.baseUrl, key, now: () => this.now()};
+    // already says owner_claimed (like every resident), so its own actions do not wait on the owner's claim. The real
+    // claim value stays in ownerClaimed for Agent Cards and credential checks.
+    const ctx: ToolCtx = {trust: this.d.trust, runtime: this.d.runtime, hooks: this.d.hooks, ownerRoot: this.d.ownerRoot(), ownerClaimed: this.d.ownerClaimed(), claimExempt: key.muse === REVIEWER_MUSE, baseUrl: this.d.baseUrl, key, now: () => this.now()};
     try {
       const out = await dispatch(method, params, {list: toolList, call: (n, a) => runTool(ctx, n, a), isInvalidParams: e => e instanceof InvalidParams});
       // A successful world action puts the Muse in the priority queue (deduplicated, 3 per hour); a revoked Muse never.

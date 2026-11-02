@@ -1,6 +1,7 @@
 // Reviewer Muse reset (G-08): POST /api/owner/reset, reviewer session only (checked by the Worker route).
 // The reviewer's Muse goes back to its review start state in one world commit: its place and inventory (with items a
-// nearby resident can trade for), its public wants, no trip, beat or intent, an empty memory; its pending Tasks close
+// nearby resident can trade for, the garden pass on a fresh 24-hour clock), its public wants, no trip, beat or intent,
+// an empty memory, no queued extra turn; its pending Tasks close
 // as cancelled; its own inbox messages and owner notifications are dropped; its share of today's counters (finds,
 // postcards, gifts, pair trades it takes part in) is cleared. Other Muses' state is not touched, mail in transit is
 // left as it is, and a revoked Muse is refused (the owner re-delegates first; nothing re-delegates on its own).
@@ -8,7 +9,7 @@ import type {ControlCtx} from './owner-control.ts';
 import {REVIEWER_MUSE} from './owner-session.ts';
 import {harnessWants} from '../../src/engine/world.ts';
 import {PLACES} from '../../src/engine/places.ts';
-import {postcardId} from '../../src/engine/items.ts';
+import {postcardId, stampAcquired} from '../../src/engine/items.ts';
 import {cancelTasksFor, emptyInbox, notificationMuse} from '../../src/engine/inbox.ts';
 
 const POSTCARD_PLACE = PLACES.find(p => p.id === 'osm:node/4869055832') ?? PLACES.find(p => p.zone === 'neighborhood')!;
@@ -23,7 +24,7 @@ export const START_STATE: Record<string, {place: string; inventory: readonly str
 };
 
 export type ResetResult =
-  | {ok: true; muse: string; place: string; inventory: string[]; cancelledTasks: string[]; cleared: {messages: number; notifications: number; counters: string[]}}
+  | {ok: true; muse: string; place: string; inventory: string[]; cancelledTasks: string[]; cleared: {messages: number; notifications: number; counters: string[]; queued_turns: number}}
   | {ok: false; reason: 'unknown_muse' | 'delegation_revoked'};
 
 const uniq = () => Math.random().toString(36).slice(2, 8);
@@ -52,9 +53,15 @@ export function resetMuse(c: ControlCtx, museId: string, by: string): ResetResul
     for (const [day, byMuse] of Object.entries(inbox.sent)) if (byMuse[museId]) { delete byMuse[museId]; counters.push(`sent:${day}`); }
     m.place = start.place; m.travel = null; m.beat = null; m.intent = null;
     m.inventory = [...start.inventory]; m.memory = []; m.reflection = ''; m.lastMet = {};
+    // Pass clocks (I-06): the old records go with the old inventory; each start pass gets a fresh 24 hours from now.
+    if (st.items.expiry) delete st.items.expiry[museId];
+    for (const item of start.inventory) stampAcquired(st.items, museId, item, now);
+    // A queued extra turn (Spotlight Ticket) belonged to the old state.
+    const queued = st.spotlight.visitorQueue.length;
+    st.spotlight.visitorQueue = st.spotlight.visitorQueue.filter(id => id !== museId);
     m.wants = harnessWants(museId, now);
     delete m.anchor;
-    const cleared = {messages: messages - inbox.messages.length, notifications: notifications - inbox.notifications.length, counters};
+    const cleared = {messages: messages - inbox.messages.length, notifications: notifications - inbox.notifications.length, counters, queued_turns: queued - st.spotlight.visitorQueue.length};
     emit({at: now, source: 'live', kind: 'muse_reset', muse: museId, place: start.place, line: 'Reset to its review start state by the operators', data: {by, place: start.place, inventory: [...start.inventory], cancelled_tasks: cancelled, cleared}, tags: []});
     out = {ok: true, muse: museId, place: start.place, inventory: [...start.inventory], cancelledTasks: cancelled, cleared};
   });
