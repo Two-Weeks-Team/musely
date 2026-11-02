@@ -158,7 +158,13 @@ test('I-09 renderer applies the same ten server identities, props, version and s
   const rootId = metrics.muses[0].rootId;
   view.update(NOW + live.CUE_DELAY_MS + 500, '00-jolly'); view.update(NOW + live.CUE_DELAY_MS + 2000, '00-jolly');
   assert.equal(view.getMetrics().muses[0].rootId, rootId);
+  assert.equal(actor.hold('wave', 6), true);
   view.setActive(false); assert.equal(actor.root.visible, true);
+  assert.equal(actor.heldAction, 'wave', 'leaving live preserves a newly started preview hold');
+  view.setActive(false); actor.setAction('idle_breathe'); actor.update(0, {x: 0, y: 0, z: 0, yaw: 0}, 0);
+  assert.equal(actor.heldAction, 'wave', 'inactive live frames preserve a scripted preview hold until endCues');
+  assert.equal(actor.getMetrics().action, 'wave');
+  actor.release();
   assert.equal(scene.children.filter(o => o.userData.liveExtra && o.visible).length, 0);
   view.dispose(); library.dispose();
 });

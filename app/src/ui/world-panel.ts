@@ -594,6 +594,6 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   paintConn();
   void refresh();
   setInterval(refresh, 10_000);
-  setInterval(() => pins.update(world), 1000);
+  setInterval(() => {if (!isolation.replay && !live.paused?.()) pins.update(world, events);}, 1000);
   return {refresh, get events() { return events; }, get world() { return world; }, showEvidence: openEvidence, flows: flowState, replay: replayPlayer, health, openTab(id: string) { tab = id; if (!panel.matches(':popover-open')) panel.showPopover(); void render(); }};
 }

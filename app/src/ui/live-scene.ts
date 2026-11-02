@@ -50,12 +50,14 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
 
   const shadowVisible = (e: Entry, visible: boolean) => {e.shadow.userData.instanceHidden = !visible;if (!e.shadow.userData.instanced) e.shadow.visible = visible;};
   function setActive(value: boolean) {
+    const leavingLive = active && !value;
     active = value;
     if (!host.actors?.length) {for (const node of host.muses) node.visible = !value;for (const shadow of host.shadows) {shadow.userData.instanceHidden = value;if (!shadow.userData.instanced) shadow.visible = !value;}}
     if (root) root.hidden = !value;
     for (const e of entries.values()) {
       const visible = value ? !!projection.world?.muses.some(m => m.id === e.actor.variant) : !e.extra; e.actor.root.visible = visible; shadowVisible(e, visible);
-      if (!value) {e.actor.carry(null); e.actor.release(); if (e.label) e.label.hidden = true;}
+      // Preview cues own their hold lifetime through endCues, including a hold begun before this frame leaves live mode.
+      if (!value) {if (leavingLive) e.actor.carry(null); if (e.label) e.label.hidden = true;}
     }
     if (!value) for (const mesh of [...effects.values()]) mesh.visible = false;
   }
