@@ -221,6 +221,10 @@ test('reviewer reset: start state, pending Tasks cancelled, its counters cleared
     st.inbox.sent[day] = {[REVIEWER]: {postcards: 3, gifts: 3}, '02-moss': {postcards: 1, gifts: 0}};
     st.inbox.messages.push({id: 'm_e', from: '02-moss', to: REVIEWER, kind: 'greet', at: now, text: 'hi', read: false}, {id: 'm_o', from: REVIEWER, to: '09-copper', kind: 'greet', at: now, text: 'yo', read: false});
     st.inbox.notifications.push({id: 'n_e', kind: 'blocked', at: now, line: 'x', ref: null, other: null, muse: REVIEWER}, {id: 'n_o', kind: 'blocked', at: now, line: 'y', ref: null, other: null, muse: OWNER});
+    // Other Muses hold state about the reviewer Muse; a reset must leave it alone.
+    const moss = st.muses.find(m => m.id === '02-moss'), copper = st.muses.find(m => m.id === PEER_MUSE);
+    moss.memory = ['Met Ember at The Campfire']; moss.lastMet[REVIEWER] = now; moss.reflection = 'Last: rest';
+    copper.intent = {kind: 'trade', target: REVIEWER, give: 'coffee', want: 'tea'}; copper.inventory.push('tea');
   });
   const others = JSON.stringify(t.state().muses.filter(m => m.id !== REVIEWER));
   const r = await t.go('POST', '/api/owner/reset', {}, h(rev));
