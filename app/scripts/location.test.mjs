@@ -19,7 +19,7 @@ import {issueOwnerSession, readOwnerSession} from '../worker/core/owner-session.
 import {makeHooks} from '../src/engine/rules.ts';
 import {placeById, PLACES} from '../src/engine/places.ts';
 import {PRESETS, placeCell, teleportCheck, nearestPreset, nextOwnerLocation, defaultOwner, NEIGHBORHOOD_KM} from '../src/engine/location.ts';
-import {createWorld, tick, TICK_MS} from '../src/engine/world.ts';
+import {createWorld, tick, TICK_MS, spotlightFor} from '../src/engine/world.ts';
 import {speedFor} from '../src/engine/items.ts';
 import {locationLine, snapshotOf, museLine, deviceLocation, deviceStart, deviceResult, deviceWatchdog, deviceText, DEVICE_IDLE, GEO_WATCHDOG_MS, VIRTUAL_FALLBACK} from '../src/ui/location-state.ts';
 
@@ -154,12 +154,21 @@ test('AC2 engine: a Muse on its way meets nobody and finds nothing at the destin
 test('AC3 rule engine: residents have no neighborhood verification, so a Taxi Token never teleports them', () => {
   const hooks = makeHooks();
   let s = createWorld('ac3-residents', T0);
-  for (const m of s.muses) if (m.id !== OWNER_SLOT) m.inventory.push('taxi_token', 'taxi_token');
+  for (const m of s.muses) m.inventory.push('taxi_token', 'taxi_token');
+  // The owner's cell is Stanford and verified for all 360 ticks: the verification exists, but only the owner's Muse may use it.
+  s.owner = {...s.owner, preset: 'stanford', cell: placeCell('bay:stanford'), target: 'bay:stanford', verified: true};
+  const go = {muse: OWNER_SLOT, freedom: 'where', source: 'live', output: {decision: 'go', target_place: 'Stanford', target_agent: '', offer_item: '', want_item: '', public_reason: 'reading', line: ''}};
   const log = [];
-  for (let i = 0; i < 360; i++) { const r = tick(s, {now: T0 + i * TICK_MS}, hooks); s = r.state; log.push(...r.events); }
-  assert.equal(log.filter(e => e.kind === 'depart' && e.data.speed === 'taxi').length, 0, 'no taxi departures');
-  assert.equal(log.filter(e => e.tags.includes('teleport')).length, 0, 'no teleport arrivals');
-  assert.ok(log.filter(e => e.kind === 'depart').length > 50, 'the world still moves');
+  for (let i = 0; i < 360; i++) {
+    const sp = s.muses[s.spotlight.cursor % s.muses.length].id, jolly = s.muses.find(m => m.id === OWNER_SLOT);
+    const asks = sp === OWNER_SLOT && jolly.place !== 'bay:stanford' && !jolly.travel;
+    const r = tick(s, {now: T0 + i * TICK_MS, decision: asks ? {...go, freedom: spotlightFor(s, T0 + i * TICK_MS).freedom} : null}, hooks); s = r.state; log.push(...r.events);
+  }
+  const taxi = log.filter(e => e.kind === 'depart' && e.data.speed === 'taxi');
+  assert.equal(taxi.filter(e => e.muse !== OWNER_SLOT).length, 0, 'no resident taxi departures');
+  assert.ok(taxi.some(e => e.muse === OWNER_SLOT && e.data.to === 'bay:stanford'), 'the owner\'s Muse takes the taxi into the verified cell');
+  assert.equal(log.filter(e => e.tags.includes('teleport') && e.muse !== OWNER_SLOT).length, 0, 'no resident teleport arrivals');
+  assert.ok(log.filter(e => e.kind === 'depart' && e.muse !== OWNER_SLOT).length > 50, 'the world still moves');
   // The hook itself: verified only for the owner's Muse into the owner's verified cell.
   const from = placeById('commons:campfire'), bay = placeById('bay:stanford');
   // Fixed inventories: only a Taxi Token (the run above may have crafted a Transit Pass).
@@ -235,11 +244,20 @@ test('AC3 MCP move(teleport) resent with the same command_id spends one Taxi Tok
   assert.equal(t.events('arrive').filter(e => e.tags.includes('teleport')).length, 1, 'one teleport arrival');
   // Different arguments under the same id: a conflict, not a second teleport.
   assert.equal((await t.call('move', {to: 'san-jose', mode: 'teleport', command_id: 'teleport-0001'})).structuredContent.refused, 'command_conflict');
+  // A world-rule refusal is a stored result (mcp-tools command_id description): the same id after the condition changes returns
+  // the same refusal; a new id acts.
+  t.put(OWNER_SLOT, 'commons:benches', []);
+  assert.equal((await t.call('move', {to: 'oakland', mode: 'teleport', command_id: 'teleport-0003'})).structuredContent.refused, 'no_taxi_token');
+  t.edit(st => st.muses.find(m => m.id === OWNER_SLOT).inventory.push('taxi_token', 'taxi_token'));
+  const same = await t.call('move', {to: 'oakland', mode: 'teleport', command_id: 'teleport-0003'});
+  assert.deepEqual([same.structuredContent.refused, same.structuredContent.command.duplicate, tokens(t.muse(OWNER_SLOT))], ['no_taxi_token', true, 2]);
+  assert.equal((await t.call('move', {to: 'oakland', mode: 'teleport', command_id: 'teleport-0004'})).isError, false);
+  assert.equal(tokens(t.muse(OWNER_SLOT)), 1);
   // A new command id: the Muse is already there, so it is refused and spends nothing.
   const fresh = await t.call('move', {to: 'oakland', mode: 'teleport', command_id: 'teleport-0002'});
   assert.equal(fresh.structuredContent.refused, 'already_here');
   assert.equal(tokens(t.muse(OWNER_SLOT)), 1);
-  assert.equal(t.events('arrive').filter(e => e.tags.includes('teleport')).length, 1);
+  assert.equal(t.events('arrive').filter(e => e.tags.includes('teleport')).length, 2);
 });
 
 test('AC3 following the owner: a resent verified location teleports once (the second time the Muse is already in the cell)', async () => {
@@ -251,6 +269,14 @@ test('AC3 following the owner: a resent verified location teleports once (the se
   assert.equal(b.body.follow.mode, 'stay');
   assert.equal(tokens(t.muse(OWNER_SLOT)), 1);
   assert.equal(t.muse(OWNER_SLOT).place, 'bay:san-jose');
+  // Already walking to an unverified cell; the owner turns verification on for the same cell: the Muse teleports instead of walking on.
+  const w = await t.route('POST', '/api/owner/location', {source: 'virtual', preset: 'oakland'});
+  assert.equal(w.body.follow.mode, 'walking');
+  assert.ok(t.muse(OWNER_SLOT).travel);
+  const v = await t.route('POST', '/api/owner/location', {source: 'virtual', preset: 'oakland', verify: true});
+  assert.equal(v.body.follow.mode, 'teleport');
+  assert.deepEqual([t.muse(OWNER_SLOT).place, t.muse(OWNER_SLOT).travel, tokens(t.muse(OWNER_SLOT))], ['bay:oakland', null, 0]);
+  t.edit(st => st.muses.find(m => m.id === OWNER_SLOT).inventory.push('taxi_token'));
   // Unverified with a token: walks, spends nothing.
   const c = await t.route('POST', '/api/owner/location', {source: 'virtual', preset: 'hq'});
   assert.equal(c.body.follow.mode, 'walking');
@@ -272,12 +298,13 @@ test('AC4 always-on line: virtual location (demo), the owner destination and the
     muse: {id: OWNER_SLOT, place: {id: 'commons:benches', name: 'Bench Circle'}, at_owner_cell: false, travelling_to: {id: 'bay:stanford', name: 'Stanford'}, speed: 'walk', eta_ms: 42 * 60_000, arrive_at: T0 + 42 * 60_000}};
   const snap = snapshotOf(view, T0);
   const l = locationLine(snap, T0);
-  assert.match(l.text, /^Virtual location \(demo\) · owner at Stanford · Jolly walking to Stanford, 42 min$/);
+  // The owner's destination and the Muse's own current cell are told apart, also mid-trip (13.1).
+  assert.equal(l.text, 'Virtual location (demo) · owner at Stanford · Jolly at Bench Circle → Stanford, walking, 42 min');
   assert.match(l.title, new RegExp(`Owner destination cell ${placeCell('bay:stanford')}`));
   assert.match(l.title, new RegExp(`current cell ${placeCell('commons:benches')} \\(Bench Circle\\)`));
   assert.match(locationLine(snap, T0 + 30 * 60_000).text, /12 min$/, 'the ETA counts down between answers');
-  assert.match(locationLine(snap, T0 + 43 * 60_000).text, /arriving at Stanford$/);
-  assert.match(museLine(snapshotOf({...view, muse: {...view.muse, speed: 'bus'}}, T0), T0), /on the bus to Stanford/);
+  assert.match(locationLine(snap, T0 + 43 * 60_000).text, /Jolly at Bench Circle → Stanford, walking, arriving$/);
+  assert.equal(museLine(snapshotOf({...view, muse: {...view.muse, speed: 'bus', eta_ms: 8 * 60_000}}, T0), T0), 'Jolly at Bench Circle → Stanford, bus, 8 min');
   assert.match(locationLine(snapshotOf({...view, neighborhood_verified: true, muse: {...view.muse, place: {id: 'bay:stanford', name: 'Stanford'}, at_owner_cell: true, travelling_to: null, speed: null, eta_ms: null}}, T0), T0).text, /owner at Stanford \(verified\) · Jolly with the owner at Stanford/);
   assert.match(locationLine(snap, T0, 'HTTP 503').text, /not updating$/, 'a failure keeps the last answer and says so');
   const none = locationLine(null, T0, 'HTTP 503');
@@ -287,6 +314,9 @@ test('AC4 always-on line: virtual location (demo), the owner destination and the
   assert.match(panel, /mountLocationChip\(header, spot\)/);
   assert.match(panel, /locChip\.update\(lr\)/);
   assert.ok(!/\.loc-chip[^{}]*\{[^}]*display:\s*none/.test(css) && !/loc-chip\s*\{\s*display:\s*none/.test(css), 'no rule hides the location chip');
+  // The map-error note sits under the measured header (with the chip in it), not at a fixed 92 px (scripts/location.browser.js measures it).
+  const tops = [...css.matchAll(/#network-note\{([^}]*)\}/g)].map(m => m[1]).filter(r => /(^|;)top:/.test(r));
+  assert.ok(tops.at(-1)?.includes('top:calc(var(--header-h'), 'the last #network-note top places it under the header: ' + tops.at(-1));
 });
 
 test('AC4 GPS mapping: only the nearest preset within the neighborhood radius survives; outside the Bay it is null', () => {
@@ -349,6 +379,12 @@ test('AC4 GPS driver with a fake navigator.geolocation: coarse options, one requ
   } finally { globalThis.fetch = realFetch; }
   // The page asks the real browser API, and neither location module posts anything.
   const bar = readFileSync(new URL('../src/ui/location-bar.ts', import.meta.url), 'utf8'), st = readFileSync(new URL('../src/ui/location-state.ts', import.meta.url), 'utf8');
+  const panel = readFileSync(new URL('../src/ui/world-panel.ts', import.meta.url), 'utf8');
   assert.match(bar, /navigator\.geolocation/);
-  assert.ok(!/fetch\(|sendBeacon|XMLHttpRequest|localStorage|sessionStorage|indexedDB/.test(bar + st), 'no request and no storage in the device location path');
+  // The panel only mounts the card: the statement that places it, and nothing in the panel reads a position.
+  const mount = panel.split('\n').filter(l => l.includes('deviceLocationCard'));
+  assert.equal(mount.length, 2, 'one import and one mount');
+  assert.ok(!/geolocation|coords|latitude|longitude/.test(panel), 'the panel never touches the device position');
+  const SENDS = /fetch\(|fetchJson|sendBeacon|XMLHttpRequest|WebSocket|EventSource|new Image|console\.|localStorage|sessionStorage|indexedDB/;
+  assert.ok(!SENDS.test(bar + st + mount.join('\n')), 'no request, log or storage in the device location path');
 });

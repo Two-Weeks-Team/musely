@@ -47,9 +47,10 @@ export function followOwner(s: WorldState, now: number, emit: Emit, hooks: Hooks
   // A paused Muse (delegation revoked) does not follow; the owner cell is still recorded.
   if (s.paused?.[m.id]) return {mode: 'paused' as const};
   if (placeCell(m.place) === owner.cell && !m.travel) return {mode: 'stay' as const};
-  if (m.travel && placeCell(m.travel.to) === owner.cell) return {mode: 'walking' as const, etaMs: Math.max(0, m.travel.arriveAt - now)};
   const target = placeById(owner.target);
+  // A verified cell + a Taxi Token teleports, also when a walk there is already under way (verification turned on mid-trip).
   if (owner.verified && m.inventory.includes('taxi_token') && !teleport(s, m, target, now, 'live', emit, hooks, 'follow owner')) return {mode: 'teleport' as const};
+  if (m.travel && placeCell(m.travel.to) === owner.cell) return {mode: m.travel.speed === 'bus' ? 'bus' as const : 'walking' as const, etaMs: Math.max(0, m.travel.arriveAt - now)};
   const t = beginTrip(m, target, now, 'live', emit, 'follow owner');
   return {mode: t.speed === 'bus' ? 'bus' as const : 'walking' as const, etaMs: t.etaMs};
 }

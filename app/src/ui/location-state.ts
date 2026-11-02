@@ -25,15 +25,18 @@ const museShort = (id: string) => { try { return harnessById(id).name; } catch {
 const cellOfPlace = (id: string) => (PLACE_BY_ID.has(id) ? placeCell(id) : '?');
 export const minutesLeft = (etaAt: number, now: number) => Math.max(1, Math.round((etaAt - now) / 60_000));
 
-/** What the Muse is doing relative to the owner's destination, in a few words. */
+/**
+ * Where the Muse is now and, on a trip, where it goes: "Jolly at Bench Circle → Stanford, walking, 42 min". The Muse's own current
+ * place leads even mid-trip (the server keeps it until arrival), so the line never shows the owner's destination as the Muse's cell.
+ */
 export function museLine(snap: LocationSnapshot, now: number): string {
   const m = snap.view.muse;
   if (!m) return 'Muse unknown';
   const who = museShort(m.id);
   if (m.travelling_to) {
-    const how = m.speed === 'bus' ? 'on the bus to' : 'walking to';
-    if (snap.etaAt !== null && snap.etaAt <= now) return `${who} arriving at ${placeName(m.travelling_to)}`;
-    return `${who} ${how} ${placeName(m.travelling_to)}${snap.etaAt !== null ? `, ${minutesLeft(snap.etaAt, now)} min` : ''}`;
+    const how = m.speed === 'bus' ? 'bus' : 'walking';
+    const left = snap.etaAt === null ? '' : snap.etaAt <= now ? ', arriving' : `, ${minutesLeft(snap.etaAt, now)} min`;
+    return `${who} at ${placeName(m.place)} → ${placeName(m.travelling_to)}, ${how}${left}`;
   }
   return m.at_owner_cell ? `${who} with the owner at ${placeName(m.place)}` : `${who} at ${placeName(m.place)}`;
 }
@@ -64,7 +67,7 @@ export type DeviceLocation = {status: DeviceStatus; preset: PresetId | null; sta
 export const DEVICE_IDLE: DeviceLocation = {status: 'idle', preset: null, startedAt: null, at: null};
 /** Coarse position is enough for a neighborhood; the browser's own timeout, then our watchdog for a prompt nobody answers. */
 export const GEO_OPTIONS = {enableHighAccuracy: false, timeout: 10_000, maximumAge: 10 * 60_000} as const;
-export const GEO_WATCHDOG_MS = 20_000;
+export const GEO_WATCHDOG_MS = 60_000;
 
 /** Pressing the button: a request starts (or the browser has no location service). A request already running is kept. */
 export function deviceStart(prev: DeviceLocation, supported: boolean, now: number): DeviceLocation {

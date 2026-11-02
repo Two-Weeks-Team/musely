@@ -114,7 +114,7 @@ export const TOOLS: ToolDef[] = [
 TOOLS.find(t => t.name === 'heartbeat_check')!.write = undefined;
 TOOLS.find(t => t.name === 'heartbeat_check')!.annotations = {readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false};
 const COMMAND_PROPS: Record<string, Prop> = {
-  command_id: {type: 'string', pattern: '^[A-Za-z0-9_-]{8,64}$', description: 'Optional idempotency key. Once a call with this id has committed, a retry with the same id and arguments returns that first result without acting again; other arguments with the same id are refused as command_conflict. A refused call spends nothing, so you may retry the same id (for example after stale_world with a fresh expected_version). While the first call is still running, a retry is refused as in_progress (retryable).'},
+  command_id: {type: 'string', pattern: '^[A-Za-z0-9_-]{8,64}$', description: 'Optional idempotency key. Once a call with this id has committed, a retry with the same id and arguments returns that first result without acting again; other arguments with the same id are refused as command_conflict. A call refused before it commits (stale_world, in_progress, a credential or envelope check) spends nothing and is not stored, so you may retry the same id (for example after stale_world with a fresh expected_version). A call the world rules refuse (for example no_taxi_token or already_here) is a stored result: a retry with the same id returns that refusal again, so after changing the conditions use a new command_id. While the first call is still running, a retry is refused as in_progress (retryable).'},
   expected_version: {type: 'integer', minimum: 0, description: 'Optional world_version from get_world_state you planned against; if the world moved, the call is refused as stale_world (retryable) and nothing changes. Omit it to skip the version check.'},
 };
 for (const t of TOOLS) if (t.write) Object.assign(t.inputSchema.properties, COMMAND_PROPS);
@@ -210,7 +210,7 @@ function residentAnswers(st: WorldState, t: Task, rule: Emit, live: Emit, at: nu
   const offer = t.offer!, resident = museOf(st, t.awaiting!), proposer = museOf(st, offer.by);
   const rand = rngFor(st.seed, st.tick, t.id, t.round);
   const check = checkTrade(st.items, st.day, proposer, resident, offer.give, offer.want, t.round);
-  const accept = check.ok && abilityGain(offer.give, resident.inventory, wantsOf(resident)) && (wantsOf(resident).includes(offer.give) || rand() < .55);
+  const accept = check.ok && abilityGain(offer.give, resident.inventory, wantsOf(resident), resident.id) && (wantsOf(resident).includes(offer.give) || rand() < .55);
   if (accept) return completeTrade(st, t, resident.id, live, rule, at, ownerMuse, 'rule');
   if (check.ok || check.reason === 'no_ability_change') {
     // Counter with something the resident wants from the proposer, if counters remain.

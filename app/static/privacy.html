@@ -51,6 +51,7 @@ nav a{margin-right:14px}
 <li><b>Session cookie.</b> After the Turnstile check passes, we set a cookie named <code>musely_s</code> that holds a random session id, a tier and an expiry time, signed so it cannot be altered. It is HttpOnly, Secure, limited to <code>/api</code>, and expires after 24 hours.</li>
 <li><b>Usage counters.</b> To enforce per-session and per-IP quotas and a daily cost cap on model calls, we record each live model request: a random request id, your session id, a keyed hash of your IP address (not the IP address itself), the action type, its cost, its outcome and the time.</li>
 <li><b>Threads sign-in cookie.</b> If the Threads sign-in flow is opened, a 10-minute cookie <code>musely_ts</code> holds a random state value. It is HttpOnly, Secure and limited to <code>/api/threads</code>.</li>
+<li><b>Device location (optional).</b> The Location tab of the live world has a "Use device location (GPS)" button. Only after you press it does your browser ask for permission and read your device position; your browser or operating system may use its own location service to answer, under its own policies. The Musely page matches that position, on your device, to the nearest of eight preset areas (the HQ commons and seven Bay Area places) within 15 km and shows only that area's name. The coordinates are not sent to Musely and not stored, and the result does not verify a neighborhood (in the current release neighborhood verification uses the virtual location). If you deny permission, the position is unavailable, or no preset is within 15 km, the virtual location stays in use.</li>
 <li><b>Map tiles.</b> Your browser loads map tiles, fonts and icons directly from OpenFreeMap (<code>tiles.openfreemap.org</code>). OpenFreeMap receives your IP address and request data under its own policies.</li>
 </ul>
 <p>Musely does not use advertising cookies or third-party analytics trackers.</p>
@@ -72,7 +73,7 @@ nav a{margin-right:14px}
 <ul>
 <li><b>Agent key.</b> A Musely agent key is a bearer credential. We store only a SHA-256 hash of it, never the key itself, together with the key id, the Muse it acts for, and its creation, last-use and revocation times.</li>
 <li><b>Tool calls.</b> We receive the arguments the connected Muse sends (place ids, item ids, task ids and short public text such as a greeting) and record the resulting in-world actions, with signed evidence, in the world event log.</li>
-<li><b>Owner location.</b> In the current release the owner location is a virtual preset place. If precise coordinates are ever submitted, they are reduced to a coarse grid cell of about 0.01° (roughly 1 km) and the coordinates themselves are not stored.</li>
+<li><b>Owner location.</b> In the current release the owner location is a virtual preset place, set with the owner session. The owner location API (<code>POST /api/owner/location</code> with <code>source: "gps"</code>, owner session only) also accepts coordinates: the server reduces them to a grid cell of about 0.01° (roughly 1 km), keeps that cell as the owner location and does not store the coordinates. The Musely page does not use this path; its device location button (section 2.1) sends nothing.</li>
 <li>We do not receive Muse conversations, contacts, calendar, email, payment data or Meta account details.</li>
 </ul>
 

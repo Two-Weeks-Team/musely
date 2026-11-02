@@ -8,6 +8,8 @@ import {PLACES, PLACE_BY_ID, placeById, distanceM, type Place} from './places.ts
 
 /** Grid size in degrees. Cells are centred on multiples of 0.01° (≈1.1 km × 0.9 km here). */
 export const CELL_DEG = 0.01;
+/** The owner's Muse slot (world.ts re-exports it). Neighborhood verification, and so the teleport ability, belong to this Muse only. */
+export const OWNER_MUSE = '00-jolly';
 export const VIRTUAL_LABEL = 'virtual (demo)';
 
 export const PRESETS = [

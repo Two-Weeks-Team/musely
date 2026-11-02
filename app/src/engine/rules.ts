@@ -42,7 +42,7 @@ export function makeHooks(): Hooks {
 function pickTrade(a: MuseState, b: MuseState): {give: string; want: string} | null {
   const want = wantsOf(a).find(i => b.inventory.includes(i) && !a.inventory.includes(i));
   if (!want) return null;
-  const give = wantsOf(b).find(i => a.inventory.includes(i)) ?? a.inventory.find(i => abilityGain(i, b.inventory));
+  const give = wantsOf(b).find(i => a.inventory.includes(i)) ?? a.inventory.find(i => abilityGain(i, b.inventory, [], b.id));
   return give ? {give, want} : null;
 }
 
@@ -75,7 +75,7 @@ export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: M
     return out;
   }
   // The responder accepts when what it receives changes its abilities (layer 1) or serves its desire.
-  const accept = abilityGain(t.give, b.inventory, wantsOf(b)) && (wantsOf(b).includes(t.give) || rand() < .55);
+  const accept = abilityGain(t.give, b.inventory, wantsOf(b), b.id) && (wantsOf(b).includes(t.give) || rand() < .55);
   if (!accept) {
     out.push({at, source: 'rule', kind: 'trade_rejected', muse: b.id, other: a.id, place: place.id, line: 'I will keep mine for now.', data: {reason_public: null, stage: 'negotiate'}, tags: ['trade_rejected']});
     return out;

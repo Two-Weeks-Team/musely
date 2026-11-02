@@ -8,7 +8,7 @@ import {HARNESSES, harnessById} from './harness.ts';
 import {ITEM_BY_ID, itemUpkeep, grantItem, putTimed, historyFault, spendSpotlightTickets} from './items.ts';
 import {rngFor, weightedPick, daySeed} from './rng.ts';
 import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
-import {defaultOwner, tagLocation, placeCell, type OwnerLocation} from './location.ts';
+import {defaultOwner, tagLocation, placeCell, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, isConnected, type Inbox} from './inbox.ts';
 
 export const ENGINE_VERSION = 'engine-1';
@@ -87,7 +87,7 @@ const START_ITEMS: Record<string, string[]> = {
 };
 
 /** The owner's Muse slot (the Muse a connected owner drives through MCP). */
-export const OWNER_MUSE = '00-jolly';
+export {OWNER_MUSE};
 
 export const harnessWants = (museId: string, now: number): Wants => ({goal: harnessById(museId).wants.goal, items: [...harnessById(museId).wants.items], source: 'harness', updatedAt: now});
 

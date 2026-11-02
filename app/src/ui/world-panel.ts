@@ -444,6 +444,9 @@ export function mountWorldPanel(map: LibreMap) {
     body.append(card, ownerControlCard(() => void refresh()), ritualCard(() => void refresh()), el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it. P0 is two runs: the first commits a signed trade, then the owner revokes (owner control above), then the second run re-sends the same job and is refused. P0 itself never revokes or delegates again.'), actions, result);
   }
 
+  // The Location tab is drawn again after a move and on every poll while it is open: an unsent preset/verify choice and the last
+  // move result survive that redraw.
+  let locDraft: {preset: string; verify: boolean} | null = null, locMsg = '';
   async function renderLocation(stale: () => boolean) {
     const r = await load<any>('location', '/api/owner/location');
     if (stale()) return;
@@ -466,16 +469,18 @@ export function mountWorldPanel(map: LibreMap) {
     if (presets.length) {
       const lab = el('label', 'fld'); lab.append(el('span', '', 'Virtual location preset'));
       const sel = el('select'); sel.setAttribute('aria-label', 'Virtual location preset'); lab.append(sel);
-      for (const p of presets) { const o = el('option', '', p.label); o.value = p.id; if (p.id === loc.preset) o.selected = true; sel.append(o); }
+      for (const p of presets) { const o = el('option', '', p.label); o.value = p.id; if (p.id === (locDraft?.preset ?? loc.preset)) o.selected = true; sel.append(o); }
       // Demo neighborhood verification (13.1): staged on the virtual cell, cleared when the owner moves to another cell.
-      const vlab = el('label', 'fld check'); const verify = el('input'); verify.type = 'checkbox'; verify.id = 'loc-verify'; verify.checked = !!loc.neighborhood_verified;
+      const vlab = el('label', 'fld check'); const verify = el('input'); verify.type = 'checkbox'; verify.id = 'loc-verify'; verify.checked = locDraft?.verify ?? !!loc.neighborhood_verified;
       vlab.append(verify, el('span', '', 'Verify this neighborhood (virtual, demo)'));
       const go = el('button', 'secondary', 'Move owner here (owner session)'); go.type = 'button';
-      const msg = el('p', 'muted'); msg.setAttribute('role', 'status');
+      const msg = el('p', 'muted', locMsg); msg.setAttribute('role', 'status');
+      sel.onchange = verify.onchange = () => { locDraft = {preset: sel.value, verify: verify.checked}; };
       go.onclick = async () => {
         const res = await fetchJson<{follow?: {mode?: string; etaMs?: number} | null}>('/api/owner/location', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({source: 'virtual', preset: sel.value, verify: verify.checked})});
         const mode = res.ok ? res.data.follow?.mode : null, mins = res.ok && res.data.follow?.etaMs ? `, about ${Math.max(1, Math.round(res.data.follow.etaMs / 60_000))} min` : '';
-        msg.textContent = res.ok ? (mode === 'paused' ? 'Owner location set. The Muse is paused (delegation revoked), so it stays where it is until the owner delegates again.' : mode === 'teleport' ? 'Teleported: the neighborhood is verified and one Taxi Token was spent.' : mode === 'stay' ? 'Owner location set. The Muse is already in this cell.' : mode === 'bus' ? `Moved. The Muse rides the bus${mins}.` : `Moved. The Muse walks there${mins}. Watch it on the map.`) : /HTTP 40[13]/.test(res.error) ? 'Only the owner session can move the owner. Start it in the Identity tab.' : `Could not move the owner (${res.error}). Nothing changed.`;
+        msg.textContent = locMsg = res.ok ? (mode === 'paused' ? 'Owner location set. The Muse is paused (delegation revoked), so it stays where it is until the owner delegates again.' : mode === 'teleport' ? 'Teleported: the neighborhood is verified and one Taxi Token was spent.' : mode === 'stay' ? 'Owner location set. The Muse is already in this cell.' : mode === 'bus' ? `Moved. The Muse rides the bus${mins}.` : `Moved. The Muse walks there${mins}. Watch it on the map.`) : /HTTP 40[13]/.test(res.error) ? 'Only the owner session can move the owner. Start it in the Identity tab.' : `Could not move the owner (${res.error}). Nothing changed.`;
+        if (res.ok) locDraft = null;
         await refresh();
       };
       box.append(lab, vlab, go, msg);
@@ -491,13 +496,13 @@ export function mountWorldPanel(map: LibreMap) {
     // Replay makes no requests: nothing refreshes while it is on screen, whoever asked (a poll, a Retry, or a button chain that
     // began before it opened). The next refresh after the replay asks again.
     if (isolation.replay) return;
-    const locReq = load<OwnerLocationView>('location', '/api/owner/location');
+    // The location chip has its own answer: the rest of the refresh does not wait for it. An answer that arrives while the replay
+    // is open is not applied (the chip also ignores a request the replay refused).
+    void load<OwnerLocationView>('location', '/api/owner/location').then(lr => { if (!isolation.replay) locChip.update(lr); });
     // First load takes the newest events (the live tail); later polls fetch only what is new since then.
     const [wr, er] = await Promise.all([load<WorldView>('world', '/api/world'), load<Ev[]>('events', lastSeq ? `/api/world/events?since=${lastSeq}&limit=500` : '/api/world/events?tail=200')]);
-    const lr = await locReq;
     if (isolation.replay || (!wr.ok && wr.error === BLOCKED) || (!er.ok && er.error === BLOCKED)) return; // asked before the replay opened: not applied; the next refresh fetches it again
     if (wr.ok) world = wr.data;
-    locChip.update(lr);
     if (er.ok && er.data.length) { events.push(...er.data); events = events.slice(-1500); lastSeq = er.data[er.data.length - 1].seq; }
     pins.update(world);
     const last = [...events].reverse().find(e => e.kind === 'spotlight' || e.kind === 'spotlight_fallback');
@@ -510,6 +515,11 @@ export function mountWorldPanel(map: LibreMap) {
     } else spot.textContent = 'Spotlight · world offline';
     paintConn();
     if (panel.matches(':popover-open') && tab === 'feed' && !ret) { const st = panel.scrollTop; await render(); panel.scrollTop = st; }
+    // The Location tab follows the trip too, unless a control in it is in use (a redraw would close an open preset list).
+    else if (panel.matches(':popover-open') && tab === 'location' && !ret) {
+      const f = document.activeElement, inUse = f instanceof HTMLElement && body.contains(f) && f.matches('select, input');
+      if (!inUse) { const st = panel.scrollTop; await render(); panel.scrollTop = st; }
+    }
   }
   open.onclick = () => { if (panel.matches(':popover-open')) panel.hidePopover(); else { panel.showPopover(); void render(); } };
   paintConn();

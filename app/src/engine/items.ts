@@ -2,6 +2,7 @@
 // provenance cannot — place stamps, postcards and relics are never for sale or trade.
 // Items go to the agents; people watch. This is reward design, not learning (no RL claim).
 import {PLACES, placeById, distanceM, type Place, type PlaceKind} from './places.ts';
+import {OWNER_MUSE} from './location.ts';
 import {canonicalize} from '../identity/jcs.ts';
 import {sha256Hex} from './sha256.ts';
 
@@ -427,11 +428,13 @@ export type TradeCheck = {ok: true} | {ok: false; reason: 'not_held' | 'not_tran
  * when it carries an implemented effect rule (ITEM_EFFECTS); an item in the receiver's public `wants` opens its goal
  * even without a rule (Sunny's Invite Token); a few gifts count because they serve harness goals.
  */
-export function abilityGain(item: string, inventory: readonly string[], wants: readonly string[] = []) {
+export function abilityGain(item: string, inventory: readonly string[], wants: readonly string[] = [], museId: string | null = null) {
   const spec = itemSpec(item);
   if (!spec) return false;
   if (inventory.includes(item) && !spec.stackable) return false;
-  if (effectRule(item) || wants.includes(item)) return true;
+  // Teleport needs a verified neighborhood, which only the owner's Muse has (13.1): for anyone else a Taxi Token opens nothing.
+  const rule = effectRule(item);
+  if ((rule && (rule !== 'teleport' || museId === OWNER_MUSE)) || wants.includes(item)) return true;
   return ['clover_seed', 'fruit', 'coffee', 'tea', 'wildflower'].includes(item) || spec.category === 'crafted' || spec.category === 'postcard';
 }
 
@@ -451,7 +454,7 @@ export function checkTrade(l: Ledger, day: string, a: Trader, b: Trader, give: s
   const key = [a.id, b.id].sort().join('|');
   if ((l.trades[day]?.[key] ?? 0) >= RULES.pairTradesPerDay) return {ok: false, reason: 'pair_limit'};
   // Decay: an exchange that changes nobody's abilities is not counted as a trade.
-  if (!abilityGain(want, a.inventory, a.wants?.items) && !abilityGain(give, b.inventory, b.wants?.items)) return {ok: false, reason: 'no_ability_change'};
+  if (!abilityGain(want, a.inventory, a.wants?.items, a.id) && !abilityGain(give, b.inventory, b.wants?.items, b.id)) return {ok: false, reason: 'no_ability_change'};
   return {ok: true};
 }
 

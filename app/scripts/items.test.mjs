@@ -15,6 +15,7 @@ import {sha256Hex} from '../src/engine/sha256.ts';
 import {BEATS, inHours} from '../src/engine/beats.ts';
 import {placeById, PLACES} from '../src/engine/places.ts';
 import {placeCell} from '../src/engine/location.ts';
+import {HARNESSES} from '../src/engine/harness.ts';
 import {createWorld, tick, TICK_MS, spotlightFor, localClock} from '../src/engine/world.ts';
 import {makeHooks, resolveMeeting} from '../src/engine/rules.ts';
 import {rngFor} from '../src/engine/rng.ts';
@@ -117,6 +118,22 @@ test('P1: the same start with and without a Transit Pass / Garden Pass diverges 
   assert.ok(reach(boosted) > reach(base), 'the pass carries Ripple farther');
 });
 
+test('I-08 a Taxi Token is no ability for a resident: a trade between residents for it is refused; to the owner\'s Muse it counts', () => {
+  const l = emptyLedger(), ripple = muse('03-ripple', 'commons:cafe', ['taxi_token']), moss = muse('02-moss', 'commons:cafe', ['pastry']);
+  assert.equal(abilityGain('taxi_token', [], [], '02-moss'), false);
+  assert.equal(abilityGain('taxi_token', []), false, 'no Muse id: not the owner');
+  assert.equal(abilityGain('taxi_token', [], [], OWNER_SLOT), true);
+  assert.deepEqual(checkTrade(l, DAY, ripple, moss, 'taxi_token', 'pastry', 0, T0), {ok: false, reason: 'no_ability_change'});
+  assert.deepEqual(checkTrade(l, DAY, ripple, muse(OWNER_SLOT, 'commons:cafe', ['pastry']), 'taxi_token', 'pastry', 0, T0), {ok: true});
+  assert.ok(!HARNESSES.find(h => h.id === '03-ripple').wants.items.includes('taxi_token'), 'Ripple no longer wants a token it cannot use');
+  // The rule engine meeting path: Ripple holds a token Moss could only take as an ability; no trade proposal goes through.
+  const s = createWorld('resident-taxi-trade', T0), a = s.muses.find(m => m.id === '03-ripple'), b = s.muses.find(m => m.id === '02-moss');
+  a.place = b.place = 'commons:cafe'; a.inventory = ['taxi_token']; b.inventory = ['pastry']; a.wants = {...a.wants, items: ['pastry']}; b.wants = {...b.wants, items: []};
+  const ev = resolveMeeting(s.items, s, a, b, placeById('commons:cafe'), () => 0, T0);
+  assert.ok(!ev.some(e => e.kind === 'trade_completed'), 'no swap: ' + ev.map(e => e.kind + ':' + (e.data?.check ?? '')).join(','));
+  assert.ok(a.inventory.includes('taxi_token') && b.inventory.includes('pastry'));
+});
+
 test('a Taxi Token is consumed by the teleport it enables (the owner\'s Muse, into its verified owner cell)', () => {
   const hooks = makeHooks();
   let s = createWorld('taxi', T0);
@@ -151,7 +168,13 @@ const NIGHT = Date.parse('2026-11-04T04:00:00Z'), NOON = Date.parse('2026-11-03T
 // One behaviour probe per implemented effect rule: the same situation with and without the item differs.
 const PROBES = {
   bus_speed: () => { const from = placeById('commons:campfire'), far = PLACES.filter(p => p.zone === 'neighborhood').at(-1); return speedFor([], from, far) === 'walk' && speedFor(['transit_pass'], from, far) === 'bus'; },
-  teleport: () => speedFor([], placeById('commons:campfire'), placeById('bay:stanford')) === 'walk' && speedFor(['taxi_token'], placeById('commons:campfire'), placeById('bay:stanford'), true) === 'taxi',
+  // Through the engine hook (I-08): the owner's Muse in its owner's verified cell teleports only with the token; a resident never.
+  teleport: () => {
+    const hooks = makeHooks(), s = createWorld('teleport-probe', T0), from = placeById('commons:campfire'), bay = placeById('bay:stanford');
+    s.owner = {...s.owner, preset: 'stanford', cell: placeCell(bay), target: bay.id, verified: true};
+    const go = (id, inventory) => hooks.speedFor({id, inventory}, from, bay, s);
+    return go(OWNER_SLOT, []) === 'walk' && go(OWNER_SLOT, ['taxi_token']) === 'taxi' && go('03-ripple', ['taxi_token']) === 'walk';
+  },
   // Without the given pass Moss may find one in the garden later; no Bloom grows before it holds one.
   plant: () => { const w = bloomRun(true), wo = bloomRun(false); return w.blooms > 0 && wo.beforePass === 0 && w.blooms > wo.beforePass; },
   bloom_seed: () => { const r = plantFinish(); return r.blooms === 1 && r.seeds === 0 && r.passKept; },
@@ -232,7 +255,7 @@ function spotlightTurns(ticket) {
 }
 
 // The trade column of every item row, from checkTrade / abilityGain (not from the matrix generator).
-const TRADE_TEXT = {relic: 'trade: never (relic)', fixed: 'trade: never (not transferable)', gain: 'trade: counts as an ability change for the receiver', wanted: 'trade: counts only for a receiver that wants it'};
+const TRADE_TEXT = {relic: 'trade: never (relic)', fixed: 'trade: never (not transferable)', gain: 'trade: counts as an ability change for the receiver', wanted: 'trade: counts only for a receiver that wants it', owner: 'trade: counts as an ability change only for the owner\'s Muse (others: only when they want it'};
 function TRADE_COLUMN(id) {
   // The counter item changes nothing for the giver, so the verdict is about `id` alone.
   const w = id === 'pastry' ? 'snack_box' : 'pastry', l = emptyLedger(), a = muse('03-ripple', 'commons:cafe', [id]), b = muse('02-moss', 'commons:cafe', [w]);
@@ -242,6 +265,8 @@ function TRADE_COLUMN(id) {
   if (r.ok) return TRADE_TEXT.gain;
   assert.equal(r.reason, 'no_ability_change', id);
   assert.deepEqual(checkTrade(l, DAY, a, {...b, wants: {items: [id]}}, id, w, 0, T0), {ok: true}, `${id}: wanted, it trades`);
+  // An ability only the owner's Muse can use (teleport, I-08): the same item to the owner's Muse counts.
+  if (checkTrade(l, DAY, a, {...b, id: OWNER_SLOT}, id, w, 0, T0).ok) return TRADE_TEXT.owner;
   return TRADE_TEXT.wanted;
 }
 
