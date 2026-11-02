@@ -64,7 +64,7 @@ export function mountRecordedReplay(host: HTMLElement, ctx: Ctx, onActive: (acti
       const note = el('p', 'muted', 'State comes from recorded public snapshots; no world rule, command or model is re-executed. Text hashes and private markers stay unavailable. Recorded source labels below describe the original event, not a new live call.');
       const scene = el('table', 'data recorded-state'), stateHead = el('tr'); for (const label of ['Muse', 'Recorded place', 'Items', 'Recorded action']) stateHead.append(el('th', '', label));
       const stateBody = el('tbody'); scene.append(stateHead, stateBody);
-      const filters = el('div', 'fields'), list = el('ul', 'ev-list'), count = el('p', 'muted'), more = button('Show older recorded moments'), summary = el('table', 'data recorded-autonomy');
+      const filters = el('div', 'fields'), list = el('ul', 'ev-list'), count = el('p', 'muted'), more = button('Show older recorded moments'), summary = el('table', 'data recorded-autonomy'), period = el('p', 'muted recorded-period');
       const select = (label: string, values: [string, string][], choose: (value: string) => void) => { const lab = el('label', 'fld', label), s = el('select'); s.setAttribute('aria-label', label); for (const [value, text] of [['', 'All'], ...values]) { const o = el('option', '', text); o.value = value; s.append(o); } s.onchange = () => { choose(s.value); frameSignature = ''; sync(); }; lab.append(s); filters.append(lab); };
       select('Recorded Muse', [...new Set(record.events.flatMap(e => [e.muse, e.other]).filter((x): x is string => !!x))].map(id => [id, ctx.museName(id)]), x => filter.muse = x);
       select('Recorded place', [...new Set(record.events.map(e => e.place).filter((x): x is string => !!x))].map(id => [id, ctx.placeName(id)]), x => filter.place = x);
@@ -80,6 +80,7 @@ export function mountRecordedReplay(host: HTMLElement, ctx: Ctx, onActive: (acti
         clock.textContent = `${formatT(state.cursor)} / ${formatT(state.durationSec)} · ${state.speed}× · playback ${new Date(frame.recordedAt).toLocaleString()} · stored commit ${new Date(frame.snapshotAt).toLocaleString()} your time`;
         status.textContent = frame.empty ? 'Empty run: the initial public snapshot exists; no committed inputs or events were recorded.' : state.ended ? 'Reached the recorded end. No new action or reward was issued.' : frame.playout ? 'Finishing recorded public event animation; the final stored public state is held. No world tick is executed.' : `${state.playing ? 'Playing' : 'Paused'} recorded history.${frame.timeOrderAdjusted ? ' Source timestamps moved backwards; commit order is retained without changing the original timestamps.' : ''}`;
         root.dataset.status = frame.empty ? 'empty' : 'ready'; root.dataset.runId = record.runId; root.dataset.snapshotHash = frame.snapshotHash; root.dataset.recordedAt = String(frame.recordedAt);
+        period.textContent = `Stored window: ${new Date(record.startedAt).toLocaleString()} → ${new Date(frame.snapshotAt).toLocaleString()} · playback ${new Date(frame.recordedAt).toLocaleString()} · visible input #${frame.inputs.at(-1)?.seq ?? 0} / event #${frame.events.at(-1)?.seq ?? 0}; frozen prefix input #${record.readThrough.inputSeq} / event #${record.readThrough.eventSeq}.` ;
         ctx.onFrame?.(frame);
         const signature = frame.snapshotHash + ':' + frame.events.length + ':' + countLimit + ':' + JSON.stringify(filter);
         if (signature === frameSignature) return; frameSignature = signature;
@@ -91,13 +92,15 @@ export function mountRecordedReplay(host: HTMLElement, ctx: Ctx, onActive: (acti
         list.replaceChildren(...nodes); if (focus?.isConnected) focus.focus({preventScroll: true});
         count.textContent = `${matches.length} recorded moments in the visible time; showing ${shown.length}.`; more.hidden = shown.length >= matches.length;
         const auto = computeAutonomy(frame.events, {label: 'Recorded run (read-only)', day: frame.publicState.day, worldId: record.worldId, runId: record.runId, complete: true});
-        summary.replaceChildren(); for (const r of auto.rows) { const tr = el('tr'); tr.append(el('th', '', r.label), el('td', '', r.value)); summary.append(tr); }
+        summary.replaceChildren(el('caption', 'muted', auto.period));
+        const head = el('tr'); for (const label of ['Measure', 'Value', 'Sample', 'Notes']) head.append(el('th', '', label)); summary.append(head);
+        for (const r of auto.rows) { const tr = el('tr'); tr.append(el('th', '', r.label), el('td', '', r.value), el('td', '', r.sample), el('td', '', r.note ?? 'No additional note')); summary.append(tr); }
       };
       recordedReplayState.clock = {getState: p.getState, play() { p.play(); sync(); playbackTimer(); }, pause() { p.pause(); stop(); sync(); }};
       toggle.onclick = () => p.getState().playing ? recordedReplayState.clock?.pause() : recordedReplayState.clock?.play();
       restart.onclick = () => { p.restart(); stop(); sync(); }; range.oninput = () => { p.seek(Number(range.value)); sync(); if (!p.getState().playing) stop(); };
       more.onclick = () => { countLimit += 80; sync(); };
-      outcome.append(badge, metadata, note, controls, clock, scene, filters, count, list, more, el('h4', '', 'Recorded autonomy sample · no live counter increment'), summary);
+      outcome.append(badge, metadata, note, controls, clock, scene, filters, count, list, more, el('h4', '', 'Recorded autonomy sample · no live counter increment'), period, summary);
       sceneView.disabled = false; sync();
     } catch (e) {
       if (destroyed || mine !== generation) return;

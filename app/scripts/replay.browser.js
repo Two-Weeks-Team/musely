@@ -78,6 +78,16 @@ async (page) => {
    await p.evaluate(() => Promise.all([fetch('/api/muse', {method: 'POST'}).catch(() => null), fetch('/mcp', {method: 'POST'}).catch(() => null)]));
    check(vp, 'replay barrier refuses explicit model and MCP writes before they reach the network', requests.length === afterLoad);
    check(vp, 'frame callback carries read-only recorded projections', await p.evaluate(() => window.__replayFrames.some(f => f?.replay && f.runId === 'normal')));
+   await position.fill('2'); await position.dispatchEvent('input');
+   await p.waitForFunction(() => !window.__world.liveScene.projection.events.some(e => e.kind === 'injection_blocked'));
+   await position.fill('17.5'); await position.dispatchEvent('input');
+   await p.waitForFunction(() => window.__world.getMetrics().live.at === Number(document.querySelector('.recorded-replay').dataset.recordedAt));
+   const eventOnly = await p.evaluate(() => ({clip:window.__world.liveScene.frames.get('00-jolly').clip,events:window.__world.liveScene.projection.events.length}));
+   const autoText = await root.locator('.recorded-autonomy').textContent();
+   check(vp, 'recorded autonomy preserves sample notes original sources and stored-window scope', autoText.includes('n=0 meetings') && autoText.includes('without request id (not counted)') && autoText.includes('3 live / 1 rule / 0 scripted / 0 replay') && (await root.locator('.recorded-period').textContent()).includes('Stored window:'), autoText);
+   await position.fill('2'); await position.dispatchEvent('input');
+   const removed = await p.evaluate(() => !window.__world.liveScene.projection.events.some(e => e.kind === 'injection_blocked'));
+   check(vp, 'same-hash event-only checkpoint updates 3D and reverse seek removes its prefix', template.inputs.at(-1).beforeHash === template.inputs.at(-1).afterHash && eventOnly.clip === 'head_shake' && eventOnly.events === template.events.length && removed, JSON.stringify(eventOnly));
    await position.fill('13.5'); await position.dispatchEvent('input');
    await p.waitForFunction(() => window.__world.getMetrics().live.at === Number(document.querySelector('.recorded-replay').dataset.recordedAt));
    const spoken = await p.evaluate(() => {const m=window.__world.getMetrics().live.muses.find(m=>m.id==='00-jolly');return {line:m.frame.line,source:m.source,at:window.__world.getMetrics().live.at};});

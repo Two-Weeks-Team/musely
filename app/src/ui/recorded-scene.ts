@@ -17,7 +17,7 @@ export class SceneProjection {
   accept(world: LiveWorld, events: readonly LiveEvent[]) {return this.live.accept(world, events);}
   setRecordedFrame(frame: RecordedFrame | null) {
     if (!frame) {this.recorded = null; this.key = null; this.at = null; return;}
-    const key = frame.runId + ':' + frame.snapshotHash;
+    const key = `${frame.runId}:${frame.snapshotHash}:${frame.inputs.at(-1)?.seq ?? 0}:${frame.events.at(-1)?.seq ?? 0}`;
     if (key !== this.key) {
       this.recorded = new LiveProjection();
       const view = recordedSceneFrame(frame);

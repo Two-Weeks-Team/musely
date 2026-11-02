@@ -10,12 +10,15 @@ publicationAt = at + 1000;
 rt.commitExternal(at + 1000, 'fixture-public-record', (st, emit) => {
  st.muses[0].place = 'commons:garden';
  emit({at: at + 1000, source: 'live', kind: 'greet', muse: st.muses[0].id, other: st.muses[1].id, place: 'commons:garden', line: 'Synthetic browser fixture; not a provider receipt', data: {evidence: {model: 'test-fixture', requestId: 'fixture-request-id', responseId: 'fixture-response-id'}}, tags: ['test_record']});
+ emit({at: at + 1000, source: 'live', kind: 'decision_discarded', muse: st.muses[0].id, other: null, line: null, data: {evidence: {model: 'test-fixture', requestId: null}}, tags: ['test_record']});
 });
 publicationAt = at + 2000;
 rt.commitExternal(at + 2000, 'fixture-public-end', (st, emit) => {
  st.muses[0].place = 'commons:campfire'; st.muses[0].inventory.push('tea');
  emit({at: at + 2000, source: 'rule', kind: 'arrive', muse: st.muses[0].id, place: 'commons:campfire', line: null, data: {verdict: {ok: true}}, tags: ['test_record']});
 });
+publicationAt = at + 3000;
+rt.commitRefusal(at + 3000, 'fixture-event-only', 'fixture-block', (_st, emit) => emit({at: at + 3000, source: 'live', kind: 'injection_blocked', muse: '00-jolly', other: null, line: null, data: {direction: 'outgoing'}, tags: ['test_record']}));
 const run = rt.runLog.current;
 const fixture = {...run, readThrough: rt.runLog.boundary(run.runId), inputs: rt.runLog.inputs(run.runId), events: rt.events(0, 100, {runId: run.runId})};
 mkdirSync('dist', {recursive: true}); writeFileSync('dist/replay-test.json', JSON.stringify(fixture));
