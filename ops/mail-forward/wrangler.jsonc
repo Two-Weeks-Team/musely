@@ -7,5 +7,6 @@
   "main": "index.js",
   "workers_dev": false,
   "preview_urls": false,
-  "vars": {"FORWARD_TO": "sejun@2weeks.co,sangguen@2weeks.co"}
+  "vars": {"FORWARD_TO": "sejun@2weeks.co,sangguen@2weeks.co"},
+  "observability": {"enabled": true}
 }

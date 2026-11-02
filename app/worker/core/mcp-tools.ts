@@ -496,7 +496,8 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
       const next = {goal: args.goal as string | undefined, items};
       return signedWrite(c, tool, null, {kind: 'update_wants', ...next}, (st, live, _rule, at) => {
         const m = museOf(st, me);
-        if (next.goal !== undefined && detectInjection(next.goal).blocked) return {ok: false, reason: 'injection_blocked'};
+        // Like greet and postcard: an instruction-like goal is logged without its text (refused text never becomes public).
+        if (next.goal !== undefined) { const check = detectInjection(next.goal); if (check.blocked) { live({at, source: 'live', kind: 'injection_blocked', muse: me, other: null, line: 'A wants goal that reads like an instruction was not saved', data: {kinds: check.kinds, direction: 'outgoing', limit: INJECTION_LIMIT_NOTE}, tags: ['injection_blocked']}); return {ok: false, reason: 'injection_blocked', extra: {kinds: check.kinds, logged: true}}; } }
         const why = updateWants(m, next, 'connected', at);
         if (why) return {ok: false, reason: 'invalid_wants', extra: {detail: why}};
         live({at, source: 'live', kind: 'wants_updated', muse: me, line: m.wants.goal, data: {wants: m.wants}, tags: []});
