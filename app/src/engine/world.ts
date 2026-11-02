@@ -5,7 +5,7 @@
 import {BEATS, CLIP_FALLBACK, inHours, type Beat} from './beats.ts';
 import {PLACES, PLACE_BY_ID, placeById, distanceM, WALK_MPS, type Place} from './places.ts';
 import {HARNESSES, harnessById} from './harness.ts';
-import {ITEM_BY_ID} from './items.ts';
+import {ITEM_BY_ID, itemUpkeep, grantItem} from './items.ts';
 import {rngFor, weightedPick, daySeed} from './rng.ts';
 import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, placeCell, type OwnerLocation} from './location.ts';
@@ -169,7 +169,6 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     for (const d of Object.keys(s.items.trades)) if (d !== s.day) delete s.items.trades[d];
     emit({at: now, source: 'rule', kind: 'new_day', muse: null, data: {day: s.day}, tags: []});
   }
-  if (s.items.history.length > 200) s.items.history = s.items.history.slice(-200);
   // Inbox upkeep: overdue Tasks expire; postcards in transit arrive on the real clock.
   for (const t of expireTasks(s.inbox, now)) emit({at: now, source: 'rule', kind: 'task_expired', muse: t.awaiting, other: t.awaiting === t.from ? t.to : t.from, data: {task_id: t.id, task: t.kind}, tags: []});
   const paused = (id: string) => !!s.paused?.[id];
@@ -183,6 +182,8 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     emit({at: now, source: 'rule', kind: 'postcard_delivered', muse: mail.to, other: mail.from, data: {item: mail.item, mail_id: mail.id, sentAt: mail.sentAt}, tags: mail.crossRegion ? ['cross_region_postcard'] : []});
   }
   s.inbox.mail = s.inbox.mail.filter(x => !due.includes(x));
+  // Item upkeep (I-06): chain pending history, expire passes, spend Spotlight Tickets, trim the kept history.
+  for (const e of itemUpkeep(s, now)) emit(e);
 
   const spot = spotlightFor(s, now);
   // 1. Spotlight: a recorded live/replay decision for this turn, or the scenario's own choice. A paused Muse's turn passes silently.
@@ -210,7 +211,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     }
     if (m.travel) continue;
     if (m.beat && m.beat.endsAt > now) continue;
-    if (m.beat) finishBeat(m, now, emit);
+    if (m.beat) finishBeat(m, now, emit, s.items);
     if (connected) continue;
     const place = placeById(m.place);
     const stay = eligibleBeats(m, place, clock.hour);
@@ -285,11 +286,11 @@ function startBeat(m: MuseState, beat: Beat, place: Place, now: number, source: 
   void s;
 }
 
-function finishBeat(m: MuseState, now: number, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void) {
+function finishBeat(m: MuseState, now: number, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void, ledger: ItemLedger) {
   const beat = BEATS.find(b => b.id === m.beat!.id);
   if (beat?.result) {
     for (const c of beat.result.consume ?? []) { const k = m.inventory.indexOf(c); if (k >= 0) m.inventory.splice(k, 1); }
-    if (beat.result.craft) { m.inventory.push(beat.result.craft); emit({at: now, source: 'rule', kind: 'craft', muse: m.id, place: m.place, data: {item: beat.result.craft, from: beat.result.consume ?? []}, tags: ['ability_change']}); }
+    if (beat.result.craft) { grantItem(ledger, m, beat.result.craft, now, m.place, 'craft'); emit({at: now, source: 'rule', kind: 'craft', muse: m.id, place: m.place, data: {item: beat.result.craft, from: beat.result.consume ?? []}, tags: ['ability_change']}); }
   }
   // One-line reflection (#9): what the Muse takes from the last thing it did.
   m.reflection = `Last: ${beat?.id.replace(/_/g, ' ') ?? 'rest'} at ${placeById(m.place).name}`;

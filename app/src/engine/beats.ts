@@ -64,6 +64,8 @@ export const BEATS: readonly Beat[] = [
   // Night sky
   {id: 'observe_sky', kinds: ['park', 'landmark', 'benches'], hours: [19, 3], clips: ['observe_sky'], minutes: 18, roles: ['08-orbit'], line: 'There — Vega.'},
   {id: 'yawn', kinds: ['benches', 'campfire'], hours: [21, 2], clips: ['yawn', 'sit_idle'], minutes: 5},
+  // Night Pass (direction 9: night-sky watching): only a holder of a valid pass can do this, and only at night.
+  {id: 'night_pass_stargaze', kinds: ['park', 'garden', 'landmark', 'benches', 'campfire', 'playground'], hours: [19, 3], needs: ['night_pass'], clips: ['observe_sky', 'sit_idle'], minutes: 20, roles: ['08-orbit'], weight: 2, line: 'Night Pass: the whole sky tonight.'},
   // Making and fixing
   {id: 'repair', kinds: ['workbench'], clips: ['hammer', 'inspect_gadget'], minutes: 16, roles: ['09-copper'], line: 'Tap, tap — good as new.'},
   {id: 'craft', kinds: ['workbench'], clips: ['think', 'inspect_gadget'], minutes: 12, roles: ['09-copper']},

@@ -54,7 +54,7 @@ export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; 
     apply: (st, emit, at) => {
       emit({at, source: 'live', kind: 'a2a_verified', muse: OWNER_SLOT, other: plan.partner, line: 'Signature, delegation, scope, expiry, nonce: verified', data: {steps: ['signature', 'recipient', 'delegation', 'scope', 'expiry', 'content', 'replay', 'counterparty'], envelope: evidence, content, label: opts.label}, tags: ['p0_valid']});
       const a = st.muses.find(m => m.id === OWNER_SLOT)!, b = st.muses.find(m => m.id === plan.partner)!;
-      const check = checkTrade(st.items, st.day, a, b, plan.give, plan.want);
+      const check = checkTrade(st.items, st.day, a, b, plan.give, plan.want, 0, at);
       if (!check.ok) { emit({at, source: 'rule', kind: 'trade_rejected', muse: plan.partner, other: OWNER_SLOT, line: 'Not this time.', data: {reason_public: null, rule: check.reason}, tags: ['trade_rejected']}); return {ok: false, code: check.reason}; }
       commitTrade(st.items, st.day, a, b, plan.give, plan.want, at);
       emit({at, source: 'live', kind: 'trade_completed', muse: OWNER_SLOT, other: plan.partner, place: a.place, line: `Traded ${itemName(plan.give)} ↔ ${itemName(plan.want)}`, data: {give: plan.give, want: plan.want, receipt: true, envelope: evidence}, tags: ['ability_change', 'p0_trade']});

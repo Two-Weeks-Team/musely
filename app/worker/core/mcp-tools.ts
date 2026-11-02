@@ -14,7 +14,7 @@ import {verifyCard} from '../../src/identity/card.ts';
 import {detectInjection, INJECTION_LIMIT_NOTE} from '../../src/identity/untrusted.ts';
 import {HARNESS_IDS, harnessById, type ScopeId} from '../../src/engine/harness.ts';
 import {placeById, distanceM, WALK_MPS, type Place} from '../../src/engine/places.ts';
-import {ITEM_BY_ID, itemSpec, itemName, checkTrade, commitTrade, discover, canCraftTransitPass, abilityGain, RULES} from '../../src/engine/items.ts';
+import {ITEM_BY_ID, itemSpec, itemName, checkTrade, commitTrade, discover, receiveDiscovery, grantItem, transferItem, appendHistory, sweepExpired, canCraftTransitPass, abilityGain, RULES} from '../../src/engine/items.ts';
 import {BEATS} from '../../src/engine/beats.ts';
 import {updateWants, localClock, type WorldState, type MuseState, type WorldEvent, type Hooks} from '../../src/engine/world.ts';
 import {rngFor} from '../../src/engine/rng.ts';
@@ -166,6 +166,8 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
       const tag = (e: Omit<WorldEvent, 'id' | 'tick'>) => emit(tagLocation(st.owner, e));
       const live: Emit = e => tag({...e, source: 'live', data: {...(e.data ?? {}), actor: 'your Muse', tool: tool.name, key_id: c.key.id, envelope}});
       const rule: Emit = e => tag({...e, source: 'rule'});
+      // Passes that expired since the last tick stop working before this tool reads the inventory (I-06).
+      for (const e of sweepExpired(st, at2)) rule(e);
       const o = apply(st, live, rule, at2);
       if (!o.ok && !o.extra?.logged) live({at: at2, source: 'live', kind: 'action_refused', muse: me, other: recipientMuse, line: null, data: {reason: o.reason, content}, tags: []});
       return o.ok ? {ok: true, output: {outcome: o, envelope}} : {ok: false, code: o.reason, output: {outcome: o, envelope}};
@@ -333,10 +335,10 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         const place = placeById(m.place);
         const d = discover(st.items, st.day, me, place, m.inventory, rngFor(st.seed, st.tick, me, 'mcp-discover', at), at);
         if (!d.ok) return {ok: false, reason: d.reason};
-        for (const got of [d.item, d.stamp, d.postcard, d.relic]) if (got && !(m.inventory.includes(got) && !got.startsWith('postcard:') && got !== d.item)) m.inventory.push(got);
-        live({at, source: 'live', kind: 'discover', muse: me, place: place.id, line: `Found ${itemName(d.item)} at ${place.name}`, data: {item: d.item, stamp: d.stamp, postcard: d.postcard, relic: d.relic, reward: d.reward}, tags: [d.relic ? 'relic_found' : null, d.reward === 'curiosity' ? 'curiosity_reward' : null].filter(Boolean) as string[]});
+        receiveDiscovery(st.items, m, d, at);
+        live({at, source: 'live', kind: 'discover', muse: me, place: place.id, line: `Found ${itemName(d.item)} at ${place.name}`, data: {item: d.item, stamp: d.stamp, postcard: d.postcard, relic: d.relic, reward: d.reward, spent: d.spent}, tags: [d.relic ? 'relic_found' : null, d.reward === 'curiosity' ? 'curiosity_reward' : null].filter(Boolean) as string[]});
         void rule;
-        return {ok: true, data: {place: placeView(place), cell: placeCell(place), found: d.item, stamp: d.stamp, postcard: d.postcard, relic: d.relic, reward: d.reward}};
+        return {ok: true, data: {place: placeView(place), cell: placeCell(place), found: d.item, stamp: d.stamp, postcard: d.postcard, relic: d.relic, reward: d.reward, spent: d.spent}};
       });
     case 'craft': {
       const recipe = String(args.recipe);
@@ -346,8 +348,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         if (recipe === 'transit_pass') {
           if (m.inventory.includes('transit_pass')) return {ok: false, reason: 'already_held'};
           if (!canCraftTransitPass(st.items, st.day, me)) return {ok: false, reason: 'needs_three_bus_stops_today'};
-          m.inventory.push('transit_pass');
-          st.items.history.push({item: 'transit_pass', from: null, to: me, place: place.id, at, via: 'craft'});
+          grantItem(st.items, m, 'transit_pass', at, place.id, 'craft');
           live({at, source: 'live', kind: 'craft', muse: me, place: place.id, line: 'Three bus stops visited: Transit Pass crafted', data: {item: 'transit_pass', rule: 'three different bus stops today'}, tags: ['ability_change']});
           return {ok: true, data: {crafted: 'transit_pass'}};
         }
@@ -356,8 +357,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         const missing = [...(beat.needs ?? []), ...(beat.result!.consume ?? [])].filter(i => !m.inventory.includes(i));
         if (missing.length) return {ok: false, reason: 'missing_items', extra: {missing}};
         for (const x of beat.result!.consume ?? []) m.inventory.splice(m.inventory.indexOf(x), 1);
-        m.inventory.push(recipe);
-        st.items.history.push({item: recipe, from: null, to: me, place: place.id, at, via: 'craft'});
+        grantItem(st.items, m, recipe, at, place.id, 'craft');
         live({at, source: 'live', kind: 'craft', muse: me, place: place.id, line: `Crafted ${itemName(recipe)}`, data: {item: recipe, from: beat.result!.consume ?? []}, tags: ['ability_change']});
         return {ok: true, data: {crafted: recipe, consumed: beat.result!.consume ?? []}};
       });
@@ -449,7 +449,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         count.postcards += 1;
         const crossRegion = placeCell(from) !== placeCell(dest);
         inbox.mail.push({id: nextId(inbox, 'mail'), from: me, to, item, text, sentAt: at, deliverAt: at + travelMs, crossRegion});
-        st.items.history.push({item, from: me, to, place: from.id, at, via: 'gift'});
+        appendHistory(st.items, {item, from: me, to, place: from.id, at, via: 'gift'});
         live({at, source: 'live', kind: 'postcard_sent', muse: me, other: to, place: from.id, line: `Mailed ${itemName(item)} to ${name(to)}`, data: {item, eta_ms: travelMs, cross_region: crossRegion, note: text}, tags: []});
         return {ok: true, data: {item, eta_ms: travelMs, deliver_at: at + travelMs, cross_region: crossRegion, sent_today: count.postcards}};
       });
@@ -466,8 +466,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         if (!near(m, r)) return {ok: false, reason: 'too_far'};
         const count = sentToday(inbox, st.day, me);
         if (count.gifts >= DAILY.gifts) return {ok: false, reason: 'daily_limit'};
-        m.inventory.splice(m.inventory.indexOf(item), 1); r.inventory.push(item); count.gifts += 1;
-        st.items.history.push({item, from: me, to, place: m.place, at, via: 'gift'});
+        transferItem(st.items, m, r, item, at); count.gifts += 1;
         live({at, source: 'live', kind: 'gift', muse: me, other: to, place: m.place, line: `A ${itemName(item)} for ${name(to)}`, data: {item}, tags: []});
         if (isConnected(inbox, to, at)) deliverMessage(inbox, {from: me, to, kind: 'gift', at, text: null, item});
         return {ok: true, data: {gave: item, to, gifts_today: count.gifts}};
