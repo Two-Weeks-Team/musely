@@ -1,12 +1,15 @@
 // Musely MCP tools (direction v2, 7.2). A connected Muse calls these from its owner's runtime; Musely only
 // checks and commits. Every write tool goes through the same path:
-//   1. build the content  2. sign an envelope with the owner's server_custodial executor (Trust)
-//   3. verifyEnvelope in 12.1 order  4. apply through runtime.commitExternal (the commit point)
-//   5. log events with source 'live', data.actor 'your Muse' and the envelope evidence.
-// Refusals are logged too (a2a_refused for envelope failures, action_refused / trade_rejected for rules).
+//   1. build the payload  2. sign a WorldCommand with the owner's server_custodial executor (Trust)
+//   3. executeCommand (commands.ts): stored result / conflict, verifyEnvelope in 12.1 order with the
+//      expected recipient, the counterparty's credentials, expectedVersion, then the commit point
+//   4. log events with source 'live', data.actor 'your Muse' and the envelope evidence.
+// Optional command_id / expected_version make retries idempotent and plans versioned; when omitted the
+// server picks them and returns the values it used.
+// Refusals are logged too (a2a_refused for envelope failures, command_refused for stale/conflict,
+// action_refused / trade_rejected for rules).
 // Inputs are validated strictly (catalog ids, bounded text); text from another agent arrives wrapped as
 // untrusted data, and text that tries to instruct is blocked (detectInjection).
-import {signEnvelope, verifyEnvelope} from '../../src/identity/envelope.ts';
 import {verifyCard} from '../../src/identity/card.ts';
 import {detectInjection, INJECTION_LIMIT_NOTE} from '../../src/identity/untrusted.ts';
 import {HARNESS_IDS, harnessById, type ScopeId} from '../../src/engine/harness.ts';
@@ -21,7 +24,8 @@ import {emptyInbox, expireTasks, nextId, notifyOwner, deliverMessage, messageVie
 import type {WorldRuntime} from './world-runtime.ts';
 import type {Trust} from './trust.ts';
 import type {AgentKeyRow} from './agent-keys.ts';
-import {envelopeEvidence} from './a2a.ts';
+import {envelopeEvidence, peerCheck} from './a2a.ts';
+import {executeCommand, signCommand, worldHandler} from './commands.ts';
 
 export type ToolCtx = {
   trust: Trust; runtime: WorldRuntime; hooks: Hooks; ownerRoot: JsonWebKey | null; ownerClaimed: boolean; baseUrl: string;
@@ -33,6 +37,7 @@ export class InvalidParams extends Error {}
 // ---------- strict input schemas (JSON Schema subset; the same object is published in tools/list) ----------
 type Prop = {type: 'string'; enum?: readonly string[]; pattern?: string; minLength?: number; maxLength?: number; description?: string}
   | {type: 'boolean'; description?: string}
+  | {type: 'integer'; minimum?: number; description?: string}
   | {type: 'array'; items: {type: 'string'; pattern?: string; maxLength?: number}; maxItems: number; description?: string};
 type Schema = {type: 'object'; properties: Record<string, Prop>; required: string[]; additionalProperties: false};
 const obj = (properties: Record<string, Prop>, required: string[] = []): Schema => ({type: 'object', properties, required, additionalProperties: false});
@@ -55,6 +60,7 @@ function checkArgs(schema: Schema, raw: unknown): Record<string, unknown> {
     const v = args[k];
     if (v === undefined) continue;
     if (p.type === 'boolean') { if (typeof v !== 'boolean') throw new InvalidParams(`${k} must be a boolean`); continue; }
+    if (p.type === 'integer') { if (!Number.isSafeInteger(v) || (p.minimum !== undefined && (v as number) < p.minimum)) throw new InvalidParams(`${k} must be an integer`); continue; }
     if (p.type === 'array') {
       if (!Array.isArray(v) || v.length > p.maxItems) throw new InvalidParams(`${k} must be a list of at most ${p.maxItems}`);
       for (const x of v) if (typeof x !== 'string' || (p.items.maxLength && x.length > p.items.maxLength) || (p.items.pattern && !new RegExp(p.items.pattern).test(x))) throw new InvalidParams(`${k} has an invalid entry`);
@@ -79,7 +85,7 @@ const write = (name: string, title: string, description: string, inputSchema: Sc
 export const TOOLS: ToolDef[] = [
   read('register_agent', 'Register agent', 'Your Muse\'s Musely registration for this agent key: agent id (kid), claim status, signer kind (server_custodial) and delegation status.', obj({})),
   read('get_agent_card', 'Get Agent Card', 'A signed A2A Agent Card (yours by default) and the result of verifying it against the trusted root key.', obj({muse: {type: 'string', enum: HARNESS_IDS, description: 'Muse id; defaults to your Muse'}})),
-  read('get_world_state', 'Get world state', 'Your Muse\'s current place and cell, trip ETA, inventory, wants and memory, nearby Muses with their public signals, nearby places, and the owner location (virtual in the demo).', obj({})),
+  read('get_world_state', 'Get world state', 'Your Muse\'s current place and cell, trip ETA, inventory, wants and memory, nearby Muses with their public signals, nearby places, the owner location (virtual in the demo) and world_version (pass it as expected_version to a write).', obj({})),
   write('move', 'Move', 'Walk to a place (a Transit Pass makes it a bus ride). mode "teleport" works only into your owner\'s verified neighborhood cell and spends a Taxi Token.', obj({to: {type: 'string', minLength: 1, maxLength: 80, description: 'Place id from get_world_state, or a preset: hq, stanford, san-francisco, oakland, san-mateo, mountain-view, redwood-city, san-jose'}, mode: {type: 'string', enum: ['walk', 'teleport']}}, ['to']), 'walk_and_greet'),
   write('discover', 'Discover', 'Look for stamps, postcards and items at your Muse\'s current place (one per place per day, ten per day).', obj({}), 'world_item_discover'),
   write('craft', 'Craft', 'Craft an item: transit_pass (three different bus stops visited today) or a recipe from the world (bloom: clover seed + garden pass at a garden or park).', obj({recipe: {type: 'string', enum: RECIPES}}, ['recipe']), 'world_item_discover'),
@@ -98,6 +104,11 @@ export const TOOLS: ToolDef[] = [
 // heartbeat_check reads the inbox and marks expiry; it commits but does not act in the world, so it is not signed.
 TOOLS.find(t => t.name === 'heartbeat_check')!.write = undefined;
 TOOLS.find(t => t.name === 'heartbeat_check')!.annotations = {readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false};
+const COMMAND_PROPS: Record<string, Prop> = {
+  command_id: {type: 'string', pattern: '^[A-Za-z0-9_-]{8,64}$', description: 'Optional idempotency key. A retry with the same id and the same arguments returns the first result without acting again; other arguments with the same id are refused as command_conflict. After stale_world, re-plan with a new id.'},
+  expected_version: {type: 'integer', minimum: 0, description: 'Optional world_version from get_world_state you planned against; if the world moved, the call is refused as stale_world and nothing changes.'},
+};
+for (const t of TOOLS) if (t.write) Object.assign(t.inputSchema.properties, COMMAND_PROPS);
 export const TOOL_NAMES = TOOLS.map(t => t.name);
 export const toolList = () => TOOLS.map(({write: _w, ...t}) => t);
 
@@ -125,40 +136,62 @@ type Outcome = {ok: true; data: Record<string, unknown>; text?: string} | {ok: f
 type Emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => void;
 type Apply = (st: WorldState, live: Emit, rule: Emit, at: number) => Outcome;
 
-/** The single write path: sign → verify (12.1) → commit → log with evidence. */
-async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | null, content: Record<string, unknown>, apply: Apply): Promise<ToolResult> {
+type CommandOpts = {commandId?: string; expectedVersion?: number};
+type Evidence = ReturnType<typeof envelopeEvidence>;
+const evidenceOf = (e: Evidence, verified: boolean) => ({message_id: e.message_id, signer_kind: e.signer_kind, delegation_ref: e.delegation_ref, content_hash: e.content_hash, verified});
+
+/** The verifier's own view of who a write is addressed to: the payload's peer or the Task's other side, else the world. */
+function expectedRecipient(c: ToolCtx, me: string, payload: Record<string, unknown>) {
+  const world = worldHandler(c.runtime.worldId);
+  const task = typeof payload.task_id === 'string' ? c.runtime.state().inbox?.tasks.find(t => t.id === payload.task_id) : undefined;
+  const peer = typeof payload.to === 'string' ? payload.to : task ? (task.from === me ? task.to : task.from) : null;
+  return peer ? c.trust.agentByMuse(peer)?.agentId ?? world : world;
+}
+
+/** The single write path: sign a WorldCommand → executeCommand (verify, version, commit) → log with evidence. */
+async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | null, content: Record<string, unknown>, apply: Apply, opts: CommandOpts): Promise<ToolResult> {
   const me = c.key.muse, at = c.now();
   const exec = await c.trust.custodialExecutor(me, c.ownerRoot);
   if (!exec) {
     // Revoked before any custodial delegation existed: nothing may sign for this Muse; refuse without an envelope.
-    c.runtime.commitExternal(at, `mcp-${tool.name}-revoked-${Math.random().toString(36).slice(2, 10)}`, (st, emit) => {
+    c.runtime.commitRefusal(at, `mcp-${tool.name}-revoked-${Math.random().toString(36).slice(2, 10)}`, (st, emit) => {
       emit(tagLocation(st.owner, {at, source: 'live', kind: 'a2a_refused', muse: me, other: recipientMuse, line: 'Refused: delegation revoked', data: {step: 'delegation', reason: 'delegation_revoked', actor: 'your Muse', tool: tool.name, key_id: c.key.id, envelope: null, content}, tags: ['p0_refused']}));
       notifyOwner(inboxOf(st), {kind: 'blocked', at, line: `Blocked: your Muse's ${tool.name.replace(/_/g, ' ')} was refused (delegation revoked)`, ref: null, other: recipientMuse});
     });
     return refused('delegation_revoked', {step: 'delegation', envelope: null});
   }
-  const recipient = recipientMuse ? c.trust.agentByMuse(recipientMuse)?.agentId ?? 'musely:world' : 'musely:world';
-  const signed = await signEnvelope(exec.key, exec.delegation, exec.d, {recipient, action: tool.name, scope: tool.write!.scope, content, ownerClaimed: c.ownerClaimed, now: at});
-  const verdict = await verifyEnvelope(signed, c.trust, at);
-  const envelope = envelopeEvidence(signed);
-  let outcome: Outcome = {ok: false, reason: 'not_applied'};
-  c.runtime.commitExternal(at, `mcp-${tool.name}-${signed.envelope.message_id.slice(0, 10)}`, (st, emit) => {
-    const tag = (e: Omit<WorldEvent, 'id' | 'tick'>) => emit(tagLocation(st.owner, e));
-    const live: Emit = e => tag({...e, source: 'live', data: {...(e.data ?? {}), actor: 'your Muse', tool: tool.name, key_id: c.key.id, envelope}});
-    const rule: Emit = e => tag({...e, source: 'rule'});
-    if (!verdict.ok) {
-      live({at, source: 'live', kind: 'a2a_refused', muse: me, other: recipientMuse, line: `Refused: ${verdict.reason.replace(/_/g, ' ')}`, data: {step: verdict.step, reason: verdict.reason, content}, tags: ['p0_refused']});
-      notifyOwner(inboxOf(st), {kind: 'blocked', at, line: `Blocked: your Muse's ${tool.name.replace(/_/g, ' ')} was refused (${verdict.reason.replace(/_/g, ' ')})`, ref: envelope.message_id, other: recipientMuse});
-      outcome = {ok: false, reason: verdict.reason, extra: {step: verdict.step}};
-      return;
-    }
-    outcome = apply(st, live, rule, at);
-    if (!outcome.ok && !outcome.extra?.logged) live({at, source: 'live', kind: 'action_refused', muse: me, other: recipientMuse, line: null, data: {reason: outcome.reason, content}, tags: []});
-  });
-  const evidence = {message_id: envelope.message_id, signer_kind: envelope.signer_kind, delegation_ref: envelope.delegation_ref, content_hash: envelope.content_hash, verified: verdict.ok};
-  const o = outcome as Outcome;
-  if (!o.ok) { const {logged: _l, ...extra} = o.extra ?? {}; return refused(o.reason, {...extra, envelope: evidence}); }
-  return ok({ok: true, ...o.data, envelope: evidence}, o.text);
+  const worldId = c.runtime.worldId;
+  const recipient = recipientMuse ? c.trust.agentByMuse(recipientMuse)?.agentId ?? worldHandler(worldId) : worldHandler(worldId);
+  const cmd = await signCommand(exec, {worldId, expectedVersion: opts.expectedVersion ?? c.runtime.state().version, action: tool.name, payload: content, recipient, scope: tool.write!.scope, ownerClaimed: c.ownerClaimed, now: at, commandId: opts.commandId});
+  const envelope = envelopeEvidence(cmd.signed);
+  const expected = expectedRecipient(c, me, content);
+  const peerMuse = expected === worldHandler(worldId) ? null : c.trust.agentById(expected)?.museId ?? null;
+  const out = await executeCommand(c, cmd, {
+    recipient: expected,
+    // A resident answers by rule inside this commit, so its own card and delegation are checked first.
+    counterparty: peerMuse ? () => peerCheck(c, peerMuse, at) : undefined,
+    apply: (st, emit, at2) => {
+      const tag = (e: Omit<WorldEvent, 'id' | 'tick'>) => emit(tagLocation(st.owner, e));
+      const live: Emit = e => tag({...e, source: 'live', data: {...(e.data ?? {}), actor: 'your Muse', tool: tool.name, key_id: c.key.id, envelope}});
+      const rule: Emit = e => tag({...e, source: 'rule'});
+      const o = apply(st, live, rule, at2);
+      if (!o.ok && !o.extra?.logged) live({at: at2, source: 'live', kind: 'action_refused', muse: me, other: recipientMuse, line: null, data: {reason: o.reason, content}, tags: []});
+      return o.ok ? {ok: true, output: {outcome: o, envelope}} : {ok: false, code: o.reason, output: {outcome: o, envelope}};
+    },
+    refused: (st, emit, r, at2) => {
+      const envelopeFailure = r.code !== 'stale_world' && r.code !== 'command_conflict';
+      emit(tagLocation(st.owner, {at: at2, source: 'live', kind: envelopeFailure ? 'a2a_refused' : 'command_refused', muse: me, other: recipientMuse, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, content, actor: 'your Muse', tool: tool.name, key_id: c.key.id, envelope, command_id: cmd.commandId}, tags: envelopeFailure ? ['p0_refused'] : []}));
+      if (envelopeFailure) notifyOwner(inboxOf(st), {kind: 'blocked', at: at2, line: `Blocked: your Muse's ${tool.name.replace(/_/g, ' ')} was refused (${r.code.replace(/_/g, ' ')})`, ref: envelope.message_id, other: recipientMuse});
+    },
+  }, at);
+  const command = {command_id: out.result.commandId, expected_version: cmd.expectedVersion, world_version: out.result.worldVersion, duplicate: out.duplicate};
+  if (out.refused) return refused(out.refused.code, {step: out.refused.step, retryable: out.refused.retryable, envelope: evidenceOf(envelope, out.verified), command});
+  // A duplicate returns the first result, with the first envelope's evidence.
+  const stored = out.output as {outcome: Outcome; envelope: Evidence} | null;
+  if (!stored?.outcome) return refused('command_conflict', {step: 'replay', retryable: false, command});
+  const evidence = evidenceOf(stored.envelope, true), o = stored.outcome;
+  if (!o.ok) { const {logged: _l, ...extra} = o.extra ?? {}; return refused(o.reason, {...extra, envelope: evidence, command}); }
+  return ok({ok: true, ...o.data, envelope: evidence, command}, o.text);
 }
 
 /** A resident's rule answer to the current offer (sealed: accept | counter | reject, no reasons). */
@@ -245,7 +278,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         .map(({o, d}) => ({id: o.id, name: name(o.id), role: harnessById(o.id).role, place: placeView(placeById(o.place)), distance_m: Math.round(d), travelling: !!o.travel, in_trade_range: d <= RULES.tradeRangeM && !o.travel, public_wants: {goal: o.wants.goal, items: o.wants.items}, holds: o.inventory.filter(i => itemSpec(i)?.transferable && itemSpec(i)?.category !== 'relic')}));
       return ok({
         muse: {id: me, name: name(me), place: placeView(here), cell, travel: meState.travel ? {to: placeView(placeById(meState.travel.to)), speed: meState.travel.speed, eta_ms: etaMs(meState, now), arrive_at: meState.travel.arriveAt} : null, inventory: meState.inventory, wants: meState.wants, reflection: meState.reflection, memory: meState.memory.slice(0, 6), doing: meState.beat?.line ?? null},
-        owner_location: ownerView(s.owner, meState, now), neighbors,
+        world_version: s.version, owner_location: ownerView(s.owner, meState, now), neighbors,
         places_nearby: nearbyPlaces(here, 10).map(({p, d}) => ({...placeView(p), distance_m: Math.round(d)})),
         inbox: {tasks_waiting_for_you: inbox.tasks.filter(t => t.status === 'pending' && t.awaiting === me).length, unread_messages: inbox.messages.filter(m => m.to === me && !m.read).length},
         rules: {trade_range_m: RULES.tradeRangeM, max_counters: MAX_COUNTERS, task_deadline_min: TASK_TTL_MS / 60_000, daily: DAILY, walk_mps: WALK_MPS},
@@ -278,6 +311,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
   // ---------- write tools ----------
   const needsClaim = ['propose_trade', 'counter_trade', 'accept_trade', 'send_postcard', 'give_gift', 'propose_meetup', 'answer_candidate'];
   const claimGate = (): Outcome | null => (needsClaim.includes(tool.name) && !c.ownerClaimed ? {ok: false, reason: 'pending_claim'} : null);
+  const write_ = (recipientMuse: string | null, content: Record<string, unknown>, apply: Apply) => signedWrite(c, tool, recipientMuse, content, apply, {commandId: args.command_id as string | undefined, expectedVersion: args.expected_version as number | undefined});
   const ownerMuse = me;
 
   switch (tool.name) {
@@ -285,7 +319,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
       const dest = resolvePlace(String(args.to));
       if (!dest) throw new InvalidParams('unknown place: ' + String(args.to).slice(0, 40));
       const mode = (args.mode as string | undefined) ?? 'walk';
-      return signedWrite(c, tool, null, {kind: 'move', to: dest.id, mode}, (st, live, _rule, at) => {
+      return write_(null, {kind: 'move', to: dest.id, mode}, (st, live, _rule, at) => {
         const m = museOf(st, me);
         if (m.travel) return {ok: false, reason: 'travelling', extra: {eta_ms: etaMs(m, at)}};
         if (m.place === dest.id) return {ok: false, reason: 'already_here'};
@@ -298,7 +332,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
       });
     }
     case 'discover':
-      return signedWrite(c, tool, null, {kind: 'discover', at_place: meState.place}, (st, live, rule, at) => {
+      return write_(null, {kind: 'discover', at_place: meState.place}, (st, live, rule, at) => {
         const m = museOf(st, me);
         if (m.travel) return {ok: false, reason: 'travelling'};
         const place = placeById(m.place);
@@ -311,7 +345,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
       });
     case 'craft': {
       const recipe = String(args.recipe);
-      return signedWrite(c, tool, null, {kind: 'craft', recipe}, (st, live, _rule, at) => {
+      return write_(null, {kind: 'craft', recipe}, (st, live, _rule, at) => {
         const m = museOf(st, me), place = placeById(m.place);
         if (m.travel) return {ok: false, reason: 'travelling'};
         if (recipe === 'transit_pass') {
@@ -336,7 +370,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
     case 'greet': {
       const text = cleanText(String(args.text)), to = args.to as string | undefined;
       if (!text) throw new InvalidParams('text is empty');
-      return signedWrite(c, tool, to ?? null, {kind: 'greet', text, to: to ?? null}, (st, live, _rule, at) => {
+      return write_(to ?? null, {kind: 'greet', text, to: to ?? null}, (st, live, _rule, at) => {
         const m = museOf(st, me);
         const check = detectInjection(text);
         if (check.blocked) { live({at, source: 'live', kind: 'injection_blocked', muse: me, other: to ?? null, line: 'A greeting that reads like an instruction was not sent', data: {kinds: check.kinds, direction: 'outgoing', limit: INJECTION_LIMIT_NOTE}, tags: ['injection_blocked']}); return {ok: false, reason: 'injection_blocked', extra: {kinds: check.kinds, logged: true}}; }
@@ -348,7 +382,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
     }
     case 'propose_trade': {
       const to = String(args.to), give = knownItem(String(args.give)), want = knownItem(String(args.want));
-      return signedWrite(c, tool, to, {kind: 'propose_trade', to, give, want}, (st, live, rule, at) => {
+      return write_(to, {kind: 'propose_trade', to, give, want}, (st, live, rule, at) => {
         const gate = claimGate(); if (gate) return gate;
         const a = museOf(st, me), b = museOf(st, to), inbox = inboxOf(st);
         if (a.travel || b.travel) return {ok: false, reason: 'travelling'};
@@ -366,7 +400,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
     case 'counter_trade': {
       const id = String(args.task_id), give = knownItem(String(args.give)), want = knownItem(String(args.want));
       const peer = inboxOf(s).tasks.find(t => t.id === id); const other = peer ? (peer.from === me ? peer.to : peer.from) : null;
-      return signedWrite(c, tool, other, {kind: 'counter_trade', task_id: id, give, want}, (st, live, rule, at) => {
+      return write_(other, {kind: 'counter_trade', task_id: id, give, want}, (st, live, rule, at) => {
         const gate = claimGate(); if (gate) return gate;
         const t = openTaskFor(st, id, me, 'trade', at); if (typeof t === 'string') return {ok: false, reason: t};
         const otherId = t.from === me ? t.to : t.from;
@@ -387,7 +421,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
     case 'reject_trade': {
       const id = String(args.task_id);
       const peer = inboxOf(s).tasks.find(t => t.id === id); const other = peer ? (peer.from === me ? peer.to : peer.from) : null;
-      return signedWrite(c, tool, other, {kind: tool.name, task_id: id}, (st, live, rule, at) => {
+      return write_(other, {kind: tool.name, task_id: id}, (st, live, rule, at) => {
         if (tool.name === 'accept_trade') { const gate = claimGate(); if (gate) return gate; }
         const t = openTaskFor(st, id, me, 'trade', at); if (typeof t === 'string') return {ok: false, reason: t};
         const otherId = t.from === me ? t.to : t.from;
@@ -406,7 +440,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
     }
     case 'send_postcard': {
       const to = String(args.to), item = knownItem(String(args.item)), text = args.text === undefined ? null : cleanText(String(args.text)) || null;
-      return signedWrite(c, tool, to, {kind: 'send_postcard', to, item, text}, (st, live, _rule, at) => {
+      return write_(to, {kind: 'send_postcard', to, item, text}, (st, live, _rule, at) => {
         const gate = claimGate(); if (gate) return gate;
         const m = museOf(st, me), r = museOf(st, to), inbox = inboxOf(st);
         if (text) { const check = detectInjection(text); if (check.blocked) { live({at, source: 'live', kind: 'injection_blocked', muse: me, other: to, line: 'A postcard note that reads like an instruction was not sent', data: {kinds: check.kinds, direction: 'outgoing', limit: INJECTION_LIMIT_NOTE}, tags: ['injection_blocked']}); return {ok: false, reason: 'injection_blocked', extra: {kinds: check.kinds, logged: true}}; } }
@@ -427,7 +461,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
     }
     case 'give_gift': {
       const to = String(args.to), item = knownItem(String(args.item));
-      return signedWrite(c, tool, to, {kind: 'give_gift', to, item}, (st, live, _rule, at) => {
+      return write_(to, {kind: 'give_gift', to, item}, (st, live, _rule, at) => {
         const gate = claimGate(); if (gate) return gate;
         const m = museOf(st, me), r = museOf(st, to), inbox = inboxOf(st), spec = itemSpec(item)!;
         if (!m.inventory.includes(item)) return {ok: false, reason: 'not_held'};
@@ -446,7 +480,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
     }
     case 'propose_meetup': {
       const to = String(args.to);
-      return signedWrite(c, tool, to, {kind: 'propose_meetup', to}, (st, live, rule, at) => {
+      return write_(to, {kind: 'propose_meetup', to}, (st, live, rule, at) => {
         const gate = claimGate(); if (gate) return gate;
         const inbox = inboxOf(st);
         if (inbox.tasks.some(t => t.kind === 'meetup' && t.status === 'pending' && [t.from, t.to].includes(me) && [t.from, t.to].includes(to))) return {ok: false, reason: 'open_task_exists'};
@@ -472,7 +506,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
     case 'answer_candidate': {
       const id = String(args.task_id), answer = args.answer as 'accept' | 'reject';
       const peer = inboxOf(s).tasks.find(t => t.id === id); const other = peer ? (peer.from === me ? peer.to : peer.from) : null;
-      return signedWrite(c, tool, other, {kind: 'answer_candidate', task_id: id, answer}, (st, live, _rule, at) => {
+      return write_(other, {kind: 'answer_candidate', task_id: id, answer}, (st, live, _rule, at) => {
         const gate = claimGate(); if (gate) return gate;
         const t = openTaskFor(st, id, me, 'meetup', at); if (typeof t === 'string') return {ok: false, reason: t};
         const otherId = t.from === me ? t.to : t.from;
@@ -494,7 +528,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
       const items = args.items as string[] | undefined;
       if (items) for (const i of items) if (!(ITEM_BY_ID.has(i))) throw new InvalidParams(`unknown item: ${i.slice(0, 40)}`);
       const next = {goal: args.goal as string | undefined, items};
-      return signedWrite(c, tool, null, {kind: 'update_wants', ...next}, (st, live, _rule, at) => {
+      return write_(null, {kind: 'update_wants', ...next}, (st, live, _rule, at) => {
         const m = museOf(st, me);
         // Like greet and postcard: an instruction-like goal is logged without its text (refused text never becomes public).
         if (next.goal !== undefined) { const check = detectInjection(next.goal); if (check.blocked) { live({at, source: 'live', kind: 'injection_blocked', muse: me, other: null, line: 'A wants goal that reads like an instruction was not saved', data: {kinds: check.kinds, direction: 'outgoing', limit: INJECTION_LIMIT_NOTE}, tags: ['injection_blocked']}); return {ok: false, reason: 'injection_blocked', extra: {kinds: check.kinds, logged: true}}; } }

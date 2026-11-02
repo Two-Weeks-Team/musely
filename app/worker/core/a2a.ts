@@ -1,6 +1,6 @@
 // A2A identity flows that change or record shared state (direction v2, 2.1 P0, 6.5–6.7, 12).
 // Every outcome goes through the world commit point and the append-only run log with its evidence.
-import {signEnvelope, verifyEnvelope, contentHash, type Signed} from '../../src/identity/envelope.ts';
+import {contentHash, type Signed} from '../../src/identity/envelope.ts';
 import {verifyCard, buildCard, signCard, type CardCheck} from '../../src/identity/card.ts';
 import {verifyDelegation, delegationRef} from '../../src/identity/delegation.ts';
 import {generateKeyPair} from '../../src/identity/jws.ts';
@@ -11,6 +11,7 @@ import {placeById, distanceM} from '../../src/engine/places.ts';
 import type {WorldRuntime} from './world-runtime.ts';
 import {Trust, OWNER_SLOT, type Executor} from './trust.ts';
 import type {WorldState, Hooks} from '../../src/engine/world.ts';
+import {executeCommand, signCommand, type PeerCheck} from './commands.ts';
 
 export type Ctx = {trust: Trust; runtime: WorldRuntime; ownerRoot: JsonWebKey | null; ownerClaimed: boolean; baseUrl: string; now?: () => number};
 const nowOf = (c: Ctx) => (c.now ? c.now() : Date.now());
@@ -28,7 +29,7 @@ export function findOwnerTrade(s: WorldState) {
   return null;
 }
 
-/** Sends a signed trade proposal from the owner's Muse and commits it only if verification passes. */
+/** Sends a signed trade proposal from the owner's Muse; it commits only through executeCommand. */
 export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; plan?: {partner: string; give: string; want: string}}) {
   const s = c.runtime.state();
   const plan = opts.plan ?? findOwnerTrade(s);
@@ -37,23 +38,23 @@ export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; 
   if (!exec) return {ok: false as const, reason: 'no_executor'};
   const partner = c.trust.agentByMuse(plan.partner)!;
   const content = {kind: 'propose_trade', give: plan.give, want: plan.want, to: plan.partner};
-  const signed = await signEnvelope(exec.key, exec.delegation, exec.d, {recipient: partner.agentId, action: 'propose_trade', scope: 'world_item_trade', content, ownerClaimed: c.ownerClaimed, now: nowOf(c)});
-  const verdict = await verifyEnvelope(signed, c.trust, nowOf(c));
-  const evidence = envelopeEvidence(signed);
-  const events = c.runtime.commitExternal(nowOf(c), opts.label, (st, emit) => {
-    const at = nowOf(c);
-    if (!verdict.ok) {
-      emit({at, source: 'live', kind: 'a2a_refused', muse: OWNER_SLOT, other: plan.partner, line: `Refused: ${verdict.reason.replace(/_/g, ' ')}`, data: {step: verdict.step, reason: verdict.reason, envelope: evidence, content}, tags: ['p0_refused']});
-      return;
-    }
-    emit({at, source: 'live', kind: 'a2a_verified', muse: OWNER_SLOT, other: plan.partner, line: 'Signature, delegation, scope, expiry, nonce: verified', data: {steps: ['signature', 'delegation', 'scope', 'expiry', 'content', 'replay'], envelope: evidence, content}, tags: ['p0_valid']});
-    const a = st.muses.find(m => m.id === OWNER_SLOT)!, b = st.muses.find(m => m.id === plan.partner)!;
-    const check = checkTrade(st.items, st.day, a, b, plan.give, plan.want);
-    if (!check.ok) { emit({at, source: 'rule', kind: 'trade_rejected', muse: plan.partner, other: OWNER_SLOT, line: 'Not this time.', data: {reason_public: null, rule: check.reason}, tags: ['trade_rejected']}); return; }
-    commitTrade(st.items, st.day, a, b, plan.give, plan.want, at);
-    emit({at, source: 'live', kind: 'trade_completed', muse: OWNER_SLOT, other: plan.partner, place: a.place, line: `Traded ${itemName(plan.give)} ↔ ${itemName(plan.want)}`, data: {give: plan.give, want: plan.want, receipt: true, envelope: evidence}, tags: ['ability_change', 'p0_trade']});
-  });
-  return {ok: verdict.ok, verdict: verdict.ok ? 'verified' : verdict.reason, events, plan};
+  const cmd = await signCommand(exec, {worldId: c.runtime.worldId, expectedVersion: s.version, action: 'propose_trade', payload: content, recipient: partner.agentId, scope: 'world_item_trade', ownerClaimed: c.ownerClaimed, now: nowOf(c)});
+  const evidence = envelopeEvidence(cmd.signed);
+  const out = await executeCommand(c, cmd, {
+    recipient: partner.agentId,
+    counterparty: () => peerCheck(c, plan.partner, nowOf(c)),
+    apply: (st, emit, at) => {
+      emit({at, source: 'live', kind: 'a2a_verified', muse: OWNER_SLOT, other: plan.partner, line: 'Signature, delegation, scope, expiry, nonce: verified', data: {steps: ['signature', 'recipient', 'delegation', 'scope', 'expiry', 'content', 'replay', 'counterparty'], envelope: evidence, content, label: opts.label}, tags: ['p0_valid']});
+      const a = st.muses.find(m => m.id === OWNER_SLOT)!, b = st.muses.find(m => m.id === plan.partner)!;
+      const check = checkTrade(st.items, st.day, a, b, plan.give, plan.want);
+      if (!check.ok) { emit({at, source: 'rule', kind: 'trade_rejected', muse: plan.partner, other: OWNER_SLOT, line: 'Not this time.', data: {reason_public: null, rule: check.reason}, tags: ['trade_rejected']}); return {ok: false, code: check.reason}; }
+      commitTrade(st.items, st.day, a, b, plan.give, plan.want, at);
+      emit({at, source: 'live', kind: 'trade_completed', muse: OWNER_SLOT, other: plan.partner, place: a.place, line: `Traded ${itemName(plan.give)} ↔ ${itemName(plan.want)}`, data: {give: plan.give, want: plan.want, receipt: true, envelope: evidence}, tags: ['ability_change', 'p0_trade']});
+      return {ok: true};
+    },
+    refused: (_st, emit, r, at) => emit({at, source: 'live', kind: 'a2a_refused', muse: OWNER_SLOT, other: plan.partner, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, envelope: evidence, content, label: opts.label}, tags: ['p0_refused']}),
+  }, nowOf(c));
+  return {ok: out.verified, verdict: out.verified ? 'verified' : out.refused!.code, events: out.result.eventIds, command: out.result, plan};
 }
 
 /** P0 (direction 2.1): valid delegation → trade commits; owner revokes; the same request → refused. */
@@ -105,6 +106,13 @@ export function credentialProblem(t: Trust, cr: Credential | null | undefined, a
   if (!cr.delegation.ok) return cr.delegation.reason;
   if (t.isRevoked(cr.delegation.ref) || t.delegationVersion(cr.agentId) !== cr.delegation.version) return 'delegation_revoked';
   return cr.delegation.exp <= at ? 'delegation_expired' : null;
+}
+
+/** The counterparty of a peer command (a resident answering by rule): card and delegation before the commit. */
+export async function peerCheck(c: CredCtx, museId: string, now: number): Promise<PeerCheck> {
+  const cr = await museCredential(c, museId, now);
+  const why = credentialProblem(c.trust, cr, now);
+  return why ? {ok: false, reason: 'counterparty_' + why} : {ok: true, current: at => !credentialProblem(c.trust, cr, at)};
 }
 
 /**

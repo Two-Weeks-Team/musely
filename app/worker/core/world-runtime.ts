@@ -10,6 +10,7 @@ import {validate, buildMessages, maxCostUsd, actualCostUsd, failureCostUsd, chec
 import {callModel, type ModelConfig} from './model.ts';
 import {replayFor} from './replay.ts';
 import {isConnected} from '../../src/engine/inbox.ts';
+import {COMMANDS_TABLE, type CommandResult} from './commands.ts';
 import type {Ledger, Sql} from './ledger.ts';
 
 export type RuntimeOptions = {
@@ -27,12 +28,15 @@ export type RuntimeOptions = {
    */
   meetingGate?: (s: WorldState, now: number) => Promise<NonNullable<Hooks['canMeet']>>;
 };
+type Emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => void;
+export type CommandRow = {payloadHash: string; result: CommandResult; output: unknown};
 export type HeartbeatResult = {status: 'committed' | 'skipped_duplicate' | 'skipped_early'; tick: number; events: number; spotlight?: {muse: string; source: string; reason?: string}};
 
 export class WorldRuntime {
   private sql: Sql;
   private opts: RuntimeOptions;
   constructor(sql: Sql, opts: RuntimeOptions) { this.sql = sql; this.opts = opts; }
+  get worldId() { return this.opts.worldId; }
 
   init(now: number) {
     this.sql.exec('CREATE TABLE IF NOT EXISTS world (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, version INTEGER NOT NULL)');
@@ -40,6 +44,7 @@ export class WorldRuntime {
     // Append-only run log (8.6): no UPDATE or DELETE statements touch this table.
     this.sql.exec('CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, tick INTEGER NOT NULL, at INTEGER NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, muse TEXT, other TEXT, place TEXT, line TEXT, data TEXT, tags TEXT NOT NULL)');
     this.sql.exec('CREATE INDEX IF NOT EXISTS events_tags ON events (tags) WHERE tags != \'[]\'');
+    this.sql.exec(COMMANDS_TABLE);
     if (!this.sql.exec('SELECT id FROM world WHERE id = 1').toArray().length) {
       const s = createWorld(this.opts.worldId, now);
       this.sql.exec('INSERT INTO world (id, state, version) VALUES (1, ?, ?)', JSON.stringify(s), s.version);
@@ -129,14 +134,40 @@ export class WorldRuntime {
    * Commit point for actions outside the heartbeat (A2A trades, revocations, demo checks): the mutator runs
    * synchronously on the current state, then state, version and events are written together.
    */
-  commitExternal(now: number, label: string, mutate: (s: WorldState, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void) => void) {
+  commitExternal(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void) {
+    return this.commit(now, label, mutate, true).events;
+  }
+  /**
+   * A refusal record: its events (and owner notifications) without moving the world version, so a refused
+   * request can never make concurrent valid plans stale.
+   */
+  commitRefusal(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void) {
+    return this.commit(now, label, mutate, false).events;
+  }
+  /** Command commit point (C03): state, version, events and the stored command result in one synchronous block. */
+  commitCommand(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void, record: (version: number, events: WorldEvent[]) => {actorId: string; commandId: string; action: string; row: CommandRow}) {
+    const box: {row?: CommandRow} = {};
+    const done = this.commit(now, label, mutate, true, (s, events) => {
+      const rec = record(s.version, events);
+      this.sql.exec('INSERT INTO commands (actor_id, command_id, payload_hash, action, result, output, at) VALUES (?, ?, ?, ?, ?, ?, ?)', rec.actorId, rec.commandId, rec.row.payloadHash, rec.action, JSON.stringify(rec.row.result), JSON.stringify(rec.row.output ?? null), now);
+      box.row = rec.row;
+    });
+    return {...done, row: box.row!};
+  }
+  commandRow(actorId: string, commandId: string): CommandRow | null {
+    const r = this.sql.exec('SELECT payload_hash, result, output FROM commands WHERE actor_id = ? AND command_id = ?', actorId, commandId).toArray()[0];
+    return r ? {payloadHash: String(r.payload_hash), result: JSON.parse(String(r.result)), output: JSON.parse(String(r.output))} : null;
+  }
+
+  private commit(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void, bump: boolean, after?: (s: WorldState, events: WorldEvent[]) => void) {
     const s = this.state(), out: WorldEvent[] = [];
     let n = 0;
     mutate(s, e => out.push({...e, id: `${s.day}:${s.tick}:${label}:${now}:${n++}`, tick: s.tick}));
-    s.version += 1;
+    if (bump) s.version += 1;
     this.sql.exec('UPDATE world SET state = ?, version = ? WHERE id = 1', JSON.stringify(s), s.version);
     for (const e of out) this.sql.exec('INSERT OR IGNORE INTO events (id, tick, at, source, kind, muse, other, place, line, data, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', e.id, e.tick, e.at, e.source, e.kind, e.muse, e.other ?? null, e.place ?? null, e.line ?? null, JSON.stringify(e.data ?? {}), JSON.stringify(e.tags));
-    return out;
+    after?.(s, out);
+    return {state: s, events: out};
   }
 
   /** Events after `sinceSeq` in order; with `day` only that world day (ids start with the day); with `tail` the newest N. */
