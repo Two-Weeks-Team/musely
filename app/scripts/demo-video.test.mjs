@@ -1,6 +1,7 @@
+import {annotationDom} from './test-support/annotation-dom.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createPlan, publicReadAllowed, validatePlan, validateReference} from './lib/demo-video.mjs';
+import {annotationFor,createPlan, publicReadAllowed, validatePlan, validateReference} from './lib/demo-video.mjs';
 
 test('D05 prepares exactly 180 seconds and cannot accept pending release or missing event links',()=>{
  const p=createPlan();assert.equal(p.cuts.reduce((n,c)=>n+c.duration,0),180);
@@ -58,7 +59,7 @@ async function mediaFixture(t){
  for(const r of c.refs){const raw=JSON.stringify({runId:r.runId,runIdStored:true,run:{runId:r.runId,schemaVersion:'run-log-2'},input:{seq:r.inputSeq,runId:r.runId},event:{id:r.eventId,runId:r.runId,inputSeq:r.inputSeq,source:r.originalSource,data:{evidence:{requestId:r.requestId}}}});r.file=c.id+'-'+r.runId+'.event.json';r.sha256=sha(raw);await writeFile(join(dir,r.file),raw);}
  c.media=[];for(const v of c.views.length?c.views:[{id:'main',runId:'A',duration:c.duration,seekSec:0,snapshotHash:c.snapshotHash}]){
   const file=c.id+'-'+v.id+'.NOT-VIDEO',receiptFile=file+'.json',bytes=Buffer.from('OFFLINE NOT VIDEO '+file),refs=c.refs.filter(r=>r.runId===v.runId),takeId=c.id+'-'+v.id;
-  await writeFile(join(dir,file),bytes);const receipt={schema:'musely-demo-capture-2',kind:'recorded_public_capture',cutId:c.id,viewId:v.id,takeId,release:structuredClone(p.release),runId:v.runId,seekSec:v.seekSec,durationSeconds:v.duration,label:'REPLAY',virtual:true,originalSources:['live'],startOffsetSec:0,blockedRequests:0,refs,observed:{runId:v.runId,hash:v.snapshotHash,label:true},media:{file,sha256:sha(bytes),bytes:bytes.length}};
+  await writeFile(join(dir,file),bytes);const receipt={schema:'musely-demo-capture-2',kind:'recorded_public_capture',cutId:c.id,viewId:v.id,takeId,release:structuredClone(p.release),runId:v.runId,seekSec:v.seekSec,durationSeconds:v.duration,label:'REPLAY',virtual:true,originalSources:['live'],startOffsetSec:0,blockedRequests:0,refs,provenanceLabel:{...annotationFor(p,c,v),visible:true,valid:true},observed:{runId:v.runId,hash:v.snapshotHash,label:true},media:{file,sha256:sha(bytes),bytes:bytes.length}};
   await writeFile(join(dir,receiptFile),JSON.stringify(receipt));c.media.push({file,sha256:sha(bytes),receipt:receiptFile,viewId:v.id,takeId,runId:v.runId,duration:v.duration,refs});
  }}return {dir,p};
 }
@@ -95,10 +96,10 @@ test('D05 explicit P1 view and exact take duration are required before HTML GET 
 async function captureFixture(t,{bootstrap=[],recording=[]}={}){
  const {dir,p}=await mediaFixture(t),cut=p.cuts[11];cut.duration=1/16;p.cuts[0].duration+=6-cut.duration;
  const html='OFFLINE FROZEN HTML',before=globalThis.fetch;globalThis.fetch=async()=>new Response(html);t.after(()=>{globalThis.fetch=before;});p.release.htmlSha256=sha(html);
- let route,videoPath,mediaDir,bodyReads=0;const aborted=[],continued=[];
+ const annotation=annotationDom();let route,videoPath,mediaDir,bodyReads=0;const aborted=[],continued=[];
  const fire=async ({path,method='GET',origin=p.origin})=>{const url=origin+path,request={url:()=>url,method:()=>method,postData(){bodyReads++;throw Error('body must not be read');},headers(){throw Error('headers must not be read');}};await route({request:()=>request,abort:async()=>aborted.push({path,method}),continue:async()=>continued.push({path,method})});};
  const button=name=>({click:async()=>{if(name==='Play recorded run')for(const r of recording)await fire(r);}}),root={getByRole:(_role,{name})=>button(name),locator:()=>({fill:async()=>{},dispatchEvent:async()=>{},selectOption:async()=>{}}),evaluate:async()=>({runId:'A',hash:cut.snapshotHash,label:true})};
- const page={video:()=>({path:async()=>videoPath}),goto:async()=>{for(const r of bootstrap)await fire(r);},waitForFunction:async()=>{},locator:()=>root,evaluate:async fn=>fn.toString().includes('projection.events')?cut.refs.map(r=>r.eventId):undefined};
+ const page={video:()=>({path:async()=>videoPath}),goto:async()=>{for(const r of bootstrap)await fire(r);},waitForFunction:async()=>{},locator:()=>root,evaluate:async(fn,arg)=>fn.toString().includes('projection.events')?cut.refs.map(r=>r.eventId):annotation.evaluate(fn,arg)};
  const browser={newContext:async options=>{mediaDir=options.recordVideo.dir;videoPath=join(mediaDir,'OFFLINE-FIXTURE.NOT-VIDEO');await writeFile(videoPath,'OFFLINE MOCK BYTES NOT FOOTAGE');return {route:async(_pattern,fn)=>{route=fn;},newPage:async()=>page,close:async()=>{}};}};
  return {dir,p,cut,browser,aborted,continued,get mediaDir(){return mediaDir;},get bodyReads(){return bodyReads;}};
 }
@@ -124,4 +125,67 @@ test('D05 unrelated private reads and world writes remain fatal even during boot
  const f=await captureFixture(t,{bootstrap:[{path:'/api/owner/inbox'},{path:'/api/world/spotlight',method:'POST'}]});
  await assert.rejects(()=>captureDemoCut(f.browser,f.p,'s12',f.dir),/capture_blocked_requests:2/);
  const audit=JSON.parse(await readFile(join(f.mediaDir,'network-audit.json'),'utf8'));assert.equal(audit.fatalDeniedRequests.length,2);assert.equal(audit.bootstrapDeniedReads.length,0);assert.equal(audit.continuedWriteRequests,0);assert.equal(f.aborted.length,2);assert.equal(f.continued.length,0);assert.equal(f.bodyReads,0);
+});
+
+// Each invocation creates new local writer records; fixture data never stands in for filmed/production evidence.
+async function controlledBundle(t){
+ const {controlledFixture}=await import('./test-support/controlled-p1.mjs'),{loadRun}=await import('../src/replay/player.ts');
+ const {dir,p}=await mediaFixture(t),bundle=controlledFixture(p.release.sourceSha,p.release.htmlSha256),c=p.cuts[4];
+ const save=async(file,value)=>{const raw=JSON.stringify(value);await writeFile(join(dir,file),raw);return{file,sha256:sha(raw)};};
+ const pair=await save('controlled-pair.json',bundle.pair),before=await save('without.run.json',bundle.before.record),after=await save('with.run.json',bundle.after.record);
+ for(const d of[pair,before,after])bundle.manifest.files[d.file]={sha256:d.sha256,bytes:Buffer.byteLength(await readFile(join(dir,d.file)))};
+ const manifest=await save('controlled-manifest.json',bundle.manifest);c.controlledPair={label:'CONTROLLED COMPARISON (SIMULATION)',manifest,pair,before,after};p.tooling={version:'musely-demo-tools-2',sourceSha:'f'.repeat(40)};
+ c.refs=[];c.views=[];for(const [id,variant,x]of[['before','without',bundle.before],['after','with',bundle.after]]){const event=x.record.events.find(e=>e.muse==='03-ripple'&&(variant==='without'?e.kind==='decision_rejected':e.kind==='depart'&&e.data.speed==='bus')),r={runId:x.record.runId,inputSeq:event.inputSeq,eventId:event.id,originalSource:event.source,requestId:null,signedVerdict:null,role:'controlled-p1'};Object.assign(r,await save(id+'.controlled-event.json',x.eventRecords[event.id]));c.refs.push(r);const player=loadRun(x.record);player.seek(65);c.views.push({id,runId:x.record.runId,duration:10,seekSec:65,snapshotHash:player.getFrame().snapshotHash});}
+ return{dir,p,c,bundle,save};
+}
+test('D05 s05 can use a pinned actual controlled pair without inventing model or signed anchors',async t=>{
+ const{verifyBundle}=await import('./lib/demo-video.mjs'),f=await controlledBundle(t);assert.deepEqual(await verifyBundle(f.p,f.dir),[]);assert.ok(f.c.refs.every(r=>!r.requestId&&!r.signedVerdict&&r.role==='controlled-p1'));
+});
+async function controlledMedia(t){
+ const f=await controlledBundle(t);for(const cut of f.p.cuts)for(const m of cut.media??[]){const path=join(f.dir,m.receipt),receipt=JSON.parse(await readFile(path,'utf8'));receipt.tooling=structuredClone(f.p.tooling);receipt.provenanceLabel={...annotationFor(f.p,cut,{id:receipt.viewId,runId:receipt.runId}),visible:true,valid:true};await writeFile(path,JSON.stringify(receipt));}f.c.media=[];for(const v of f.c.views){const file='CONTROLLED-OFFLINE-'+v.id+'.NOT-VIDEO',receipt=file+'.json',bytes=Buffer.from('OFFLINE TEST ONLY '+v.id),refs=f.c.refs.filter(r=>r.runId===v.runId),takeId='controlled-'+v.id;
+ const controlledLabel={valid:true,visible:true,text:annotationFor(f.p,f.c,v).text,sourceSha:f.p.release.sourceSha,variant:v.id};
+ const r={schema:'musely-demo-capture-2',kind:'recorded_public_capture',cutId:'s05',viewId:v.id,takeId,release:structuredClone(f.p.release),tooling:structuredClone(f.p.tooling),controlledPair:structuredClone(f.c.controlledPair),controlledLabel,runId:v.runId,seekSec:v.seekSec,durationSeconds:10,label:'REPLAY',virtual:true,originalSources:['replay'],startOffsetSec:0,blockedRequests:0,refs,provenanceLabel:{...annotationFor(f.p,f.c,v),visible:true,valid:true},observed:{runId:v.runId,hash:v.snapshotHash,label:true},media:{file,sha256:sha(bytes),bytes:bytes.length}};
+ await writeFile(join(f.dir,file),bytes);await writeFile(join(f.dir,receipt),JSON.stringify(r));f.c.media.push({file,receipt,sha256:sha(bytes),viewId:v.id,takeId,runId:v.runId,duration:10,refs});}return f;
+}
+test('D05 controlled media receipts require continuous label, artifact binding and tooling separate from release',async t=>{
+ const{verifyMedia}=await import('./lib/demo-video.mjs'),f=await controlledMedia(t);assert.equal((await verifyMedia(f.p,f.dir)).length,13);const path=join(f.dir,f.c.media[0].receipt),original=JSON.parse(await readFile(path,'utf8'));
+ for(const mutate of[r=>r.controlledLabel.valid=false,r=>r.controlledLabel.visible=false,r=>r.controlledLabel.text='REPLAY',r=>r.controlledLabel.sourceSha='d'.repeat(40),r=>r.controlledLabel.variant='after',r=>delete r.controlledPair,r=>r.controlledPair.pair.sha256='0'.repeat(64),r=>r.tooling.sourceSha='d'.repeat(40)]){const r=structuredClone(original);mutate(r);await writeFile(path,JSON.stringify(r));await assert.rejects(()=>verifyMedia(f.p,f.dir),/controlled_capture_binding|tooling_capture_binding/);}
+});
+async function rewriteControlled(f,key,change,{manifestPin=false}={}){
+ const d=key==='event'?f.c.refs[1]:f.c.controlledPair[key],path=join(f.dir,d.file),value=JSON.parse(await readFile(path,'utf8'));change(value);const raw=JSON.stringify(value);await writeFile(path,raw);d.sha256=sha(raw);
+ if(manifestPin){const md=f.c.controlledPair.manifest,mp=join(f.dir,md.file),m=JSON.parse(await readFile(mp,'utf8'));m.files[d.file]={sha256:d.sha256,bytes:Buffer.byteLength(raw)};const text=JSON.stringify(m);await writeFile(mp,text);md.sha256=sha(text);}
+}
+test('D05 controlled allowance fails closed for absent sides, A/A, labels, source/tool pins, refs and UI seek grid',async t=>{
+ const{verifyBundle}=await import('./lib/demo-video.mjs');
+ const changes=[['missing before',f=>delete f.c.controlledPair.before],['missing after',f=>delete f.c.controlledPair.after],['A/A',f=>{f.c.controlledPair.after=f.c.controlledPair.before;f.c.views[1].runId=f.c.views[0].runId;}],['simulation label',f=>delete f.c.controlledPair.label],['source',f=>f.p.release.sourceSha='d'.repeat(40)],['HTML',f=>f.p.release.htmlSha256='0'.repeat(64)],['tool version',f=>f.p.tooling.version='old'],['tool source',f=>delete f.p.tooling.sourceSha],['seek grid',f=>f.c.views[1].seekSec=65.05],['seek range',f=>f.c.views[1].seekSec=100],['checkpoint',f=>f.c.views[1].snapshotHash='0'.repeat(64)],['event',f=>f.c.refs[1].eventId='absent'],['commit',f=>f.c.refs[1].inputSeq++],['source label',f=>f.c.refs[1].originalSource='live'],['generic support',f=>f.c.refs.forEach(r=>r.role='support')],['fake provider',f=>f.c.refs[1].requestId='invented'],['fake signature',f=>f.c.refs[1].signedVerdict='verified'],['record pin',f=>f.c.controlledPair.after.sha256='0'.repeat(64)]];
+ for(const[name,change]of changes){const f=await controlledBundle(t);change(f);const errors=await verifyBundle(f.p,f.dir);assert.ok(errors.length,name+' must fail');assert.ok(errors.some(e=>e.startsWith('s05:')),name);}
+ const f=await controlledBundle(t);await rm(join(f.dir,f.c.controlledPair.before.file));assert.ok((await verifyBundle(f.p,f.dir)).length);
+});
+test('D05 rehashed changed seeds, clocks, inputs, extra items and outcome claims cannot pass controlled verification',async t=>{
+ const{verifyBundle}=await import('./lib/demo-video.mjs');
+ const changes=[['seed',x=>x.with.seed='changed'],['clock',x=>x.with.inputs[0].now++],['decision input',x=>x.with.inputs[0].decision.output.target_place='HQ'],['extra item',x=>x.with.initial.muses[0].inventory.push('coffee')],['no ability outcome',x=>x.with.events=x.with.events.filter(e=>!(e.muse===x.muse&&e.kind==='depart'&&e.data.speed==='bus'))],['missing classification',x=>delete x.classification]];
+ for(const[name,change]of changes){const f=await controlledBundle(t);await rewriteControlled(f,'pair',change,{manifestPin:true});assert.ok((await verifyBundle(f.p,f.dir)).length,name);}
+ for(const change of[x=>x.classification='live',x=>x.label='REPLAY',x=>x.sourceSha='d'.repeat(40),x=>x.runIds.with='foreign']){const f=await controlledBundle(t);await rewriteControlled(f,'manifest',change);assert.ok((await verifyBundle(f.p,f.dir)).length);}
+});
+test('D05 valid file hashes cannot conceal forged replay checkpoints, incompatible records or event/input substitutions',async t=>{
+ const{verifyBundle}=await import('./lib/demo-video.mjs'),{bodyHash}=await import('../worker/core/run-log.ts');
+ const f=await controlledBundle(t);await rewriteControlled(f,'after',r=>{const state=JSON.parse(r.inputs[0].afterSnapshot.body);state.muses[0].place='commons:garden';const body=JSON.stringify(state),hash=bodyHash(body);r.inputs[0].afterSnapshot={body,hash};r.inputs[0].afterHash=hash;r.inputs[1].beforeHash=hash;},{manifestPin:true});assert.ok((await verifyBundle(f.p,f.dir)).some(e=>e.includes('engine_checkpoint_mismatch')));
+ for(const change of[x=>x.initialSnapshot.body+=' ',x=>x.catalogVersion='foreign',x=>x.events[0].kind='forged']){const g=await controlledBundle(t);await rewriteControlled(g,'after',change,{manifestPin:true});assert.ok((await verifyBundle(g.p,g.dir)).length);}
+ const h=await controlledBundle(t);await rewriteControlled(h,'event',r=>r.input.afterHash='0'.repeat(64));assert.ok((await verifyBundle(h.p,h.dir)).some(e=>e.includes('reference_record_binding_mismatch')));
+});
+test('D05 ordinary cuts and public reference checks retain model/signed anchors; controlledPair is s05-only',async t=>{
+ const{verifyBundle}=await import('./lib/demo-video.mjs'),f=await controlledBundle(t),ordinary=f.p.cuts[0];ordinary.refs.forEach(r=>{r.requestId=null;r.signedVerdict=null;r.role='support';});assert.ok((await verifyBundle(f.p,f.dir)).includes('s01:missing_evidence_anchor'));
+ ordinary.controlledPair=structuredClone(f.c.controlledPair);assert.ok((await verifyBundle(f.p,f.dir)).some(e=>e.includes('s01:controlled_pair:s05_only')));
+ assert.ok(validateReference({...ref,requestId:null,signedVerdict:null,role:'controlled-p1'},row).includes('model_request_or_signed_verdict_required'));
+});
+test('D05 continuous simulation annotation detects replacement, removal and invisibility even after restoration',async()=>{
+ const{installControlledLabel,readControlledLabel}=await import('./lib/controlled-label.mjs'),{Script}=await import('node:vm');
+ for(const mode of['text','remove','hide']){let node,visible=true,interval,mutation;const expected={text:'REPLAY | CONTROLLED COMPARISON (SIMULATION)',sourceSha:'a'.repeat(40),variant:'before'},sandbox={window:{innerWidth:1920,innerHeight:960},document:{elementsFromPoint:()=>[node],createElement(tag){if(tag==='style')return{style:{},isConnected:false,textContent:'',remove(){this.isConnected=false;}};return node={style:{},isConnected:false,textContent:'',showPopover(){},getBoundingClientRect:()=>({left:0,top:0,right:1900,bottom:60,width:1900,height:60}),remove(){this.isConnected=false;}};},body:{append(n){n.isConnected=true;}}},getComputedStyle:()=>({display:visible?'block':'none',visibility:'visible',opacity:'1'}),MutationObserver:class{constructor(fn){mutation=fn;}observe(){}disconnect(){}},setInterval(fn){interval=fn;return 1;},clearInterval(){}};
+  new Script('('+installControlledLabel.toString()+')('+JSON.stringify(expected)+')').runInNewContext(sandbox);const read=()=>new Script('('+readControlledLabel.toString()+')()').runInNewContext(sandbox);assert.equal(read().valid,true);
+  if(mode==='text')node.textContent='REPLAY';if(mode==='remove')node.isConnected=false;if(mode==='hide')visible=false;mutation();interval();node.textContent=expected.text;node.isConnected=true;visible=true;assert.equal(read().visible,true);assert.equal(read().valid,false,mode+' failure must stay sticky');
+ }
+});
+
+test('D05 tooling pin covers ordinary takes without changing the frozen client release',async t=>{
+ const{verifyMedia}=await import('./lib/demo-video.mjs'),f=await controlledMedia(t),release=structuredClone(f.p.release),path=join(f.dir,f.p.cuts[0].media[0].receipt),r=JSON.parse(await readFile(path,'utf8'));r.tooling.sourceSha='0'.repeat(40);await writeFile(path,JSON.stringify(r));await assert.rejects(()=>verifyMedia(f.p,f.dir),/tooling_capture_binding/);assert.deepEqual(f.p.release,release);
 });
