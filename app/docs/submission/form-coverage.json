@@ -1,0 +1,967 @@
+{
+  "schemaVersion": "d06-form-coverage-1",
+  "sourceURL": "https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit",
+  "observedAt": "2026-11-02T12:45:16.657614+00:00",
+  "sourceSha256": "ba508566504af4f492bff7ebd06ce2377e98fa1715c01c9be6c252597e75263d",
+  "controlCount": 101,
+  "readOnly": true,
+  "copiesAccountIdentity": false,
+  "copiesFieldValues": false,
+  "requiredBasis": "Visible asterisks/ARIA; absence of native required does not establish optionality",
+  "groups": [
+    {
+      "field": "close_control",
+      "indices": [
+        0
+      ],
+      "handling": "no-action"
+    },
+    {
+      "field": "team_name",
+      "indices": [
+        1
+      ],
+      "handling": "draft"
+    },
+    {
+      "field": "team_members",
+      "indices": [
+        2
+      ],
+      "handling": "representative-review"
+    },
+    {
+      "field": "track",
+      "indices": [
+        3,
+        4
+      ],
+      "handling": "draft"
+    },
+    {
+      "field": "problem_statement",
+      "indices": [
+        5,
+        6
+      ],
+      "handling": "draft"
+    },
+    {
+      "field": "viral_link",
+      "indices": [
+        7
+      ],
+      "handling": "conditional-owner-answer"
+    },
+    {
+      "field": "project_description",
+      "indices": [
+        8
+      ],
+      "handling": "draft"
+    },
+    {
+      "field": "public_repository",
+      "indices": [
+        9
+      ],
+      "handling": "unverified-gate"
+    },
+    {
+      "field": "demo_video",
+      "indices": [
+        10
+      ],
+      "handling": "unverified-gate"
+    },
+    {
+      "field": "meta_use",
+      "indices": [
+        11
+      ],
+      "handling": "draft"
+    },
+    {
+      "field": "meta_why",
+      "indices": [
+        12
+      ],
+      "handling": "draft"
+    },
+    {
+      "field": "partner_feedback",
+      "indices": [
+        13
+      ],
+      "handling": "owner-answer-required"
+    },
+    {
+      "field": "build_likelihood",
+      "indices": [
+        14,
+        15,
+        16,
+        17,
+        18
+      ],
+      "handling": "owner-answer-required"
+    },
+    {
+      "field": "overall_opinion",
+      "indices": [
+        19,
+        20,
+        21,
+        22,
+        23
+      ],
+      "handling": "owner-answer-required"
+    },
+    {
+      "field": "media_consent",
+      "indices": [
+        24,
+        25
+      ],
+      "handling": "separate-consent-required"
+    },
+    {
+      "field": "nps_meta",
+      "indices": [
+        26,
+        27,
+        28,
+        29,
+        30,
+        31
+      ],
+      "handling": "owner-answer-required"
+    },
+    {
+      "field": "nps_muse_code",
+      "indices": [
+        32,
+        33,
+        34,
+        35,
+        36,
+        37
+      ],
+      "handling": "owner-answer-required"
+    },
+    {
+      "field": "biggest_obstacle",
+      "indices": [
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52
+      ],
+      "handling": "owner-answer-required"
+    },
+    {
+      "field": "model_comparison",
+      "indices": [
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60
+      ],
+      "handling": "owner-answer-required"
+    },
+    {
+      "field": "choosing_priorities",
+      "indices": [
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75
+      ],
+      "handling": "owner-answer-required"
+    },
+    {
+      "field": "choosing_free_text",
+      "indices": [
+        76
+      ],
+      "handling": "owner-answer-required"
+    },
+    {
+      "field": "switching_difficulty",
+      "indices": [
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86
+      ],
+      "handling": "owner-answer-required"
+    },
+    {
+      "field": "production_blockers",
+      "indices": [
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99
+      ],
+      "handling": "owner-answer-required"
+    },
+    {
+      "field": "submit_control",
+      "indices": [
+        100
+      ],
+      "handling": "no-action"
+    }
+  ],
+  "controls": [
+    {
+      "index": 0,
+      "tag": "BUTTON",
+      "type": "button",
+      "field": "close_control",
+      "handling": "no-action"
+    },
+    {
+      "index": 1,
+      "tag": "INPUT",
+      "type": "text",
+      "field": "team_name",
+      "handling": "draft"
+    },
+    {
+      "index": 2,
+      "tag": "BUTTON",
+      "type": "button",
+      "field": "team_members",
+      "handling": "representative-review"
+    },
+    {
+      "index": 3,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "track",
+      "handling": "draft"
+    },
+    {
+      "index": 4,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "track",
+      "handling": "draft"
+    },
+    {
+      "index": 5,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "problem_statement",
+      "handling": "draft"
+    },
+    {
+      "index": 6,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "problem_statement",
+      "handling": "draft"
+    },
+    {
+      "index": 7,
+      "tag": "INPUT",
+      "type": "text",
+      "field": "viral_link",
+      "handling": "conditional-owner-answer"
+    },
+    {
+      "index": 8,
+      "tag": "TEXTAREA",
+      "type": "textarea",
+      "field": "project_description",
+      "handling": "draft"
+    },
+    {
+      "index": 9,
+      "tag": "INPUT",
+      "type": "text",
+      "field": "public_repository",
+      "handling": "unverified-gate"
+    },
+    {
+      "index": 10,
+      "tag": "INPUT",
+      "type": "text",
+      "field": "demo_video",
+      "handling": "unverified-gate"
+    },
+    {
+      "index": 11,
+      "tag": "TEXTAREA",
+      "type": "textarea",
+      "field": "meta_use",
+      "handling": "draft"
+    },
+    {
+      "index": 12,
+      "tag": "TEXTAREA",
+      "type": "textarea",
+      "field": "meta_why",
+      "handling": "draft"
+    },
+    {
+      "index": 13,
+      "tag": "INPUT",
+      "type": "text",
+      "field": "partner_feedback",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 14,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "build_likelihood",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 15,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "build_likelihood",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 16,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "build_likelihood",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 17,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "build_likelihood",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 18,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "build_likelihood",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 19,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "overall_opinion",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 20,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "overall_opinion",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 21,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "overall_opinion",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 22,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "overall_opinion",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 23,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "overall_opinion",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 24,
+      "tag": "BUTTON",
+      "type": "button",
+      "field": "media_consent",
+      "handling": "separate-consent-required"
+    },
+    {
+      "index": 25,
+      "tag": "INPUT",
+      "type": "checkbox",
+      "field": "media_consent",
+      "handling": "separate-consent-required"
+    },
+    {
+      "index": 26,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "nps_meta",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 27,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "nps_meta",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 28,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "nps_meta",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 29,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "nps_meta",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 30,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "nps_meta",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 31,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "nps_meta",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 32,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "nps_muse_code",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 33,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "nps_muse_code",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 34,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "nps_muse_code",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 35,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "nps_muse_code",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 36,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "nps_muse_code",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 37,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "nps_muse_code",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 38,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "biggest_obstacle",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 39,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "biggest_obstacle",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 40,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "biggest_obstacle",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 41,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "biggest_obstacle",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 42,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "biggest_obstacle",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 43,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "biggest_obstacle",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 44,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "biggest_obstacle",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 45,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "biggest_obstacle",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 46,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "biggest_obstacle",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 47,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "biggest_obstacle",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 48,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "biggest_obstacle",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 49,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "biggest_obstacle",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 50,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "biggest_obstacle",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 51,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "biggest_obstacle",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 52,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "biggest_obstacle",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 53,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "model_comparison",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 54,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "model_comparison",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 55,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "model_comparison",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 56,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "model_comparison",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 57,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "model_comparison",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 58,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "model_comparison",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 59,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "model_comparison",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 60,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "model_comparison",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 61,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "choosing_priorities",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 62,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "choosing_priorities",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 63,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "choosing_priorities",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 64,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "choosing_priorities",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 65,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "choosing_priorities",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 66,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "choosing_priorities",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 67,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "choosing_priorities",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 68,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "choosing_priorities",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 69,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "choosing_priorities",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 70,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "choosing_priorities",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 71,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "choosing_priorities",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 72,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "choosing_priorities",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 73,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "choosing_priorities",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 74,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "choosing_priorities",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 75,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "choosing_priorities",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 76,
+      "tag": "TEXTAREA",
+      "type": "textarea",
+      "field": "choosing_free_text",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 77,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "switching_difficulty",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 78,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "switching_difficulty",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 79,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "switching_difficulty",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 80,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "switching_difficulty",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 81,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "switching_difficulty",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 82,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "switching_difficulty",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 83,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "switching_difficulty",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 84,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "switching_difficulty",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 85,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "switching_difficulty",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 86,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "switching_difficulty",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 87,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "production_blockers",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 88,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "production_blockers",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 89,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "production_blockers",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 90,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "production_blockers",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 91,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "production_blockers",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 92,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "production_blockers",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 93,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "production_blockers",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 94,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "production_blockers",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 95,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "production_blockers",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 96,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "production_blockers",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 97,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "production_blockers",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 98,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "production_blockers",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 99,
+      "tag": "INPUT",
+      "type": "radio",
+      "field": "production_blockers",
+      "handling": "owner-answer-required"
+    },
+    {
+      "index": 100,
+      "tag": "BUTTON",
+      "type": "submit",
+      "field": "submit_control",
+      "handling": "no-action"
+    }
+  ]
+}
