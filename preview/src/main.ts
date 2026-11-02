@@ -202,7 +202,10 @@ setFlowCue(previewCue);
 // Header height drives the caption and story heading offsets so wrapped header rows never cover them (390 px).
 const headerEl=document.querySelector('header')!;new ResizeObserver(()=>document.documentElement.style.setProperty('--header-h',headerEl.getBoundingClientRect().bottom+'px')).observe(headerEl);
 // The selected-Muse card lives between the header and the footer: both heights are measured, so a long line or a short screen never lets it cover either.
-const footerEl=document.querySelector('footer');if(footerEl)new ResizeObserver(()=>document.documentElement.style.setProperty('--footer-h',footerEl.getBoundingClientRect().height+'px')).observe(footerEl);
+const footerEl=document.querySelector('footer');
+// --footer-h is the footer's real height (the card follows it). The line under the portraits (#selected-line) comes and goes when the zoom crosses 20.35, which changes that height, so the map buttons follow --footer-full-h, the height WITH the line, and stay where they are while the user zooms.
+function syncFooter(){if(!footerEl)return;const root=document.documentElement.style,line=document.getElementById('selected-line'),real=footerEl.getBoundingClientRect().height;root.setProperty('--footer-h',real+'px');let full=real;if(line&&line.hidden){line.hidden=false;full=footerEl.getBoundingClientRect().height;line.hidden=true;}root.setProperty('--footer-full-h',full+'px');}
+if(footerEl)new ResizeObserver(syncFooter).observe(footerEl);
 // The card's text scrolls when it does not fit. It gets a keyboard stop only then, so a keyboard user can read all of it.
 function syncCardScroll(){const b=document.querySelector<HTMLElement>('#muse-card .card-body');if(!b)return;if(b.scrollHeight>b.clientHeight+1){b.tabIndex=0;b.setAttribute('role','group');b.setAttribute('aria-label','Muse details (scrolls)');}else{b.removeAttribute('tabindex');b.removeAttribute('role');b.removeAttribute('aria-label');}}
 const cardEl=document.getElementById('muse-card');if(cardEl)new ResizeObserver(syncCardScroll).observe(cardEl);

@@ -112,6 +112,7 @@ export function mountReplay(body: HTMLElement, ctx: ReplayCtx): {destroy(): void
         for (const tag of e.tags) b.append(el('span', 'tag', tag.replace(/_/g, ' ')));
         b.onclick = () => ctx.showEvidence(e, b); li.append(b); rows.set(e.id, li);
       }
+      const stamp = li.querySelector('.ev-time'), now = ctx.at(e.at); if (stamp && stamp.textContent !== now) stamp.textContent = now; // a device can change zone while the page stays open
       return li;
     });
     list.replaceChildren(...children);

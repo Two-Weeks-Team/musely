@@ -293,7 +293,7 @@ export function mountWorldPanel(map: LibreMap) {
   function addRows(ul: HTMLElement, evs: Ev[]) {
     const days = evs.map(e => viewerDay(e.at)), several = new Set(days).size > 1;
     let shown = '';
-    evs.forEach((e, i) => { if (several && days[i] !== shown) { ul.append(el('li', 'ev-day', days[i])); shown = days[i]; } ul.append(row(e)); });
+    evs.forEach((e, i) => { if (several && days[i] !== shown) { const hd = el('li', 'ev-day', days[i]); hd.setAttribute('role', 'heading'); hd.setAttribute('aria-level', '3'); ul.append(hd); shown = days[i]; } ul.append(row(e)); });
   }
   function row(e: Ev) {
     const li = el('li', 'ev'); const s = sourceLabel(e);
