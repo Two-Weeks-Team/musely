@@ -63,7 +63,9 @@ export class Ledger {
     if (b.spent + b.reserved + req.maxCostUsd > this.opts.dailyCapUsd) return {ok: false, reason: 'budget'};
     if (req.tier !== 'world') {
       const challenge = req.action === 'challenge';
-      const perSession = Number(this.sql.exec(`SELECT count(*) AS n FROM reservations WHERE session = ? AND created > ? AND (outcome IS NULL OR outcome != ?) AND action ${challenge ? '=' : '!='} 'challenge'`, req.session, now - HOUR, 'rejected').toArray()[0].n);
+      // Only visitors have a separate ritual allowance; judges share one quota across every action.
+      const actionFilter = req.tier === 'visitor' ? ` AND action ${challenge ? '=' : '!='} 'challenge'` : '';
+      const perSession = Number(this.sql.exec(`SELECT count(*) AS n FROM reservations WHERE session = ? AND created > ? AND (outcome IS NULL OR outcome != ?)${actionFilter}`, req.session, now - HOUR, 'rejected').toArray()[0].n);
       if (perSession >= (challenge && req.tier === 'visitor' ? CHALLENGE_HOURLY_LIMIT : HOURLY_LIMITS[req.tier])) return {ok: false, reason: 'session_quota'};
       if (req.tier === 'visitor') {
         const perIp = Number(this.sql.exec('SELECT count(*) AS n FROM reservations WHERE ip = ? AND created > ? AND tier = ?', req.ip, now - HOUR, 'visitor').toArray()[0].n);
@@ -92,7 +94,8 @@ export class Ledger {
   }
 
   quotaFor(session: string, tier: Tier) {
-    const used = Number(this.sql.exec("SELECT count(*) AS n FROM reservations WHERE session = ? AND created > ? AND (outcome IS NULL OR outcome != ?) AND action != 'challenge'", session, this.now() - HOUR, 'rejected').toArray()[0].n);
+    const actionFilter = tier === 'judge' ? '' : " AND action != 'challenge'";
+    const used = Number(this.sql.exec(`SELECT count(*) AS n FROM reservations WHERE session = ? AND created > ? AND (outcome IS NULL OR outcome != ?)${actionFilter}`, session, this.now() - HOUR, 'rejected').toArray()[0].n);
     return {perHour: HOURLY_LIMITS[tier], usedThisHour: used};
   }
 

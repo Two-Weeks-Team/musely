@@ -239,3 +239,29 @@ test('I-12 quota boundaries: visitor 3/h and judge 120/h per session, 40 visitor
   assert.deepEqual(late.status(), before, 'the late answer changes neither spend nor live calls');
   assert.deepEqual(late.settle('missing', 0.001, 'live'), {ok: false});
 });
+
+test('I-12 judge quota: ordinary calls and ritual challenges share one 120-per-hour allowance', () => {
+  const l = ledger(1000);
+  const reserve = (id, action) => l.reserve({id, tier: 'judge', session: 'mixed-judge', ip: 'judge-ip', action, maxCostUsd: 0.001});
+  for (let i = 0; i < 120; i++) assert.equal(reserve('mixed-' + i, i % 2 ? 'challenge' : 'spotlight').ok, true);
+  assert.deepEqual(reserve('ordinary-over', 'spotlight'), {ok: false, reason: 'session_quota'});
+  assert.deepEqual(reserve('challenge-over', 'challenge'), {ok: false, reason: 'session_quota'});
+});
+
+test('I-12 judge quota display: ritual challenges count towards the reported hourly usage', () => {
+  const l = ledger();
+  for (const [i, action] of ['challenge', 'spotlight', 'challenge'].entries()) l.reserve({id: 'display-' + i, tier: 'judge', session: 'judge-display', ip: 'judge-ip', action, maxCostUsd: 0.001});
+  assert.deepEqual(l.quotaFor('judge-display', 'judge'), {perHour: 120, usedThisHour: 3});
+});
+
+test('I-12 visitor quota: the three ritual challenges stay separate from the three ordinary calls', () => {
+  const l = ledger();
+  const reserve = (id, action) => l.reserve({id, tier: 'visitor', session: 'visitor-separate', ip: 'visitor-ip', action, maxCostUsd: 0.001});
+  for (let i = 0; i < 3; i++) {
+    assert.equal(reserve('visitor-ordinary-' + i, 'spotlight').ok, true);
+    assert.equal(reserve('visitor-challenge-' + i, 'challenge').ok, true);
+  }
+  assert.deepEqual(reserve('visitor-ordinary-over', 'spotlight'), {ok: false, reason: 'session_quota'});
+  assert.deepEqual(reserve('visitor-challenge-over', 'challenge'), {ok: false, reason: 'session_quota'});
+  assert.deepEqual(l.quotaFor('visitor-separate', 'visitor'), {perHour: 3, usedThisHour: 3});
+});

@@ -68,7 +68,7 @@ nav a{margin-right:14px}
 <p><b>Enforced now:</b></p>
 <ul>
 <li><b>Visitors.</b> A Turnstile check opens a 24-hour session. Each visitor session gets 3 live Muse Spark calls per hour, counted on the server. The welcome ritual's check has its own 3 per hour, and priority spotlight requests are also 3 per hour. Visitor calls from one IP address (kept only as a keyed hash) are capped at 40 per hour, and short bursts are rate limited.</li>
-<li><b>Judges.</b> The judge link opens a session with its own allowance of 120 live calls per hour.</li>
+<li><b>Judges.</b> The judge link opens a session with its own allowance of 120 live calls per hour in total, including the welcome ritual's checks.</li>
 <li><b>Daily budget.</b> All live model calls share one daily cost cap (currently US$12, reset at 00:00 UTC). Each call reserves its maximum cost before it is made, so the cap is not exceeded. When the cap is reached, or a call fails or times out, you see a recorded replay or a scripted result instead, labelled as such, and the world's own turns fall back to its rules.</li>
 <li><b>Owners.</b> There is one real owner, the operator, whose Muse is Jolly. The team also controls two system principals, a demo peer and a directory reviewer, each with one resident Muse. They are not other people's accounts. Agent keys are issued only by the operators, for these Muses.</li>
 </ul>

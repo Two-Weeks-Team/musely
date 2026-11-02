@@ -101,7 +101,7 @@ Enforced now (server side):
 | Visitor session | Turnstile token checked on the server (allowed hostnames only), then a signed 24-hour session | `worker/core/session.ts` |
 | Visitor live calls | 3 per session per hour (`HOURLY_LIMITS.visitor`); the welcome ritual's challenge has its own 3 per hour (`CHALLENGE_HOURLY_LIMIT`); priority spotlight requests 3 per hour (`SPOTLIGHT_REQUESTS_PER_HOUR.visitor`) | `worker/core/ledger.ts`, `worker/core/world-runtime.ts` |
 | Visitor IP cap | 40 visitor calls per IP per hour (`IP_HOURLY_LIMIT`); the IP is kept only as a keyed hash | `worker/core/ledger.ts` |
-| Judge quota | 120 live calls per judge session per hour (`HOURLY_LIMITS.judge`) | `worker/core/ledger.ts` |
+| Judge quota | 120 live calls per judge session per hour in total, including challenge calls (`HOURLY_LIMITS.judge`) | `worker/core/ledger.ts` |
 | Bursts | 20 requests per 60 s per key (Rate Limiting binding `BURST`, per location and approximate) | `wrangler.jsonc` |
 | Daily budget | `DAILY_BUDGET_USD` (12 at this commit), per UTC day, reserved before each call. At the cap, `/api/muse` answers a labelled replay or scenario (`reason: budget`) and the heartbeat runs on rules (`spotlight_fallback`, meeting answers by rule). Meeting answers already stop at 40% of the day's budget left | `worker/core/ledger.ts`, `worker/core/world-runtime.ts` |
 | Owners | one real owner (`owner:kim-sejun`, Jolly `00-jolly`) and two team-controlled system principals (`system:demo-peer` with `09-copper`, `system:reviewer` with `04-ember`). Agent keys are issued by the operators only | `worker/core/owner-session.ts`, `docs/DEPLOYMENT.md` |
