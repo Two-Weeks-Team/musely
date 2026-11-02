@@ -35,8 +35,27 @@ Set with `npx wrangler secret put <NAME>` from `app/`. Values never go into the 
 | `OWNER_ROOT_JWK` | the owner's root key, `node scripts/owner-key.mjs --print-private` (`~/.config/musely/owner-root.jwk`) |
 | `SESSION_SECRET` | random, generated for this Worker |
 | `JUDGE_TOKEN` | random, generated for this Worker (kept in the owner's `~/.config/musely/app-judge-token`) |
+| `OWNER_CONTROL_TOKEN` | random (at least 32 characters), set by the owner. Exchanged at `POST /api/owner/session` for the owner session. Not the judge link |
+| `DEMO_PEER_CONTROL_TOKEN` | random, different from `OWNER_CONTROL_TOKEN`. The team-controlled demo peer principal for the two-owner checks |
 | `TURNSTILE_SECRET` | the shared Turnstile widget; its hostnames now include `musely.net` and `www.musely.net` |
 | `THREADS_APP_ID`, `THREADS_APP_SECRET` | Meta app for Threads claims; the redirect `https://musely.net/api/threads/callback` must be added to that app. A claim post made for the preview is not reused here: reuse needs this deployment's full claim text, so the owner posts once for musely.net |
+
+## Owner control (contract C06, I-02)
+
+Owner actions need an owner session, not the judge link: agent key issue/list/revoke, owner location writes, owner notification details, the owner-direct claim permalink, the owner's recorded ritual, `POST /api/owner/revoke` and `POST /api/owner/redelegate`. The judge link keeps the public reads and `POST /api/p0/run`.
+
+- `POST /api/owner/session` with `{"token": "<control token>"}` from `https://musely.net` sets the `musely_o` cookie (`Path=/api`, 1 hour, `HttpOnly; Secure; SameSite=Strict`). `GET` reads it, `DELETE` ends it. Every owner write must carry `Origin: https://musely.net`. Rotating a control token ends every session issued with the old one.
+- Principals: `owner` (`owner:kim-sejun`, Muse `00-jolly`) and `demo-peer` (`system:demo-peer`, Muse `09-copper`). The demo peer is a system principal the team controls. It is not a second real Meta account or person. Each session can act only on its own Muse; the other's revoke, re-delegate, approval or key revocation answers `403 not_your_muse`.
+- Two independent sessions for the checks: keep one cookie jar per principal, and do not put the tokens in a URL, a chat or a log. Read each token from a file the owner keeps outside the repository:
+
+```sh
+curl -sS -c owner.jar -H 'Origin: https://musely.net' -H 'content-type: application/json' --data @- https://musely.net/api/owner/session <<< "{\"token\":\"$(cat ~/.config/musely/app-owner-control-token)\"}"
+curl -sS -c peer.jar  -H 'Origin: https://musely.net' -H 'content-type: application/json' --data @- https://musely.net/api/owner/session <<< "{\"token\":\"$(cat ~/.config/musely/app-demo-peer-control-token)\"}"
+curl -sS -b peer.jar -H 'Origin: https://musely.net' -H 'content-type: application/json' -d '{"muse":"00-jolly"}' https://musely.net/api/owner/revoke   # expect 403 not_your_muse
+```
+
+- Revocation closes the Muse's pending Tasks as `cancelled` and pauses it (no spotlight turn, beat, trip or meeting). Nothing delegates it again by itself: P0 after a revocation is refused with `delegation_revoked` on every run until the owner calls `POST /api/owner/redelegate`. To reset a demo, the owner re-delegates explicitly.
+- `POST /api/owner/approvals` checks the session and the Task's Muse, then answers `501 capability_not_ready`: the approval workflow is I-07.
 
 ## Rollback
 
