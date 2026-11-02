@@ -47,7 +47,7 @@ test('unknown pin fields cannot smuggle credentials into evidence and malformed 
 });
 test('GET observation refuses redirects, omits cookie/authorization headers and bounds a stalled body',async()=>{
   let request;const r=await observeGet('https://musely.net/api/status',{fetcher:async(_u,init)=>{request=init;return new Response('{}',{headers:{'set-cookie':'never save this',authorization:'secret'}});}});
-  assert.equal(request.method,'GET');assert.equal(request.credentials,'omit');assert.equal(request.redirect,'manual');assert.equal(request.headers,undefined);
+  assert.equal(request.method,'GET');assert.equal(request.credentials,'omit');assert.equal(request.redirect,'manual');assert.deepEqual(request.headers,{Connection:'close'});
   assert.deepEqual(r.headers,{'content-type':'text/plain;charset=UTF-8'});assert.equal(r.body,'{}');
   await assert.rejects(observeGet('https://musely.net/',{maxBytes:3,fetcher:async()=>new Response('1234')}),/response_too_large/);
   await assert.rejects(observeGet('https://musely.net/',{timeoutMs:15,fetcher:async()=>new Response(new ReadableStream({start(){}}))}),/request_timeout/);
@@ -89,4 +89,76 @@ for(const cwdName of ['root','app'])for(const change of ['tracked','untracked'])
  assert.deepEqual(initial,{sourceSha:head,sourceClean:true});
  await writeFile(join(root,'app','worker',change==='tracked'?'index.ts':'untracked.ts'),'// changed fixture\n');
  assert.deepEqual(await gitSourceState(cwd),{sourceSha:head,sourceClean:false});
+});
+
+
+// These fail if transport/body errors lose their bounded receipt or expose arbitrary error text.
+test('GET fetch failure preserves only allowlisted error name/cause and fetch stage without retry',async()=>{
+ let calls=0;
+ const sensitive='DO_NOT_PERSIST_cookie_key_url_stack';
+ const error=new TypeError(sensitive,{cause:{code:'UND_ERR_SOCKET',message:sensitive,headers:{cookie:sensitive}}});
+ error.stack=sensitive;
+ await assert.rejects(observeGet('https://musely.net/api/world/events?tail=100',{fetcher:async(_url,init)=>{
+  calls++;throw error;
+ }}),e=>{assert.equal(e.message,'observation_failed');assert.deepEqual(e.failure,{errorName:'TypeError',causeCode:'UND_ERR_SOCKET',stage:'fetch'});assert.equal(JSON.stringify(e).includes(sensitive),false);return true;});
+ assert.equal(calls,1);
+});
+test('GET body failure retains body stage; unknown names/codes cannot become receipt text',async()=>{
+ for(const [error,want] of [
+  [new TypeError('private body error',{cause:{code:'ECONNRESET'}}),{errorName:'TypeError',causeCode:'ECONNRESET',stage:'body'}],
+  [{name:'DO_NOT_PERSIST_name',message:'DO_NOT_PERSIST_message',cause:{code:'DO_NOT_PERSIST_code'}},{errorName:null,causeCode:null,stage:'body'}],
+ ]){
+  let calls=0;
+  await assert.rejects(observeGet('https://musely.net/api/status',{fetcher:async()=>{calls++;return new Response(new ReadableStream({start(c){c.error(error);}}));}}),e=>{assert.equal(e.message,'observation_failed');assert.deepEqual(e.failure,want);assert.equal(JSON.stringify(e).includes('DO_NOT_PERSIST'),false);return true;});
+  assert.equal(calls,1);
+ }
+});
+test('GET deadline and byte-bound failures keep their classification and body-stage receipt',async()=>{
+ await assert.rejects(observeGet('https://musely.net/',{timeoutMs:10,fetcher:async()=>new Response(new ReadableStream({start(){}}))}),e=>{assert.equal(e.message,'request_timeout');assert.deepEqual(e.failure,{errorName:'Error',causeCode:null,stage:'body'});return true;});
+ await assert.rejects(observeGet('https://musely.net/',{maxBytes:3,fetcher:async()=>new Response('1234')}),e=>{assert.equal(e.message,'response_too_large');assert.deepEqual(e.failure,{errorName:'Error',causeCode:null,stage:'body'});return true;});
+});
+test('actual monitor round persists sanitized request failure, four successful raw receipts and failed continuity',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('./resilience-monitor.mjs',import.meta.url),'utf8');
+ const roundSource=source.slice(source.indexOf('async function round() {'),source.indexOf('\nawait round();'));
+ const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
+ const fixture=sample(0),cfg=Buffer.from('{}'),localPin={...pin,configSha256:(await import('./lib/resilience-io.mjs')).sha256(cfg),htmlSha256:(await import('./lib/resilience-io.mjs')).sha256('{}')};
+ const tracker=new Continuity(localPin),writes=[],calls=[];
+ const actualObserve=async(url,options)=>observeGet(url,{...options,fetcher:async(u,init)=>{
+  calls.push({url:u,method:init.method,headers:init.headers});
+  if(new URL(u).pathname==='/api/world/events')throw new TypeError('DO_NOT_PERSIST_message',{cause:{code:'UND_ERR_SOCKET',headers:{cookie:'DO_NOT_PERSIST_cookie'}}});
+  const data={'/':'{}','/api/status':JSON.stringify(fixture.status),'/api/world':JSON.stringify(fixture.world),'/api/world/run':JSON.stringify(fixture.run)};
+  return new Response(data[new URL(u).pathname],{headers:{'content-type':'application/json'}});
+ }});
+ const run=new AsyncFunction('tracker','pin','start','identity','gitSourceState','source','readFile','config','observeGet','sha256','writeFile','join','out','appendFile','console','const interrupted=false;'+roundSource+';await round();');
+ await run(tracker,localPin,performance.now(),async()=>fixture.identity,async()=>({sourceSha:pin.releaseSha,sourceClean:true}),'fixture-source',async()=>cfg,'fixture-config',actualObserve,(await import('./lib/resilience-io.mjs')).sha256,async(path,text)=>writes.push({path,text}),join,'fixture-out',async(path,text)=>writes.push({path,text}),{log(){}});
+ const raw=JSON.parse(writes.find(w=>w.path.endsWith('raw-00000.json')).text),failed=raw.requests.find(r=>r.error);
+ assert.equal(raw.requests.length,5);assert.equal(raw.requests.filter(r=>r.status===200).length,4);
+ assert.equal(failed.error,'observation_failed');assert.deepEqual(failed.failure,{errorName:'TypeError',causeCode:'UND_ERR_SOCKET',stage:'fetch'});
+ assert.equal(failed.method,'GET');assert.equal(failed.url,'https://musely.net/api/world/events?tail=100');
+ assert.equal(JSON.stringify(writes).includes('DO_NOT_PERSIST'),false);
+ assert.equal(calls.length,5);assert.ok(calls.every(r=>r.method==='GET'&&r.headers.Connection==='close'));
+ assert.equal(tracker.summary().result,'failed');assert.equal(tracker.failures[0].reason,'observation_failed');
+});
+
+
+test('GET sanitizer checks and stores the same single-read name/code primitives for fetch and body errors',async()=>{
+ for(const stage of ['fetch','body']){
+  let names=0,codes=0;const cause={},original=new Error('DO_NOT_PERSIST_message',{cause});
+  Object.defineProperty(original,'name',{get(){return ++names===1?'TypeError':'DO_NOT_PERSIST_name';}});
+  Object.defineProperty(cause,'code',{get(){return ++codes===1?'UND_ERR_SOCKET':'DO_NOT_PERSIST_code';}});
+  const fetcher=async()=>{if(stage==='fetch')throw original;return new Response(new ReadableStream({start(c){c.error(original);}}));};
+  await assert.rejects(observeGet('https://musely.net/api/status',{fetcher}),e=>{assert.deepEqual(e.failure,{errorName:'TypeError',causeCode:'UND_ERR_SOCKET',stage});assert.equal(JSON.stringify(e).includes('DO_NOT_PERSIST'),false);return true;});
+  assert.equal(names,1);assert.equal(codes,1);
+ }
+});
+test('GET sanitizer contains throwing name/cause/code accessors without leaking their replacement error',async()=>{
+ for(const stage of ['fetch','body'])for(const field of ['name','cause','code']){
+  const original=new Error('DO_NOT_PERSIST_original'),fail=()=>{throw Error('DO_NOT_PERSIST_accessor');};
+  Object.defineProperty(original,'name',field==='name'?{get:fail}:{value:'TypeError'});
+  if(field==='cause')Object.defineProperty(original,'cause',{get:fail});
+  else {const cause={};Object.defineProperty(cause,'code',field==='code'?{get:fail}:{value:'UND_ERR_SOCKET'});original.cause=cause;}
+  const fetcher=async()=>{if(stage==='fetch')throw original;return new Response(new ReadableStream({start(c){c.error(original);}}));};
+  await assert.rejects(observeGet('https://musely.net/api/status',{fetcher}),e=>{assert.equal(e.message,'observation_failed');assert.deepEqual(e.failure,{errorName:field==='name'?null:'TypeError',causeCode:field==='name'?'UND_ERR_SOCKET':null,stage});assert.equal(JSON.stringify(e).includes('DO_NOT_PERSIST'),false);return true;});
+ }
 });
