@@ -43,7 +43,7 @@ test('without a zone argument the time-of-day filter uses the viewer\'s own zone
 });
 test('fixture is a scoped, ordered scenario with catalog ids and genuine recorded model references', () => {
   const run = read('../fixtures/replay-run.json'), library = read('../fixtures/replay-library.json');
-  assert.equal(run.label, 'SCRIPTED · PREVIEW FIXTURE'); assert.equal(run.day, '2026-11-01'); assert.equal(run.durationSec, 1800);
+  assert.equal(run.label, 'SCRIPTED · PREVIEW FIXTURE'); assert.equal(run.day, '2026-11-01'); assert.equal(run.durationSec, 1800); assert.equal(run.startAt, 1793552400000); // layout.browser.js checks the clock against this start
   assert.match(run.note, /not.*real|not.*actual/i); assert.ok(run.events.length >= 24 && run.events.length <= 30);
   assert.equal(new Intl.DateTimeFormat('en-US', {timeZone: 'America/Los_Angeles', hour: 'numeric', hourCycle: 'h23'}).format(run.startAt), '09');
   assert.equal(new Set(run.events.map(e => e.id)).size, run.events.length);

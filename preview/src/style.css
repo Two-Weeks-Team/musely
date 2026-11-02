@@ -92,7 +92,7 @@ header :is(.place,.spark-status,.spot-chip,.entry-open,.quiet){white-space:nowra
 #story-heading{top:calc(var(--header-h,70px) + 22px)}
 .commons-note{display:none}
 }
-#muse-card{bottom:calc(var(--footer-h,118px) + 42px);max-height:calc(100% - var(--header-h,100px) - var(--footer-h,118px) - 66px)}
+#muse-card{bottom:calc(var(--footer-h,118px) + 42px);max-height:calc(100% - var(--header-h,100px) - var(--footer-h,118px) - 66px);overflow-y:auto;overscroll-behavior:contain}
 /* The card is a column: the heading and the two buttons keep their place and only the text between them scrolls, so Follow and the meet-up plan are always in reach. */
 #muse-card:not([hidden]){display:flex;flex-direction:column}
 #muse-card .muse-heading,#muse-card .card-actions{flex:none}
@@ -103,22 +103,23 @@ header :is(.place,.spark-status,.spot-chip,.entry-open,.quiet){white-space:nowra
 #muse-card{bottom:calc(var(--footer-h,134px) + 39px);max-height:calc(100% - var(--header-h,100px) - var(--footer-h,134px) - 61px)}
 .map-tools,#loading{bottom:calc(var(--footer-h,134px) + 39px)}
 }
-/* A phone playing the story: the meet-up line sits under the header, so the card leaves room for it (world mode has no such line). */
-@media(max-width:700px) and (max-height:700px) and (min-height:521px){body:not([data-mode=world]) #muse-card{max-height:calc(100% - var(--header-h,100px) - var(--footer-h,134px) - 61px - 60px)}}
+/* A phone playing the story: while the meet-up line is on screen it sits under the header, so the card leaves room for it. */
+@media(min-width:360.02px) and (max-width:700px) and (max-height:700px) and (min-height:520.02px),(max-width:360px) and (min-height:600.02px) and (max-height:700px){body:not([data-mode=world]):has(#story-candidate:not([hidden])) #muse-card{max-height:calc(100% - var(--header-h,100px) - var(--footer-h,134px) - 61px - 60px)}}
 /* A small phone has no room for the chapter title and speaker; the meet-up line (time, place, who said yes) stays. Under 520 px tall the whole heading goes and that line moves into the card strip. */
 @media(max-width:700px) and (max-height:700px){#story-speaker,#story-title{display:none}}
 @media(max-height:680px){#muse-card{padding:11px 12px}#muse-card h3{margin:8px 0 3px}#muse-card .card-actions{margin-top:8px}}
-/* Under 520 px tall the card becomes one compact strip (name and the two buttons) so Follow and the meet-up plan stay reachable. */
-@media(max-height:520px){
+/* Under 520 px tall, or on a phone at most 360 px wide and 600 px tall (the header and footer leave the card a sliver there), the card becomes one compact strip (name and the two buttons) so Follow and the meet-up plan stay reachable. */
+@media(max-height:520px),(max-width:360px) and (max-height:600px){
 #muse-card:not([hidden]){flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:7px 10px;border-radius:14px;overflow-y:auto}
-header :is(.spark-status,.spot-chip){display:none}
 #muse-card .muse-heading{gap:8px}
 #muse-card #avatar-large,#muse-card #muse-role,#muse-card .presence,#muse-card .card-body{display:none}
-#muse-card .card-candidate:not([hidden]){display:block;order:2;flex-basis:100%;margin:0;font-size:10px;line-height:1.4;color:#FFD98A}
+#muse-card .card-candidate:not([hidden]){display:block;order:2;flex-basis:100%;min-height:0;margin:0;font-size:10px;line-height:1.4;color:#FFD98A}
 #story-heading{display:none}
 #muse-card .muse-heading h2{font-size:15px;margin:0}
 #muse-card .card-actions{margin:0}
 }
+/* A short phone has no room for the connection chips and the tagline in the header; a low desktop window keeps them. */
+@media(max-height:520px) and (max-width:900px){header :is(.spark-status,.spot-chip,.place){display:none}}
 /* Short landscape: the map buttons lie in a row (a column would reach the header) and the card takes the space beside them. */
 @media(max-height:520px) and (min-width:560px){
 .map-tools{flex-direction:row;align-items:center;padding:4px}
@@ -128,4 +129,5 @@ header :is(.spark-status,.spot-chip){display:none}
 }
 @media(max-width:360px){#portraits{gap:3px}#portraits>*{flex:1 1 0;min-width:0}}
 /* Short landscape tablets: the story heading is centred on the screen and reaches into the selected-Muse card (left 28 px, 308 px wide), so it moves into the free area to the right of the card. */
-@media(min-width:700.02px) and (max-width:1180px) and (min-height:521px) and (max-height:700px){#story-heading{left:calc((100% + 336px)/2);max-width:calc(100% - 336px - 28px)}}
+@media(min-width:700.02px) and (max-width:1180px) and (min-height:520.02px) and (max-height:700px){#story-heading{left:calc((100% + 336px)/2);max-width:calc(100% - 336px - 28px)}}
+.ev-day{list-style:none;padding:9px 2px 3px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#A9B3C7}

@@ -289,6 +289,12 @@ export function mountWorldPanel(map: LibreMap) {
   }
   evidence.addEventListener('toggle', ev => { if ((ev as ToggleEvent).newState === 'closed') void returnFromEvidence(); });
 
+  // A list that crosses the viewer's midnight gets a day heading per group, so 00:12 above 23:58 reads as the next day, not as a jump back.
+  function addRows(ul: HTMLElement, evs: Ev[]) {
+    const days = evs.map(e => viewerDay(e.at)), several = new Set(days).size > 1;
+    let shown = '';
+    evs.forEach((e, i) => { if (several && days[i] !== shown) { ul.append(el('li', 'ev-day', days[i])); shown = days[i]; } ul.append(row(e)); });
+  }
   function row(e: Ev) {
     const li = el('li', 'ev'); const s = sourceLabel(e);
     const b = el('button', 'ev-btn'); b.type = 'button'; b.dataset.eventId = e.id; b.onclick = () => openEvidence(e, b);
@@ -319,7 +325,7 @@ export function mountWorldPanel(map: LibreMap) {
     const draw = () => {
       ul.replaceChildren();
       const shown = hl.filter(e => matchFilter(e, hf));
-      for (const e of shown) ul.append(row(e));
+      addRows(ul, shown);
       status.textContent = shown.length ? `${shown.length} moment${shown.length === 1 ? '' : 's'}` : 'No moment matches. Clear the filters.';
       for (const c of chips) c.setAttribute('aria-pressed', String((c.dataset.tag ?? '') === hf.tag));
     };
@@ -354,7 +360,7 @@ export function mountWorldPanel(map: LibreMap) {
       const evH = health.get('events'), s = resState(evH, events.length > 0);
       if (s === 'error') { body.append(stateCard('Feed unavailable', `${evH?.error} · there are no events to show yet.`, () => void refresh())); return; }
       if (s === 'stale') body.append(staleNote(`The feed could not be refreshed (${evH?.error}). Showing events up to ${events.length ? at(events[events.length - 1].at) : '—'}.`, () => void refresh()));
-      const ul = el('ul', 'ev-list'); for (const e of events.slice(-80).reverse()) ul.append(row(e));
+      const ul = el('ul', 'ev-list'); addRows(ul, events.slice(-80).reverse());
       body.append(ul.childNodes.length ? ul : el('p', 'muted', 'Waiting for the next heartbeat…'));
     } else if (tab === 'highlights') {
       const r = await load<Ev[]>('highlights', '/api/world/highlights?limit=200');
