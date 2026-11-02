@@ -48,7 +48,7 @@ async function round() {
   console.log(JSON.stringify({sample:index,at:new Date(at).toISOString(),issues:verdict.issues,recovered:verdict.recovered}));
 }
 await round();
-while(!interrupted && performance.now()-start<tracker.first+FOUR_HOURS_MS) {
+while(!interrupted && tracker.needsObservation()) {
   await new Promise(r=>{const t=setTimeout(r,Math.min(60000,Math.max(1,tracker.first+FOUR_HOURS_MS-(performance.now()-start))));const stop=()=>{clearTimeout(t);r();};process.once('SIGINT',stop);process.once('SIGTERM',stop);setTimeout(()=>{process.removeListener('SIGINT',stop);process.removeListener('SIGTERM',stop);},61000).unref();});
   if(!interrupted)await round();
 }

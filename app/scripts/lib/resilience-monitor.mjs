@@ -21,7 +21,9 @@ export class Continuity {
       if(s.identity?.deployId!==p.deployId || JSON.stringify([...(s.identity?.versionIds??[])].sort())!==JSON.stringify([...p.versionIds].sort()) || s.sourceSha!==p.releaseSha || !s.sourceClean || s.configSha256!==p.configSha256 || s.htmlSha256!==p.htmlSha256)issues.push('identity_changed');
       const w=s.world;
       const budget=s.status?.budget,model=s.status?.model;
-      if(!w?.worldId || !/^\d{4}-\d{2}-\d{2}$/.test(w.day??'') || ![w.tick,w.version,w.lastTickAt].every(Number.isFinite) || !budget || ![budget.capUsd,budget.spentUsd,budget.reservedUsd,budget.remainingUsd,budget.liveCalls].every(n=>Number.isFinite(n)&&n>=0) || typeof model?.connected!=='boolean' || typeof model?.live!=='boolean' || !Array.isArray(s.events))issues.push('invalid_response');
+      const run=s.run,nonnegativeInt=n=>Number.isSafeInteger(n)&&n>=0;
+      const validRun=run && run.worldId===w?.worldId && ['runId','schemaVersion','engineVersion','harnessVersion','catalogVersion','seed'].every(k=>typeof run[k]==='string'&&run[k].length>0) && Number.isFinite(run.startedAt) && run.startedAt<=s.at+30000 && hex(run.initialSnapshot?.hash,64) && nonnegativeInt(run.initialSnapshot?.bytes) && hex(run.stateHash,64) && nonnegativeInt(run.events) && nonnegativeInt(run.inputs?.count) && nonnegativeInt(run.inputs?.lastSeq) && (run.inputs.count===0 ? run.inputs.lastSeq===0&&run.inputs.lastAt===null : run.inputs.lastSeq>=run.inputs.count&&Number.isFinite(run.inputs.lastAt)&&run.inputs.lastAt>=run.startedAt&&run.inputs.lastAt<=s.at+30000);
+      if(!w?.worldId || !/^\d{4}-\d{2}-\d{2}$/.test(w.day??'') || ![w.tick,w.version,w.lastTickAt].every(Number.isFinite) || !budget || ![budget.capUsd,budget.spentUsd,budget.reservedUsd,budget.remainingUsd,budget.liveCalls].every(n=>Number.isFinite(n)&&n>=0) || typeof model?.connected!=='boolean' || typeof model?.live!=='boolean' || !Array.isArray(s.events) || !validRun)issues.push('invalid_response');
       else {
         if(s.at-w.lastTickAt>180000 || w.lastTickAt>s.at+30000)issues.push('world_stalled');
         const old=this.lastWorld;
@@ -37,6 +39,7 @@ export class Continuity {
     this.samples++;this.last={monoMs:s.monoMs,at:s.at};
     return {issues,recovered};
   }
+  needsObservation() {return this.last===null || this.last.monoMs-this.first<FOUR_HOURS_MS;}
   summary() {
     const elapsedMs=this.last ? this.last.monoMs-this.first : 0;
     return {result:this.failures.length?'failed':elapsedMs>=FOUR_HOURS_MS?'observed_continuous':'incomplete',faultAcceptance:'not_measured',elapsedMs,samples:this.samples,recoveries:this.recoveries,failures:[...this.failures]};

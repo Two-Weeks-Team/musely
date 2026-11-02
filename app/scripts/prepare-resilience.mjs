@@ -6,12 +6,12 @@ import {execFileSync} from 'node:child_process';
 import {isolationConfig} from './lib/resilience-isolation.mjs';
 import {sha256} from './lib/resilience-io.mjs';
 const args=process.argv.slice(2),get=k=>args[args.indexOf(k)+1];
-if(!['--name','--origin','--fault-origin','--out'].every(k=>args.includes(k))) {
-  console.log('Prepare only: node scripts/prepare-resilience.mjs --name musely-d03-CASE --origin https://musely-d03-CASE.ACCOUNT.workers.dev --fault-origin https://musely-d03-fault.ACCOUNT.workers.dev --mode 503 --out /new/external/config-directory');process.exit(args.includes('--help')?0:2);
+if(!['--name','--origin','--fault-origin','--account-subdomain','--out'].every(k=>args.includes(k))) {
+  console.log('Prepare only: node scripts/prepare-resilience.mjs --name musely-d03-CASE --account-subdomain ACCOUNT --origin https://musely-d03-CASE.ACCOUNT.workers.dev --fault-origin https://musely-d03-fault.ACCOUNT.workers.dev --mode 503 --out /new/external/config-directory');process.exit(args.includes('--help')?0:2);
 }
 const app=resolve(dirname(fileURLToPath(import.meta.url)),'..'),out=resolve(get('--out'));
 if(out===app || out.startsWith(app+'/'))throw Error('Prepare outside the product checkout');
-const cfg=isolationConfig(JSON.parse(await readFile(join(app,'wrangler.jsonc'),'utf8')),{name:get('--name'),origin:get('--origin'),faultOrigin:get('--fault-origin'),mode:args.includes('--mode')?get('--mode'):'503',app,cap:args.includes('--cap')?Number(get('--cap')):0.05});
+const cfg=isolationConfig(JSON.parse(await readFile(join(app,'wrangler.jsonc'),'utf8')),{name:get('--name'),accountSubdomain:get('--account-subdomain'),origin:get('--origin'),faultOrigin:get('--fault-origin'),mode:args.includes('--mode')?get('--mode'):'503',app,cap:args.includes('--cap')?Number(get('--cap')):0.05});
 const [workerBundle,html]=await Promise.all([readFile(cfg.main),readFile(join(app,'dist/index.html'))]);
 const faultName=new URL(get('--fault-origin')).hostname.split('.')[0];
 const stub={$schema:cfg.$schema,name:faultName,account_id:cfg.account_id,main:join(app,'scripts/fixtures/model-fault-worker.mjs'),compatibility_date:cfg.compatibility_date,workers_dev:true,preview_urls:false,routes:[],observability:{enabled:false}};

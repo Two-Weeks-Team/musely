@@ -22,7 +22,7 @@ This work changes scripts and documentation only. The product entry point, route
 `scripts/prepare-resilience.mjs` writes new local configs and a preparation receipt. It performs no authentication, deployment, secret write or network request. It requires dedicated `musely-d03-*.workers.dev` hosts, refuses production/provider URLs and product Worker names, clears routes, uses a new rate-limit namespace, and keeps DO bindings local to the new script. It uses the frozen `.wrangler/dry-run/index.js` with `no_bundle: true` and built `dist/`; it does not rebuild or wrap them with fault conditionals. Run the release build/dry-run first. Preparation hashes the exact prebuilt Worker and HTML bytes; the operator still attests which source/config produced them.
 
 ```sh
-node scripts/prepare-resilience.mjs --name musely-d03-CASE \
+node scripts/prepare-resilience.mjs --name musely-d03-CASE --account-subdomain ACCOUNT \
   --origin https://musely-d03-CASE.ACCOUNT.workers.dev \
   --fault-origin https://musely-d03-fault.ACCOUNT.workers.dev \
   --mode 503 --cap 0.05 --out /new/external/d03-case
@@ -88,3 +88,5 @@ The task handoff records the exact tested commit and logs under the coordinator'
 The alarm test imports the actual WorldDO and uses the same test-only `cloudflare:workers` base-class adapter as worker-entry.test.mjs. Its SQL transactions and alarm scheduling callbacks are local. It tests the production alarm's duplicate and finally/re-arm branches; it does not claim workerd lifecycle or Cloudflare eviction proof.
 
 References checked for the test Worker/config tooling: [Cloudflare Workers best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/), [versions and deployments](https://developers.cloudflare.com/workers/versions-and-deployments/), installed Wrangler4.154.0 schema/CLI and retrieved workers-types5.20261102.1. No production runtime API is added.
+
+Account isolation requires the operator-attested account subdomain (verified against the configured account using the read-only Workers subdomain API). Both dedicated origins must use it, and product/stub Worker names must differ. Observation termination uses the last recorded sample, not a round finishing after the deadline; run summaries must have a valid matching world and required versions, counters and snapshot hashes.

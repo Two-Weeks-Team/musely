@@ -2,7 +2,7 @@ import {test} from 'node:test';import assert from 'node:assert/strict';import {r
 import {isolationConfig} from './lib/resilience-isolation.mjs';
 import stub from './fixtures/model-fault-worker.mjs';
 const original=JSON.parse(await readFile(new URL('../wrangler.jsonc',import.meta.url),'utf8'));
-const opts={name:'musely-d03-check',origin:'https://musely-d03-check.example.workers.dev',faultOrigin:'https://musely-d03-fault.example.workers.dev',mode:'503',app:'/frozen/app'};
+const opts={name:'musely-d03-check',origin:'https://musely-d03-check.example.workers.dev',faultOrigin:'https://musely-d03-fault.example.workers.dev',mode:'503',app:'/frozen/app',accountSubdomain:'example'};
 test('isolated config cannot retain production routes, worker name, DO script linkage, rate namespace or model origin',()=>{
  const before=JSON.stringify(original),cfg=isolationConfig(original,opts);
  assert.equal(cfg.name,'musely-d03-check');assert.deepEqual(cfg.routes,[]);assert.equal(cfg.workers_dev,true);assert.equal(cfg.main,'/frozen/app/.wrangler/dry-run/index.js');assert.equal(cfg.no_bundle,true);
@@ -17,4 +17,8 @@ test('fault upstream is inert outside its explicit test modes and never reflects
  assert.equal((await call('/429/chat/completions')).status,429);assert.equal((await call('/503/chat/completions')).status,503);
  const bad=await call('/bad-output/chat/completions');assert.equal(bad.status,200);assert.ok(!(await bad.text()).includes('secret-marker'));
  assert.equal((await call('/chat/completions')).status,404);assert.equal((await stub.fetch(new Request('https://test.invalid/429/chat/completions'))).status,405);
+});
+
+test('product and stub need distinct Worker names in the attested account subdomain',()=>{
+ for(const changed of [{faultOrigin:'https://musely-d03-check.other.workers.dev'},{faultOrigin:'https://musely-d03-fault.other.workers.dev'},{accountSubdomain:'other'},{accountSubdomain:undefined}])assert.throws(()=>isolationConfig(original,{...opts,...changed}));
 });
