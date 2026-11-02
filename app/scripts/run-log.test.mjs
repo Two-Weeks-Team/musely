@@ -254,14 +254,14 @@ test('AC3 highlights by period with a server cursor reach beyond 300, then Muse,
   }
   const page = q => rt.highlights(300, q);
   const pages = []; let before = null;
-  for (;;) { const p = page({before}); pages.push(p); if (p.length < 300) break; before = p.at(-1).seq; }
+  for (let k = 0; ; k++) { assert.ok(k < 10, 'the cursor must move to older rows'); const p = page({before}); pages.push(p); if (p.length < 300) break; before = p.at(-1).seq; }
   const got = pages.flat();
   assert.equal(pages.length, 3); assert.equal(got.length, 700, 'the cursor reaches every highlight'); assert.equal(new Set(got.map(e => e.id)).size, 700);
   assert.ok(got.every((e, i) => !i || e.seq < got[i - 1].seq), 'newest first, no overlap');
   // Period: day 2 only.
   const from = T0 + DAY, to = T0 + 2 * DAY;
   const d2 = []; before = null;
-  for (;;) { const p = page({before, from, to}); d2.push(...p); if (p.length < 300) break; before = p.at(-1).seq; }
+  for (let k = 0; ; k++) { assert.ok(k < 10, 'the cursor must move to older rows'); const p = page({before, from, to}); d2.push(...p); if (p.length < 300) break; before = p.at(-1).seq; }
   assert.equal(d2.length, 350); assert.ok(d2.every(e => e.at >= from && e.at < to));
   // The panel's filter on the loaded pages: period + Muse + place + tag (AND), Muse matching either side.
   const f = {...EMPTY_FILTER, from, to, muse: '02-moss', place: 'commons:garden', tag: 'impostor_rejected'};

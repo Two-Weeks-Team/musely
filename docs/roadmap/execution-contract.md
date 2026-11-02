@@ -97,6 +97,17 @@
 - 주인 개입 = owner approval 요청 이벤트 수, 일상 인사/거래 제안과 확정 약속을 분리한다. 서명 검증 = 실제 검사 통과/거부 이벤트 수. 모델 호출 = unique requestId의 live/replay 수(모델 없는 검증 이벤트 제외).
 - 능력 변화 = 실제 상태 전후가 달라진 ability_change 이벤트 수. 차단 = injection_blocked 및 범위 밖 거부 이벤트 수를 각각 표시한다. 이름이 같은 이벤트의 중복 전달은 id로 제거한다.
 
+- 2026-11-02 구현 대응 (I-10 #58, `feature/i10-run-log`): 위 C08·C09 원문과 원래 SHA·줄 참조는 당시 계약으로 남기고, 실제 구현만 적는다.
+  - 위치: `preview/worker/core/run-log.ts`가 아니라 본 제품 `app/worker/core/run-log.ts`다. 재집계 oracle은 `app/worker/core/autonomy-oracle.ts`, 패널 집계는 `app/src/ui/autonomy.ts`이고 `app/scripts/run-log.test.mjs`가 둘을 같은 이벤트로 비교한다.
+  - RunRecord는 한 행(`runs`)과 커밋 순서의 입력 행(`run_inputs`)으로 나눠 저장한다. `runs`: runId, worldId, schemaVersion(`run-log-1`), engineVersion(`ENGINE_VERSION`), harnessVersion·catalogVersion(HARNESSES, ITEMS+BEATS+PLACES의 JCS SHA-256 앞 12자리), seed(시작 시점 day seed), initialSnapshot(공개 상태 본문과 해시), startedAt, origin, prevRunId, legacy. `RunRecord.inputs`는 `run_inputs`, `RunRecord.events`는 `events.run_id`로 조회한다.
+  - run은 새 세계(`fresh`), 버전이 바뀐 시작(`version_change`), 그리고 run log 이전부터 돌던 세계의 첫 시작(`pre-run-log`, 한 번)에 연다. pre-run-log run의 스냅샷은 run log 시작 시점 상태이고, 그 이전 이벤트(`run_id` NULL)는 이 run에 속하며 legacy에 개수를 남긴다. 그 이벤트들의 코드 버전·모델 입력은 기록되지 않았다.
+  - `run_inputs` 한 행 = 한 커밋: kind(tick/command/refusal/external), label, day, tick, 버전 전후, 공개 상태 해시 전후(beforeHash/afterHash), I-06 아이템 이력 head·seq, 이벤트 수, 입력(tick: 스포트라이트·만남 응답의 출력, source, 사용 여부, model/requestId/responseId·replayOf id. command: actorId, commandId, action, payloadHash, 가린 payload, 결과). 프롬프트는 저장하지 않는다. 이벤트는 `run_id`·`input_seq`로 자기 커밋 행을 가리킨다.
+  - 저장하지 않는 것: 웹캠 프레임(세계에 들어오지 않고 payload의 `frames` 등은 가린다), 주인 위치(cell·preset·target, Muse의 anchor cell), 만남 후보의 시간·장소(inbox candidate, 주인 알림 detail). 해시도 이 값들을 뺀 공개 상태에 대해 계산한다.
+  - actorOrigin(C03): encounter는 개시자가 연결된 Muse면 `connected`, 아니면 `system`. MCP 쓰기(`actor: 'your Muse'`)는 `connected`, 방문자 스포트라이트 요청·맞이 의식은 `trial`(주인 세션 의식은 `connected`). 그 밖의 이벤트는 커밋 시점에 `system`으로 채운다. 이전 패널 값 `muse`/`person`은 계약 값이 아니므로 미기록으로 센다.
+  - beforeHash/afterHash: 각 커밋의 공개 세계 상태 해시이고, `ability_change` 태그 이벤트에 그 커밋의 값을 넣는다. Muse 하나의 능력 상태가 아니라 세계 상태 단위이므로, 상태를 실제로 바꾼 커밋의 태그 이벤트는 모두 변화로 센다.
+  - 집계 중복 제거: eventId는 처음 전달된 것, encounter는 encounterId, 서명 검사는 verificationId(있을 때, 로그 순서의 첫 이벤트)로 한 번씩 센다. 분모 0·증거 없음은 미측정이다.
+  - API: `GET /api/world/run`(현재 run 요약, `runId`·`snapshot=1`로 특정 run과 스냅샷 본문), `GET /api/world/run/inputs?runId&since&limit`, `GET /api/world/event?id`(이벤트·커밋 행·run), `GET /api/world/autonomy?from&to|day&runId`(최대 7일, 기본 최근 24시간, 60,000건 초과 시 partial, 여러 run이면 run별 값도 준다), `GET /api/world/highlights?limit&before&from&to`(최대 300건/페이지, `before`가 cursor).
+
 ## C10 — 검증과 종료 증거
 
 - 공통 완료 기록: issueId, owner, commitSha, PR, environment, deployId(배포시), URL, configVersion, testedAt, command, result, artifact, limitations. 빈 증거/skip은 PASS가 아니다. 기존 완료 PR은 재사용 근거일 뿐 남은 수용 기준을 자동 통과시키지 않는다.
