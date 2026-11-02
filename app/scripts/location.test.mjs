@@ -312,11 +312,28 @@ test('AC4 always-on line: virtual location (demo), the owner destination and the
   // Mounted in the header for the whole page (story and world), and no style hides it.
   const panel = readFileSync(new URL('../src/ui/world-panel.ts', import.meta.url), 'utf8'), css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
   assert.match(panel, /mountLocationChip\(header, spot\)/);
-  assert.match(panel, /locChip\.update\(lr\)/);
+  // The chip's answer is applied when it arrives; the rest of the refresh does not wait for it (and nothing is applied during a replay).
+  assert.match(panel, /void load<OwnerLocationView>\('location', '\/api\/owner\/location'\)\.then\(lr => \{ if \(!isolation\.replay\) locChip\.update\(lr\); \}\)/);
+  assert.ok(!/await\s+locReq|await load<OwnerLocationView>/.test(panel), 'refresh does not wait for the location answer');
+  // The open Location tab is drawn again on polls and after a move (refresh), unless one of its controls is in use.
+  assert.match(panel, /tab === 'location' && !ret\) \{\n\s+const f = document\.activeElement, inUse = /);
   assert.ok(!/\.loc-chip[^{}]*\{[^}]*display:\s*none/.test(css) && !/loc-chip\s*\{\s*display:\s*none/.test(css), 'no rule hides the location chip');
   // The map-error note sits under the measured header (with the chip in it), not at a fixed 92 px (scripts/location.browser.js measures it).
   const tops = [...css.matchAll(/#network-note\{([^}]*)\}/g)].map(m => m[1]).filter(r => /(^|;)top:/.test(r));
   assert.ok(tops.at(-1)?.includes('top:calc(var(--header-h'), 'the last #network-note top places it under the header: ' + tops.at(-1));
+});
+
+test('AC4 privacy and MCP docs say what the code does: device location stays on the device; rule refusals are stored command results', () => {
+  const privacy = readFileSync(new URL('../static/privacy.html', import.meta.url), 'utf8').replace(/\s+/g, ' ');
+  assert.ok(privacy.includes(`nearest of eight preset areas (the HQ commons and seven Bay Area places) within ${NEIGHBORHOOD_KM} km`), 'radius and preset count match location.ts');
+  assert.equal(PRESETS.length, 8);
+  assert.ok(privacy.includes('The coordinates are not sent to Musely and not stored, and the result does not verify a neighborhood'));
+  assert.ok(privacy.includes('<code>POST /api/owner/location</code> with <code>source: "gps"</code>') && privacy.includes('keeps that cell as the owner location and does not store the coordinates'));
+  for (const f of ['../worker/core/mcp-tools.ts', '../docs/MCP_TOOLS.md']) {
+    const doc = readFileSync(new URL(f, import.meta.url), 'utf8');
+    assert.ok(/A call the world rules refuse \(for example `?no_taxi_token`? or `?already_here`?\) is a stored result/.test(doc) && /use a new `?command_id`?/.test(doc), f);
+    assert.ok(!doc.includes('A refused call spends nothing'), f + ': the old, too broad sentence is gone');
+  }
 });
 
 test('AC4 GPS mapping: only the nearest preset within the neighborhood radius survives; outside the Bay it is null', () => {
@@ -363,6 +380,7 @@ test('AC4 GPS driver with a fake navigator.geolocation: coarse options, one requ
     assert.equal(asked, 1, 'a second press while asking sends no second request');
     assert.equal(pending.opts.enableHighAccuracy, false);
     assert.equal(timers[0].ms, GEO_WATCHDOG_MS);
+    assert.equal(GEO_WATCHDOG_MS, 60_000, 'a minute for a person to answer the browser prompt');
     pending.fail({code: 1});
     assert.equal(flow.state.status, 'denied');
     flow.request(); pending.ok({coords: {latitude: 37.4275, longitude: -122.1697}});
