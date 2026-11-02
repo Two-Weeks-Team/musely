@@ -163,3 +163,32 @@ test('the common finalizer freshly collects application metrics for every kind a
   report.metrics={errors:[]};await finalizeMeasurement(report,null);assert.equal(report.measuredChecksPass,false);assert.equal(report.metrics,null);
  }
 });
+
+
+test('managed edge code is accepted only with an explicit exact vendor pin',async()=>{
+ const {externalCodePaths}=await import('./device-metrics.mjs');
+ const url='https://static.cloudflareinsights.com/beacon.min.js/v123abc',file={url,sha256:'a'.repeat(64),bytes:100};
+ const html='<script src="'+url+'"></script>';
+ assert.throws(()=>externalCodePaths(html,'https://musely.net'),/not_pinned/);
+ assert.deepEqual(externalCodePaths(html,'https://musely.net',[file]),[]);
+ for(const bad of [{...file,sha256:'bad'},{...file,bytes:0},{...file,url:url+'?key=x'},{...file,url:'https://other.invalid/beacon.min.js/v123abc'}])assert.throws(()=>externalCodePaths(html,'https://musely.net',[bad]),/not_pinned/);
+ assert.throws(()=>externalCodePaths(html.replace('v123abc','v456def'),'https://musely.net',[file]),/not_pinned/);
+});
+
+test('managed telemetry stays aborted and audited while every variant remains a fatal write',async()=>{
+ const {createMeasurementReport,measurementPassed,finalizeMeasurement}=await import('./device-benchmark.mjs');
+ const pin={origin:'https://musely.net'},report=createMeasurementReport({kind:'desktop-210'},pin);
+ Object.assign(report,{complete:true,gate:{fps:true},metrics:{errors:[]}});
+ const row={method:'POST',origin:pin.origin,path:'/cdn-cgi/rum',query:false,fragment:false,credentials:false,action:'aborted'};
+ report.writes=[row];assert.equal(measurementPassed(report),true);
+ for(const changed of [{method:'GET'},{origin:'https://foreign.invalid'},{path:'/api/muse'},{query:true},{fragment:true},{credentials:true},{action:'abort-pending'}, {query:undefined}]){report.writes=[{...row,...changed}];assert.equal(measurementPassed(report),false,JSON.stringify(changed));}
+ report.writes=[row];await finalizeMeasurement(report,{evaluate:async()=>({errors:[]})});assert.equal(report.writes.length,1);assert.equal(report.networkAudit.deniedTelemetry.length,1);assert.equal(report.networkAudit.fatalWriteAttempts.length,0);assert.equal(report.networkAudit.continuedWriteRequests,0);assert.equal(report.measuredChecksPass,true);
+});
+
+test('source audit binds HTML content negotiation and the exact external script bytes',async()=>{
+ const {auditSource}=await import('./device-benchmark.mjs'),{createHash}=await import('node:crypto');const hash=x=>createHash('sha256').update(x).digest('hex');
+ const origin='https://musely.net',url='https://static.cloudflareinsights.com/beacon.min.js/v123abc',code='/* pinned managed edge code */',html='<script src="'+url+'"></script>';
+ const pin={origin,htmlAccept:'text/html',htmlSHA256:hash(html),files:[{path:'index.html',sha256:hash(html),bytes:Buffer.byteLength(html)}],externalCodeFiles:[{url,sha256:hash(code),bytes:Buffer.byteLength(code)}]},before=globalThis.fetch;
+ let content=code,accepts=[];globalThis.fetch=async(target,opts={})=>{if(target===url)return new Response(content);if(target===origin+'/api/status')return new Response('{}');accepts.push(opts.headers?.Accept);return new Response(html);};
+ try{const result=await auditSource(pin);assert.deepEqual(accepts,['text/html','text/html']);assert.equal(result.externalCodeFiles.length,1);assert.equal(result.externalCodeFiles[0].sha256,hash(code));content=code+' changed';await assert.rejects(()=>auditSource(pin),/external code pin mismatch/);}finally{globalThis.fetch=before;}
+});
