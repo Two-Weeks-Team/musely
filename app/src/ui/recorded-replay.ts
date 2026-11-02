@@ -17,14 +17,16 @@ export function mountRecordedReplay(host: HTMLElement, ctx: Ctx, onActive: (acti
   root.dataset.status = 'idle';
   root.append(el('h4', '', 'Recorded world run'), el('p', 'muted', 'Read-only public history. Private conditions and hashed text cannot be restored, and this recording gives you no claim, owner session, agent key or new reward.'));
   const runs = el('select'); runs.setAttribute('aria-label', 'Recorded run'); const current = el('option', '', 'Current run'); current.value = ''; runs.append(current);
-  const browse = button('Find recorded runs'), load = button('Load recorded run'), fixture = button('Show scripted fixture'), live = button('Return to live world'), sceneView = button('View recorded scene');
+  const browse = button('Find recorded runs'), load = button('Load recorded run'), cancel = button('Cancel loading'), fixture = button('Show scripted fixture'), live = button('Return to live world'), sceneView = button('View recorded scene');
+  cancel.hidden = true;
   sceneView.disabled = true; sceneView.dataset.sceneToggle = ''; live.dataset.returnLive = '';
   sceneView.onclick = () => {const panel = root.closest<HTMLElement>('.world-panel'); if (!panel) return; const compact = panel.classList.toggle('recorded-scene-view'); sceneView.textContent = compact ? 'Show recording details' : 'View recorded scene'; sceneView.setAttribute('aria-pressed', String(compact)); panel.scrollTop = 0;};
-  toolbar.classList.add('recorded-browser-controls'); toolbar.append(runs, browse, load, fixture, live, sceneView); root.append(toolbar, status, outcome); host.append(root);
+  toolbar.classList.add('recorded-browser-controls'); toolbar.append(runs, browse, load, cancel, fixture, live, sceneView); root.append(toolbar, status, outcome); host.append(root);
   let player: RecordedPlayer | null = null, destroyed = false, generation = 0, abort: AbortController | null = null, timer: ReturnType<typeof setInterval> | null = null, previous = performance.now();
   let sync: () => void = () => {}, frameSignature = '', filter: Filter = {...EMPTY_FILTER}, countLimit = 80;
   const stop = () => { if (timer !== null) { clearInterval(timer); timer = null; } };
-  const deactivate = () => { root.closest('.world-panel')?.classList.remove('recorded-scene-view'); sceneView.textContent = 'View recorded scene'; sceneView.disabled = true; sceneView.setAttribute('aria-pressed', 'false'); ++generation; abort?.abort(); abort = null; stop(); player?.pause(); player = null; recordedReplayState.active = false; recordedReplayState.clock = null; ctx.onFrame?.(null); onActive(false); load.disabled = browse.disabled = false; };
+  const deactivate = () => { root.closest('.world-panel')?.classList.remove('recorded-scene-view'); sceneView.textContent = 'View recorded scene'; sceneView.disabled = true; sceneView.setAttribute('aria-pressed', 'false'); ++generation; abort?.abort(); abort = null; cancel.hidden = true; stop(); player?.pause(); player = null; recordedReplayState.active = false; recordedReplayState.clock = null; ctx.onFrame?.(null); onActive(false); load.disabled = browse.disabled = false; };
+  cancel.onclick = () => { deactivate(); root.dataset.status = 'idle'; delete root.dataset.error; status.textContent = 'Recorded loading cancelled. No new world action was issued.'; };
   const active = () => !destroyed && root.isConnected && recordedReplayState.active;
   function playbackTimer() {
     stop(); if (!player?.getState().playing || !active()) return;
@@ -48,9 +50,12 @@ export function mountRecordedReplay(host: HTMLElement, ctx: Ctx, onActive: (acti
   };
   load.onclick = async () => {
     deactivate(); const mine = ++generation; abort = new AbortController(); recordedReplayState.active = true; onActive(true);
-    load.disabled = browse.disabled = true; outcome.replaceChildren(); root.dataset.status = 'loading'; delete root.dataset.error; status.textContent = 'Loading a frozen prefix of this run…';
+    load.disabled = browse.disabled = true; cancel.hidden = false; outcome.replaceChildren(); root.dataset.status = 'loading'; delete root.dataset.error; status.textContent = 'Loading a frozen prefix of this run…';
     try {
-      const record = await loadRecordedRun(read, runs.value || undefined, abort.signal);
+      const record = await loadRecordedRun(read, runs.value || undefined, abort.signal, {onProgress(p) {
+        if (destroyed || mine !== generation) return;
+        status.textContent = p.phase === 'waiting' ? `History read rate limit reached. Retrying this page in ${Math.ceil((p.waitMs ?? 0) / 1000)} seconds; received ${p.loaded} / ${p.total} rows. You can cancel loading.` : p.phase === 'header' ? 'Loading the recorded run header…' : `Loading recorded ${p.phase}: ${p.loaded} / ${p.total}. You can cancel loading.`;
+      }});
       if (destroyed || mine !== generation) return;
       player = loadRun(record); frameSignature = ''; filter = {...EMPTY_FILTER}; countLimit = 80;
       const p = player;
@@ -105,7 +110,7 @@ export function mountRecordedReplay(host: HTMLElement, ctx: Ctx, onActive: (acti
     } catch (e) {
       if (destroyed || mine !== generation) return;
       player = null; stop(); ctx.onFrame?.(null); root.dataset.status = 'error'; root.dataset.error = e instanceof ReplayRecordError ? e.code : 'load_failed'; status.textContent = e instanceof Error ? e.message : 'load_failed';
-    } finally { if (mine === generation) load.disabled = browse.disabled = false; }
+    } finally { if (mine === generation) { load.disabled = browse.disabled = false; cancel.hidden = true; } }
   };
   fixture.onclick = () => { deactivate(); outcome.replaceChildren(); root.dataset.status = 'idle'; status.textContent = 'Scripted fixture selected. It is separate from any recorded world run.'; };
   live.onclick = () => { deactivate(); ctx.returnLive?.(); };
