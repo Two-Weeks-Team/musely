@@ -130,6 +130,12 @@
 - 기준 데스크톱은 MacBook Air M1, 실제 사용한 모바일 모델/OS/browser/DPR을 기록한다. 기준 기기가 없으면 다른 기기의 결과를 별도 기록하고 기준 기기 게이트는 미검증으로 남긴다. DPR 상한은 시험 전 후보를 정하고 결과/화질로 결정한다.
 - 브라우저 total 메모리의 공통 절대 상한은 아직 제품 결정이 없으므로 임의로 발명하지 않는다. D-04는 시험 전 baseline/candidate를 같은 기기에서 비교하는 메모리 수용 표를 기록하고 승인된 예산을 연결해야 ready가 된다. 이 항목이 미정이면 명시적으로 blocked이며 임의 통과시키지 않는다.
 
+### C11 승인 변경 기록 — 2026-11-02, D-04
+
+- 현재 실행 대화의 명시적 승인에 따라 D-04 기준 데스크톱을 **MacBookPro18,2**로 변경한다. 위 MacBook Air M1 원문은 이력으로 보존하며 Pro 결과를 Air M1 실측으로 기재하지 않는다. 210초 경로와 FPS/p95 기준은 유지한다.
+- 실제 모바일은 Galaxy S23 Ultra(SM-S918N), Android 16/API 36이다. 승인된 동일 기기·DPR 1.5·210초 baseline 비교에서 Chrome process-group PSS peak/end 증가를 각각 `max(baseline의 20%, 64MiB)` 이하로 판정하고 crash/지속 상승은 원시 추세로 별도 확인한다. 임의의 절대 total-memory 상한을 추가하지 않는다.
+- 재현 도구·실제 도착 기준·캐시 동등성 한계·8명/10명 분리와 최종 release 동결 전 측정 금지는 [DEVICE_ACCEPTANCE](../../app/docs/DEVICE_ACCEPTANCE.md)를 따른다. 준비 문서는 기기 통과 증거가 아니다.
+
 ## C12 — 외부 의존성·범위 밖
 
 - 실제 웹캠 수행·본인 Muse 연결/자격 입력·Threads 게시 승인 등 계정 주인 행동이 필요한 checkpoint는 해당 이슈에 명시한다. 준비/실행/응답/receipt를 분리하고 미응답을 성공으로 쓰지 않는다.
