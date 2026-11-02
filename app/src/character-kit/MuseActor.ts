@@ -1,7 +1,8 @@
 import * as T from 'three';
 import type {GLTF} from 'three/addons/loaders/GLTFLoader.js';
 import {BaseMuseActor} from './BaseMuseActor.ts';
-import {fleeceFactor,variantById,type MuseVariantId} from './catalog.ts';
+import {applyFaceControls} from './FaceControls.ts';
+import {fleeceFactor,variantById,SINGLE_PLAY,type MuseVariantId} from './catalog.ts';
 import type {MaterialLibrary} from './MaterialLibrary.ts';
 
 export type Lod=0|1|2;
@@ -96,7 +97,8 @@ export class MuseActor extends BaseMuseActor{
  private held:{name:string;from:number;until:number}|null=null;
  hold(name:string,seconds:number):boolean{
   const now=performance.now();
-  try{super.setAction(name);}catch{return false;}
+  if(!this.actions.has(name))return false;
+  this.blend=null;super.setAction(name);
   this.held={name,from:now,until:now+seconds*1000};this.showLod();return true;
  }
  get heldAction(){return this.held&&performance.now()<this.held.until?this.held.name:null;}
@@ -104,7 +106,28 @@ export class MuseActor extends BaseMuseActor{
  release(){this.held=null;}
  /** True when the clip now playing has a 3D prop that is bound and actually rendered. A cue must not claim a prop that is not there. */
  propShown(){let n=0;this.root.traverseVisible(o=>{const c=(o as Tagged).userData.museClip;if(c!==undefined&&c===this.current)n++;});return n>0;}
- setAction(name:string){if(this.held){if(performance.now()<this.held.until)name=this.held.name;else this.held=null;}super.setAction(name);this.showLod();}
+ setAction(name:string){if(this.held){if(performance.now()<this.held.until)name=this.held.name;else this.held=null;}this.blend=null;super.setAction(name);this.showLod();}
+ hasAction(name:string){return this.actions.has(name);}
+ /** Posture + upper-body blend (direction 10 ActionSpec, I-09): `base` drives Root, Hips and the legs, `upper` drives
+  * UPPER_BONES (Spine and up). Each runs on its own clip time in update(); e.g. sit_idle + talk is talking while seated.
+  * The two filtered clips never share a bone, so both play at full weight. A later setAction ends the blend. */
+ private blend:{key:string;base:T.AnimationAction;upper:T.AnimationAction;upperName:string}|null=null;
+ private blendActions=new Map<string,T.AnimationAction>();
+ setBlend(base:string,upper:string,upperBones:ReadonlySet<string>):boolean{
+  if(this.held&&performance.now()<this.held.until)return false;
+  const key=base+'+'+upper;if(this.blend?.key===key)return true;
+  if(!this.actions.has(base)||!this.actions.has(upper))return false;
+  const part=(name:string,up:boolean)=>{const k=name+(up?'@upper':'@lower');let a=this.blendActions.get(k);if(!a){const src=this.actions.get(name)!.getClip();const clip=new T.AnimationClip(k,src.duration,src.tracks.filter(t=>upperBones.has(t.name.split('.')[0])===up));a=this.mixer.clipAction(clip);if(SINGLE_PLAY.has(name)){a.setLoop(T.LoopOnce,1);a.clampWhenFinished=true;}this.blendActions.set(k,a);}return a;};
+  const a=part(base,false),b=part(upper,true);
+  this.mixer.stopAllAction();this.current=key;this.blend={key,base:a,upper:b,upperName:upper};a.play();b.play();this.showLod();return true;
+ }
+ get blendKey(){return this.blend?.key??null;}
+ /** Holds the shared prop of `clip` (props.glb musely_clip) whatever clip plays: a carried or handed-over item. */
+ private carried:string|null=null;
+ carry(clip:string|null){if(this.carried===clip)return;this.carried=clip;this.showLod();}
+ get carrying(){return this.carried;}
+ /** True when the carried prop is bound and rendered. */
+ carryShown(){if(!this.carried)return false;let n=0;this.root.traverseVisible(o=>{if((o as Tagged).userData.museClip===this.carried)n++;});return n>0;}
  private tint(meshes:readonly T.SkinnedMesh[]){
   if(!this.library||this.variant==='00-jolly')return;
   for(const m of meshes){const mat=m.material as T.MeshStandardMaterial;if(mat.name.startsWith('Fleece'))m.material=this.library.fleece(this.variant,mat);}
@@ -134,8 +157,16 @@ export class MuseActor extends BaseMuseActor{
   // Garments/props for a LOD whose file has not arrived fall back to the closest attachment LOD (0..2 all ship together).
   this.showLod();
  }
- private showLod(){for(const o of this.tagged??[])o.visible=o.userData.museLod===this.lod&&(o.userData.museClip===undefined||o.userData.museClip===this.current);}
- update(time:number,pose:import('./BaseMuseActor.ts').RoutePose,actionTime=time){
+ private showLod(){for(const o of this.tagged??[]){const c=o.userData.museClip;o.visible=o.userData.museLod===this.lod&&(c===undefined||c===this.current||c===this.carried||(!!this.blend&&c===this.blend.upperName));}}
+ update(time:number,pose:import('./BaseMuseActor.ts').RoutePose,actionTime=time,upperTime=actionTime){
+  if(this.blend&&!(this.held&&performance.now()<this.held.until)){
+   const at=(a:T.AnimationAction,t:number,name:string)=>{const d=a.getClip().duration;a.reset().play();a.time=SINGLE_PLAY.has(name)?Math.min(Math.max(0,t),d-.00001):((Math.max(0,t)%d)+d)%d;};
+   const {base,upper,upperName}=this.blend;at(base,actionTime,this.blend.key.split('+')[0]);at(upper,upperTime,upperName);this.mixer.update(0);
+   const blink=Math.max(0,1-Math.abs((time%4.6)-4.35)/.11);
+   applyFaceControls(this.meshes,this.expression,blink,blink,upperName==='talk'?Math.max(0,Math.sin(time*13))*.65:0);
+   this.root.position.set(pose.x,pose.y,pose.z);this.root.rotation.y=pose.yaw;this.root.updateMatrixWorld(true);for(const m of this.meshes)m.skeleton.update();
+   this.propMixer?.stopAllAction();return;
+  }
   if(this.held&&performance.now()<this.held.until)actionTime=(performance.now()-this.held.from)/1000;
   super.update(time,pose,actionTime);
   if(this.propMixer){const a=this.propActions.get(this.current);if(a){a.reset().play();this.propMixer.setTime(Math.max(0,actionTime)%a.getClip().duration);}else this.propMixer.stopAllAction();this.root.updateMatrixWorld(true);}
@@ -144,5 +175,5 @@ export class MuseActor extends BaseMuseActor{
  /** Materials of currently rendered meshes (diagnostics for material/tint checks). */
  visibleMaterials(){const out:{mesh:string;material:string;color:string;map:boolean;normal:boolean}[]=[];this.root.traverseVisible(o=>{if(o instanceof T.Mesh)for(const m of [o.material].flat() as T.MeshStandardMaterial[])out.push({mesh:o.name,material:m.name,color:'#'+m.color.getHexString(T.LinearSRGBColorSpace),map:!!m.map,normal:!!m.normalMap});});return out;}
  visibleTriangles(){let n=0;this.root.traverseVisible(o=>{if(o instanceof T.Mesh){const g=o.geometry;n+=(g.index?g.index.count:g.attributes.position.count)/3;}});return n;}
- getMetrics(){return {...super.getMetrics(),held:this.heldAction,variant:this.variant,lod:this.lod,wantedLod:this.wanted,loadedLods:[...this.loaded].sort(),attachment:this.attachmentLoaded,triangles:this.visibleTriangles(),tint:variantById(this.variant).body,fleeceFactor:fleeceFactor(variantById(this.variant).body)};}
+ getMetrics(){return {...super.getMetrics(),held:this.heldAction,blend:this.blendKey,carry:this.carried,variant:this.variant,lod:this.lod,wantedLod:this.wanted,loadedLods:[...this.loaded].sort(),attachment:this.attachmentLoaded,triangles:this.visibleTriangles(),tint:variantById(this.variant).body,fleeceFactor:fleeceFactor(variantById(this.variant).body)};}
 }

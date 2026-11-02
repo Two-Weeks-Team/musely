@@ -143,10 +143,12 @@ export async function makeWorld(glb:string,sigils:string[],kitBase:string|null='
   actor.update(t,{x:p.x,y:surfaceHeightAt(p.x,p.z)+.006,z:p.z,yaw:target},clocks[i].time(b,t,p.x,p.z,variantById(RESIDENT_VARIANTS[i]).tempo));
   root.rotation.z=0;
  }
- if(i===3){const drops=root.getObjectByName('GardenDrops');if(drops){const tending=!p.moving&&partner===undefined;drops.scale.setScalar(tending?1:0);drops.position.y=-((t*.08)%.04);}}shadows[i].position.x=p.x;shadows[i].position.z=p.z;shadows[i].position.y=surfaceHeightAt(p.x,p.z)+.002;}const p=positionAt(selected,t);selection.position.x=p.x;selection.position.z=p.z;selection.position.y=surfaceHeightAt(p.x,p.z)+.004;updateInstances();fire.children.forEach((f,i)=>{f.scale.y=(.37-i*.05)*(1+Math.sin(t*8+i*3)*.12);});}
+ if(i===3){const drops=root.getObjectByName('GardenDrops');if(drops){const tending=!p.moving&&partner===undefined;drops.scale.setScalar(tending?1:0);drops.position.y=-((t*.08)%.04);}}shadows[i].position.x=p.x;shadows[i].position.z=p.z;shadows[i].position.y=surfaceHeightAt(p.x,p.z)+.002;}const p=positionAt(selected,t);selection.position.x=p.x;selection.position.z=p.z;selection.position.y=surfaceHeightAt(p.x,p.z)+.004;ambient(t);}
+ /** Shadow instances and the fire; the live scene (ui/live-scene.ts) moves actors and shadows itself, then calls this. */
+ function ambient(t:number){updateInstances();fire.children.forEach((f,i)=>{f.scale.y=(.37-i*.05)*(1+Math.sin(t*8+i*3)*.12);});}
  update(0,0);
  /** Apply the single LOD selector from projected screen heights (px). */
  function setLods(heights:number[],priority:number[]){if(!actors)return;lods=chooseLods(heights,lods,priority);actors.forEach((a,i)=>{if(a.lod!==lods[i])a.setLod(lods[i]);});}
  function actorBounds(i:number){const a=actors?.[i];if(!a)return null;const p=a.root.position;return new T.Box3(new T.Vector3(p.x-.45,p.y,p.z-.45),new T.Vector3(p.x+.45,p.y+.95,p.z+.45));}
- return {scene,muses,selection,update,actors,setLods,actorBounds,library,upgradeCharacters,upgradeTimes,catalog:MUSE_VARIANTS,sourceHeight:new T.Box3().setFromObject(source).getSize(new T.Vector3()).y};
+ return {scene,muses,selection,update,ambient,shadows,shadowTexture,actors,setLods,actorBounds,library,upgradeCharacters,upgradeTimes,catalog:MUSE_VARIANTS,sourceHeight:new T.Box3().setFromObject(source).getSize(new T.Vector3()).y};
 }

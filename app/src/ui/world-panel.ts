@@ -29,6 +29,7 @@ import {taskCancelledText, envelopeFacts} from './evidence-text';
 import {mountLocationChip, deviceLocationCard} from './location-bar';
 import {museLine, snapshotOf, type OwnerLocationView} from './location-state';
 import {placeCell} from '../engine/location';
+import {acceptsSnapshot, liveFrames, scheduleCues, sceneToLngLat, inventorySummary, ownerOf, type LiveWorld, type LiveEvent} from './live-scene-core';
 export {sourceLabel};
 
 type Ev = {seq: number; id: string; tick: number; at: number; source: 'live' | 'rule' | 'scripted' | 'replay'; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data: any; tags: string[]; runId?: string | null; inputSeq?: number | null};
@@ -39,7 +40,7 @@ type ServerAutonomy = {values: Record<string, {value: string; measured: boolean}
 /** Highlights per server page (the API allows 300). */
 const HL_PAGE = 300;
 type MuseView = {id: string; place: string; travel: {to: string; departAt: number; arriveAt: number; speed: string} | null; beat: {id: string; line: string | null} | null; inventory: string[]; reflection: string; wants?: {goal: string; items: string[]; source: string}};
-type WorldView = {worldId: string; day: string; tick: number; lastTickAt: number; nextSpotlight: {muse: string; freedom: string; priority?: boolean}; muses: MuseView[]};
+type WorldView = LiveWorld & {nextSpotlight: {muse: string; freedom: string; priority?: boolean}};
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const museName = (id: string | null | undefined) => (id ? (id === '00-jolly' ? "Jolly · Kim Sejun's Muse" : harnessById(id).name) : 'World');
@@ -155,31 +156,32 @@ export function engineP1(day: string, muse = '03-ripple', item = 'transit_pass',
 }
 
 // ---------- Map markers ----------
-function museMarkers(map: LibreMap) {
+function museMarkers(map: LibreMap, onSelect: (id: string) => void, isLive: () => boolean) {
   const markers = new Map<string, {m: Marker; label: HTMLElement}>();
   for (const h of HARNESSES) {
     const node = el('div', 'muse-pin');
     node.style.setProperty('--muse', color(h.id));
     const dot = el('span', 'muse-pin-dot'); const label = el('span', 'muse-pin-label', h.name);
     node.append(dot, label);
-    node.title = museName(h.id);
+    node.title = museName(h.id); node.dataset.museId = h.id; node.setAttribute('role', 'button'); node.tabIndex = 0;
+    const select = () => onSelect(h.id); node.onclick = select; node.onkeydown = e => {if (e.key === 'Enter' || e.key === ' ') {e.preventDefault(); select();}};
     markers.set(h.id, {m: new Marker({element: node, anchor: 'center'}).setLngLat(PLACES[0] ? [PLACES[0].lng, PLACES[0].lat] : [0, 0]), label});
   }
   let added = false;
   return {
-    update(w: WorldView | null) {
+    update(w: WorldView | null, events: readonly LiveEvent[] = []) {
       if (!w) return;
       if (!added) { for (const {m} of markers.values()) m.addTo(map); added = true; }
       const now = Date.now(), zoom = map.getZoom();
+      const frames = liveFrames(w, scheduleCues(events.filter(e => e.tick === undefined || e.tick <= w.tick)), now);
       for (const v of w.muses) {
         const k = markers.get(v.id); if (!k) continue;
-        const from = PLACE_BY_ID.get(v.place), to = v.travel ? PLACE_BY_ID.get(v.travel.to) : null;
-        if (!from) continue;
-        let lng = from.lng, lat = from.lat;
-        if (v.travel && to) { const f = Math.min(1, Math.max(0, (now - v.travel.departAt) / Math.max(1, v.travel.arriveAt - v.travel.departAt))); lng = from.lng + (to.lng - from.lng) * f; lat = from.lat + (to.lat - from.lat) * f; }
-        k.m.setLngLat([lng, lat]);
-        // In the 3D commons the authored story plays; markers would cover it, so they show only farther out.
-        k.m.getElement().style.display = zoom > 18.6 ? 'none' : '';
+        const f = frames.get(v.id), pos = f ? sceneToLngLat(f.x, f.z) : null; if (!pos) {k.m.getElement().style.display = 'none'; continue;}
+        k.m.setLngLat(pos);
+        const node = k.m.getElement(); node.style.display = !isLive() || zoom > 20.2 ? 'none' : '';
+        node.dataset.projectedAt = String(now); node.dataset.lnglat = JSON.stringify(pos); node.dataset.version = String(w.version ?? w.tick); node.dataset.owner = ownerOf(v.id).kind;
+        node.dataset.inventory = JSON.stringify(v.inventory);
+        node.title = `${museName(v.id)} · ${ownerOf(v.id).label} · ${inventorySummary(v.inventory).text}`;
         k.label.textContent = harnessById(v.id).name + (v.travel ? ` → ${placeName(v.travel.to)}` : '');
       }
     },
@@ -190,7 +192,7 @@ function museMarkers(map: LibreMap) {
 type EvidenceEv = Ev & {fixture?: boolean};
 const PARTS: [Filter['part'], string][] = [['', 'Any time'], ['night', 'Night 0–6'], ['morning', 'Morning 6–12'], ['afternoon', 'Afternoon 12–18'], ['evening', 'Evening 18–24']];
 
-export function mountWorldPanel(map: LibreMap) {
+export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorld, events: readonly LiveEvent[]) => void; onSelect?: (id: string) => void; isLive?: () => boolean; paused?: () => boolean} = {}) {
   enforceIsolation();
   const header = document.querySelector('header')!;
   const open = el('button', 'quiet world-open'); open.type = 'button'; open.id = 'world-open';
@@ -225,7 +227,7 @@ export function mountWorldPanel(map: LibreMap) {
 
   let world: WorldView | null = null, events: Ev[] = [], tab = 'feed', hf: Filter = {...EMPTY_FILTER};
   let ownerInboxView: ReturnType<typeof ownerInboxCard> | null = null;
-  const pins = museMarkers(map);
+  const pins = museMarkers(map, live.onSelect ?? (() => {}), live.isLive ?? (() => true));
 
   const stateCard = (heading: string, detail: string, retry: () => void) => {
     const c = el('div', 'state-card'); c.setAttribute('role', 'status'); c.append(el('strong', '', heading), el('p', 'muted', detail));
@@ -569,9 +571,9 @@ export function mountWorldPanel(map: LibreMap) {
     // First load takes the newest events (the live tail); later polls fetch only what is new since then.
     const [wr, er] = await Promise.all([load<WorldView>('world', '/api/world'), load<Ev[]>('events', lastSeq ? `/api/world/events?since=${lastSeq}&limit=500` : '/api/world/events?tail=200')]);
     if (isolation.replay || (!wr.ok && wr.error === BLOCKED) || (!er.ok && er.error === BLOCKED)) return; // asked before the replay opened: not applied; the next refresh fetches it again
-    if (wr.ok) world = wr.data;
+    if (wr.ok && acceptsSnapshot(world, wr.data)) world = wr.data;
     if (er.ok && er.data.length) { events.push(...er.data); events = events.slice(-1500); lastSeq = er.data[er.data.length - 1].seq; }
-    pins.update(world);
+    if (!live.paused?.()) {pins.update(world, events); if (world) live.onWorld?.(world, events);}
     const last = [...events].reverse().find(e => e.kind === 'spotlight' || e.kind === 'spotlight_fallback');
     if (world) {
       const live = last && last.source === 'live', stalled = !wr.ok;
