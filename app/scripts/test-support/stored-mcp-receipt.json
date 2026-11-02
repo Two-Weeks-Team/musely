@@ -1,0 +1,63 @@
+{
+  "classification": "production HTTPS, operator-controlled distinct principals; not a real Muse client or second human/Meta account",
+  "sourceSHA": "8b13a776b5a0a76558efee8c8c8bb6efb1408438",
+  "deployId": "ba0508d2-9870-43da-8aee-f633594eddb0",
+  "workerVersion": "b5e18f5e-96b7-4198-a14c-dc3775c40174",
+  "tool": "answer_candidate",
+  "originalPrincipal": "owner",
+  "publicActorId": "LMOezJ0Gk4OqMP_54pqNGvTzYL79HkTmSCrWW1koQOk",
+  "task_id": "task_f",
+  "answer": "accept",
+  "performedAt": 1793640189.502582,
+  "finishedAt": 1793640190.067853,
+  "request": {
+    "method": "POST",
+    "origin": "https://musely.net",
+    "path": "/mcp",
+    "protocolVersion": "2026-07-28",
+    "command_id": "op-16537d4e11d84895aea8bfaf50f4f352",
+    "expected_version": "omitted"
+  },
+  "originalAnchor": {
+    "eventSeq": 4133,
+    "inputSeq": 380,
+    "runId": "run-3-mvzc8169-f1e07139",
+    "envelope": {
+      "message_id": "op-16537d4e11d84895aea8bfaf50f4f352",
+      "signer_kind": "server_custodial",
+      "delegation_ref": "nECM72cgiLgwg8JR7MqADPqmkxPBYzXO",
+      "content_hash": "GoRj--73Vh4SgeuZPwzqUgsDIFtOawa4cRp7xEsHLf0"
+    }
+  },
+  "response": {
+    "httpStatus": 200,
+    "rpcError": null,
+    "isError": false,
+    "refused": null,
+    "ok": true,
+    "command": {
+      "command_id": "op-16537d4e11d84895aea8bfaf50f4f352",
+      "expected_version": null,
+      "world_version": 829,
+      "duplicate": true
+    },
+    "envelope": {
+      "message_id": "op-16537d4e11d84895aea8bfaf50f4f352",
+      "signer_kind": "server_custodial",
+      "delegation_ref": "nECM72cgiLgwg8JR7MqADPqmkxPBYzXO",
+      "content_hash": "GoRj--73Vh4SgeuZPwzqUgsDIFtOawa4cRp7xEsHLf0",
+      "verified": true
+    },
+    "task": {
+      "id": "task_f",
+      "kind": "meetup",
+      "status": "pending",
+      "stage": "owner_approval",
+      "revision": 1,
+      "deadline": 1793639793085
+    }
+  },
+  "projectionSHA256": "701992df9dc9ce9cc2630ae4670c134facc7d5736a99413f4599269d6e7871b1",
+  "fullResponseStored": false,
+  "credentialStoredInPublicArtifact": false
+}
