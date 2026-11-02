@@ -26,7 +26,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   const ip = request.headers.get('cf-connecting-ip') ?? '';
   const session = await readSession(env.SESSION_SECRET ?? '', cookieValue(request.headers.get('cookie')));
   // The owner session (C06) is a separate cookie and a separate check; a judge session is never an owner.
-  const tokens: OwnerTokens = {owner: env.OWNER_CONTROL_TOKEN, peer: env.DEMO_PEER_CONTROL_TOKEN, judge: env.JUDGE_TOKEN};
+  const tokens: OwnerTokens = {owner: env.OWNER_CONTROL_TOKEN, peer: env.DEMO_PEER_CONTROL_TOKEN, reviewer: env.REVIEWER_CONTROL_TOKEN, judge: env.JUDGE_TOKEN};
   const owner = await readOwnerSession(env.SESSION_SECRET ?? '', cookieValue(request.headers.get('cookie'), OWNER_COOKIE), tokens);
   const ownerCfg: OwnerConfig = {secret: env.SESSION_SECRET ?? '', tokens, origins: ownerOrigins(env.PUBLIC_ORIGIN, env.ALLOWED_HOSTS), rateLimit: env.BURST ? async key => (await env.BURST!.limit({key})).success : undefined, clientKey: url.pathname === '/api/owner/session' ? await hashIp(env.SESSION_SECRET ?? 'unset', ip) : undefined};
   const realOwner = owner?.principal === 'owner';

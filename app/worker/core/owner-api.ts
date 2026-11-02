@@ -1,5 +1,6 @@
 // Owner control HTTP routes (contract C06, I-02): the owner session, revocation and re-delegation, approvals, the owner
-// location source (13.1), Musely agent keys (7.2) and owner notifications (12.3).
+// location source (13.1), Musely agent keys (7.2) with the key purge (G-09), owner notifications (12.3) and the
+// reviewer Muse reset (G-08).
 // Owner actions need an owner session (POST /api/owner/session with a control token) for the Muse in question, and
 // every owner write must come from one of our origins (CSRF). A judge session is not an owner: it keeps reads and the
 // P0 demonstration only. The owner id comes from the session, never from the request body. Agent keys are shown once.
@@ -17,6 +18,8 @@ export interface ConnectedStub {
   listAgentKeys(muse: string): MaybePromise<unknown>;
   agentKeyMuse(id: string): MaybePromise<string | null>;
   revokeAgentKey(id: string): MaybePromise<unknown | null>;
+  purgeAgentKey(id: string, by: string): MaybePromise<unknown | null>;
+  resetMuse(muse: string, by: string): MaybePromise<{ok: boolean; reason?: string}>;
   ownerNotifications(detailFor: string[]): MaybePromise<unknown>;
   ownerRevoke(muse: string, by: string): MaybePromise<{ok: boolean; reason?: string}>;
   ownerRedelegate(muse: string, by: string): MaybePromise<{ok: boolean; reason?: string}>;
@@ -85,6 +88,23 @@ export async function connectedRoutes(request: Request, url: URL, auth: OwnerAut
     return r.ok ? json(r) : json({error: r.reason ?? 'refused'}, 404);
   }
 
+  // ----- reviewer Muse reset (G-08): the reviewer session only, for its own Muse -----
+  if (p === '/api/owner/reset' && method === 'POST') {
+    if (!originAllowed(request, cfg.origins)) return json({error: 'origin_not_allowed'}, 403);
+    if (!cfg.tokens.reviewer) return json({error: 'not_configured', detail: 'The reviewer principal is not configured (REVIEWER_CONTROL_TOKEN).'}, 503);
+    const pre = gate({write: true});
+    if (pre instanceof Response) return pre;
+    if (pre.principal !== 'reviewer') return json({error: 'reviewer_only', detail: 'Only the reviewer session can reset its Muse.'}, 403);
+    const b = await body(request, 512);
+    if (!b) return json({error: 'bad_request'}, 400);
+    const muse = b.muse === undefined ? PRINCIPALS.reviewer.muses[0] : String(b.muse);
+    const s = gate({write: true, muse});
+    if (s instanceof Response) return s;
+    const r = await stub.resetMuse(muse, s.ownerId);
+    if (r.ok) return json(r);
+    return r.reason === 'delegation_revoked' ? json({error: 'delegation_revoked', detail: 'The Muse is revoked. Delegate it again (POST /api/owner/redelegate) before a reset.'}, 409) : json({error: r.reason ?? 'refused'}, 404);
+  }
+
   // ----- owner approvals (C06): the authorization is here; the Task workflow behind it belongs to I-07 -----
   if (p === '/api/owner/approvals' && method === 'POST') {
     const b = await body(request, 2048);
@@ -132,14 +152,17 @@ export async function connectedRoutes(request: Request, url: URL, auth: OwnerAut
     for (const muse of PRINCIPALS[s.principal].muses) for (const k of (await stub.listAgentKeys(muse)) as unknown[]) keys.push({...(k as object), muse});
     return json({keys});
   }
+  // DELETE revokes the key; with ?purge=1 it also deletes or anonymizes what was made under it (G-09).
   const del = /^\/api\/agent-keys\/(ak_[A-Za-z0-9_-]{6,20})$/.exec(p);
   if (del && method === 'DELETE') {
+    const purge = url.searchParams.get('purge');
+    if (purge !== null && purge !== '1') return json({error: 'bad_request', detail: 'purge must be 1'}, 400);
     const pre = gate({write: true});
     if (pre instanceof Response) return pre;
     const muse = await stub.agentKeyMuse(del[1]);
     if (!muse) return json({error: 'unknown_key'}, 404);
     if (!ownsMuse(pre, muse)) return json({error: 'not_your_muse', detail: 'This owner session controls only its own Muse.'}, 403);
-    const r = await stub.revokeAgentKey(del[1]);
+    const r = purge === '1' ? await stub.purgeAgentKey(del[1], pre.ownerId) : await stub.revokeAgentKey(del[1]);
     return r ? json(r) : json({error: 'unknown_key'}, 404);
   }
   return null;

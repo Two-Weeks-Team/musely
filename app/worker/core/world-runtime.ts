@@ -87,7 +87,8 @@ export class WorldRuntime {
   init(now: number) {
     this.sql.exec('CREATE TABLE IF NOT EXISTS world (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, version INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS ticks (day TEXT NOT NULL, tick INTEGER NOT NULL, committed_at INTEGER NOT NULL, spotlight TEXT, PRIMARY KEY (day, tick))');
-    // Append-only run log (8.6): no UPDATE or DELETE statements touch this table.
+    // Append-only run log (8.6): rows are never deleted. The only UPDATE is the key purge (data-retention.ts), which
+    // anonymizes a row in place and keeps its id, tick, time, source and kind.
     this.sql.exec('CREATE TABLE IF NOT EXISTS events (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE NOT NULL, tick INTEGER NOT NULL, at INTEGER NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, muse TEXT, other TEXT, place TEXT, line TEXT, data TEXT, tags TEXT NOT NULL)');
     this.sql.exec('CREATE INDEX IF NOT EXISTS events_tags ON events (tags) WHERE tags != \'[]\'');
     // Lookups by kind and time (spotlight request limits, recent events of one kind); IF NOT EXISTS migrates old worlds.

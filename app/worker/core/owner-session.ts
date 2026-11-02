@@ -1,5 +1,6 @@
 // Owner sessions (contract C06): owner control is separate from the judge tier. A Worker secret per principal
-// (OWNER_CONTROL_TOKEN for the real owner, DEMO_PEER_CONTROL_TOKEN for the team-controlled demo peer) is
+// (OWNER_CONTROL_TOKEN for the real owner, DEMO_PEER_CONTROL_TOKEN for the team-controlled demo peer,
+// REVIEWER_CONTROL_TOKEN for the connector directory reviewer's Muse) is
 // exchanged at POST /api/owner/session for a 1-hour HttpOnly/Secure/SameSite=Strict cookie bound to that
 // principal's owner id and Muses. The cookie is signed in its own HMAC domain, so a visitor or judge session
 // can never be read as an owner session (and the other way round). It also carries a tag of the control token
@@ -9,39 +10,43 @@ import {b64url, unb64url, hmac, timingSafeEqual} from './session.ts';
 export const OWNER_COOKIE = 'musely_o';
 export const OWNER_SESSION_TTL_MS = 3_600_000;
 
-export type PrincipalId = 'owner' | 'demo-peer';
+export type PrincipalId = 'owner' | 'demo-peer' | 'reviewer';
 export type Principal = {id: PrincipalId; ownerId: string; muses: string[]; label: string; demo: boolean; note: string};
-/** The two principals of this deployment. Each owns its own Muse; neither can act on the other's. */
+/** The Muse kept for the connector directory review (G-08): a resident, not the owner's Muse or the demo peer's. */
+export const REVIEWER_MUSE = '04-ember';
+/** The principals of this deployment. Each owns its own Muse; none can act on another's. */
 export const PRINCIPALS: Record<PrincipalId, Principal> = {
   owner: {id: 'owner', ownerId: 'owner:kim-sejun', muses: ['00-jolly'], label: "Kim Sejun · owner of Jolly", demo: false, note: 'The real owner of this deployment.'},
   'demo-peer': {id: 'demo-peer', ownerId: 'system:demo-peer', muses: ['09-copper'], label: 'Demo peer · system principal (team-controlled)', demo: true, note: 'A system principal the team controls for the two-owner checks. It is not a second real Meta account or person.'},
+  reviewer: {id: 'reviewer', ownerId: 'system:reviewer', muses: [REVIEWER_MUSE], label: 'Directory reviewer · system principal (team-controlled)', demo: true, note: 'A system principal the team controls for the connector directory review. Its Muse is a resident the operators reset on request; it is not a real person\'s Muse.'},
 };
+const PRINCIPAL_IDS = Object.keys(PRINCIPALS) as PrincipalId[];
 export const ownsMuse = (s: OwnerSession, museId: string) => PRINCIPALS[s.principal].muses.includes(museId);
 
 export type OwnerSession = {sid: string; principal: PrincipalId; ownerId: string; exp: number; tk: string};
-/** `judge`: the judge link token, given only so a control token equal to it is refused. */
-export type OwnerTokens = {owner?: string; peer?: string; judge?: string};
+/** `judge`: the judge link token, given only so a control token equal to it is refused. An unset `reviewer` only disables the reviewer. */
+export type OwnerTokens = {owner?: string; peer?: string; reviewer?: string; judge?: string};
 export const MIN_TOKEN_LENGTH = 32;
 
-const tokenOf = (tokens: OwnerTokens, p: PrincipalId) => (p === 'owner' ? tokens.owner : tokens.peer) || '';
+const tokenOf = (tokens: OwnerTokens, p: PrincipalId) => (p === 'owner' ? tokens.owner : p === 'demo-peer' ? tokens.peer : tokens.reviewer) || '';
 const tokenTag = async (secret: string, token: string) => b64url(await hmac(secret, 'owner-token:' + token)).slice(0, 22);
 const sign = async (secret: string, body: string) => b64url(await hmac(secret, 'owner-session.' + body));
 
 /**
  * A usable setup: at least one control token; every configured one is at least 32 characters and is not the judge link
- * token; the two differ. Anything else is misconfigured and no owner session is issued or read (503 not_configured).
+ * token; all of them differ. Anything else is misconfigured and no owner session is issued or read (503 not_configured).
  */
 export function tokensConfigured(t: OwnerTokens) {
-  const set = [t.owner, t.peer].filter((x): x is string => !!x);
+  const set = [t.owner, t.peer, t.reviewer].filter((x): x is string => !!x);
   if (!set.length || set.some(x => x.length < MIN_TOKEN_LENGTH || (!!t.judge && x === t.judge))) return false;
-  return !(t.owner && t.peer && t.owner === t.peer);
+  return new Set(set).size === set.length;
 }
 
 /** Which principal a presented control token belongs to (constant-time compare), or null. */
 export function principalForToken(tokens: OwnerTokens, presented: unknown): PrincipalId | null {
   if (typeof presented !== 'string' || !presented || presented.length > 512 || !tokensConfigured(tokens)) return null;
   let found: PrincipalId | null = null;
-  for (const p of ['owner', 'demo-peer'] as const) { const t = tokenOf(tokens, p); if (t && timingSafeEqual(presented, t)) found = p; }
+  for (const p of PRINCIPAL_IDS) { const t = tokenOf(tokens, p); if (t && timingSafeEqual(presented, t)) found = p; }
   return found;
 }
 

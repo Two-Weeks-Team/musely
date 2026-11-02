@@ -53,6 +53,11 @@ export class AgentKeys {
     return this.byId(id);
   }
 
+  /** After a purge: the record keeps its id, Muse and times of creation and revocation; the hash and last use go. */
+  forget(id: string) {
+    this.sql.exec("UPDATE agent_keys SET hash = 'purged:' || id, last_used_at = NULL WHERE id = ? AND revoked_at IS NOT NULL", id);
+  }
+
   list(muse: string): AgentKeyRow[] {
     return this.sql.exec('SELECT id, muse, signer_kind, created_at, last_used_at, revoked_at FROM agent_keys WHERE muse = ? ORDER BY created_at DESC LIMIT 20', muse).toArray().map(toRow);
   }

@@ -22,6 +22,8 @@ export interface Env {
   OWNER_CONTROL_TOKEN?: string;
   /** The team-controlled demo peer principal's control token (two-owner checks); must differ from OWNER_CONTROL_TOKEN. */
   DEMO_PEER_CONTROL_TOKEN?: string;
+  /** The connector directory reviewer principal's control token (G-08); unset disables only the reviewer. Must differ from the others. */
+  REVIEWER_CONTROL_TOKEN?: string;
   OWNER_ROOT_JWK?: string;
   THREADS_APP_ID?: string;
   THREADS_APP_SECRET?: string;
