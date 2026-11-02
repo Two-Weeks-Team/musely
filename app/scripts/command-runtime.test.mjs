@@ -8,6 +8,7 @@ import {WorldRuntime, REFUSAL_WINDOW_MS} from '../worker/core/world-runtime.ts';
 import {Trust, OWNER_SLOT} from '../worker/core/trust.ts';
 import {MeetingCheck} from '../worker/core/a2a.ts';
 import {ConnectedHost} from '../worker/core/connected.ts';
+import {hashAgentKey} from '../worker/core/agent-keys.ts';
 import {runTool} from '../worker/core/mcp-tools.ts';
 import {executeCommand, signCommand, commandContent, worldHandler} from '../worker/core/commands.ts';
 import {callModel} from '../worker/core/model.ts';
@@ -17,13 +18,17 @@ import {issueDelegation, peekDelegation} from '../src/identity/delegation.ts';
 import {makeHooks} from '../src/engine/rules.ts';
 import {TICK_MS} from '../src/engine/world.ts';
 
+// Like Durable Object SQL: transaction statements are refused (only transactionSync opens a transaction).
+const TX_SQL = /^\s*(BEGIN|SAVEPOINT|COMMIT|ROLLBACK|RELEASE|END)\b/i;
 // transactionSync stands in for ctx.storage.transactionSync (a savepoint that rolls back on a throw);
 // `faults.match` makes matching statements throw, to prove a commit is all or nothing.
-const sqlite = (faults = {match: null}) => { const db = new DatabaseSync(':memory:'); let depth = 0; return {faults, exec(q, ...b) { if (faults.match?.test(q)) throw new Error('injected fault'); const st = db.prepare(q); if (/^\s*(select|with)/i.test(q)) return {toArray: () => st.all(...b)}; st.run(...b); return {toArray: () => []}; }, transactionSync(fn) { const sp = 'tx' + depth++; db.exec('SAVEPOINT ' + sp); try { const r = fn(); db.exec('RELEASE ' + sp); return r; } catch (e) { db.exec('ROLLBACK TO ' + sp); db.exec('RELEASE ' + sp); throw e; } finally { depth--; } }}; };
+const sqlite = (faults = {match: null}) => { const db = new DatabaseSync(':memory:'); let depth = 0; return {faults, exec(q, ...b) { if (TX_SQL.test(q)) throw new Error('Durable Object SQL rejects transaction statements; use transactionSync'); if (faults.match?.test(q)) throw new Error('injected fault'); const st = db.prepare(q); if (/^\s*(select|with)/i.test(q)) return {toArray: () => st.all(...b)}; st.run(...b); return {toArray: () => []}; }, transactionSync(fn) { const sp = 'tx' + depth++; db.exec('SAVEPOINT ' + sp); try { const r = fn(); if (r && typeof r.then === 'function') throw new Error('transactionSync callback must be synchronous'); db.exec('RELEASE ' + sp); return r; } catch (e) { db.exec('ROLLBACK TO ' + sp); db.exec('RELEASE ' + sp); throw e; } finally { depth--; } }}; };
 // Delegations carry a real 24 h expiry, so the test clock starts at the real time.
 const T0 = Math.floor(Date.now() / 60_000) * 60_000;
 const BASE = 'https://musely.net';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/** Waits for a condition, failing (not hanging) after `ms`. */
+const until = async (cond, ms = 3000) => { const end = Date.now() + ms; while (!cond()) { if (Date.now() > end) throw new Error('condition not reached'); await sleep(1); } };
 
 // meetings: true = the real gate, 'missing' = no gate configured (must fail closed), false = explicit test 'off'.
 async function setup({model = null, meetings = false, sql = sqlite(), gateFn = null} = {}) {
@@ -100,7 +105,7 @@ test('I-01 #1: an ordinary resident meeting verifies both cards and delegations 
   const beat = rev.runtime.heartbeat(T0);
   await prepared;
   await rev.trust.revoke('03-ripple');
-  while (!release) await sleep(1);
+  await until(() => release);
   release();
   assert.equal((await beat).status, 'committed');
   const late = pairEvents(rev, t2);
@@ -114,9 +119,9 @@ test('I-01 #1: an ordinary resident meeting verifies both cards and delegations 
 async function mcp(t, {sql} = {}) {
   const host = new ConnectedHost({sql: sql ?? t.sql, trust: t.trust, runtime: t.runtime, hooks: t.hooks, baseUrl: BASE, ownerRoot: () => t.ownerRoot, ownerClaimed: () => true, now: () => T0});
   host.init();
-  const {row} = await host.keys.issue(OWNER_SLOT, T0);
+  const {row, key} = await host.keys.issue(OWNER_SLOT, T0);
   const tc = runtime => ({trust: t.trust, runtime, hooks: t.hooks, ownerRoot: t.ownerRoot, ownerClaimed: true, baseUrl: BASE, key: row, now: () => T0});
-  return {call: (name, args, runtime = t.runtime) => runTool(tc(runtime), name, args)};
+  return {host, keyHash: await hashAgentKey(key), call: (name, args, runtime = t.runtime) => runTool(tc(runtime), name, args)};
 }
 
 test('I-01 #2: a repeated command_id returns the stored result with no second reward; other arguments conflict; a stale version is refused', async () => {
@@ -170,7 +175,8 @@ test('I-01 #2: a repeated command_id returns the stored result with no second re
   assert.equal(fresh.isError, false); assert.equal(fresh.structuredContent.command.world_version, v + 1);
   const auto = await m.call('greet', {text: 'And hi'});
   assert.match(auto.structuredContent.command.command_id, /^[A-Za-z0-9_-]{22}$/);
-  assert.equal(auto.structuredContent.command.expected_version, v + 1);
+  assert.equal(auto.structuredContent.command.expected_version, null, 'omitted: no version was checked');
+  assert.equal(auto.structuredContent.command.world_version, t.runtime.state().version, 'the version it committed at');
 
   // The owner Muse's A2A trade path is the same command path (CommandResult shape).
   const {ownerTrade} = await import('../worker/core/a2a.ts');
@@ -204,7 +210,7 @@ test('I-01 #3: if the world moves or the delegation is revoked while the model a
   };
   const run = async (cmd, during) => {
     const p = executeCommand(t, cmd, {recipient: worldHandler('w'), think: think(), apply: giveCoffee}, T0);
-    while (!release) await sleep(1);
+    await until(() => release);
     await during();
     const r = release; release = null; r();
     return p;
@@ -314,8 +320,8 @@ test('review 1: verification spends no nonce; the commit claims it — retry aft
   const g = gated();
   const cmd = await mossCommand(t);
   const c0 = coffeeOf(t);
-  const both = Promise.all([executeCommand(t, cmd, {recipient: worldHandler('w'), think: g.think, apply: giveCoffee}, T0), (async () => { while (!g.waiting()) await sleep(1); return executeCommand(t, cmd, {recipient: worldHandler('w'), think: g.think, apply: giveCoffee}, T0); })()]);
-  while (!g.waiting()) await sleep(1);
+  const both = Promise.all([executeCommand(t, cmd, {recipient: worldHandler('w'), think: g.think, apply: giveCoffee}, T0), (async () => { await until(g.waiting); return executeCommand(t, cmd, {recipient: worldHandler('w'), think: g.think, apply: giveCoffee}, T0); })()]);
+  await until(g.waiting);
   await sleep(20);
   g.release();
   const [a, b] = await both;
@@ -488,4 +494,99 @@ test('review 10: event ids name the actor; no gate configured means nobody meets
   assert.equal(w.structuredContent.retryable, false);
   assert.deepEqual(Object.keys(w.structuredContent.command).sort(), ['command_id', 'duplicate', 'expected_version', 'world_version']);
   assert.equal(w.structuredContent.command.command_id, 'cmd-noexec-01');
+});
+
+// ---------------- PR #87 re-review ----------------
+
+test('re-review 2: a revoked Muse using its key through the host does not change the world (no connected mark)', async () => {
+  const t = await setup();
+  const m = await mcp(t);
+  await t.trust.revoke(OWNER_SLOT);
+  const before = JSON.stringify(t.runtime.state()), seen = t.events().length;
+  assert.equal((await m.host.mcp(m.keyHash, 'tools/list', {}, false)).status, 'ok');
+  const ws = await m.host.mcp(m.keyHash, 'tools/call', {name: 'get_world_state', arguments: {}}, false);
+  assert.equal(ws.result.isError, false, 'reads still work');
+  assert.equal(JSON.stringify(t.runtime.state()), before, 'no connected flag, same version');
+  assert.equal(t.events().length, seen, 'no agent_connected event');
+  t.trust.redelegate(OWNER_SLOT);
+  await m.host.mcp(m.keyHash, 'ping', {}, false);
+  assert.equal(t.runtime.state().inbox.connected[OWNER_SLOT], T0, 'an active Muse is marked as before');
+});
+
+test('re-review 3: without expected_version the world may move before the commit; no stale_world', async () => {
+  const t = await setup();
+  const g = gated();
+  const cmd = await mossCommand(t, {expectedVersion: null});
+  t.edit(st => { st.muses[0].reflection = 'moved after signing'; });
+  const p = executeCommand(t, cmd, {recipient: worldHandler('w'), think: g.think, apply: giveCoffee}, T0);
+  await until(g.waiting);
+  t.edit(st => { st.muses[0].reflection = 'moved during think'; });
+  const v = t.runtime.state().version;
+  g.release();
+  const r = await p;
+  assert.equal(r.result.ok, true, 'not refused, not discarded');
+  assert.equal(r.result.worldVersion, v + 1, 'the version it really committed at');
+  // Through MCP: omitted → the response says expected_version null and the committed world_version.
+  const m = await mcp(t);
+  const w = await m.call('greet', {text: 'Hi'});
+  assert.deepEqual([w.isError, w.structuredContent.command.expected_version, w.structuredContent.command.world_version], [false, null, t.runtime.state().version]);
+});
+
+test('re-review 4: without think, a commit-time refusal is an ordinary refusal (not decision_discarded)', async () => {
+  const t = await setup();
+  const cmd = await mossCommand(t);
+  const seen = t.events().length;
+  // The actor is revoked while the counterparty check runs, i.e. after verification and before the commit.
+  const r = await executeCommand(t, cmd, {recipient: worldHandler('w'), counterparty: async () => { await t.trust.revoke('02-moss'); return {ok: true, current: () => true}; }, refused: (_st, emit, x, at) => emit({at, source: 'live', kind: 'a2a_refused', muse: '02-moss', data: {step: x.step, reason: x.code}, tags: ['p0_refused']}), apply: giveCoffee}, T0);
+  assert.deepEqual([r.result.error.code, r.refused.step], ['delegation_revoked', 'commit']);
+  const ev = t.events().slice(seen);
+  assert.deepEqual(ev.map(e => e.kind), ['a2a_refused'], 'the handler logged it, with its tags');
+  assert.ok(ev[0].tags.includes('p0_refused'));
+});
+
+test('re-review 5: a closed refusal window leaves a refusal_repeats summary; the key names the other side', async () => {
+  const t = await setup();
+  const m = await mcp(t);
+  const v = t.runtime.state().version;
+  for (let i = 0; i < 4; i++) await m.call('greet', {text: 'Hi', command_id: `cmd-repeat-000${i}`, expected_version: v + 1});
+  const key = t.events('command_refused').find(e => e.data.reason === 'stale_world').data.dedup_key;
+  assert.ok(key.includes('>' + worldHandler('w') + ':'), key);
+  assert.equal(t.events('refusal_repeats').length, 0, 'still inside the window');
+  await t.runtime.heartbeat(T0 + REFUSAL_WINDOW_MS + 1);
+  const sum = t.events('refusal_repeats');
+  assert.equal(sum.length, 1);
+  assert.deepEqual([sum[0].data.dedup_key, sum[0].data.repeat_count, sum[0].data.suppressed], [key, 4, 3]);
+  assert.equal(t.runtime.refusalCount(key), 0, 'the window was closed');
+});
+
+test('re-review 6: think and counterparty have a deadline', async () => {
+  const t = await setup();
+  const never = () => new Promise(() => {});
+  const short = {...t, deadlineMs: 30};
+  const a = await executeCommand(short, await mossCommand(t), {recipient: worldHandler('w'), think: never, apply: giveCoffee}, T0);
+  assert.equal(a.result.error.code, 'decision_unavailable');
+  const b = await executeCommand(short, await mossCommand(t), {recipient: worldHandler('w'), counterparty: never, apply: giveCoffee}, T0);
+  assert.equal(b.result.error.code, 'counterparty_unavailable');
+  assert.equal(t.runtime.pending.size, 0, 'nothing left in flight');
+});
+
+test('re-review 7: refusals without an envelope (no executor) are deduplicated too', async () => {
+  const t = await setup();
+  const m = await mcp(t);
+  await t.trust.revoke(OWNER_SLOT);
+  for (let i = 0; i < 3; i++) assert.equal((await m.call('greet', {text: 'Hello?'})).structuredContent.refused, 'delegation_revoked');
+  const ev = t.events('a2a_refused').filter(e => e.data.envelope === null);
+  assert.equal(ev.length, 1);
+  assert.equal(t.runtime.refusalCount(ev[0].data.dedup_key), 3);
+  assert.equal(blocked(t), 1, 'one Blocked notice');
+});
+
+test('re-review 8: like Durable Object SQL, transaction statements and async commits are refused', async () => {
+  const t = await setup();
+  assert.throws(() => t.sql.exec('BEGIN'), /transaction statements/);
+  assert.throws(() => t.sql.exec('SAVEPOINT x'), /transaction statements/);
+  assert.throws(() => t.sql.transactionSync(async () => 1), /synchronous/);
+  const before = worldOf(t.runtime);
+  assert.throws(() => t.runtime.commitExternal(T0, 'async', async st => { st.muses[0].inventory.push('coffee'); }), /synchronous/);
+  assert.equal(worldOf(t.runtime), before, 'nothing committed');
 });
