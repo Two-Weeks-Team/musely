@@ -13,7 +13,7 @@ import {handleMcpHttp} from '../worker/core/mcp-server.ts';
 import {connectedRoutes} from '../worker/core/owner-api.ts';
 import {issueOwnerSession, readOwnerSession} from '../worker/core/owner-session.ts';
 import {revokeMuse, redelegateMuse, delegationStatus} from '../worker/core/owner-control.ts';
-import {statusOf, taskRecord} from '../worker/core/tasks.ts';
+import {statusOf, taskRecord, syncTask, kindSpec} from '../worker/core/tasks.ts';
 import {CAMPFIRE, INVITE_TTL_MS, HELP_SERVICES} from '../worker/core/messages.ts';
 import {makeHooks} from '../src/engine/rules.ts';
 import {PLACES, placeById, distanceM, WALK_MPS} from '../src/engine/places.ts';
@@ -222,6 +222,11 @@ test('AC3 help Task: submitted → input-required → completed by a resident (r
   assert.deepEqual(t.task(tid).history.map(h => [h.by, h.action, h.via ?? null]), [[OWNER_SLOT, 'propose', null], [COPPER, 'answer', 'rule'], [OWNER_SLOT, 'answer', 'live'], [COPPER, 'accept', 'rule']]);
   assert.equal(taskRecord(t.task(tid)).kind, 'help');
   assert.deepEqual(taskRecord(t.task(tid)).payload, {kind: 'help', service: 'repair', item: 'bloom', part: 'spark', asked: 'spark', result: 'repaired_gadget'});
+  // The version 2 record (I-07, registerTaskKind('help') in messages.ts): stored schema 2, a content hash over the service
+  // and item, revision 1 through every ask and hand-over (progress, not content), no owner approval; a re-sync changes nothing.
+  const stored = t.task(tid);
+  assert.deepEqual([stored.schema, stored.revision, typeof stored.contentHash, kindSpec('help').ownerApproval], [2, 1, 'string', false]);
+  assert.equal(syncTask(structuredClone(stored)), false);
   // Naming the right part up front: completed in the same call.
   t.edit(st => give(st, OWNER_SLOT, 'spark', 'route_map'));
   const direct = await t.call('propose_help', {to: COPPER, item: 'route_map', needs: 'spark'});
