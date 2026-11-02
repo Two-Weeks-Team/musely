@@ -30,7 +30,7 @@ async function round() {
   try {
     const results=await Promise.allSettled([
       identity(),gitSourceState(source),readFile(config),
-      Promise.all(['/', '/api/status','/api/world','/api/world/run','/api/world/events?tail=100'].map(async path=>{const url=new URL(path,pin.baseUrl).href,startedAt=Date.now();try{const r=await observeGet(url,{maxBytes:path==='/'?16*1024*1024:2*1024*1024});raw.requests.push(r);return r;}catch(e){const r={url,method:'GET',startedAt,endedAt:Date.now(),error:e.message};raw.requests.push(r);return r;}})),
+      Promise.all(['/', '/api/status','/api/world','/api/world/run','/api/world/events?tail=100'].map(async path=>{const url=new URL(path,pin.baseUrl).href,startedAt=Date.now();try{const r=await observeGet(url,{maxBytes:path==='/'?16*1024*1024:2*1024*1024});raw.requests.push(r);return r;}catch(e){const r={url,method:'GET',startedAt,endedAt:Date.now(),error:['request_timeout','response_too_large'].includes(e.message)?e.message:'observation_failed',failure:e.failure};raw.requests.push(r);return r;}})),
     ]);
     const failed=results.find(r=>r.status==='rejected');if(failed)throw failed.reason;
     const [deployment,sourceState,cfg,requests]=results.map(r=>r.value);
