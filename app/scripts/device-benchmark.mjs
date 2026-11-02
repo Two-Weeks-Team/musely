@@ -10,12 +10,17 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {summarizeFrames,comparePss,compareContext,validateFreeze,DURATION_MS,eightPayload,compareBaselineContext,externalCodePaths} from './device-metrics.mjs';
 const sha=b=>createHash('sha256').update(b).digest('hex');
 export class TargetCDP {
- constructor(socket){this.socket=socket;this.next=0;this.pending=new Map();this.listeners=new Map();socket.addEventListener('message',e=>{const m=JSON.parse(e.data);if(m.id){const p=this.pending.get(m.id);if(!p)return;clearTimeout(p.timer);this.pending.delete(m.id);m.error?p.reject(Error(m.error.message)):p.resolve(m.result);}else for(const fn of this.listeners.get(m.method)??[])Promise.resolve(fn(m.params)).catch(error=>{this.eventError=String(error);});});socket.addEventListener('close',()=>{for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(Error('CDP disconnected'));}this.pending.clear();});}
+ constructor(socket){
+  this.socket=socket;this.next=0;this.pending=new Map();this.listeners=new Map();this.eventTasks=new Set();
+  this.closed=new Promise(resolve=>socket.addEventListener('close',()=>{for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(Error('CDP disconnected'));}this.pending.clear();resolve();},{once:true}));
+  socket.addEventListener('message',e=>{const m=JSON.parse(e.data);if(m.id){const p=this.pending.get(m.id);if(!p)return;clearTimeout(p.timer);this.pending.delete(m.id);m.error?p.reject(Error(m.error.message)):p.resolve(m.result);}else for(const fn of this.listeners.get(m.method)??[]){const task=Promise.resolve().then(()=>fn(m.params)).catch(error=>{this.eventError??=String(error);}).finally(()=>this.eventTasks.delete(task));this.eventTasks.add(task);}});
+ }
  static async connect(url){const socket=new WebSocket(url);await new Promise((yes,no)=>{socket.addEventListener('open',yes,{once:true});socket.addEventListener('error',no,{once:true});});return new TargetCDP(socket);}
  on(method,fn){const a=this.listeners.get(method)??[];a.push(fn);this.listeners.set(method,a);}
  send(method,params={}){const id=++this.next;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.pending.delete(id);reject(Error(method+' timed out'));},30000);this.pending.set(id,{resolve,reject,timer});this.socket.send(JSON.stringify({id,method,params}));});}
  async evaluate(expression){const r=await this.send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(r.exceptionDetails.text+' '+(r.exceptionDetails.exception?.description??''));return r.result.value;}
- close(){this.socket.close();}
+ async settleEvents(){while(this.eventTasks.size)await Promise.all([...this.eventTasks]);}
+ async close(){this.socket.close();await this.closed;await this.settleEvents();}
 }
 const adb=(serial,...args)=>execFileSync('adb',['-s',serial,...args],{encoding:'utf8',timeout:15000});
 export function samplePss(serial){
@@ -31,22 +36,37 @@ const performanceStartExpression=`(()=>{window.__world.setMode('story');window._
 const performanceCleanupExpression=`(()=>{if(window.__d04Visibility)document.removeEventListener('visibilitychange',window.__d04Visibility);delete window.__d04Visibility;delete window.__d04;})()`;
 export const PAGE_EXPRESSIONS={metadataExpression,layoutExpression,characterBudgetExpression,renderExpression,performanceStartExpression,performanceCleanupExpression};
 async function until(c,expression,timeout=60000){const start=Date.now();while(Date.now()-start<timeout){const value=await c.evaluate(expression);if(value)return value;await delay(100);}throw Error('Page condition timeout');}
-async function auditSource(pin){
- const url=pin.origin+'/',response=await fetch(url,{cache:'no-store'});if(!response.ok)throw Error('HTML GET '+response.status);const body=Buffer.from(await response.arrayBuffer());if(sha(body)!==pin.htmlSHA256)throw Error('served HTML does not match frozen release');
+export async function auditSource(pin){
+ const htmlHeaders={Accept:pin.htmlAccept??'*/*'};
+ const url=pin.origin+'/',response=await fetch(url,{cache:'no-store',headers:htmlHeaders});if(!response.ok)throw Error('HTML GET '+response.status);const body=Buffer.from(await response.arrayBuffer());if(sha(body)!==pin.htmlSHA256)throw Error('served HTML does not match frozen release');
  const status=await fetch(pin.origin+'/api/status',{cache:'no-store'});const rawStatus=await status.text();
- for(const path of externalCodePaths(body.toString('utf8'),pin.origin))if(!pin.files.some(f=>f.path===path))throw Error('runtime code missing from manifest '+path);
- const files=[];for(const file of pin.files??[]){if(!/^[A-Za-z0-9_./-]+$/.test(file.path)||file.path.includes('..'))throw Error('invalid manifest path');const r=await fetch(pin.origin+'/'+file.path,{cache:'no-store'});const bytes=Buffer.from(await r.arrayBuffer());const digest=sha(bytes);if(!r.ok||digest!==file.sha256||bytes.length!==file.bytes)throw Error('asset pin mismatch '+file.path);files.push({path:file.path,sha256:digest,bytes:bytes.length});}
- return {at:new Date().toISOString(),url,htmlSHA256:sha(body),htmlBytes:body.length,statusCode:status.status,statusSHA256:sha(rawStatus),publicStatus:JSON.parse(rawStatus),deploymentIdentity:'release/config/worker identity is root-attested in the freeze pin; public status has no release identity endpoint',files};
+ for(const path of externalCodePaths(body.toString('utf8'),pin.origin,pin.externalCodeFiles??[]))if(!pin.files.some(f=>f.path===path))throw Error('runtime code missing from manifest '+path);
+ const files=[];for(const file of pin.files??[]){if(!/^[A-Za-z0-9_./-]+$/.test(file.path)||file.path.includes('..'))throw Error('invalid manifest path');const r=await fetch(pin.origin+'/'+file.path,{cache:'no-store',...(file.path==='index.html'?{headers:htmlHeaders}:{})});const bytes=Buffer.from(await r.arrayBuffer());const digest=sha(bytes);if(!r.ok||digest!==file.sha256||bytes.length!==file.bytes)throw Error('asset pin mismatch '+file.path);files.push({path:file.path,sha256:digest,bytes:bytes.length});}
+ const externalCodeFiles=[];for(const file of pin.externalCodeFiles??[]){const r=await fetch(file.url,{redirect:'error',credentials:'omit',signal:AbortSignal.timeout(10000)});if(!r.ok||Number(r.headers.get('content-length'))>1024*1024)throw Error('external code observation failed');const chunks=[];let n=0;for await(const chunk of r.body){n+=chunk.length;if(n>1024*1024)throw Error('external code observation too large');chunks.push(chunk);}const bytes=Buffer.concat(chunks);if(bytes.length!==file.bytes||sha(bytes)!==file.sha256)throw Error('external code pin mismatch');externalCodeFiles.push({...file,observedAt:new Date().toISOString()});}
+ return {at:new Date().toISOString(),url,htmlAccept:htmlHeaders.Accept,htmlSHA256:sha(body),htmlBytes:body.length,statusCode:status.status,statusSHA256:sha(rawStatus),publicStatus:JSON.parse(rawStatus),deploymentIdentity:'release/config/worker identity is root-attested in the freeze pin; public status has no release identity endpoint',files,externalCodeFiles};
 }
 // Pure report producers share the same serialized-output seam as the collector.
 const PROFILE_CACHE_POLICY='unchanged-profile-cache';
 export const createMeasurementReport=(opts,pin)=> ({kind:opts.kind,pin,conditions:{durationMs:DURATION_MS,dprCap:1.5,route:'story-manual-210',cachePolicy:opts.kind==='first-load'?'target cache disabled; service worker bypass;4Mbps/150ms':PROFILE_CACHE_POLICY,documentPolicy:opts.kind==='first-load'?'network document':'frozen HTML interception',globalCacheCleared:false},startedAt:new Date().toISOString(),complete:false,writes:[],errors:[],memory:{samples:[]},cleanup:{targetClosed:false,browserClosed:false,forwardChanged:false}});
 export const measurementContext=report=> ({model:report.model,android:report.android,chrome:report.chrome,viewport:report.device.viewport,dpr:report.device.dpr.applied,route:'story-manual-210',cachePolicy:PROFILE_CACHE_POLICY});
-export const measurementPassed=report=> report.complete&&Array.isArray(report.metrics?.errors)&&report.metrics.errors.length===0&&!report.errors.length&&!report.writes.length&&!report.cleanup.restorationErrors?.length&&Object.values(report.gate??{}).every(x=>x===true)&&(report.kind!=='mobile-210'||report.memory.complete===true&&report.memory.comparison?.numericPass===true&&report.baselineProvenance?.complete===true)&&!(report.contextMismatches?.length);
+export class BrowserSourceAudit{
+ constructor(pin,documentUrl){this.pin=pin;this.documentUrl=documentUrl;this.rows=new Map();this.pending=[];}
+ response(e){if(e.type==='Document'||(this.pin.externalCodeFiles??[]).some(f=>f.url===e.response.url))this.rows.set(e.requestId,{requestId:e.requestId,type:e.type,url:e.response.url,status:e.response.status});}
+ async finished(id,read){const row=this.rows.get(id);if(!row)return;const task=(async()=>{try{const r=await read(id),bytes=Buffer.from(r.body,r.base64Encoded?'base64':'utf8');row.bytes=bytes.length;row.sha256=sha(bytes);}catch(error){row.error='browser_response_body_unavailable';row.errorReason=String(error).replace(/https?:\/\/\S+/g,'[URL]').slice(0,240);}})();this.pending.push(task);await task;}
+ async verify(timeoutMs=10000){const began=Date.now(),expected=[{url:this.documentUrl,sha256:this.pin.htmlSHA256,bytes:this.pin.files.find(f=>f.path==='index.html').bytes},...(this.pin.externalCodeFiles??[])];
+  while(Date.now()-began<timeoutMs){await Promise.all(this.pending);if(expected.every(f=>[...this.rows.values()].some(r=>r.url===f.url&&(r.sha256||r.error))))break;await delay(50);}
+  await Promise.all(this.pending);const rows=[...this.rows.values()];if(rows.filter(r=>r.type==='Document').length!==1||expected.some(f=>{const matches=rows.filter(r=>r.url===f.url);return matches.length!==1||matches[0].status!==200||matches[0].bytes!==f.bytes||matches[0].sha256!==f.sha256||matches[0].error;}))throw Error('actual browser document or managed script does not match freeze');return {method:'CDP actual response bytes',documentUrl:this.documentUrl,rows};
+ }
+}
+export const deniedTelemetry=(row,origin)=>row.method==='POST'&&row.origin===origin&&row.path==='/cdn-cgi/rum'&&row.query===false&&row.fragment===false&&row.credentials===false&&row.action==='aborted';
+export function stalePublicMapRead(request,error){try{const u=new URL(request.url);return request.method==='GET'&&u.origin==='https://tiles.openfreemap.org'&&!u.username&&!u.password&&!request.url.includes('?')&&!request.url.includes('#')&&/^\/planet\/\d{8}_\d{6}_pt\/\d{1,2}\/\d+\/\d+\.pbf$/.test(u.pathname)&&String(error)==='Error: Invalid InterceptionId.';}catch{return false;}}
+export const measurementPassed=report=> report.complete&&!report.protocolError&&!(report.interceptionErrors??[]).some(row=>row.classification!=='stale-public-map-read')&&Array.isArray(report.metrics?.errors)&&report.metrics.errors.length===0&&!report.errors.length&&!report.writes.some(row=>!deniedTelemetry(row,report.pin.origin))&&!report.cleanup.restorationErrors?.length&&Object.values(report.gate??{}).every(x=>x===true)&&(report.kind!=='mobile-210'||report.memory.complete===true&&report.memory.comparison?.numericPass===true&&report.baselineProvenance?.complete===true)&&!(report.contextMismatches?.length);
 export async function finalizeMeasurement(report,c){
  // Always replace an earlier sample: unavailable final metrics are not an error-free observation.
  report.metrics=null;
  try{if(c)report.metrics=await c.evaluate('window.__world?.getMetrics?.() ?? null');}catch(error){report.metricsReadError=String(error);}
+ if(c){await c.settleEvents?.();if(c.eventError)report.protocolError??=c.eventError;}
+ report.networkAudit={continuedWriteRequests:0,blockedWriteAttempts:report.writes.length,deniedTelemetry:report.writes.filter(row=>deniedTelemetry(row,report.pin.origin)),fatalWriteAttempts:report.writes.filter(row=>!deniedTelemetry(row,report.pin.origin)),note:'All non-GET/HEAD requests are aborted. Telemetry entries are denied attempts, not successful access or zero network attempts.'};
  report.measuredChecksPass=measurementPassed(report);
 }
 export async function runMeasurement(opts,pin){
@@ -62,22 +82,27 @@ export async function runMeasurement(opts,pin){
  const targets=await(await fetch(opts.endpoint+'/json/list')).json();const target=targets.find(t=>t.id===opts.targetId&&t.type==='page');if(!target||new URL(target.url).origin!==pin.origin)throw Error('exact task target missing or wrong origin');
  mkdirSync(opts.out,{recursive:true});const report=createMeasurementReport(opts,pin);
  if(baseline){report.baselineSHA256=baselineSHA256;report.baselineArtifact=opts.baseline;report.baselineProvenance=baselineProvenance;}
- let c,networkChanged=false,intercepted=false,lifecycle=false;
+ let c,networkChanged=false,intercepted=false,lifecycle=false,browserAudit;
  try{
   report.sourceBefore=await auditSource(pin);if(!pin.htmlFile&&opts.kind!=='first-load')throw Error('frozen htmlFile required for baseline-equivalent 210s route');
   const frozen=pin.htmlFile?readFileSync(pin.htmlFile):null;if(frozen&&sha(frozen)!==pin.htmlSHA256)throw Error('local frozen HTML pin mismatch');
-  c=await TargetCDP.connect(target.webSocketDebuggerUrl);await c.send('Runtime.enable');await c.send('Page.enable');await c.send('Network.enable');
+  c=await TargetCDP.connect(target.webSocketDebuggerUrl);await c.send('Runtime.enable');await c.send('Page.enable');await c.send('Network.enable',opts.kind==='first-load'?{maxTotalBufferSize:64*1024*1024,maxResourceBufferSize:16*1024*1024}:{});
   report.preNavigationDevice=await c.evaluate(metadataExpression);if(report.preNavigationDevice.visibility!=='visible')throw Error('exact task tab must already be visible');
   if(pin.referenceDevice==='MacBookPro18,2'){report.model=execFileSync('sysctl',['-n','hw.model'],{encoding:'utf8'}).trim();if(report.model!==pin.referenceDevice||/HeadlessChrome/.test(report.preNavigationDevice.ua))throw Error('approved visible desktop reference required');}
   else{if(!opts.serial)throw Error('approved mobile reference requires --serial');report.model=adb(opts.serial,'shell','getprop','ro.product.model').trim();report.android=adb(opts.serial,'shell','getprop','ro.build.version.release').trim();report.chrome=adb(opts.serial,'shell','dumpsys','package','com.android.chrome').match(/versionName=(.*)/)?.[1]?.trim();if(report.model!==pin.referenceDevice||report.android!=='16'||!/Android/.test(report.preNavigationDevice.ua))throw Error('approved Android16 reference required');}
   if(opts.kind==='desktop-210'&&pin.referenceDevice!=='MacBookPro18,2'||opts.kind==='mobile-210'&&pin.referenceDevice!=='SM-S918N')throw Error('measurement kind/reference mismatch');
   const loads=new Set();c.on('Page.lifecycleEvent',e=>loads.add(e.loaderId+':'+e.name));await c.send('Page.setLifecycleEventsEnabled',{enabled:true});lifecycle=true;
   c.on('Runtime.exceptionThrown',e=>report.errors.push(e.exceptionDetails?.text??'page exception'));
-  c.on('Network.loadingFinished',e=>{report.transferredBytes=(report.transferredBytes??0)+e.encodedDataLength;});
+  if(opts.kind==='first-load')browserAudit=new BrowserSourceAudit(pin,pin.origin+'/?dpr=1.5');
+  c.on('Network.responseReceived',e=>browserAudit?.response(e));
+  c.on('Network.loadingFailed',e=>(report.networkFailures??=[]).push({requestId:e.requestId,type:e.type,canceled:e.canceled===true,error:/^net::[A-Z_]+$/.test(e.errorText)?e.errorText:'network_failure'}));
+  c.on('Network.loadingFinished',async e=>{report.transferredBytes=(report.transferredBytes??0)+e.encodedDataLength;await browserAudit?.finished(e.requestId,id=>c.send('Network.getResponseBody',{requestId:id}));});
   c.on('Fetch.requestPaused',async e=>{
-   if(!['GET','HEAD'].includes(e.request.method)){report.writes.push({method:e.request.method,path:new URL(e.request.url).pathname});await c.send('Fetch.failRequest',{requestId:e.requestId,errorReason:'BlockedByClient'});}
+   try{
+   if(!['GET','HEAD'].includes(e.request.method)){const u=new URL(e.request.url),row={method:e.request.method,path:u.pathname,origin:u.origin,query:e.request.url.includes('?'),fragment:e.request.url.includes('#'),credentials:!!(u.username||u.password),action:'abort-pending'};report.writes.push(row);await c.send('Fetch.failRequest',{requestId:e.requestId,errorReason:'BlockedByClient'});row.action='aborted';}
    else if(opts.kind!=='first-load'&&e.resourceType==='Document'&&e.request.url===pin.origin+'/?autoplay=0&perf=1&dpr=1.5')await c.send('Fetch.fulfillRequest',{requestId:e.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'text/html; charset=utf-8'}],body:frozen.toString('base64')});
    else await c.send('Fetch.continueRequest',{requestId:e.requestId});
+   }catch(error){const u=new URL(e.request.url),stale=stalePublicMapRead(e.request,error);(report.interceptionErrors??=[]).push({method:e.request.method,origin:u.origin,path:u.pathname,networkId:e.networkId??null,requestId:e.requestId,error:String(error),classification:stale?'stale-public-map-read':'fatal'});if(!stale)throw error;}
   });await c.send('Fetch.enable',{patterns:[{urlPattern:'*'}]});intercepted=true;
   if(opts.kind==='first-load'){
    networkChanged=true;await c.send('Network.setCacheDisabled',{cacheDisabled:true});await c.send('Network.setBypassServiceWorker',{bypass:true});await c.send('Network.emulateNetworkConditions',{offline:false,latency:150,downloadThroughput:500000,uploadThroughput:500000});networkChanged=true;
@@ -111,11 +136,12 @@ export async function runMeasurement(opts,pin){
    report.layout=await c.evaluate(layoutExpression);
   }
   report.device??=await c.evaluate(metadataExpression);const image=await c.send('Page.captureScreenshot',{format:'png'});writeFileSync(join(opts.out,'end.png'),Buffer.from(image.data,'base64'));if(c.eventError)throw Error(c.eventError);
+  if(browserAudit){try{report.browserSource=await browserAudit.verify();}catch(error){report.browserSource={method:'CDP actual response bytes',rows:[...browserAudit.rows.values()]};throw error;}}
   report.sourceAfter=await auditSource(pin);report.complete=true;
  }catch(error){report.error=String(error);}
  finally{
   if(c){const restore=async(method,params)=>{try{await c.send(method,params);}catch(error){(report.cleanup.restorationErrors??=[]).push({method,error:String(error)});}};if(networkChanged){await restore('Network.emulateNetworkConditions',{offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1});await restore('Network.setCacheDisabled',{cacheDisabled:false});await restore('Network.setBypassServiceWorker',{bypass:false});}if(intercepted)await restore('Fetch.disable');if(lifecycle)await restore('Page.setLifecycleEventsEnabled',{enabled:false});try{await c.evaluate(performanceCleanupExpression);}catch(error){(report.cleanup.restorationErrors??=[]).push({method:'visibility listener cleanup',error:String(error)});}}
-  await finalizeMeasurement(report,c);if(c){c.close();report.cleanup.ownCdpConnectionClosed=true;}
+  await finalizeMeasurement(report,c);if(c){await c.close();await c.settleEvents?.();if(c.eventError)report.protocolError??=c.eventError;report.cleanup.ownCdpConnectionClosed=true;report.measuredChecksPass=measurementPassed(report);}
   report.acceptance='Separate device acceptance review required; collector completion is not overall C11 PASS';report.finishedAt=new Date().toISOString();writeFileSync(join(opts.out,'results.json'),JSON.stringify(report,null,2)+'\n',{flag:'wx'});
  }
  return report;

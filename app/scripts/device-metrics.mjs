@@ -23,6 +23,8 @@ export function validateFreeze(pin,opts){
  if(!hex(pin.releaseSHA,40))errors.push('release_sha_required');
  if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(pin.workerVersion??''))errors.push('worker_version_required');
  if(!hex(pin.configSHA256,64))errors.push('config_sha_required');if(!hex(pin.htmlSHA256,64))errors.push('html_sha_required');
+ if(pin.htmlAccept!==undefined&&!['*/*','text/html'].includes(pin.htmlAccept))errors.push('unsupported_html_representation');
+ if(!validExternalCodeFiles(pin.externalCodeFiles??[]))errors.push('invalid_external_code_pin');
  try{const u=new URL(pin.origin);if(u.protocol!=='https:'||u.origin!==pin.origin)throw Error();}catch{errors.push('https_origin_required');}
  try{const u=new URL(opts.endpoint);if(!['127.0.0.1','localhost','[::1]'].includes(u.hostname)||u.username||u.password)throw Error();}catch{errors.push('nonlocal_cdp');}
  if(!pin.targetId||opts.targetId!==pin.targetId)errors.push('wrong_target');
@@ -98,7 +100,9 @@ function codeAttribute(value){
  if(decoded.includes('&'))throw Error('unsupported_html_code_attribute');return decoded;
 }
 /** Static code URLs use the first base[href], as the measured document does. */
-export function externalCodePaths(html,origin){
+export function validExternalCodeFiles(files){return Array.isArray(files)&&files.length<=1&&files.every(f=>f&&/^https:\/\/static\.cloudflareinsights\.com\/beacon\.min\.js\/[a-z0-9]+$/.test(f.url??'')&&/^[a-f0-9]{64}$/.test(f.sha256??'')&&Number.isSafeInteger(f.bytes)&&f.bytes>0&&f.bytes<=1024*1024);}
+export function externalCodePaths(html,origin,externalCodeFiles=[]){
+ if(!validExternalCodeFiles(externalCodeFiles))throw Error('external_code_origin_or_query_not_pinned');
  const paths=new Set(),tags=htmlStartTags(html),firstBase=tags.find(t=>t.name==='base'&&Object.hasOwn(t.attrs,'href'));
  const base=new URL(firstBase?codeAttribute(firstBase.attrs.href):'/',origin+'/');
  if(base.origin!==origin||base.username||base.password)throw Error('external_code_origin_or_query_not_pinned');
@@ -106,7 +110,7 @@ export function externalCodePaths(html,origin){
   const rel=(attrs.rel??'').toLowerCase().split(/\s+/),as=(attrs.as??'').toLowerCase();
   const codeLink=rel.includes('stylesheet')||rel.includes('modulepreload')||rel.includes('preload')&&['script','style'].includes(as);
   const href=name==='script'?attrs.src:name==='link'&&codeLink?attrs.href:undefined;if(href===undefined)continue;
-  const u=new URL(codeAttribute(href),base);if(u.origin!==origin||u.username||u.password||u.search)throw Error('external_code_origin_or_query_not_pinned');
+  const u=new URL(codeAttribute(href),base);if(u.origin!==origin){if(externalCodeFiles.some(f=>f.url===u.href))continue;throw Error('external_code_origin_or_query_not_pinned');}if(u.username||u.password||u.search)throw Error('external_code_origin_or_query_not_pinned');
   paths.add(decodeURIComponent(u.pathname).replace(/^\//,''));
  }
  return [...paths];
