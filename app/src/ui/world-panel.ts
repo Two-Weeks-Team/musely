@@ -1,3 +1,4 @@
+import type {RecordedFrame, RecordedEvidence, RecordedEvent} from '../replay/player.ts';
 // Live world surface (direction v2, task 6): shows what the shared world is really doing and lets anyone
 // open the evidence behind it. Everything is built with textContent; nothing from the server is parsed as HTML.
 //  - Header: "Live world" button and the spotlight chip (who holds the turn, which freedom, live/replay)
@@ -21,7 +22,7 @@ import {ownerInboxCard} from './owner-inbox';
 import {renderFlows, flowState, selectFlow} from './preview-flows';
 import {fetchJson, newHealth, track, resState, stateText, loadLog, BLOCKED, type Health} from './resource-state';
 import {isolation, enforceIsolation} from './isolation';
-import {mountReplay, replayPlayer, type ReplayEvent} from './replay';
+import {mountReplay, replayPlayer, getReplayClock, type ReplayEvent} from './replay';
 import {computeAutonomy} from './autonomy';
 import {EMPTY_FILTER, matchFilter, dayBound, type Filter} from './replay-core';
 import {sourceLabel, modelNote} from './source-label';
@@ -189,7 +190,7 @@ function museMarkers(map: LibreMap, onSelect: (id: string) => void, isLive: () =
 }
 
 // ---------- Panel ----------
-type EvidenceEv = Ev & {fixture?: boolean};
+type EvidenceEv = Ev & {fixture?: boolean; recorded?: RecordedEvidence};
 const PARTS: [Filter['part'], string][] = [['', 'Any time'], ['night', 'Night 0–6'], ['morning', 'Morning 6–12'], ['afternoon', 'Afternoon 12–18'], ['evening', 'Evening 18–24']];
 
 export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorld, events: readonly LiveEvent[]) => void; onSelect?: (id: string) => void; isLive?: () => boolean; paused?: () => boolean} = {}) {
@@ -250,12 +251,12 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   }
 
   // Evidence opens over the panel and closes back to where the visitor was: same tab, filters, scroll, and the triggering row.
-  type Ret = {tab: string; scrollTop: number; triggerId: string; resume: boolean};
+  type Ret = {tab: string; scrollTop: number; triggerId: string; resume: boolean; clock: ReturnType<typeof getReplayClock>};
   let ret: Ret | null = null;
   function showEvidence(e: EvidenceEv) {
     evidence.replaceChildren();
     const c = el('button', 'close', '×'); c.type = 'button'; c.setAttribute('aria-label', 'Close evidence'); c.onclick = () => evidence.hidePopover();
-    const s = sourceLabel(e);
+    const s = e.recorded ? {text: 'REPLAY · recorded ' + e.source.toUpperCase(), cls: 'src-replay'} : sourceLabel(e);
     const h3 = el('h3', '', describe(e)); h3.id = 'evidence-title'; h3.tabIndex = -1;
     evidence.dataset.eventId = e.id;
     evidence.append(c, el('span', 'eyebrow', 'EVIDENCE'), h3, el('span', 'src ' + s.cls, s.text));
@@ -280,14 +281,17 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     evidence.append(dl);
     const links = el('p', 'evidence-links');
     // A fixture event is not a real Muse call: no signed-card link, so the replay never leaves for the API.
-    if (!e.fixture) for (const m of [e.muse, e.other]) if (m) { const a = el('a', '', `${shortName(m)}'s signed Agent Card ↗`); a.href = `/api/agents/${m}/card`; a.target = '_blank'; a.rel = 'noopener'; links.append(a); }
+    if (!e.fixture && !e.recorded) for (const m of [e.muse, e.other]) if (m) { const a = el('a', '', `${shortName(m)}'s signed Agent Card ↗`); a.href = `/api/agents/${m}/card`; a.target = '_blank'; a.rel = 'noopener'; links.append(a); }
     if (links.childNodes.length) evidence.append(links);
     const raw = el('details'); raw.append(el('summary', '', 'Raw event (JSON)'), el('pre', '', JSON.stringify(e, null, 2)));
     evidence.append(raw);
     evidence.showPopover();
     h3.focus({preventScroll: true});
     // The run log behind a live event (C08, P2): its run id and the commit that wrote it. A fixture makes no request.
-    if (!e.fixture) void runFacts(e, dl, links);
+    if (e.recorded) {
+      const r = e.recorded, i = r.input;
+      dl.append(el('dt', '', 'Recorded run'), el('dd', '', `${r.runId} · ${r.versions.engineVersion} · ${r.versions.catalogVersion}`), el('dt', '', 'Recorded commit'), el('dd', '', `#${i.seq} ${i.kind} (${i.label}) · state ${i.beforeHash.slice(0, 12)} → ${i.afterHash.slice(0, 12)}`));
+    } else if (!e.fixture) void runFacts(e, dl, links);
   }
   async function runFacts(e: EvidenceEv, dl: HTMLElement, links: HTMLElement) {
     const link = el('a', '', 'Run record for this event (run id · event id) ↗'); link.href = `/api/world/event?id=${encodeURIComponent(e.id)}`; link.target = '_blank'; link.rel = 'noopener';
@@ -302,8 +306,8 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     else add('Commit', 'Not recorded (this event was written before the run log)');
   }
   function openEvidence(e: EvidenceEv, trigger?: HTMLElement) {
-    if (!ret) ret = {tab, scrollTop: panel.scrollTop, triggerId: trigger?.dataset.eventId ?? e.id, resume: replayPlayer.getState().playing};
-    replayPlayer.pause();
+    if (!ret) ret = {tab, scrollTop: panel.scrollTop, triggerId: trigger?.dataset.eventId ?? e.id, resume: getReplayClock().getState().playing, clock: getReplayClock()};
+    getReplayClock().pause();
     showEvidence(e);
   }
   async function returnFromEvidence() {
@@ -312,7 +316,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     panel.scrollTop = r.scrollTop;
     const back = [...body.querySelectorAll<HTMLElement>('[data-event-id]')].find(b => b.dataset.eventId === r.triggerId);
     (back ?? tabs.querySelector<HTMLElement>('.tab.active'))?.focus({preventScroll: true});
-    if (r.resume && tab === 'replay') replayPlayer.play();
+    if (r.resume && tab === 'replay') r.clock.play();
   }
   evidence.addEventListener('toggle', ev => { if ((ev as ToggleEvent).newState === 'closed') void returnFromEvidence(); });
 
@@ -337,9 +341,12 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   // Fixture replay (P-06): mounted only on its tab; while it is on screen every background poll to /api waits.
   let replayView: {destroy(): void} | null = null;
   function leaveReplay() { if (replayView) { replayView.destroy(); replayView = null; } if (isolation.replay) { isolation.replay = false; paintConn(); } }
+  const replayFrames = new Set<(frame: RecordedFrame | null) => void>();
   const replayCtx = {
-    showEvidence: (e: ReplayEvent, trigger: HTMLElement) => openEvidence(e as unknown as EvidenceEv, trigger),
-    sourceLabel: (e: ReplayEvent) => sourceLabel(e as unknown as Ev), describe: (e: ReplayEvent) => describe(e as unknown as Ev), museName, placeName, at,
+    onFrame: (frame: RecordedFrame | null) => { for (const listener of replayFrames) listener(frame); },
+    returnLive: () => { tab = 'feed'; void render().then(() => refresh()); },
+    showEvidence: (e: ReplayEvent | RecordedEvent, trigger: HTMLElement) => openEvidence(e, trigger),
+    sourceLabel: (e: ReplayEvent | RecordedEvent) => sourceLabel(e), describe: (e: ReplayEvent | RecordedEvent) => describe(e), museName, placeName, at,
   };
   panel.addEventListener('toggle', ev => { if ((ev as ToggleEvent).newState === 'closed') leaveReplay(); });
 
@@ -595,5 +602,5 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   void refresh();
   setInterval(refresh, 10_000);
   setInterval(() => {if (!isolation.replay && !live.paused?.()) pins.update(world, events);}, 1000);
-  return {refresh, get events() { return events; }, get world() { return world; }, showEvidence: openEvidence, flows: flowState, replay: replayPlayer, health, openTab(id: string) { tab = id; if (!panel.matches(':popover-open')) panel.showPopover(); void render(); }};
+  return {refresh, onReplayFrame(listener: (frame: RecordedFrame | null) => void) { replayFrames.add(listener); return () => replayFrames.delete(listener); }, get events() { return events; }, get world() { return world; }, showEvidence: openEvidence, flows: flowState, replay: replayPlayer, health, openTab(id: string) { tab = id; if (!panel.matches(':popover-open')) panel.showPopover(); void render(); }};
 }

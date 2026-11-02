@@ -439,7 +439,8 @@ export class WorldRuntime {
   }
 
   /** Events after `sinceSeq` in order; with `day` only that world day (ids start with the day); with `tail` the newest N. */
-  events(sinceSeq = 0, limit = 200, opts: {day?: string; tail?: number} = {}) {
+  events(sinceSeq = 0, limit = 200, opts: {day?: string; tail?: number; runId?: string} = {}) {
+    if (opts.runId) return this.rows(`SELECT ${EV_COLS} FROM events WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?`, opts.runId, sinceSeq, limit);
     if (opts.tail) return this.rows(`SELECT ${EV_COLS} FROM events ORDER BY seq DESC LIMIT ?`, Math.min(500, opts.tail)).reverse();
     const day = opts.day && /^\d{4}-\d{2}-\d{2}$/.test(opts.day) ? opts.day + ':%' : '%';
     return this.rows(`SELECT ${EV_COLS} FROM events WHERE seq > ? AND id LIKE ? ORDER BY seq LIMIT ?`, sinceSeq, day, limit);
