@@ -63,3 +63,14 @@ Local final HTML: 3,486,966 bytes; SHA-256 `ddc42f553de81e074a037f83ecece577f47c
 | Transferred | 15.05 MB | 15.05 MB |
 
 Before the map-tile deferral, the same harness measured the commons at 6.9 s on desktop: LOD2 and the clips shared bandwidth with tile downloads. `entry.browser.js` and `muse.browser.js` pass unchanged (close-up LOD0 for the selected Muse and speakers, 0 page exceptions). Production numbers after deployment are recorded in the PR.
+
+## D-04 initial automatic arrival — 2026-11-02 amendment
+
+C11's eight-second gate now uses the actual readable commons, not `sceneReadyAtMs` alone. The new local `scripts/cold-arrival.browser.js` records both. It requires the rigged eight-character scene, zoom ≥20.35 and at least one on-screen Muse at least20px tall whose centre is visible over the map canvas. Fresh contexts disable cache and bypass service workers at4Mbps/150ms, DPR cap1.5. These are local desktop/mobile-emulation diagnostics, not final physical-device or deployed-release acceptance.
+
+| Navigation-relative time | Before desktop | After desktop | Before390×844 emulation | After390×844 emulation |
+|---|---:|---:|---:|---:|
+| Scene first render |4.389s|4.382s|4.368s|4.362s|
+| Actual readable commons |**11.255s FAIL**|**6.955s PASS**|**11.682s FAIL**|**7.110s PASS**|
+
+Only the first automatic entry compresses the original0–8 camera curve into3seconds, holds the original8-second pose, then rejoins the original camera timeline exactly at story8seconds. The3:30 story clock, actors, dialogue, geographic curve, source labels and all later camera poses remain unchanged. Manual `startStory`, the Play/Replay button and seek use the original intro. Camera unit checks cover curve equivalence and continuity at3/8seconds; the browser also verifies manual start and seek against the original3-second poses. Both cold cases had0 exceptions and0 API writes. The final pinned-release cold check and physical-device/FPS/PSS gates remain separate and pending.
