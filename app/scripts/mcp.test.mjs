@@ -510,3 +510,24 @@ test('browser GET explains the endpoint (still 405); a keyless POST is 401 befor
   assert.equal(bad.status, 401);
   assert.equal(bad.headers.get('www-authenticate'), 'Bearer realm="musely-mcp"');
 });
+
+test('I-06: a pass past its 24 h expiry is swept before an MCP tool reads it, so it can be neither given nor traded', async () => {
+  const t = await setup();
+  const H = 3_600_000;
+  t.edit(st => {
+    place(st, OWNER_SLOT, 'commons:benches'); place(st, '08-orbit', 'commons:benches');
+    st.muses.find(m => m.id === OWNER_SLOT).inventory.push('garden_pass', 'night_pass');
+    st.items.expiry = {[OWNER_SLOT]: [{item: 'garden_pass', at: T0 - 24 * H, expiresAt: T0}, {item: 'night_pass', at: T0 - 24 * H + 60_000, expiresAt: T0 + 60_000}]};
+  });
+  // At T0 the Garden Pass is exactly 24 h old (expired); the Night Pass is 23h59m old (still valid).
+  assert.equal((await t.call('give_gift', {to: '08-orbit', item: 'garden_pass'})).structuredContent.refused, 'not_held');
+  const expired = t.events('item_expired');
+  assert.equal(expired.length, 1); assert.equal(expired[0].data.item, 'garden_pass'); assert.equal(expired[0].muse, OWNER_SLOT);
+  assert.ok(!t.muse(OWNER_SLOT).inventory.includes('garden_pass'));
+  assert.equal((await t.call('give_gift', {to: '08-orbit', item: 'night_pass'})).isError, false, 'the 23h59m pass still moves');
+  assert.ok(t.muse('08-orbit').inventory.includes('night_pass'));
+  assert.equal(t.state().items.expiry['08-orbit'][0].at, T0, "the receiver's clock starts at the gift");
+  const {verifyHistory} = await import('../src/engine/items.ts');
+  assert.equal(verifyHistory(t.state().items).ok, true);
+  assert.deepEqual(t.state().items.history.filter(h => h.via === 'expired' || h.via === 'gift').map(h => [h.via, h.item]), [['expired', 'garden_pass'], ['gift', 'night_pass']]);
+});

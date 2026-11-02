@@ -1,6 +1,11 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {ITEMS, ITEM_BY_ID, discover, checkTrade, commitTrade, emptyLedger, speedFor, RULES, canCraftTransitPass, itemSpec} from '../src/engine/items.ts';
+import {readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {ITEMS, ITEM_BY_ID, ITEM_EFFECTS, EFFECT_RULES, effectRule, discover, receiveDiscovery, checkTrade, commitTrade, emptyLedger, speedFor, RULES, canCraftTransitPass, itemSpec,
+  appendHistory, verifyHistory, trimHistory, sealHistory, historyHash, HistoryTamperError, GENESIS, HISTORY_KEEP, grantItem, transferItem, sweepExpired, isExpired, abilityGain} from '../src/engine/items.ts';
+import {sha256Hex} from '../src/engine/sha256.ts';
+import {BEATS} from '../src/engine/beats.ts';
 import {placeById, PLACES} from '../src/engine/places.ts';
 import {createWorld, tick, TICK_MS} from '../src/engine/world.ts';
 import {makeHooks} from '../src/engine/rules.ts';
@@ -99,4 +104,317 @@ test('a Taxi Token is consumed by the teleport it enables', () => {
     }
   }
   assert.fail('Ripple never took the taxi');
+});
+
+// ===================== I-06 (#53): effects, expiry, history chain =====================
+const H = 3_600_000, DAY = '2026-11-03';
+const CATALOG = [...ITEMS.map(i => i.id), 'postcard'];
+const muse = (id, place, inventory = []) => ({id, place, inventory: [...inventory]});
+const runTicks = (s, from, n, hooks = makeHooks()) => { const log = []; for (let i = 0; i < n; i++) { const r = tick(s, {now: from + i * TICK_MS}, hooks); s = r.state; log.push(...r.events); } return {s, log}; };
+const at = (s, id) => s.muses.find(m => m.id === id);
+// 2026-11-03 20:00 in America/Los_Angeles (PST after 2026-11-01).
+const NIGHT = Date.parse('2026-11-04T04:00:00Z'), NOON = Date.parse('2026-11-03T20:00:00Z');
+
+// One behaviour probe per implemented effect rule: the same situation with and without the item differs.
+const PROBES = {
+  bus_speed: () => { const from = placeById('commons:campfire'), far = PLACES.filter(p => p.zone === 'neighborhood').at(-1); return speedFor([], from, far) === 'walk' && speedFor(['transit_pass'], from, far) === 'bus'; },
+  teleport: () => speedFor([], placeById('commons:campfire'), placeById('bay:stanford')) === 'walk' && speedFor(['taxi_token'], placeById('commons:campfire'), placeById('bay:stanford')) === 'taxi',
+  plant: () => bloomRun(true).blooms > 0 && bloomRun(false).blooms === 0,
+  bloom_seed: () => { const r = plantFinish(); return r.blooms === 1 && r.seeds === 0 && r.passKept; },
+  // The postage rule lives in the MCP tool; scripts/mcp.test.mjs asserts the refusal without a stamp and the spend with one.
+  send_postcard: () => /refused, 'needs_postage_stamp'\)/.test(readFileSync(new URL('./mcp.test.mjs', import.meta.url), 'utf8')) && /!t\.muse\(OWNER_SLOT\)\.inventory\.includes\('postage_stamp'\)/.test(readFileSync(new URL('./mcp.test.mjs', import.meta.url), 'utf8')),
+  night_sky: () => nightRun({pass: true}).stargaze > 0 && nightRun({pass: false}).stargaze === 0,
+  extra_activity: () => { const r = tenFinds(['recharge_ticket']); return r.eleventh.ok && r.eleventh.spent === 'recharge_ticket' && !tenFinds([]).eleventh.ok; },
+  extra_spotlight: () => spotlightTurns(true) === spotlightTurns(false) + 1,
+};
+function bloomRun(withPass) {
+  let s = createWorld('bloom-probe', T0);
+  const moss = at(s, '02-moss');
+  if (withPass) grantItem(s.items, moss, 'garden_pass', T0, moss.place, 'craft');
+  const r = runTicks(s, T0, 600);
+  return {blooms: r.log.filter(e => e.kind === 'craft' && e.data.item === 'bloom' && e.muse === '02-moss').length};
+}
+/** Moss finishing a garden_plant beat now, holding one Clover Seed and a Garden Pass. */
+function plantFinish() {
+  const s = createWorld('plant-finish', T0), moss = at(s, '02-moss');
+  moss.inventory = ['watering_can', 'clover_seed'];
+  grantItem(s.items, moss, 'garden_pass', T0, moss.place, 'craft');
+  moss.beat = {id: 'garden_plant', clip: 'plant', startedAt: T0 - 12 * 60_000, endsAt: T0, line: null};
+  const r = tick(s, {now: T0}, makeHooks()), m = at(r.state, '02-moss');
+  return {blooms: m.inventory.filter(i => i === 'bloom').length, seeds: m.inventory.filter(i => i === 'clover_seed').length, passKept: m.inventory.includes('garden_pass'), craft: r.events.find(e => e.kind === 'craft' && e.muse === '02-moss'), s: r.state};
+}
+function nightRun({pass, start = NIGHT, acquiredAt = start}) {
+  let s = createWorld('night-probe', start);
+  const orbit = at(s, '08-orbit'); orbit.place = 'commons:garden';
+  if (pass) grantItem(s.items, orbit, 'night_pass', acquiredAt, orbit.place, 'craft');
+  const r = runTicks(s, start, 180);
+  return {stargaze: r.log.filter(e => e.kind === 'beat' && e.data.beat === 'night_pass_stargaze').length, log: r.log, s: r.s};
+}
+function tenFinds(extra) {
+  const l = emptyLedger(), m = muse('03-ripple', 'commons:hq', extra);
+  const spots = PLACES.filter(p => p.zone === 'neighborhood');
+  const results = [];
+  for (const p of spots.slice(0, 12)) { const d = discover(l, DAY, m.id, p, m.inventory, rngFor('ten', p.id), 1); if (d.ok) receiveDiscovery(l, m, d, 1); results.push(d); }
+  return {tenth: results[9], eleventh: results[10], twelfth: results[11], m, l};
+}
+function spotlightTurns(ticket) {
+  let s = createWorld('spot-probe', T0);
+  if (ticket) at(s, '05-bloom').inventory.push('spotlight_ticket');
+  const r = runTicks(s, T0, s.muses.length + 1);
+  return r.log.filter(e => e.kind === 'spotlight' && e.muse === '05-bloom').length;
+}
+
+// ---- AC1: every catalog id has data, an effect (rule or explicit fallback), a visual and a test ----
+test('AC1 coverage: every catalog id carries an effect rule or an explicit none with a reason; no effect entry is orphaned', () => {
+  assert.equal(CATALOG.length, 59);
+  for (const id of CATALOG) {
+    const spec = itemSpec(id), e = spec?.effect;
+    assert.ok(e, `${id}: no effect entry`);
+    assert.ok(['prop', 'card', 'stamp', 'glow'].includes(spec.visual), `${id}: visual`);
+    if ('rule' in e) assert.ok(EFFECT_RULES[e.rule], `${id}: unknown rule ${e.rule}`);
+    else { assert.equal(e.effect, 'none', id); assert.ok(e.reason.length >= 20, `${id}: fallback needs a reason`); }
+    if (spec.expiresHours) assert.ok(spec.expiresHours > 0 && !spec.permanent, `${id}: a timed item is not permanent`);
+  }
+  assert.deepEqual(Object.keys(ITEM_EFFECTS).sort(), [...CATALOG].sort(), 'effect table keys are exactly the catalog ids');
+  // Every implemented rule is used by an item and has a behaviour probe below.
+  const used = new Set(CATALOG.map(effectRule).filter(Boolean));
+  assert.deepEqual([...used].sort(), Object.keys(EFFECT_RULES).sort());
+  assert.deepEqual(Object.keys(PROBES).sort(), Object.keys(EFFECT_RULES).sort());
+  // The experience matrix states the same effect for every item row (no rule claimed where there is none).
+  const doc = readFileSync(new URL('../docs/EXPERIENCE_MATRIX.md', import.meta.url), 'utf8');
+  for (const id of ITEMS.map(i => i.id)) {
+    const row = doc.split('\n').find(l => l.includes(`| item:${id} |`));
+    assert.ok(row, `matrix row for ${id}`);
+    const rule = effectRule(id);
+    if (rule) assert.ok(row.includes(`effect rule \`${rule}\``) && !row.includes('effect none'), `${id}: matrix must name rule ${rule}`);
+    else assert.ok(row.includes('effect none (fallback)') && !row.includes('effect rule'), `${id}: matrix must say fallback`);
+  }
+});
+
+for (const [rule, probe] of Object.entries(PROBES)) test(`AC1 effect probe: ${rule} changes what the holder does`, () => assert.equal(probe(), true, rule));
+
+test('AC1 effect: items without a rule change no ability, so trading only them is no trade', () => {
+  const l = emptyLedger(), a = muse('01-sunny', 'commons:cafe', ['invite_token']), b = muse('04-ember', 'commons:cafe', ['event_pass']);
+  assert.equal(abilityGain('invite_token', []), false);
+  assert.equal(abilityGain('event_pass', []), false);
+  assert.deepEqual(checkTrade(l, DAY, a, b, 'invite_token', 'event_pass', 0, T0), {ok: false, reason: 'no_ability_change'});
+  assert.equal(abilityGain('night_pass', []), true, 'a rule item does change abilities');
+});
+
+test('AC1 night_sky: the Night Pass beat only opens at night, only while the pass is valid', () => {
+  assert.ok(BEATS.find(b => b.id === 'night_pass_stargaze').needs.includes('night_pass'));
+  assert.equal(nightRun({pass: true, start: NOON}).stargaze, 0, 'not at noon');
+  const stale = nightRun({pass: true, acquiredAt: NIGHT - 24 * H});
+  assert.equal(stale.stargaze, 0, 'an expired pass opens nothing');
+  assert.ok(stale.log.some(e => e.kind === 'item_expired' && e.data.item === 'night_pass'));
+});
+
+test('AC1 extra_activity: one Recharge Ticket a day buys exactly one find past 10, and is spent', () => {
+  const r = tenFinds(['recharge_ticket', 'recharge_ticket']);
+  assert.equal(r.tenth.ok, true);
+  assert.equal(r.eleventh.ok, true); assert.equal(r.eleventh.spent, 'recharge_ticket');
+  assert.deepEqual(r.twelfth, {ok: false, reason: 'daily_limit'}, 'the second ticket the same day does nothing');
+  assert.equal(r.m.inventory.filter(i => i === 'recharge_ticket').length, 1, 'only one ticket spent');
+  assert.equal(r.l.finds[DAY]['03-ripple'].length, RULES.perDay + RULES.rechargesPerDay);
+});
+
+test('AC1 extra_spotlight: the ticket is spent for an extra turn and the rotation skips nobody', () => {
+  let s = createWorld('spot', T0);
+  at(s, '05-bloom').inventory.push('spotlight_ticket');
+  const first = tick(s, {now: T0}, makeHooks());
+  assert.ok(first.events.some(e => e.kind === 'spotlight_ticket_used' && e.muse === '05-bloom'));
+  assert.equal(first.events.find(e => e.kind === 'spotlight').muse, '05-bloom', 'the extra turn comes first');
+  assert.equal(first.state.spotlight.cursor, 0, 'the rotation did not move');
+  assert.ok(!at(first.state, '05-bloom').inventory.includes('spotlight_ticket'));
+  assert.equal(tick(first.state, {now: T0 + TICK_MS}, makeHooks()).events.find(e => e.kind === 'spotlight').muse, s.muses[0].id);
+});
+
+// ---- AC2: boundary values of the abuse limits ----
+test('AC2 boundaries: 10th find ok / 11th refused, one find per place, one trade per pair, 100 m, 2 counters', () => {
+  const r = tenFinds([]);
+  assert.equal(r.tenth.ok, true); assert.deepEqual(r.eleventh, {ok: false, reason: 'daily_limit'});
+  const l = emptyLedger(), park = PLACES.find(p => p.zone === 'neighborhood' && p.kind === 'park');
+  assert.equal(discover(l, DAY, '02-moss', park, [], rngFor('p'), 1).ok, true);
+  assert.deepEqual(discover(l, DAY, '02-moss', park, [], rngFor('p'), 2), {ok: false, reason: 'place_limit'});
+  assert.equal(discover(l, DAY, '01-sunny', park, [], rngFor('p'), 3).ok, true, 'the place limit is per Muse');
+  // 100 m: the closest real place pairs on each side of the boundary.
+  const near = ['osm:node/6614753529', 'osm:node/6614753530'], far = ['osm:way/123539752', 'osm:way/30027572'];
+  const d = ids => Math.hypot(placeById(ids[0]).x - placeById(ids[1]).x, placeById(ids[0]).z - placeById(ids[1]).z);
+  assert.ok(d(near) <= 100 && d(near) > 99 && d(far) > 100 && d(far) < 101);
+  const t = emptyLedger(), give = 'transit_pass', want = 'clover_seed';
+  assert.deepEqual(checkTrade(t, DAY, muse('03-ripple', near[0], [give]), muse('02-moss', near[1], [want]), give, want), {ok: true});
+  assert.deepEqual(checkTrade(t, DAY, muse('03-ripple', far[0], [give]), muse('02-moss', far[1], [want]), give, want), {ok: false, reason: 'too_far'});
+  const a = muse('03-ripple', 'commons:garden', [give, 'fruit']), b = muse('02-moss', 'commons:garden', [want, 'coffee']);
+  assert.deepEqual(checkTrade(t, DAY, a, b, give, want, RULES.maxCounterOffers), {ok: true}, 'second counter allowed');
+  assert.deepEqual(checkTrade(t, DAY, a, b, give, want, RULES.maxCounterOffers + 1), {ok: false, reason: 'counter_limit'});
+  commitTrade(t, DAY, a, b, give, want, 5);
+  assert.deepEqual(checkTrade(t, DAY, a, b, 'fruit', 'coffee'), {ok: false, reason: 'pair_limit'});
+  assert.deepEqual(checkTrade(t, DAY, a, muse('09-copper', 'commons:garden', ['coffee']), 'fruit', 'coffee'), {ok: true}, 'another pair still may');
+  assert.deepEqual(checkTrade(t, '2026-11-04', a, b, 'fruit', 'coffee'), {ok: true}, 'the pair limit is per day');
+});
+
+// ---- AC3: Transit 3 stops, 24 h expiry, seed consumed, permanent stamps kept ----
+test('AC3 transit: two stops give no craft right, three different stops do, the same stop twice is one', () => {
+  const l = emptyLedger(), all = PLACES.filter(p => p.kind === 'bus_stop');
+  for (const s of all.slice(0, 2)) discover(l, DAY, '03-ripple', s, [], rngFor('t', s.id), 1);
+  assert.equal(canCraftTransitPass(l, DAY, '03-ripple'), false);
+  discover(l, DAY, '03-ripple', all[0], [], rngFor('t'), 2);
+  assert.equal(canCraftTransitPass(l, DAY, '03-ripple'), false, 'a revisit is not a new stop');
+  discover(l, DAY, '03-ripple', all[2], [], rngFor('t', 'c'), 3);
+  assert.equal(canCraftTransitPass(l, DAY, '03-ripple'), true);
+  assert.equal(canCraftTransitPass(l, '2026-11-04', '03-ripple'), false, 'a daily right');
+});
+
+test('AC3 expiry: a pass is valid at 23h59m after acquisition and expired at 24h; then it can neither be used nor traded', () => {
+  const T = T0, l = emptyLedger();
+  const a = muse('03-ripple', 'commons:garden'), b = muse('02-moss', 'commons:garden', ['clover_seed']);
+  grantItem(l, a, 'transit_pass', T, a.place, 'craft');
+  const from = placeById('commons:campfire'), far = PLACES.filter(p => p.zone === 'neighborhood').at(-1);
+  const w = {items: l, muses: [a, b]};
+  assert.deepEqual(sweepExpired(w, T + 24 * H - 60_000), []);
+  assert.ok(a.inventory.includes('transit_pass'));
+  assert.equal(speedFor(a.inventory, from, far), 'bus', 'still rides the bus at 23h59m');
+  assert.deepEqual(checkTrade(l, DAY, a, b, 'transit_pass', 'clover_seed', 0, T + 24 * H - 60_000), {ok: true});
+  assert.deepEqual(checkTrade(l, DAY, a, b, 'transit_pass', 'clover_seed', 0, T + 24 * H), {ok: false, reason: 'expired'}, 'not tradeable at 24h even before a sweep');
+  assert.equal(isExpired(l, a.id, 'transit_pass', T + 24 * H), true);
+  const ev = sweepExpired(w, T + 24 * H);
+  assert.equal(ev.length, 1); assert.equal(ev[0].kind, 'item_expired'); assert.equal(ev[0].data.expiresAt, T + 24 * H);
+  assert.ok(!a.inventory.includes('transit_pass'));
+  assert.equal(speedFor(a.inventory, from, far), 'walk', 'no bus after expiry');
+  assert.deepEqual(checkTrade(l, DAY, a, b, 'transit_pass', 'clover_seed', 0, T + 24 * H), {ok: false, reason: 'not_held'});
+  const last = l.history.at(-1);
+  assert.equal(last.via, 'expired'); assert.equal(last.item, 'transit_pass'); assert.equal(last.from, '03-ripple'); assert.equal(last.to, null);
+  assert.equal(verifyHistory(l).ok, true);
+});
+
+test('AC3 expiry in the engine: the tick at 24h removes the pass, logs item_expired, and the next trips walk', () => {
+  let s = createWorld('expire', T0);
+  const ripple = at(s, '03-ripple');
+  grantItem(s.items, ripple, 'transit_pass', T0, ripple.place, 'craft');
+  const before = tick(s, {now: T0 + 24 * H - 60_000}, makeHooks());
+  assert.ok(at(before.state, '03-ripple').inventory.includes('transit_pass'));
+  const after = tick(before.state, {now: T0 + 24 * H}, makeHooks());
+  assert.ok(after.events.some(e => e.kind === 'item_expired' && e.muse === '03-ripple' && e.data.item === 'transit_pass'));
+  assert.ok(!at(after.state, '03-ripple').inventory.includes('transit_pass'));
+  const later = runTicks(after.state, T0 + 24 * H + TICK_MS, 240);
+  assert.equal(later.log.filter(e => e.kind === 'depart' && e.muse === '03-ripple' && e.data.speed === 'bus').length, 0);
+  assert.equal(verifyHistory(later.s.items).ok, true);
+});
+
+test('AC3 expiry restarts on a new acquisition (trade or gift) and an unrecorded copy in an old state starts its clock at first sight', () => {
+  const l = emptyLedger(), a = muse('03-ripple', 'commons:garden'), b = muse('02-moss', 'commons:garden', ['clover_seed']);
+  grantItem(l, a, 'garden_pass', T0, a.place, 'discover');
+  commitTrade(l, DAY, a, b, 'garden_pass', 'clover_seed', T0 + 10 * H);
+  assert.deepEqual(l.expiry['02-moss'], [{item: 'garden_pass', at: T0 + 10 * H, expiresAt: T0 + 34 * H}]);
+  assert.equal(l.expiry['03-ripple']?.length ?? 0, 0, 'the giver keeps no record');
+  const c = muse('05-bloom', 'commons:garden');
+  transferItem(l, b, c, 'garden_pass', T0 + 11 * H);
+  assert.equal(l.expiry['05-bloom'][0].expiresAt, T0 + 35 * H);
+  const old = muse('08-orbit', 'commons:benches', ['night_pass']);
+  sweepExpired({items: l, muses: [old]}, T0);
+  assert.equal(l.expiry['08-orbit'][0].expiresAt, T0 + 24 * H, 'legacy copy: clock starts at the first sweep');
+});
+
+test('AC3 seed and stamps: Bloom consumes only the Clover Seed; permanent stamps are never consumed, expired or traded', () => {
+  const r = plantFinish();
+  assert.deepEqual(r.craft.data.from, ['clover_seed']);
+  assert.equal(r.blooms, 1); assert.equal(r.seeds, 0); assert.equal(r.passKept, true);
+  assert.ok(r.s.items.history.some(h => h.via === 'craft' && h.item === 'bloom' && h.hash), 'the craft is in the chained history');
+  assert.equal(verifyHistory(r.s.items).ok, true);
+  const l = emptyLedger(), stops = PLACES.filter(p => p.kind === 'bus_stop').slice(0, 3), m = muse('03-ripple', stops[0].id);
+  for (const s of stops) { const d = discover(l, DAY, m.id, s, m.inventory, rngFor('st', s.id), 1); if (d.ok) receiveDiscovery(l, m, d, 1); }
+  assert.ok(m.inventory.includes('stamp_bus_stop'));
+  grantItem(l, m, 'transit_pass', 2, m.place, 'craft');
+  assert.ok(m.inventory.includes('stamp_bus_stop'), 'crafting the pass does not consume the stamp');
+  sweepExpired({items: l, muses: [m]}, 2 + 30 * 24 * H);
+  assert.ok(m.inventory.includes('stamp_bus_stop') && !m.inventory.includes('transit_pass'), 'after 30 days the stamp stays, the pass is gone');
+  const b = muse('02-moss', stops[0].id, ['clover_seed']);
+  assert.deepEqual(checkTrade(l, DAY, m, b, 'stamp_bus_stop', 'clover_seed'), {ok: false, reason: 'not_transferable'});
+});
+
+// ---- AC4: relics, repeat curiosity 0, void exchanges, tamper-proof history ----
+test('AC4 relics never move; repeat curiosity gives 0; exchanges that change nothing are refused', () => {
+  const l = emptyLedger(), a = muse('03-ripple', 'commons:hq', ['commons_ember', 'transit_pass', 'coffee']), b = muse('02-moss', 'commons:hq', ['clover_seed', 'transit_pass']);
+  for (const id of ITEMS.filter(i => i.category === 'relic').map(i => i.id)) assert.deepEqual(checkTrade(l, DAY, {...a, inventory: [id]}, b, id, 'clover_seed'), {ok: false, reason: 'relic'}, id);
+  const cafes = PLACES.filter(p => p.kind === 'cafe' && p.zone === 'neighborhood');
+  const r1 = discover(l, DAY, '06-ink', placeById('commons:cafe'), [], () => 0, 1), r2 = discover(l, DAY, '06-ink', cafes[0], [], () => 0, 2);
+  assert.equal(r1.reward, 'curiosity'); assert.equal(r2.item, r1.item); assert.equal(r2.reward, 'none', 'same kind again: no curiosity reward');
+  assert.deepEqual(checkTrade(l, DAY, a, b, 'coffee', 'coffee'), {ok: false, reason: 'same_item'});
+  assert.deepEqual(checkTrade(l, DAY, a, b, 'tea', 'clover_seed'), {ok: false, reason: 'not_held'});
+  assert.deepEqual(checkTrade(l, DAY, a, b, 'transit_pass', 'transit_pass'), {ok: false, reason: 'same_item'});
+  const c = muse('09-copper', 'commons:hq', ['transit_pass', 'trade_receipt']);
+  assert.deepEqual(checkTrade(l, DAY, {...a, inventory: ['transit_pass']}, {...c, inventory: ['transit_pass']}, 'transit_pass', 'transit_pass'), {ok: false, reason: 'same_item'});
+  assert.deepEqual(checkTrade(l, DAY, muse('01-sunny', 'commons:hq', ['invite_token']), muse('07-tempo', 'commons:hq', ['event_pass']), 'invite_token', 'event_pass'), {ok: false, reason: 'no_ability_change'});
+});
+
+function chained(n = 6) {
+  const l = emptyLedger();
+  for (let i = 0; i < n; i++) appendHistory(l, {item: i % 2 ? 'coffee' : 'fruit', from: null, to: '02-moss', place: 'commons:cafe', at: 1000 + i, via: 'discover'});
+  return l;
+}
+test('AC4 history: entries chain from genesis with prevHash/hash, sha256 matches node:crypto', () => {
+  for (const t of ['', 'abc', 'x'.repeat(200), 'Café ↔ 정원']) assert.equal(sha256Hex(t), createHash('sha256').update(t).digest('hex'));
+  const l = chained();
+  assert.equal(l.history[0].prevHash, GENESIS);
+  for (let i = 1; i < l.history.length; i++) assert.equal(l.history[i].prevHash, l.history[i - 1].hash);
+  assert.equal(l.chain.head, l.history.at(-1).hash);
+  assert.deepEqual(verifyHistory(l), {ok: true, chained: 6, legacy: 0, head: l.chain.head});
+});
+
+test('AC4 history tampering is rejected: edit, delete (first, middle, last), reorder, insert', () => {
+  const tampered = fn => { const l = structuredClone(chained()); fn(l.history, l); return verifyHistory(l); };
+  assert.equal(tampered(h => { h[2].item = 'taxi_token'; }).reason, 'bad_hash');
+  assert.equal(tampered(h => { h[2].to = '00-jolly'; h[2].hash = historyHash(h[2]); }).reason, 'broken_link', 're-hashing one entry breaks the next link');
+  assert.equal(tampered(h => { h.splice(2, 1); }).reason, 'broken_link');
+  assert.equal(tampered(h => { h.shift(); }).reason, 'broken_link', 'deleting the oldest no longer meets the anchor');
+  assert.equal(tampered(h => { h.pop(); }).reason, 'head_mismatch');
+  assert.equal(tampered(h => { [h[1], h[2]] = [h[2], h[1]]; }).reason, 'broken_link');
+  assert.equal(tampered(h => { h.splice(3, 0, {item: 'taxi_token', from: null, to: '00-jolly', place: null, at: 1, via: 'discover'}); }).reason, 'legacy_after_genesis');
+  assert.equal(tampered(h => { h[1].seq = 9; h[1].hash = historyHash(h[1]); for (let i = 2; i < h.length; i++) { h[i].prevHash = h[i - 1].hash; h[i].hash = historyHash(h[i]); } }).ok, false);
+  // Writes refuse to extend a tampered history (C04: no reward or move on a broken record).
+  const cut = chained(); cut.history.pop();
+  assert.throws(() => appendHistory(cut, {item: 'spark', from: null, to: '02-moss', place: null, at: 9, via: 'discover'}), HistoryTamperError);
+  const edited = chained(); edited.history.at(-1).item = 'taxi_token';
+  const m = muse('02-moss', 'commons:garden');
+  assert.throws(() => grantItem(edited, m, 'bloom', 9, 'commons:garden', 'craft'), HistoryTamperError);
+  assert.deepEqual(m.inventory, [], 'nothing was granted');
+  const a = muse('03-ripple', 'commons:garden', ['transit_pass']), b = muse('02-moss', 'commons:garden', ['clover_seed']);
+  assert.throws(() => commitTrade(edited, DAY, a, b, 'transit_pass', 'clover_seed', 9), HistoryTamperError);
+  assert.deepEqual([a.inventory, b.inventory], [['transit_pass'], ['clover_seed']], 'no half trade');
+});
+
+test('AC4 history: trimming keeps the chain linked to the last hash; old entries without hashes are before genesis', () => {
+  const l = chained(HISTORY_KEEP + 50);
+  trimHistory(l);
+  assert.equal(l.history.length, HISTORY_KEEP);
+  assert.equal(l.history[0].seq, 51); assert.equal(l.chain.anchor, l.history[0].prevHash);
+  assert.equal(verifyHistory(l).ok, true);
+  const dropped = structuredClone(l); dropped.history.shift();
+  assert.equal(verifyHistory(dropped).reason, 'broken_link', 'deleting below the anchor is still detected');
+  // A state stored before I-06: no chain, plain entries.
+  const old = {finds: {}, trades: {}, history: [{item: 'fruit', from: null, to: '02-moss', place: 'commons:garden', at: 1, via: 'discover'}, {item: 'coffee', from: '09-copper', to: '02-moss', place: 'commons:cafe', at: 2, via: 'gift'}]};
+  assert.deepEqual(verifyHistory(old), {ok: true, chained: 0, legacy: 2, head: GENESIS});
+  appendHistory(old, {item: 'tea', from: null, to: '05-bloom', place: 'commons:cafe', at: 3, via: 'discover'});
+  assert.equal(old.history[2].prevHash, GENESIS);
+  assert.deepEqual(verifyHistory(old), {ok: true, chained: 1, legacy: 2, head: old.history[2].hash});
+  const forged = structuredClone(old); forged.history[0].hash = 'f'.repeat(64);
+  assert.equal(verifyHistory(forged).reason, 'legacy_chained');
+  // An append from code that predates the chain is sealed (appended) at the next upkeep, never rewriting older entries.
+  old.history.push({item: 'spark', from: null, to: '05-bloom', place: null, at: 4, via: 'discover'});
+  assert.equal(verifyHistory(old).reason, 'legacy_after_genesis');
+  assert.equal(sealHistory(old), 1);
+  assert.equal(verifyHistory(old).ok, true);
+  trimHistory(old, 2);
+  assert.equal(old.chain.legacy, 0); assert.equal(verifyHistory(old).ok, true);
+});
+
+test('AC4 history in the engine: an old stored world keeps ticking, its history stays legacy, new moves chain', () => {
+  let s = createWorld('legacy', T0);
+  delete s.items.chain; delete s.items.expiry;
+  s.items.history.push({item: 'fruit', from: null, to: '02-moss', place: 'commons:garden', at: T0 - 1, via: 'discover'});
+  at(s, '03-ripple').inventory.push('transit_pass');
+  const r = runTicks(s, T0, 240);
+  const v = verifyHistory(r.s.items);
+  assert.equal(v.ok, true); assert.equal(v.legacy, 1); assert.ok(v.chained > 0, 'new moves were chained');
+  assert.ok(r.s.items.expiry['03-ripple'].some(x => x.item === 'transit_pass' && x.expiresAt === T0 + 24 * H), 'the unrecorded pass started its clock at the first tick');
 });
