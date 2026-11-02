@@ -1,6 +1,6 @@
 # Preview acceptance — S1 gate (P-07, issue #46)
 
-Status: **evidence ready for criteria 1, 2 and 4 on one build (re-run on production after the real-device layout and time-zone fix, PR #81); a person's product experience review and the fallback acceptance are pending (§8).** Records the walkthrough of the whole preview on one build (8 experiences × 6 states × desktop and mobile), the allowed fallbacks, the review and the S1 → S2 decision (DEC-01). Everything here is a **preview**: scenes are SCRIPTED fixtures unless a cell says it reads the live world. Nothing here claims a real connector, the webcam ritual, real-phone performance, S2/S3 completion or a submission.
+Status: **S1 closed by the owner's decision of 2026-11-02; DEC-01 released (§8). Evidence for criteria 1 and 4 is on one build (re-run on production after the real-device layout and time-zone fix, PR #81). The owner accepted the fallbacks and the S1 scope, and closed the product experience review, by that decision, not by ticking the statements in §8 one by one; a real-device re-check stays open (§9).** Records the walkthrough of the whole preview on one build (8 experiences × 6 states × desktop and mobile), the allowed fallbacks, the review and the S1 → S2 decision (DEC-01). Everything here is a **preview**: scenes are SCRIPTED fixtures unless a cell says it reads the live world. Nothing here claims a real connector, the webcam ritual, real-phone performance, S2/S3 completion or a submission.
 
 ## 1. Identification
 
@@ -34,11 +34,11 @@ Evidence files for this record are in `preview/docs/acceptance-evidence/` (§3).
 | criterion (issue #46) | result | where |
 |---|---|---|
 | Every experience: entry, action, success, reject, cancel, retry on desktop and mobile | **PASS** (browser emulation, scripted fixtures) | §4: 8 experiences × 6 states, 81 cells per viewport, D 81/81 and M 81/81 (production, `8ccb2b3`) |
-| Blocked paths and missing visual items resolved or an allowed, labelled fallback | **evidence ready; owner acceptance pending (§8)** | §5: 0 missing items (2 promoted to labelled fallback, pending acceptance), every fallback has an on-screen label and an owner task |
-| Product experience review and agreed changes recorded; undecided core experiences = 0 | **not done: a person's product review is pending (§8)** | §6 records what the walkthrough and the reviews found; §7 lists 0 undecided core experiences and 6 decisions, subject to that review |
+| Blocked paths and missing visual items resolved or an allowed, labelled fallback | **accepted by the owner's decision of 2026-11-02 (§8)** | §5: 0 missing items (2 promoted to labelled fallback, accepted by that decision), every fallback has an on-screen label and an owner task |
+| Product experience review and agreed changes recorded; undecided core experiences = 0 | **closed by the owner's decision of 2026-11-02 (§8); no item-by-item review was recorded** | §6 records what the walkthrough and the reviews found; §7 lists 0 undecided core experiences and 6 decisions, settled by the same decision |
 | `npm run check` and the related browser regressions on the same build | **PASS** (browser emulation, scripted fixtures) | §3 |
 
-**Decision DEC-01 (S1 → S2).** On build `8ccb2b3` the evidence criteria 1 and 4 are met, criterion 2 is ready for the owner's acceptance, and criterion 3 (a person's product experience review, which code review and test counts cannot replace) is not done. The gate opens when the owner records the review and the fallback acceptance in §8. Until then S2 does not start. This is an S1 scope and experience gate only: real connector (DEC-02, DEC-11), webcam ritual (DEC-03), real phones (DEC-04) and the later stages stay with their own tasks and decisions.
+**Decision DEC-01 (S1 → S2): released on 2026-11-02 by the owner.** On build `8ccb2b3` the evidence criteria 1 and 4 are met. For criteria 2 and 3 the owner told the coding agent in the working session to mark S1 complete. That is recorded as the owner's acceptance of the fallbacks in §5 and of the S1 scope, and as the closing of the product experience review. What the record does not show: that a person walked the preview on a phone, tablet or foldable; the re-check in §9 stays open. Test counts and code review did not replace the owner's decision; they are the evidence it rests on. This is an S1 scope and experience gate only: real connector (DEC-02, DEC-11), webcam ritual (DEC-03), real phones (DEC-04) and the later stages stay with their own tasks and decisions.
 
 ## 3. Same-build checks
 
@@ -201,7 +201,7 @@ Isolation checks: the browser was never asked for a position — D PASS, M PASS;
 
 ## 5. Allowed fallback register
 
-Statuses in `EXPERIENCE_MATRIX.md` after this change: experiences 6 complete / 2 fallback; actions (beats + body clips + meaningful actions) 93 complete / 55 fallback; items 58/58 and places 93/93 complete; communication 6 complete / 2 fallback; **missing 0** (two items promoted from missing to labelled fallback; the promotion is pending the owner's acceptance, §8). The matrix counts visuals; this register lists every substitute, so an entry can also sit under an experience that the matrix counts as `complete`. A fallback is a substitute the viewer can see and that is labelled on screen; it is not a claim that the real behaviour works.
+Statuses in `EXPERIENCE_MATRIX.md` after this change: experiences 6 complete / 2 fallback; actions (beats + body clips + meaningful actions) 93 complete / 55 fallback; items 58/58 and places 93/93 complete; communication 6 complete / 2 fallback; **missing 0** (two items promoted from missing to labelled fallback; the promotion is accepted by the owner's decision of 2026-11-02, §8). The matrix counts visuals; this register lists every substitute, so an entry can also sit under an experience that the matrix counts as `complete`. A fallback is a substitute the viewer can see and that is labelled on screen; it is not a claim that the real behaviour works.
 
 | fallbackId | what is shown instead | where | label the viewer sees | real thing, owner |
 |---|---|---|---|---|
@@ -217,7 +217,7 @@ Statuses in `EXPERIENCE_MATRIX.md` after this change: experiences 6 complete / 2
 
 ## 6. Reviews and changes so far
 
-This log is the record of what the walkthrough and the reviews found, what was changed, and the result on the tested build. Code review and test counts do **not** replace the owner's own look at the same build; that is §8.
+This log is the record of what the walkthrough and the reviews found, what was changed, and the result on the tested build. Code review and test counts do **not** replace the owner's own look at the same build; the owner's decision to close S1 (§8) did not rest on a recorded walk of the preview on a phone, which §9 keeps open.
 
 | source | finding | change | where |
 |---|---|---|---|
@@ -233,7 +233,7 @@ This log is the record of what the walkthrough and the reviews found, what was c
 
 ## 7. Undecided core experiences: 0
 
-Questions that were open during S1 and how each was settled. "Decided by" is the implementer for the preview scope, subject to the owner sign-off in §8.
+Questions that were open during S1 and how each was settled. "Decided by" is the implementer for the preview scope, settled by the owner's decision in §8.
 
 | question | decision | evidence |
 |---|---|---|
@@ -246,15 +246,15 @@ Questions that were open during S1 and how each was settled. "Decided by" is the
 
 Known gaps that are **not** core experiences and are not hidden by this document: the header label "Muse Spark · not connected" is still read once at load (only its tooltip was made honest); EXP-WORLD success reads the live feed and fails if the world has no LIVE row at that moment; accessibility is checked by emulation and attributes, not with a real screen reader or phone; on screens under 530 px tall (and phones up to 380 × 610 px) the selected-Muse card is a compact strip, so its activity line and "Wants" note are not shown there; layout is measured in emulation on 30 sizes and a sweep, not on the owner's phone, tablet or foldable (browser toolbar shown or hidden, rotation, system font size and notch are not covered).
 
-## 8. Owner review and sign-off (required before S2)
+## 8. Owner decision (S1 closed)
 
-Review the same build at https://preview.musely.net/ (build `aedcac64-3293-4c82-97fe-8b219ba17c84`, commit `8ccb2b3`) on a desktop and a phone, using §4 as the path list. Please also open it on the phone and the tablet or foldable from the 2026-11-02 report and confirm the card, the header and the times now look right there (§6, PR #81). Then record:
+**Decision, 2026-11-02:** the owner instructed the coding agent in the working session to mark S1 complete. The agent recorded it here and did not tick the statements below on the owner's behalf: the record cannot say that the owner walked the preview on a phone or read §5 line by line. It applies to the build at https://preview.musely.net/ (build `aedcac64-3293-4c82-97fe-8b219ba17c84`, commit `8ccb2b3`).
 
-- [ ] I walked the preview on desktop and on a phone and found no core experience undecided.
-- [ ] I accept the allowed fallbacks in §5, including the two promoted from missing (teleport arrival card, help card).
-- [ ] I accept the S1 scope: SCRIPTED fixtures plus labelled live reads; no real connector, webcam ritual or phone performance claim.
-- Changes agreed from this review (write "none" if none): ____
-- Reviewer, date: ____
+- [ ] I walked the preview on desktop and on a phone and found no core experience undecided. (not ticked: not stated by the owner)
+- [ ] I accept the allowed fallbacks in §5, including the two promoted from missing (teleport arrival card, help card). (covered by the decision above)
+- [ ] I accept the S1 scope: SCRIPTED fixtures plus labelled live reads; no real connector, webcam ritual or phone performance claim. (covered by the decision above)
+- Changes agreed from this decision: none recorded.
+- Decided by, date: the owner, 2026-11-02, by instruction in a working session (not a form signature).
 
 ## 9. Remaining work and decisions
 
@@ -262,8 +262,8 @@ Not closed by this document (see `EXPERIENCE_MATRIX.md` §9 for the per-experien
 
 - S2 builds the real connection, claim and ritual, rewards, meet-ups, location, replay record player and communication tools (I-* tasks). DEC-02 and DEC-11 (real connector, unattended calls), DEC-03 (webcam ritual), DEC-08 (printed agent key to rotate) must be resolved with the owner's real account.
 - S3 integrates and verifies on one deployment (D-* tasks), including DEC-04 (target phones, memory, DPR), DEC-05 (judges are not Threads testers), DEC-06 (submission authority) and DEC-07 (public-switch cleanup).
-- **DEC-10** (390 px header overlap): the release condition (no overlap at 390×844) is met on this build by the mobile header and Live-world layout cases in `preview-flows.browser.js` (66/66, `acceptance-evidence/preview-flows.json`) and by `layout.browser.js` (120/120, 30 screen sizes and a phone sweep, `acceptance-evidence/layout.json`); the owner closes it with the sign-off in §8.
-- **Real-device re-check** (owner, after the fix in PR #81): the layout and the viewer's-zone times on the phone and tablet or foldable that showed the problems, with the browser toolbar shown and hidden, in both orientations and at a larger system font size. Emulation cannot show these.
+- **DEC-10** (390 px header overlap): the release condition (no overlap at 390×844) is met on this build by the mobile header and Live-world layout cases in `preview-flows.browser.js` (66/66, `acceptance-evidence/preview-flows.json`) and by `layout.browser.js` (120/120, 30 screen sizes and a phone sweep, `acceptance-evidence/layout.json`); the owner's decision in §8 closes it.
+- **Real-device re-check** (owner, after the fix in PR #81): the layout and the viewer's-zone times on the phone and tablet or foldable that showed the problems, with the browser toolbar shown and hidden, in both orientations and at a larger system font size. Emulation cannot show these. It is not a condition of S1; it stays open and is covered at the latest by D-04 (S3).
 
 ## 10. Repeat the checks
 
