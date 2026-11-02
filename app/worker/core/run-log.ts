@@ -16,22 +16,19 @@
 // them there); command payloads keep only their hash and the per-action id fields (COMMAND_FIELDS). So nothing here is
 // a purge target and both tables stay append-only. No statement in this file updates or deletes a row of runs or
 // run_inputs (run_counts is a counter cache, not part of the record).
-import {ENGINE_VERSION, type WorldState, type WorldEvent} from '../../src/engine/world.ts';
-import {HARNESSES} from '../../src/engine/harness.ts';
-import {ITEMS} from '../../src/engine/items.ts';
-import {BEATS} from '../../src/engine/beats.ts';
-import {PLACES} from '../../src/engine/places.ts';
+import type {WorldState, WorldEvent} from '../../src/engine/world.ts';
 import {canonicalize} from '../../src/identity/jcs.ts';
 import {sha256Hex} from '../../src/engine/sha256.ts';
 import type {Sql} from './ledger.ts';
 
 /** Version of the run-log and event record format. Bump it when a stored field changes meaning. */
-export const RUN_SCHEMA_VERSION = 'run-log-1';
+import {RUN_SCHEMA_VERSION, currentVersions, MAX_REPLAY_SNAPSHOT_BYTES, MAX_RUN_REPLAY_BYTES, type RunVersions} from '../../src/replay/versions.ts';
+export {RUN_SCHEMA_VERSION, currentVersions};
+export type {RunVersions};
 /** C03: who acted. `system` = a world resident or a world process, `connected` = a person's own Muse or owner, `trial` = a visitor or judge session. */
 export const ACTOR_ORIGINS = ['system', 'connected', 'trial'] as const;
 export type ActorOrigin = (typeof ACTOR_ORIGINS)[number];
 export type RunOrigin = 'fresh' | 'pre-run-log' | 'version_change';
-export type RunVersions = {schemaVersion: string; engineVersion: string; harnessVersion: string; catalogVersion: string};
 export type InputKind = 'tick' | 'command' | 'refusal' | 'external';
 /** Kept in place of every private value in a snapshot or an input. */
 export const PRIVATE = 'private (not recorded)';
@@ -43,19 +40,11 @@ export type RunRecord = RunVersions & {
   /** pre-run-log only: the events written before this log existed (they carry no run id and belong to this run). */
   legacy: {events: number; lastSeq: number; note: string} | null;
 };
-export type RunInput = {seq: number; runId: string; at: number; kind: InputKind; label: string; day: string; tick: number; versionBefore: number; versionAfter: number; beforeHash: string; afterHash: string; itemsHead: string | null; itemsSeq: number | null; events: number; input: Record<string, unknown> | null};
+export type RunBoundary = {inputSeq: number; eventSeq: number; inputs: number; events: number};
+export type ReplaySnapshotError = 'snapshot_too_large' | 'replay_storage_limit';
+export type RunInput = {seq: number; runId: string; at: number; kind: InputKind; label: string; day: string; tick: number; versionBefore: number; versionAfter: number; beforeHash: string; afterHash: string; itemsHead: string | null; itemsSeq: number | null; events: number; input: Record<string, unknown> | null; afterSnapshot: {hash: string; body: string} | null; afterSnapshotError: ReplaySnapshotError | null};
 
 const SNAPSHOT_PREFIX = 'musely-run-state-v1\n';
-let versions: RunVersions | null = null;
-/** The versions of the code now running. Harness and catalog versions are content hashes, so a data change is a new version. */
-export function currentVersions(): RunVersions {
-  return (versions ??= {
-    schemaVersion: RUN_SCHEMA_VERSION,
-    engineVersion: ENGINE_VERSION,
-    harnessVersion: 'harness-' + sha256Hex(canonicalize(HARNESSES)).slice(0, 12),
-    catalogVersion: 'catalog-' + sha256Hex(canonicalize({items: ITEMS, beats: BEATS, places: PLACES})).slice(0, 12),
-  });
-}
 const sameVersions = (a: RunVersions, b: RunVersions) => a.schemaVersion === b.schemaVersion && a.engineVersion === b.engineVersion && a.harnessVersion === b.harnessVersion && a.catalogVersion === b.catalogVersion;
 
 /** A SHA-256 of a free text (null stays null): the run log names a text without keeping it. */
@@ -167,12 +156,12 @@ export function evidenceIds(ev: unknown): Record<string, unknown> | null {
 }
 
 const RUN_COLS = 'run_id, world_id, n, schema_version, engine_version, harness_version, catalog_version, seed, snapshot_hash, snapshot, started_at, origin, prev_run_id, legacy';
-const INPUT_COLS = 'seq, run_id, at, kind, label, day, tick, version_before, version_after, before_hash, after_hash, items_head, items_seq, events, input';
+const INPUT_COLS = 'seq, run_id, at, kind, label, day, tick, version_before, version_after, before_hash, after_hash, items_head, items_seq, events, input, after_snapshot, after_snapshot_error';
 const toRun = (r: Record<string, unknown>): RunRecord => ({runId: String(r.run_id), worldId: String(r.world_id), schemaVersion: String(r.schema_version), engineVersion: String(r.engine_version), harnessVersion: String(r.harness_version), catalogVersion: String(r.catalog_version), seed: String(r.seed), initialSnapshot: {hash: String(r.snapshot_hash), body: String(r.snapshot)}, startedAt: Number(r.started_at), origin: String(r.origin) as RunOrigin, prevRunId: r.prev_run_id == null ? null : String(r.prev_run_id), legacy: r.legacy == null ? null : JSON.parse(String(r.legacy))});
-const toInput = (r: Record<string, unknown>): RunInput => ({seq: Number(r.seq), runId: String(r.run_id), at: Number(r.at), kind: String(r.kind) as InputKind, label: String(r.label), day: String(r.day), tick: Number(r.tick), versionBefore: Number(r.version_before), versionAfter: Number(r.version_after), beforeHash: String(r.before_hash), afterHash: String(r.after_hash), itemsHead: r.items_head == null ? null : String(r.items_head), itemsSeq: r.items_seq == null ? null : Number(r.items_seq), events: Number(r.events), input: r.input == null ? null : JSON.parse(String(r.input))});
+const toInput = (r: Record<string, unknown>): RunInput => ({seq: Number(r.seq), runId: String(r.run_id), at: Number(r.at), kind: String(r.kind) as InputKind, label: String(r.label), day: String(r.day), tick: Number(r.tick), versionBefore: Number(r.version_before), versionAfter: Number(r.version_after), beforeHash: String(r.before_hash), afterHash: String(r.after_hash), itemsHead: r.items_head == null ? null : String(r.items_head), itemsSeq: r.items_seq == null ? null : Number(r.items_seq), events: Number(r.events), input: r.input == null ? null : JSON.parse(String(r.input)), afterSnapshot: r.after_snapshot == null ? null : {hash: String(r.after_hash), body: String(r.after_snapshot)}, afterSnapshotError: (r.after_snapshot_error ?? null) as ReplaySnapshotError | null});
 
 export type CommitRecord = {at: number; kind: InputKind; label: string; beforeRaw: string; before: WorldState; after: WorldState; afterRaw?: string; changed: boolean; events: WorldEvent[]; input?: Record<string, unknown> | null};
-export type PreparedInput = {runId: string; seq: number; c: CommitRecord; beforeHash: string; afterHash: string};
+export type PreparedInput = {runId: string; seq: number; c: CommitRecord; beforeHash: string; afterHash: string; afterSnapshot: string | null; afterSnapshotError: ReplaySnapshotError | null};
 
 export class RunLog {
   private sql: Sql;
@@ -186,14 +175,20 @@ export class RunLog {
   init() {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, world_id TEXT NOT NULL, n INTEGER NOT NULL UNIQUE, schema_version TEXT NOT NULL, engine_version TEXT NOT NULL, harness_version TEXT NOT NULL, catalog_version TEXT NOT NULL, seed TEXT NOT NULL, snapshot_hash TEXT NOT NULL, snapshot TEXT NOT NULL, started_at INTEGER NOT NULL, origin TEXT NOT NULL, prev_run_id TEXT, legacy TEXT)`);
     this.sql.exec('CREATE TABLE IF NOT EXISTS run_inputs (seq INTEGER PRIMARY KEY, run_id TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL, day TEXT NOT NULL, tick INTEGER NOT NULL, version_before INTEGER NOT NULL, version_after INTEGER NOT NULL, before_hash TEXT NOT NULL, after_hash TEXT NOT NULL, items_head TEXT, items_seq INTEGER, events INTEGER NOT NULL, input TEXT)');
+    // Lossless v1 migration: nullable snapshots distinguish old rows from replayable v2 rows. No stored row is rewritten.
+    for (const [col, type] of [['after_snapshot', 'TEXT'], ['after_snapshot_error', 'TEXT']]) {
+      try { this.sql.exec(`SELECT ${col} FROM run_inputs LIMIT 0`).toArray(); } catch { this.sql.exec(`ALTER TABLE run_inputs ADD COLUMN ${col} ${type}`); }
+    }
     this.sql.exec('CREATE INDEX IF NOT EXISTS run_inputs_run ON run_inputs (run_id, seq)');
     // Counter cache per run (inputs and stored events), kept in the commit transaction so reads need no COUNT(*).
     this.sql.exec('CREATE TABLE IF NOT EXISTS run_counts (run_id TEXT PRIMARY KEY, inputs INTEGER NOT NULL, events INTEGER NOT NULL)');
+    try { this.sql.exec('SELECT replay_bytes FROM run_counts LIMIT 0').toArray(); } catch { this.sql.exec('ALTER TABLE run_counts ADD COLUMN replay_bytes INTEGER NOT NULL DEFAULT 0'); }
     // The events table belongs to world-runtime.ts; an older world gets the two columns (existing rows keep NULL).
     for (const [col, type] of [['run_id', 'TEXT'], ['input_seq', 'INTEGER']]) {
       try { this.sql.exec(`SELECT ${col} FROM events LIMIT 0`).toArray(); } catch { this.sql.exec(`ALTER TABLE events ADD COLUMN ${col} ${type}`); }
     }
     this.sql.exec('CREATE INDEX IF NOT EXISTS events_run_at ON events (run_id, at)');
+    this.sql.exec('CREATE INDEX IF NOT EXISTS events_run_seq ON events (run_id, seq)');
     this.sql.exec('CREATE INDEX IF NOT EXISTS events_at ON events (at)');
   }
 
@@ -229,7 +224,8 @@ export class RunLog {
     if (this.sql.exec('SELECT 1 FROM run_counts WHERE run_id = ?', r.runId).toArray().length) return;
     const inputs = Number(this.sql.exec('SELECT COUNT(*) AS n FROM run_inputs WHERE run_id = ?', r.runId).toArray()[0]?.n ?? 0);
     const events = Number(this.sql.exec(`SELECT COUNT(*) AS n FROM events WHERE run_id = ?${r.origin === 'pre-run-log' ? ' OR run_id IS NULL' : ''}`, r.runId).toArray()[0]?.n ?? 0);
-    this.sql.exec('INSERT INTO run_counts (run_id, inputs, events) VALUES (?, ?, ?)', r.runId, inputs, events);
+    const replayBytes = Number(this.sql.exec('SELECT COALESCE(SUM(LENGTH(CAST(after_snapshot AS BLOB))), 0) AS n FROM run_inputs WHERE run_id = ?', r.runId).toArray()[0]?.n ?? 0);
+    this.sql.exec('INSERT INTO run_counts (run_id, inputs, events, replay_bytes) VALUES (?, ?, ?, ?)', r.runId, inputs, events, replayBytes);
   }
   get current(): RunRecord {
     if (!this.run) throw new Error('run log not opened');
@@ -247,7 +243,8 @@ export class RunLog {
     if (!c.changed && !c.events.length) return null;
     const run = this.current;
     const beforeHash = this.cache?.raw === c.beforeRaw ? this.cache.hash : stateHash(c.before);
-    const afterHash = c.changed ? stateHash(c.after) : beforeHash;
+    const afterBody = snapshotBody(c.after), afterBytes = new TextEncoder().encode(afterBody).byteLength;
+    const afterHash = c.changed ? bodyHash(afterBody) : beforeHash;
     this.cache = {raw: c.afterRaw ?? JSON.stringify(c.after), hash: afterHash};
     const seq = Number(this.sql.exec('SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM run_inputs').toArray()[0].n);
     for (const e of c.events) {
@@ -258,13 +255,16 @@ export class RunLog {
         data.abilityOf = of; data.beforeHash = abilityHash(c.before, of); data.afterHash = abilityHash(c.after, of);
       }
     }
-    return {runId: run.runId, seq, c, beforeHash, afterHash};
+    return {runId: run.runId, seq, c, beforeHash, afterHash, afterSnapshot: afterBytes <= MAX_REPLAY_SNAPSHOT_BYTES ? afterBody : null, afterSnapshotError: afterBytes <= MAX_REPLAY_SNAPSHOT_BYTES ? null : 'snapshot_too_large'};
   }
   /** Appends the prepared row with the number of event rows the commit really inserted (a repeated event id is not stored). */
   append(p: PreparedInput, inserted: number) {
     const {c} = p, chain = c.after.items?.chain;
-    this.sql.exec(`INSERT INTO run_inputs (${INPUT_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, p.seq, p.runId, c.at, c.kind, c.label.slice(0, 160), c.after.day, c.after.tick, c.before.version, c.after.version, p.beforeHash, p.afterHash, chain?.head ?? null, chain?.seq ?? null, inserted, c.input ? JSON.stringify(c.input) : null);
-    this.sql.exec('UPDATE run_counts SET inputs = inputs + 1, events = events + ? WHERE run_id = ?', inserted, p.runId);
+    const used = Number(this.sql.exec('SELECT replay_bytes FROM run_counts WHERE run_id = ?', p.runId).toArray()[0]?.replay_bytes ?? 0);
+    let body = p.afterSnapshot, error = p.afterSnapshotError, bytes = body === null ? 0 : new TextEncoder().encode(body).byteLength;
+    if (used + bytes > MAX_RUN_REPLAY_BYTES) { body = null; bytes = 0; error = 'replay_storage_limit'; }
+    this.sql.exec(`INSERT INTO run_inputs (${INPUT_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, p.seq, p.runId, c.at, c.kind, c.label.slice(0, 160), c.after.day, c.after.tick, c.before.version, c.after.version, p.beforeHash, p.afterHash, chain?.head ?? null, chain?.seq ?? null, inserted, c.input ? JSON.stringify(c.input) : null, body, error);
+    this.sql.exec('UPDATE run_counts SET inputs = inputs + 1, events = events + ?, replay_bytes = replay_bytes + ? WHERE run_id = ?', inserted, bytes, p.runId);
   }
 
   // ---------- reads ----------
@@ -272,6 +272,12 @@ export class RunLog {
   runById(runId: string): RunRecord | null { const r = this.sql.exec(`SELECT ${RUN_COLS} FROM runs WHERE run_id = ?`, runId).toArray()[0]; return r ? toRun(r) : null; }
   inputs(runId: string, sinceSeq = 0, limit = 200): RunInput[] {
     return this.sql.exec(`SELECT ${INPUT_COLS} FROM run_inputs WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?`, runId, sinceSeq, Math.min(1000, Math.max(1, limit))).toArray().map(toInput);
+  }
+  /** A stable read boundary captured with the run header, so a growing live run loads a finite committed prefix. */
+  boundary(runId: string): RunBoundary {
+    const i = this.sql.exec('SELECT COALESCE(MAX(seq), 0) AS seq, COUNT(*) AS n FROM run_inputs WHERE run_id = ?', runId).toArray()[0];
+    const e = this.sql.exec('SELECT COALESCE(MAX(seq), 0) AS seq, COUNT(*) AS n FROM events WHERE run_id = ?', runId).toArray()[0];
+    return {inputSeq: Number(i.seq), eventSeq: Number(e.seq), inputs: Number(i.n), events: Number(e.n)};
   }
   input(seq: number): RunInput | null { const r = this.sql.exec(`SELECT ${INPUT_COLS} FROM run_inputs WHERE seq = ?`, seq).toArray()[0]; return r ? toInput(r) : null; }
   lastInput(): RunInput | null { const r = this.sql.exec(`SELECT ${INPUT_COLS} FROM run_inputs ORDER BY seq DESC LIMIT 1`).toArray()[0]; return r ? toInput(r) : null; }

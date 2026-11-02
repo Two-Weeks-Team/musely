@@ -119,7 +119,7 @@ export class WorldDO extends DurableObject<Env> {
     if (this.trust.suspended(muse)) return {ok: false as const, reason: 'paused' as const};
     return this.runtime.requestSpotlight(muse, Date.now(), {origin, requester});
   }
-  worldEvents(since: number, limit: number, opts: {day?: string; tail?: number} = {}) { return this.runtime.events(since, Math.min(2000, Math.max(1, limit)), opts); }
+  worldEvents(since: number, limit: number, opts: {day?: string; tail?: number; runId?: string} = {}) { return this.runtime.events(since, Math.min(2000, Math.max(1, limit)), opts); }
   /** One page of highlights (at most 300), newest first; `before` is the cursor of the next page, `from`/`to` the period. */
   worldHighlights(limit: number, opts: {before?: number | null; from?: number | null; to?: number | null} = {}) { return this.runtime.highlights(Math.min(300, Math.max(1, limit)), opts); }
   // Run log (8.6, C08, C09): the current run, its ordered inputs, one event with its commit, the server recount.
@@ -128,9 +128,22 @@ export class WorldDO extends DurableObject<Env> {
     if (!runId) return log.summary(s);
     const r = log.runById(runId);
     if (!r) return null;
-    return snapshot ? r : {...r, initialSnapshot: {hash: r.initialSnapshot.hash, bytes: r.initialSnapshot.body.length}};
+    const readThrough = log.boundary(runId);
+    return snapshot ? {...r, readThrough} : {...r, readThrough, initialSnapshot: {hash: r.initialSnapshot.hash, bytes: r.initialSnapshot.body.length}};
   }
-  worldRunInputs(runId: string, since: number, limit: number) { return this.runtime.runLog.runById(runId) ? this.runtime.runLog.inputs(runId, since, limit) : null; }
+  worldRunInputs(runId: string, since: number, limit: number) {
+    const log = this.runtime.runLog, record = log.runById(runId);
+    if (!record) return null;
+    // V2 rows carry a checkpoint: bound a public response as well as each row/run. Callers page by seq, not page length.
+    const rows = log.inputs(runId, since, record.schemaVersion === 'run-log-2' ? Math.min(16, limit) : limit);
+    let bytes = 2; const out: typeof rows = [];
+    for (const row of rows) {
+      const size = new TextEncoder().encode(JSON.stringify(row)).byteLength + 1;
+      if (out.length && bytes + size > 2 * 1024 * 1024) break;
+      out.push(row); bytes += size;
+    }
+    return out;
+  }
   worldEvent(id: string) { return this.runtime.eventRecord(id); }
   worldAutonomy(q: {from?: number | null; to?: number | null; day?: string | null; runId?: string | null}) { return this.runtime.autonomy(q); }
   // Connected Muse (direction v2, 7.2, 12.3, 13.1): MCP dispatch, agent keys, owner location, notifications.
