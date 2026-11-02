@@ -141,3 +141,11 @@ body:not([data-mode=world]) #muse-card .card-candidate:not([hidden]){display:blo
 .ev-day{list-style:none;padding:9px 2px 3px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:#A9B3C7}
 /* Policy links in the attribution line: a taller, wider touch area on phones. Inline padding does not change the line box, and the negative margin cancels the added width, so the line wraps and sits exactly as before (--footer-h is untouched: the line is outside the footer). */
 @media(max-width:700px){.attribution a.legal{padding:5px 3px;margin:0 -3px}}
+/* I-08 owner location (13.1): the always-on header chip (story and world mode), the demo verification check and the device location card. */
+/* It wraps instead of cutting off: the Muse's own place and ETA are the point of the line. */
+.loc-chip{background:#0D1220ed;color:#FFD98A;border:1px dashed #FFD98A80;border-radius:18px;padding:8px 14px;font-size:9px;font-weight:650;letter-spacing:.4px;line-height:1.45;min-width:170px;max-width:300px;white-space:normal;overflow-wrap:anywhere}.loc-chip[data-state=unknown],.loc-chip[data-stale="1"]{color:#D9DEE9;border-color:#8d97ad}
+.fld.check{flex-direction:row;align-items:center;gap:8px;margin:8px 0}.device-loc{display:flex;flex-direction:column;gap:6px;align-items:flex-start;border:1px solid #2A3550;border-radius:12px;padding:10px 12px;margin:6px 0 10px}.device-loc[data-fallback="1"]{border-color:#FFD98A80}
+@media(max-width:700px){.loc-chip{order:4;min-width:0;max-width:100%;font-size:7px;padding:8px 10px}.fld.check input{width:22px;height:22px}}
+/* The map-error note sits under the measured header (it used to be fixed at 92 px and ran into the wrapped header rows and the location chip on phones). */
+#network-note{top:calc(var(--header-h,72px) + 12px);z-index:30}
+@media(max-width:1180px){#network-note{left:14px;right:14px;max-width:none}body:has(#network-note:not([hidden])) .world-caption{display:none}body:has(#network-note:not([hidden])) #story-heading{top:calc(var(--header-h,72px) + 64px)}}

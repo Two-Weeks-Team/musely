@@ -22,7 +22,7 @@ export function beginTrip(m: MuseState, to: Place, now: number, source: Source, 
 
 /** Verified teleport: the owner's cell is verified, the destination is in it, and a Taxi Token is spent. */
 export function teleport(s: WorldState, m: MuseState, to: Place, now: number, source: Source, emit: Emit, hooks: Hooks, why: string): string | null {
-  const refusal = teleportCheck(s.owner, m.inventory, to);
+  const refusal = teleportCheck(s.owner, m, to);
   if (refusal) return refusal;
   const from = placeById(m.place);
   m.inventory.splice(m.inventory.indexOf('taxi_token'), 1);
@@ -47,9 +47,10 @@ export function followOwner(s: WorldState, now: number, emit: Emit, hooks: Hooks
   // A paused Muse (delegation revoked) does not follow; the owner cell is still recorded.
   if (s.paused?.[m.id]) return {mode: 'paused' as const};
   if (placeCell(m.place) === owner.cell && !m.travel) return {mode: 'stay' as const};
-  if (m.travel && placeCell(m.travel.to) === owner.cell) return {mode: 'walking' as const, etaMs: Math.max(0, m.travel.arriveAt - now)};
   const target = placeById(owner.target);
+  // A verified cell + a Taxi Token teleports, also when a walk there is already under way (verification turned on mid-trip).
   if (owner.verified && m.inventory.includes('taxi_token') && !teleport(s, m, target, now, 'live', emit, hooks, 'follow owner')) return {mode: 'teleport' as const};
+  if (m.travel && placeCell(m.travel.to) === owner.cell) return {mode: m.travel.speed === 'bus' ? 'bus' as const : 'walking' as const, etaMs: Math.max(0, m.travel.arriveAt - now)};
   const t = beginTrip(m, target, now, 'live', emit, 'follow owner');
   return {mode: t.speed === 'bus' ? 'bus' as const : 'walking' as const, etaMs: t.etaMs};
 }
