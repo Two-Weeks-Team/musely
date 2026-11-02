@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto';
 import {payloadHash,commandContent} from '../../worker/core/commands.ts';
 import {contentHash} from '../../src/identity/envelope.ts';
 import {recordedStateHash,assertCompatible} from '../../src/replay/player.ts';
+import {replayDisclosure} from './controlled-label.mjs';
 import {DEMO_TOOL_VERSION} from './controlled-p1.mjs';
 export const STORED_MCP_LABEL='STORED ORIGINAL SERVER VERIFICATION';
 export const OPERATOR_MCP='OPERATOR MCP';
@@ -16,7 +17,7 @@ async function pinned(dir,d){
  const raw=await readFile(file);need(raw.length<=8*1024*1024&&createHash('sha256').update(raw).digest('hex')===d.sha256,'artifact_hash_mismatch');return JSON.parse(raw);
 }
 export const storedMcpBinding=c=>c.storedMcpVerifier?structuredClone(c.storedMcpVerifier):null;
-export const storedMcpLabelFor=p=>({text:'REPLAY | '+STORED_MCP_LABEL+' | OPERATOR MCP | NO MODEL CALL | NOT INDEPENDENT CRYPTO VERIFICATION | VIRTUAL WORLD | build '+p.release.sourceSha.slice(0,12),sourceSha:p.release.sourceSha,variant:'s07'});
+export const storedMcpLabelFor=p=>({text:replayDisclosure(p)+' | '+STORED_MCP_LABEL+' | OPERATOR MCP | NO MODEL CALL | NOT INDEPENDENT CRYPTO VERIFICATION | original: live | VIRTUAL WORLD | build '+p.release.sourceSha.slice(0,12),sourceSha:p.release.sourceSha,variant:'s07'});
 export async function verifyStoredMcp(p,c,dir){
  const d=c.storedMcpVerifier;need(c.id==='s07'&&!c.controlledPair,'s07_only');need(d?.label===STORED_MCP_LABEL&&d.provenance===OPERATOR_MCP,'provenance_required');
  need(p.tooling?.version===DEMO_TOOL_VERSION&&/^[a-f0-9]{40}$/.test(p.tooling.sourceSha??''),'separate_tooling_pin_required');

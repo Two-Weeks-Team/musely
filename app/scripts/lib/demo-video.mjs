@@ -5,8 +5,9 @@ import {createHash} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {verifyControlledPair,controlledBinding,DEMO_TOOL_VERSION} from './controlled-p1.mjs';
-import {controlledLabelFor} from './controlled-label.mjs';
+import {controlledLabelFor,ordinaryLabelFor,ordinaryEvidence,replayDisclosure} from './controlled-label.mjs';
 import {verifyStoredMcp,storedMcpBinding,storedMcpLabelFor} from './stored-mcp.mjs';
+import {verifyStoredGift,storedGiftBinding,storedGiftLabelFor} from './stored-gift.mjs';
 export const run=promisify(execFile), sha=b=>createHash('sha256').update(b).digest('hex');
 export const SHOTS=[
  ['s01',12,'A living place','World overview: people delegate; Muses meet and act.'],
@@ -116,8 +117,9 @@ export async function verifyBundle(p,dir){
  for(const c of p.cuts??[]){
   let controlled=false;if(c.controlledPair){try{await verifyControlledPair(p,c,dir);controlled=true;}catch(e){errors.push(c.id+':'+e.message);}}
   let stored=false;if(c.storedMcpVerifier){try{await verifyStoredMcp(p,c,dir);stored=true;}catch(e){errors.push(c.id+':'+e.message);}}
-  if(!controlled&&!stored&&!(c.refs??[]).some(r=>r.requestId||r.signedVerdict))errors.push(c.id+':missing_evidence_anchor');
-  for(const r of c.refs??[]){try{const raw=await readFile(inside(dir,r.file));if(sha(raw)!==r.sha256)throw Error('raw_hash_mismatch');for(const x of(controlled||stored&&r.role==='stored-original-mcp'?referenceJoin:validateReference)(r,JSON.parse(raw)))errors.push(c.id+':'+x);}catch(e){errors.push(c.id+':'+e.message);}}
+  let gift=false;if(c.storedGiftVerifier){try{await verifyStoredGift(p,c,dir);gift=true;}catch(e){errors.push(c.id+':'+e.message);}}
+  if(!controlled&&!stored&&!gift&&!(c.refs??[]).some(r=>r.requestId||r.signedVerdict))errors.push(c.id+':missing_evidence_anchor');
+  for(const r of c.refs??[]){try{const raw=await readFile(inside(dir,r.file));if(sha(raw)!==r.sha256)throw Error('raw_hash_mismatch');for(const x of(controlled||stored&&r.role==='stored-original-mcp'||gift&&r.role==='stored-original-gift'?referenceJoin:validateReference)(r,JSON.parse(raw)))errors.push(c.id+':'+x);}catch(e){errors.push(c.id+':'+e.message);}}
  }
  return errors;
 }
@@ -131,6 +133,7 @@ export async function calibrate(ffmpeg,dir){
 }
 // Preflight the complete assembly before any encoder is called. A media row and its capture receipt
 // must bind the same bytes, filming side, exact evidence and frozen release.
+export const annotationFor=(p,c,v)=>c.controlledPair?controlledLabelFor(p,v):c.storedMcpVerifier?storedMcpLabelFor(p):c.storedGiftVerifier?storedGiftLabelFor(p):ordinaryLabelFor(p,c,v);
 export async function verifyMedia(p,dir){
  const rows=[],takeIds=new Set();
  for(const c of p.cuts){
@@ -145,8 +148,10 @@ export async function verifyMedia(p,dir){
    if(receipt.media?.file!==segment.file||receipt.media?.sha256!==segment.sha256||receipt.media?.bytes!==raw.length)throw Error(c.id+':media_binding_mismatch');
    if(receipt.schema!=='musely-demo-capture-2'||receipt.kind!=='recorded_public_capture'||receipt.cutId!==c.id||receipt.viewId!==view.id||receipt.takeId!==segment.takeId||receipt.runId!==view.runId||receipt.durationSeconds!==view.duration||canonical(receipt.release)!==canonical(p.release)||!Number.isFinite(receipt.startOffsetSec)||receipt.startOffsetSec<0||receipt.blockedRequests!==0||receipt.label!=='REPLAY'||receipt.virtual!==true||canonical(receipt.originalSources)!==canonical(sources(refs))||receipt.observed?.runId!==view.runId||receipt.observed?.label!==true||receipt.observed?.hash!==view.snapshotHash||receipt.seekSec!==view.seekSec)throw Error(c.id+':capture_receipt_mismatch');
    if(p.tooling&&(receipt.tooling?.version!==DEMO_TOOL_VERSION||canonical(receipt.tooling)!==canonical(p.tooling)))throw Error(c.id+':tooling_capture_binding_mismatch');
+   const expectedLabel=annotationFor(p,c,view),provenance=receipt.provenanceLabel;if(provenance?.valid!==true||provenance.visible!==true||provenance.text!==expectedLabel.text||provenance.sourceSha!==expectedLabel.sourceSha||provenance.variant!==expectedLabel.variant)throw Error(c.id+':continuous_provenance_required');
    if(c.controlledPair){const label=controlledLabelFor(p,view),observed=receipt.controlledLabel;if(receipt.tooling?.version!==DEMO_TOOL_VERSION||canonical(receipt.tooling)!==canonical(p.tooling)||canonical(receipt.controlledPair)!==canonical(controlledBinding(c))||observed?.valid!==true||observed.visible!==true||observed.text!==label.text||observed.sourceSha!==label.sourceSha||observed.variant!==label.variant)throw Error(c.id+':controlled_capture_binding_mismatch');}
    if(c.storedMcpVerifier){const label=storedMcpLabelFor(p),observed=receipt.storedMcpLabel;if(receipt.tooling?.version!==DEMO_TOOL_VERSION||canonical(receipt.tooling)!==canonical(p.tooling)||canonical(receipt.storedMcpVerifier)!==canonical(storedMcpBinding(c))||observed?.valid!==true||observed.visible!==true||observed.text!==label.text||observed.sourceSha!==label.sourceSha||observed.variant!==label.variant)throw Error(c.id+':stored_mcp_capture_binding_mismatch');}
+   if(c.storedGiftVerifier){const label=storedGiftLabelFor(p),observed=receipt.storedGiftLabel;if(receipt.tooling?.version!==DEMO_TOOL_VERSION||canonical(receipt.tooling)!==canonical(p.tooling)||canonical(receipt.storedGiftVerifier)!==canonical(storedGiftBinding(c))||observed?.valid!==true||observed.visible!==true||observed.text!==label.text||observed.sourceSha!==label.sourceSha||observed.variant!==label.variant)throw Error(c.id+':stored_gift_capture_binding_mismatch');}
    const bootstrap=receipt.bootstrapDeniedReads??[],telemetry=receipt.deniedTelemetry??[];
    if(!validDeniedRows(bootstrap,'bootstrap-denied-read',p.origin)||!validDeniedRows(telemetry,'denied-telemetry',p.origin)||(bootstrap.length||telemetry.length)&&(receipt.denialsAreAccessReceipts!==false||receipt.continuedWriteRequests!==0)||(receipt.continuedWriteRequests??0)!==0)throw Error(c.id+':denied_request_audit_mismatch');
    if(!Array.isArray(receipt.refs)||!Array.isArray(segment.refs)||canonical(refKeys(receipt.refs))!==canonical(refKeys(refs))||canonical(refKeys(segment.refs))!==canonical(refKeys(refs)))throw Error(c.id+':captured_refs_mismatch');
@@ -156,8 +161,10 @@ export async function verifyMedia(p,dir){
  return rows;
 }
 export function captionFor(p,c,receipt){
- if(c.storedMcpVerifier)return `${c.title} | REPLAY | original: ${receipt.originalSources.join(', ')} | VIRTUAL WORLD\nSTORED ORIGINAL SERVER VERIFICATION | OPERATOR MCP\nNO MODEL CALL | NOT INDEPENDENT CRYPTO VERIFICATION | build ${p.release.sourceSha.slice(0,12)}`;
- return `REPLAY${c.id==='s05'?' | CONTROLLED COMPARISON (SIMULATION)':''} | original: ${receipt.originalSources.join(', ')} | VIRTUAL LOCATION (DEMO)\n${c.title} | ${c.controlledPair?'controlled input, no model call':'Meta Muse Spark'} | build ${p.release.sourceSha.slice(0,12)}`;
+ const first=replayDisclosure(p)+' | original: '+receipt.originalSources.join(', '),build='VIRTUAL WORLD | build '+p.release.sourceSha.slice(0,12);
+ const evidence=c.controlledPair?'CONTROLLED COMPARISON (SIMULATION) | NO MODEL CALL':c.storedMcpVerifier?'STORED ORIGINAL SERVER VERIFICATION | OPERATOR MCP | NO MODEL CALL | NOT INDEPENDENT CRYPTO VERIFICATION':c.storedGiftVerifier?'STORED ORIGINAL SERVER VERIFICATION | OPERATOR REVIEWER MCP | NO MODEL CALL | NOT INDEPENDENT CRYPTO VERIFICATION':ordinaryEvidence(c,receipt.refs??c.refs);
+ const third=c.storedGiftVerifier?'1 GIFT + 1 EXACT DUPLICATE | EXISTING REVIEWER KEY | NEW KEY / DELEGATION: 0 | '+build:'PRODUCT ATTRIBUTION: Meta Muse Spark | '+build;
+ return first+'\n'+evidence+'\n'+third;
 }
 export async function render(p,dir,ffmpeg,font){
  const errors=await verifyBundle(p,dir);if(errors.length)throw Error(errors.join('\n'));
@@ -166,7 +173,8 @@ export async function render(p,dir,ffmpeg,font){
  const target=resolve(dir,'render',c.id+'-'+index+'.mp4'),text=resolve(dir,'render',c.id+'-'+index+'.txt');
  await writeNew(text,captionFor(p,c,receipt));
  const esc=s=>s.replaceAll('\\','\\\\').replaceAll(':','\\:').replaceAll("'","'\\''");
- const vf=`scale=1920:960:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:0:color=black,drawtext=fontfile='${esc(resolve(font))}':textfile='${esc(text)}':fontcolor=white:fontsize=28:x=24:y=978:line_spacing=8`;
+ const captionSize=24,captionSpacing=6;
+ const vf=`scale=1920:960:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:0:color=black,drawtext=fontfile='${esc(resolve(font))}':textfile='${esc(text)}':fontcolor=white:fontsize=${captionSize}:x=24:y=978:line_spacing=${captionSpacing}`;
  await run(ffmpeg,['-hide_banner','-loglevel','error','-n','-ss',String(receipt.startOffsetSec),'-i',clip,'-t',String(segment.duration),'-an','-vf',vf,'-r','30','-c:v','libx264','-pix_fmt','yuv420p','-movflags','+faststart',target]);parts.push(target);
  }
  const list=resolve(dir,'render','concat.txt');await writeNew(list,parts.map(p=>"file '"+p.replaceAll("'","'\\''")+"'").join('\n')+'\n');
