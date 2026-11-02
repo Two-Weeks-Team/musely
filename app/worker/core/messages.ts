@@ -48,6 +48,7 @@ function blockedText(text: string | null, me: string, other: string | null, what
 
 export function sendPostcard(st: WorldState, me: string, a: {to: string; item: string; text: string | null}, live: Emit, at: number): Outcome {
   const {to, item, text} = a;
+  if (to === me) return {ok: false, reason: 'invalid_target'};
   const m = museOf(st, me), r = museOf(st, to), inbox = inboxOf(st);
   const blocked = blockedText(text, me, to, 'A postcard note', live, at); if (blocked) return blocked;
   if (!m.inventory.includes(item)) return {ok: false, reason: 'not_held'};
@@ -68,6 +69,7 @@ export function sendPostcard(st: WorldState, me: string, a: {to: string; item: s
 
 export function giveGift(st: WorldState, me: string, a: {to: string; item: string}, live: Emit, at: number): Outcome {
   const {to, item} = a;
+  if (to === me) return {ok: false, reason: 'invalid_target'};
   const m = museOf(st, me), r = museOf(st, to), inbox = inboxOf(st), spec = itemSpec(item)!;
   if (!m.inventory.includes(item)) return {ok: false, reason: 'not_held'};
   if (spec.category === 'relic') return {ok: false, reason: 'relic'};

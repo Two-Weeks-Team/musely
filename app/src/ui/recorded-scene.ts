@@ -6,7 +6,7 @@ export function recordedSceneFrame(frame: RecordedFrame): {world: LiveWorld; eve
   // Public checkpoints intentionally hash these strings. Neither hashes nor static harness text are dialogue.
   const world: LiveWorld = {worldId: frame.worldId, day: state.day, tick: state.tick, version: state.version, lastTickAt: state.lastTickAt,
     muses: state.muses.map((m: LiveWorld['muses'][number]) => ({id: m.id, place: m.place, travel: m.travel ? {...m.travel} : null,
-      beat: m.beat ? {...m.beat, line: null} : null, inventory: [...m.inventory], paused: m.paused}))};
+      beat: m.beat ? {...m.beat, line: null} : null, inventory: [...m.inventory], paused: state.paused?.[m.id] ?? null}))};
   return {world, events: structuredClone(frame.events)};
 }
 export class SceneProjection {

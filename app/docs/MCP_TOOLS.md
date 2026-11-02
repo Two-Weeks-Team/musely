@@ -2,6 +2,8 @@
 
 This page documents the MCP server at `https://musely.net/mcp` as implemented in `worker/core/mcp-server.ts` (transport, auth, JSON-RPC) and `worker/core/mcp-tools.ts` (tools). When this page and the code disagree, the code is right; fix this page.
 
+Local transport-to-commit acceptance and evidence limits: [MCP_INTEGRATION.md](MCP_INTEGRATION.md).
+
 ## Common rules
 
 ### Endpoint and transport
@@ -149,11 +151,11 @@ Help Task (kind `help`, a v1 inbox Task with a `help` field: `service`, `item`, 
 
 C06 names a version 2 Task shape. `worker/core/tasks.ts` derives it from the agent inbox Tasks (`src/engine/inbox.ts`) without storing anything or changing how the tools work (the tools and `heartbeat_check` still show the v1 `status`). I-07 and I-13 build on it.
 
-Storage migration is not done: inbox Tasks are still stored in the v1 shape, and a `TaskRecord` is computed on each read. The version 2 storage migration (C06: keep id, deadline, offer and history; same Task, item and inbox counts before and after; idempotent on restart) belongs to I-07.
+I-07 migrates the stored version 1 inbox once at WorldDO startup through `migrateTaskStore`; restarting is idempotent. Existing IDs, deadlines, offers, history, items and agent keys are preserved, with version 2 revision/hash/approval metadata added. `TaskRecord` remains the facade over inbox Tasks and the legacy `status` in tool results is retained. `tasks.test.mjs` verifies migration and restart counts.
 
 How `pending` is split. C06 says: "pending은 응답 전 submitted/응답 대기 input-required로" (pending becomes submitted before any answer, and input-required while an answer is awaited). Read here as: a `pending` Task whose history has only the opening `propose` is `submitted` (nobody has answered yet); a `pending` Task with any later step (a `counter`, or a meetup `answer`) is `input-required`, and the side in `awaiting` owes the next answer. Example: a trade proposed to a connected Muse is `submitted`; after the resident counters it is `input-required` with `awaiting` = the proposer.
 
-`TaskRecord`: `version: 2`, `id`, `kind` (`trade` | `meetup` | `help`), `participants` (`[from, to]`), `status`, `awaiting`, `revision` (number of history steps), `contentHash` (hex SHA-256 of the JCS form of `{kind, participants, offer | candidate}`: what an approval binds to), `expiresAt` (the deadline), `payload` (trade: `offer`, `counters`; meetup: `candidate`, `answers`), `approvalRefs` (none yet; I-07), `eventIds` (world events whose `data.task_id` is the Task, when the caller passes events), `createdAt`, `updatedAt`.
+`TaskRecord`: `version: 2`, `id`, `kind` (`trade` | `meetup` | `help`), `participants` (`[from, to]`), `status`, `awaiting`, `revision` (content revision; counters and changed candidates increment it), `contentHash` (hex SHA-256 of the JCS form of `{kind, participants, offer | candidate}`: what an approval binds to), `expiresAt` (the deadline), `payload` (trade: `offer`, `counters`; meetup: `candidate`, `answers`), `approvalRefs` (stored owner decisions for this revision and hash), `eventIds` (world events whose `data.task_id` is the Task, when the caller passes events), `createdAt`, `updatedAt`.
 
 | v1 inbox status | Version 2 status |
 |---|---|
@@ -169,6 +171,8 @@ Transitions (`transitionTask`): `submitted` → `input-required` | `completed` |
 
 ### Results and the write path
 
+- Peer schemas list every Muse, including Jolly. Self is the authenticated current caller: `greet`, `propose_trade`, `send_postcard`, `give_gift` and `propose_meetup` refuse self with `invalid_target`; help uses `self_help`, campfire uses `self_invite`. Reading your own Agent Card is valid. Self refusals happen before item upkeep.
+- After async signing/peer checks, the commit uses a fresh server timestamp for Task, envelope and delegation expiry. Current claim and peer-owner claim are checked before apply/upkeep; losing a claim during the await cannot authorize a later write.
 - Every result has `content` (one text block: an optional sentence plus the JSON) and `structuredContent` (the same JSON).
 - Every write except `heartbeat_check` follows one path (`worker/core/commands.ts`): sign a command envelope with the Muse's executor; verify it (signature, revocation, recipient, delegation and scope, expiry, content hash, an unused nonce) without spending the nonce; check the other Muse's Agent Card and delegation when the tool has one; check `expected_version`; then, in one storage transaction, re-check, spend the nonce, apply, log and store the result. The result carries `envelope: {message_id, signer_kind, delegation_ref, content_hash, verified}` and `command: {command_id, expected_version, world_version, duplicate}` (`world_version` is the version the call committed at, or the current one if it was refused).
 - A refused call is refused with the reason (for example `delegation_revoked`, `scope_not_delegated`, `expired`, `replay`, `stale_world`, `in_progress`), its `step` and `retryable`. Nothing changes and no nonce is spent.

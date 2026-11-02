@@ -194,7 +194,7 @@ function museMarkers(map: LibreMap, onSelect: (id: string) => void, isLive: () =
 type EvidenceEv = Ev & {fixture?: boolean; recorded?: RecordedEvidence};
 const PARTS: [Filter['part'], string][] = [['', 'Any time'], ['night', 'Night 0–6'], ['morning', 'Morning 6–12'], ['afternoon', 'Afternoon 12–18'], ['evening', 'Evening 18–24']];
 
-export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorld, events: readonly LiveEvent[]) => void; onSelect?: (id: string) => void; isLive?: () => boolean; paused?: () => boolean} = {}) {
+export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorld, events: readonly LiveEvent[]) => void; onSelect?: (id: string) => void; isLive?: () => boolean; paused?: () => boolean; onReturnLive?: () => void} = {}) {
   enforceIsolation();
   const header = document.querySelector('header')!;
   const open = el('button', 'quiet world-open'); open.type = 'button'; open.id = 'world-open';
@@ -346,7 +346,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   const replayFrames = new Set<(frame: RecordedFrame | null) => void>();
   const replayCtx = {
     onFrame: (frame: RecordedFrame | null) => { currentRecorded = frame; if (frame) {const view = recordedSceneFrame(frame); pins.update(view.world, view.events, frame.recordedAt, true);} else {pins.update(world, events);} for (const listener of replayFrames) listener(frame); },
-    returnLive: () => { tab = 'feed'; void render().then(() => refresh()); },
+    returnLive: () => { live.onReturnLive?.(); tab = 'feed'; void render().then(() => refresh()); },
     showEvidence: (e: ReplayEvent | RecordedEvent, trigger: HTMLElement) => openEvidence(e, trigger),
     sourceLabel: (e: ReplayEvent | RecordedEvent) => sourceLabel(e), describe: (e: ReplayEvent | RecordedEvent) => describe(e), museName, placeName, at,
   };

@@ -799,7 +799,7 @@ test('I-13 tools: invite_campfire, propose_help and answer_help are listed with 
     to: {type: 'array', items: {type: 'string', enum: ['00-jolly', ...residents]}, minItems: 1, maxItems: 8, uniqueItems: true, description: 'Muses to invite (1 to 8, no repeats)'},
     text: {type: 'string', minLength: 1, maxLength: 140, description: 'Optional short public invitation line'}, ...command}});
   assert.deepEqual(byName.propose_help.inputSchema, {type: 'object', additionalProperties: false, required: ['to', 'item'], properties: {
-    to: {type: 'string', enum: residents, description: 'Nearby Muse to ask'},
+    to: {type: 'string', enum: ['00-jolly', ...residents], description: 'Nearby Muse to ask'},
     item: item('Item you hold that the help is about (you keep it)'),
     needs: item('Optional part you supply for the work (you hold it; spent when the help completes)'),
     text: {type: 'string', minLength: 1, maxLength: 140, description: 'Optional short public request line'}, ...command}});

@@ -163,3 +163,9 @@ body[data-mode="world"] #story-heading,body[data-mode="world"] #story-scrubber{d
 #world-panel.recorded-scene-view>:not(.world-body):not(.close),.recorded-scene-view .recorded-replay>:not(.recorded-browser-controls):not(.recorded-output),.recorded-scene-view .recorded-browser-controls>:not([data-scene-toggle]):not([data-return-live]),.recorded-scene-view .recorded-output>:not(.replay-controls):not(.recorded-time):not(.src){display:none}
 .recorded-scene-view .world-body{padding:0}.recorded-scene-view .recorded-browser-controls{padding-right:24px;margin-bottom:8px}.recorded-scene-view .recorded-output>.src{margin-bottom:8px}.recorded-scene-view .recorded-time{margin-bottom:0}
 @media(max-width:700px){#world-panel.recorded-scene-view{inset:auto 8px 12px 8px;width:auto;max-height:38dvh;padding:12px}.recorded-scene-view .recorded-browser-controls{gap:5px}}
+
+/* Welcome uses the same measured bounds as the selected-Muse card. On a short phone the copy can scroll,
+   while the header and footer keep their controls; focused welcome buttons scroll inside this panel. */
+#welcome{--welcome-top:max(150px,calc(var(--header-h,100px) + 10px));top:var(--welcome-top);max-height:calc(100dvh - var(--welcome-top) - var(--footer-h,118px) - 42px);overflow-y:auto;overscroll-behavior:contain}
+@media(max-width:1180px){#welcome{--welcome-top:calc(var(--header-h,125px) + 10px)}}
+@media(max-width:700px){#welcome{max-height:calc(100dvh - var(--welcome-top) - var(--footer-h,134px) - 39px)}}
