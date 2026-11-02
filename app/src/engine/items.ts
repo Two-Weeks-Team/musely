@@ -256,13 +256,22 @@ export function stampAcquired(l: Ledger, museId: string, item: string, at: numbe
   if (!h) return;
   ((l.expiry ??= {})[museId] ??= []).push({item, at, expiresAt: at + h * HOUR_MS});
 }
-/** The holder gave one away: the copy closest to expiry leaves with it. */
-function dropTimed(l: Ledger, museId: string, item: string) {
+/**
+ * The holder hands a copy on (trade, gift, mail): the copy closest to expiry leaves, with its clock. Returns that
+ * clock so the receiver keeps the remaining time; passing a pass around never renews it.
+ */
+export function takeTimed(l: Ledger, museId: string, item: string): HeldTimed | null {
   const list = l.expiry?.[museId];
-  if (!list) return;
+  if (!list) return null;
   let k = -1;
   for (let i = 0; i < list.length; i++) if (list[i].item === item && (k < 0 || list[i].expiresAt < list[k].expiresAt)) k = i;
-  if (k >= 0) list.splice(k, 1);
+  return k >= 0 ? list.splice(k, 1)[0] : null;
+}
+/** The receiver of a handed-on copy keeps its original clock. A copy that came without one (never swept) starts at `at`. */
+export function putTimed(l: Ledger, museId: string, item: string, clock: HeldTimed | null, at: number) {
+  if (!timedHours(item)) return;
+  if (clock) ((l.expiry ??= {})[museId] ??= []).push({...clock});
+  else stampAcquired(l, museId, item, at);
 }
 /** True when every recorded copy of `item` the Muse holds has reached its expiry at `at` (expiresAt itself is expired). */
 export function isExpired(l: Ledger, museId: string, item: string, at: number) {
@@ -282,13 +291,13 @@ export function grantItem(l: Ledger, m: {id: string; inventory: string[]}, item:
   stampAcquired(l, m.id, item, at);
   return appendHistory(l, {item, from: null, to: m.id, place, at, via});
 }
-/** A gift between Muses: the giver's copy leaves (with its expiry record); the receiver's clock starts at `at`. */
+/** A gift between Muses: the giver's copy leaves with its expiry clock; the receiver keeps the remaining time. */
 export function transferItem(l: Ledger, from: {id: string; inventory: string[]; place: string}, to: {id: string; inventory: string[]}, item: string, at: number) {
   const k = from.inventory.indexOf(item);
   if (k < 0) throw new Error('transfer of an item not held');
   readyHistory(l);
   from.inventory.splice(k, 1); to.inventory.push(item);
-  dropTimed(l, from.id, item); stampAcquired(l, to.id, item, at);
+  putTimed(l, to.id, item, takeTimed(l, from.id, item), at);
   return appendHistory(l, {item, from: from.id, to: to.id, place: from.place, at, via: 'gift'});
 }
 
@@ -297,7 +306,7 @@ type UpkeepWorld = {items: Ledger; muses: {id: string; place: string; inventory:
 
 /**
  * Expiry sweep at `now`. Records are reconciled with inventories first: a held time-limited copy without a record
- * (a stored state from before I-06, or mail delivered this tick) starts its clock now; records for copies no longer
+ * (a stored state from before I-06) starts its clock now; records for copies no longer
  * held are dropped. Then every copy at or past its expiry leaves the inventory, with an `expired` history entry.
  */
 export function sweepExpired(s: {items: Ledger; muses: {id: string; place: string; inventory: string[]}[]}, now: number): UpkeepEvent[] {
@@ -416,15 +425,15 @@ export function checkTrade(l: Ledger, day: string, a: {id: string; place: string
   return {ok: true};
 }
 
-/** Atomic swap after both sides lock: both moves or neither; receipt to both; history appended; pass clocks restart for the receiver. */
+/** Atomic swap after both sides lock: both moves or neither; receipt to both; history appended; a pass keeps its clock. */
 export function commitTrade(l: Ledger, day: string, a: {id: string; inventory: string[]; place: string}, b: {id: string; inventory: string[]}, give: string, want: string, at: number) {
   const ia = a.inventory.indexOf(give), ib = b.inventory.indexOf(want);
   if (ia < 0 || ib < 0) throw new Error('trade lock lost');
   readyHistory(l);
   a.inventory.splice(ia, 1); b.inventory.splice(ib, 1);
   a.inventory.push(want, 'trade_receipt'); b.inventory.push(give, 'trade_receipt');
-  dropTimed(l, a.id, give); dropTimed(l, b.id, want);
-  stampAcquired(l, a.id, want, at); stampAcquired(l, b.id, give, at);
+  const gaveClock = takeTimed(l, a.id, give), gotClock = takeTimed(l, b.id, want);
+  putTimed(l, b.id, give, gaveClock, at); putTimed(l, a.id, want, gotClock, at);
   const key = [a.id, b.id].sort().join('|');
   ((l.trades[day] ??= {})[key] = (l.trades[day][key] ?? 0) + 1);
   appendHistory(l, {item: give, from: a.id, to: b.id, place: a.place, at, via: 'trade'});

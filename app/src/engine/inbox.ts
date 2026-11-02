@@ -34,7 +34,9 @@ export type Task = {
   history: {by: string; action: 'propose' | 'counter' | 'accept' | 'reject' | 'expire' | 'answer' | 'cancel'; at: number; give?: string; want?: string}[];
 };
 export type Message = {id: string; from: string; to: string; kind: 'greet' | 'postcard' | 'gift'; at: number; text: string | null; item?: string | null; blocked?: string[]; read: boolean};
-export type Mail = {id: string; from: string; to: string; item: string; text: string | null; sentAt: number; deliverAt: number; crossRegion: boolean};
+export type Mail = {id: string; from: string; to: string; item: string; text: string | null; sentAt: number; deliverAt: number; crossRegion: boolean;
+  /** Expiry clock of a time-limited item in the mail (I-06): it keeps running in transit and moves to the receiver. */
+  timed?: {item: string; at: number; expiresAt: number}};
 /** `muse`: the Muse whose owner this is for (its details go only to that owner's session). Older stored notifications have none: they were the owner Muse's. */
 export type OwnerNotification = {id: string; kind: 'meetup_candidate' | 'trade_completed' | 'blocked'; at: number; line: string; ref: string | null; other: string | null; muse?: string; detail?: Record<string, unknown>};
 export const notificationMuse = (n: OwnerNotification) => n.muse ?? '00-jolly';

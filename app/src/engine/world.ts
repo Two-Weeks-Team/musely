@@ -5,7 +5,7 @@
 import {BEATS, CLIP_FALLBACK, inHours, type Beat} from './beats.ts';
 import {PLACES, PLACE_BY_ID, placeById, distanceM, WALK_MPS, type Place} from './places.ts';
 import {HARNESSES, harnessById} from './harness.ts';
-import {ITEM_BY_ID, itemUpkeep, grantItem} from './items.ts';
+import {ITEM_BY_ID, itemUpkeep, grantItem, putTimed} from './items.ts';
 import {rngFor, weightedPick, daySeed} from './rng.ts';
 import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, placeCell, type OwnerLocation} from './location.ts';
@@ -177,7 +177,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   const due = s.inbox.mail.filter(x => x.deliverAt <= now && !paused(x.from) && !paused(x.to));
   for (const mail of due) {
     const to = s.muses.find(m => m.id === mail.to);
-    if (to) to.inventory.push(mail.item);
+    if (to) { to.inventory.push(mail.item); if (mail.timed) putTimed(s.items, to.id, mail.item, mail.timed, now); }
     deliverMessage(s.inbox, {from: mail.from, to: mail.to, kind: 'postcard', at: now, text: mail.text, item: mail.item});
     emit({at: now, source: 'rule', kind: 'postcard_delivered', muse: mail.to, other: mail.from, data: {item: mail.item, mail_id: mail.id, sentAt: mail.sentAt}, tags: mail.crossRegion ? ['cross_region_postcard'] : []});
   }

@@ -526,7 +526,9 @@ test('I-06: a pass past its 24 h expiry is swept before an MCP tool reads it, so
   assert.ok(!t.muse(OWNER_SLOT).inventory.includes('garden_pass'));
   assert.equal((await t.call('give_gift', {to: '08-orbit', item: 'night_pass'})).isError, false, 'the 23h59m pass still moves');
   assert.ok(t.muse('08-orbit').inventory.includes('night_pass'));
-  assert.equal(t.state().items.expiry['08-orbit'][0].at, T0, "the receiver's clock starts at the gift");
+  assert.deepEqual(t.state().items.expiry['08-orbit'], [{item: 'night_pass', at: T0 - 24 * H + 60_000, expiresAt: T0 + 60_000}], 'the receiver keeps the remaining 1 minute');
+  // send_postcard takes only postcard ids, so a pass cannot be mailed through MCP; the mail clock is covered in items.test.mjs.
+  assert.equal((await t.call('send_postcard', {to: '02-moss', item: 'event_pass'})).error?.code, -32602);
   const {verifyHistory} = await import('../src/engine/items.ts');
   assert.equal(verifyHistory(t.state().items).ok, true);
   assert.deepEqual(t.state().items.history.filter(h => h.via === 'expired' || h.via === 'gift').map(h => [h.via, h.item]), [['expired', 'garden_pass'], ['gift', 'night_pass']]);

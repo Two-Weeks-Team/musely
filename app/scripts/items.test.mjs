@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {ITEMS, ITEM_BY_ID, ITEM_EFFECTS, EFFECT_RULES, effectRule, discover, receiveDiscovery, checkTrade, commitTrade, emptyLedger, speedFor, RULES, canCraftTransitPass, itemSpec,
-  appendHistory, verifyHistory, trimHistory, sealHistory, historyHash, HistoryTamperError, GENESIS, HISTORY_KEEP, grantItem, transferItem, sweepExpired, isExpired, abilityGain} from '../src/engine/items.ts';
+  appendHistory, verifyHistory, trimHistory, sealHistory, historyHash, HistoryTamperError, GENESIS, HISTORY_KEEP, grantItem, transferItem, sweepExpired, takeTimed, isExpired, abilityGain} from '../src/engine/items.ts';
 import {sha256Hex} from '../src/engine/sha256.ts';
 import {BEATS} from '../src/engine/beats.ts';
 import {placeById, PLACES} from '../src/engine/places.ts';
@@ -301,18 +301,46 @@ test('AC3 expiry in the engine: the tick at 24h removes the pass, logs item_expi
   assert.equal(verifyHistory(later.s.items).ok, true);
 });
 
-test('AC3 expiry restarts on a new acquisition (trade or gift) and an unrecorded copy in an old state starts its clock at first sight', () => {
-  const l = emptyLedger(), a = muse('03-ripple', 'commons:garden'), b = muse('02-moss', 'commons:garden', ['clover_seed']);
+test('AC3 expiry carries over: a trade or gift hands on the remaining time; only a first acquisition from the world starts a clock', () => {
+  const l = emptyLedger(), a = muse('03-ripple', 'commons:garden'), b = muse('02-moss', 'commons:garden', ['clover_seed']), c = muse('05-bloom', 'commons:garden');
   grantItem(l, a, 'garden_pass', T0, a.place, 'discover');
-  commitTrade(l, DAY, a, b, 'garden_pass', 'clover_seed', T0 + 10 * H);
-  assert.deepEqual(l.expiry['02-moss'], [{item: 'garden_pass', at: T0 + 10 * H, expiresAt: T0 + 34 * H}]);
+  assert.deepEqual(l.expiry['03-ripple'], [{item: 'garden_pass', at: T0, expiresAt: T0 + 24 * H}], 'found: a new clock');
+  // A held it 20 h, then trades it to B: B's copy expires 4 h later, not 24 h.
+  commitTrade(l, DAY, a, b, 'garden_pass', 'clover_seed', T0 + 20 * H);
+  assert.deepEqual(l.expiry['02-moss'], [{item: 'garden_pass', at: T0, expiresAt: T0 + 24 * H}]);
   assert.equal(l.expiry['03-ripple']?.length ?? 0, 0, 'the giver keeps no record');
-  const c = muse('05-bloom', 'commons:garden');
-  transferItem(l, b, c, 'garden_pass', T0 + 11 * H);
-  assert.equal(l.expiry['05-bloom'][0].expiresAt, T0 + 35 * H);
+  const w = {items: l, muses: [a, b, c]};
+  assert.deepEqual(sweepExpired(w, T0 + 24 * H - 60_000), [], 'B still holds it at 3h59m after the trade');
+  // Passing it on again (gift) never renews it.
+  transferItem(l, b, c, 'garden_pass', T0 + 22 * H);
+  assert.equal(l.expiry['05-bloom'][0].expiresAt, T0 + 24 * H);
+  const ev = sweepExpired(w, T0 + 24 * H);
+  assert.equal(ev.length, 1); assert.equal(ev[0].muse, '05-bloom'); assert.ok(!c.inventory.includes('garden_pass'));
+  // A new find later is a new pass with a new clock.
+  grantItem(l, a, 'garden_pass', T0 + 30 * H, a.place, 'discover');
+  assert.equal(l.expiry['03-ripple'][0].expiresAt, T0 + 54 * H);
+  // An unrecorded copy in a state stored before I-06 starts its clock at the first sweep.
   const old = muse('08-orbit', 'commons:benches', ['night_pass']);
   sweepExpired({items: l, muses: [old]}, T0);
   assert.equal(l.expiry['08-orbit'][0].expiresAt, T0 + 24 * H, 'legacy copy: clock starts at the first sweep');
+  assert.equal(verifyHistory(l).ok, true);
+});
+
+test('AC3 expiry carries over in the mail: the clock keeps running in transit and moves to the receiver', () => {
+  let s = createWorld('mail-clock', T0);
+  const ripple = at(s, '03-ripple');
+  grantItem(s.items, ripple, 'event_pass', T0, ripple.place, 'discover');
+  s = tick(s, {now: T0 + 20 * H}, makeHooks()).state;
+  // What send_postcard does: the item and its clock leave the sender together.
+  const sender = at(s, '03-ripple');
+  sender.inventory.splice(sender.inventory.indexOf('event_pass'), 1);
+  const timed = takeTimed(s.items, '03-ripple', 'event_pass');
+  s.inbox.mail.push({id: 'mail_t', from: '03-ripple', to: '02-moss', item: 'event_pass', text: null, sentAt: T0 + 20 * H, deliverAt: T0 + 21 * H, crossRegion: false, timed});
+  s = tick(s, {now: T0 + 21 * H}, makeHooks()).state;
+  assert.ok(at(s, '02-moss').inventory.includes('event_pass'));
+  assert.deepEqual(s.items.expiry['02-moss'].filter(r => r.item === 'event_pass'), [{item: 'event_pass', at: T0, expiresAt: T0 + 24 * H}]);
+  const end = tick(s, {now: T0 + 24 * H}, makeHooks());
+  assert.ok(end.events.some(e => e.kind === 'item_expired' && e.muse === '02-moss' && e.data.item === 'event_pass'), 'expires 3 h after delivery, 4 h after it left the sender');
 });
 
 test('AC3 seed and stamps: Bloom consumes only the Clover Seed; permanent stamps are never consumed, expired or traded', () => {

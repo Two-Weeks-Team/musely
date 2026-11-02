@@ -14,7 +14,7 @@ import {verifyCard} from '../../src/identity/card.ts';
 import {detectInjection, INJECTION_LIMIT_NOTE} from '../../src/identity/untrusted.ts';
 import {HARNESS_IDS, harnessById, type ScopeId} from '../../src/engine/harness.ts';
 import {placeById, distanceM, WALK_MPS, type Place} from '../../src/engine/places.ts';
-import {ITEM_BY_ID, itemSpec, itemName, checkTrade, commitTrade, discover, receiveDiscovery, grantItem, transferItem, appendHistory, sweepExpired, canCraftTransitPass, abilityGain, RULES} from '../../src/engine/items.ts';
+import {ITEM_BY_ID, itemSpec, itemName, checkTrade, commitTrade, discover, receiveDiscovery, grantItem, transferItem, appendHistory, sweepExpired, takeTimed, canCraftTransitPass, abilityGain, RULES} from '../../src/engine/items.ts';
 import {BEATS} from '../../src/engine/beats.ts';
 import {updateWants, localClock, type WorldState, type MuseState, type WorldEvent, type Hooks} from '../../src/engine/world.ts';
 import {rngFor} from '../../src/engine/rng.ts';
@@ -448,7 +448,8 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         m.inventory.splice(m.inventory.indexOf(item), 1); m.inventory.splice(m.inventory.indexOf('postage_stamp'), 1);
         count.postcards += 1;
         const crossRegion = placeCell(from) !== placeCell(dest);
-        inbox.mail.push({id: nextId(inbox, 'mail'), from: me, to, item, text, sentAt: at, deliverAt: at + travelMs, crossRegion});
+        const timed = takeTimed(st.items, me, item);
+        inbox.mail.push({id: nextId(inbox, 'mail'), from: me, to, item, text, sentAt: at, deliverAt: at + travelMs, crossRegion, ...(timed ? {timed} : {})});
         appendHistory(st.items, {item, from: me, to, place: from.id, at, via: 'gift'});
         live({at, source: 'live', kind: 'postcard_sent', muse: me, other: to, place: from.id, line: `Mailed ${itemName(item)} to ${name(to)}`, data: {item, eta_ms: travelMs, cross_region: crossRegion, note: text}, tags: []});
         return {ok: true, data: {item, eta_ms: travelMs, deliver_at: at + travelMs, cross_region: crossRegion, sent_today: count.postcards}};
