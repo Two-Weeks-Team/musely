@@ -23,3 +23,9 @@ const run = rt.runLog.current;
 const fixture = {...run, readThrough: rt.runLog.boundary(run.runId), inputs: rt.runLog.inputs(run.runId), events: rt.events(0, 100, {runId: run.runId})};
 mkdirSync('dist', {recursive: true}); writeFileSync('dist/replay-test.json', JSON.stringify(fixture));
 console.log(JSON.stringify({fixture: 'dist/replay-test.json', inputs: fixture.inputs.length, events: fixture.events.length, versions: {schema: run.schemaVersion, engine: run.engineVersion, catalog: run.catalogVersion}}));
+
+// Separate real-writer fixture: public snapshots carry pauses on the world map, as the live view projects them.
+publicationAt = at + 4000;
+rt.commitExternal(at + 4000, 'fixture-pause', st => {st.paused = {'00-jolly': {at: at + 4000, version: 1, by: 'fixture-owner'}}; st.muses[0].beat = null; st.muses[0].travel = null;});
+const pausedRun = rt.runLog.current;
+writeFileSync('dist/replay-paused-test.json', JSON.stringify({...pausedRun, readThrough: rt.runLog.boundary(pausedRun.runId), inputs: rt.runLog.inputs(pausedRun.runId), events: rt.events(0, 100, {runId: pausedRun.runId})}));

@@ -4,14 +4,14 @@ async (page) => {
  const base = new URL(page.url()); base.search = '?autoplay=0';
  const fixtureResponse = await fetch(new URL('replay-test.json', base).href);
  if (!fixtureResponse.ok) throw new Error('Run node scripts/build-replay-fixture.mjs before this browser test');
- const template = await fixtureResponse.json(), cases = [], browser = page.context().browser();
+ const template = await fixtureResponse.json(), pausedTemplate = await (await fetch(new URL('replay-paused-test.json', base).href)).json(), cases = [], browser = page.context().browser();
  const check = (vp, name, ok, detail = '') => cases.push({vp, name, ok: !!ok, detail: String(detail).slice(0, 400)});
  for (const [width, height] of [[1280, 800], [390, 844]]) {
   const vp = `${width}x${height}`, context = await browser.newContext({viewport: {width, height}}), p = await context.newPage();
   const requests = [], allRequests = [], errors = []; p.on('request', r => allRequests.push({method: r.method(), url: r.url()})); p.on('pageerror', e => errors.push(e.message));
-  const ids = ['normal', 'old-v1', 'bad-hash', 'missing', 'empty', 'failed'];
+  const ids = ['normal', 'paused', 'old-v1', 'bad-hash', 'missing', 'empty', 'failed'];
   const record = id => {
-   const r = structuredClone(template); r.runId = id;
+   const r = structuredClone(id === 'paused' ? pausedTemplate : template); r.runId = id;
    r.inputs.forEach(i => i.runId = id); r.events.forEach(e => e.runId = id);
    if (id === 'old-v1') r.schemaVersion = 'run-log-1';
    if (id === 'bad-hash') r.inputs[0].afterSnapshot.body += ' ';
@@ -37,7 +37,7 @@ async (page) => {
   try {
    await p.goto(base.href, {waitUntil: 'domcontentloaded'}); await p.waitForFunction(() => window.__world?.getMetrics().ready && window.__world.getMetrics().live?.version === 100 && window.__world.getMetrics().live.muses.every(m => m.rootId), null, {timeout: 90000});
    const liveRoots = await p.evaluate(() => window.__world.getMetrics().live.muses.map(m => m.rootId));
-   await p.evaluate(() => { window.__replayFrames = []; window.__world.worldPanel.onReplayFrame(f => window.__replayFrames.push(f ? {hash: f.snapshotHash, replay: f.replay, runId: f.runId} : null)); window.__world.worldPanel.openTab('replay'); });
+   await p.evaluate(() => { window.__world.setMode('story'); window.__replayFrames = []; window.__world.worldPanel.onReplayFrame(f => window.__replayFrames.push(f ? {hash: f.snapshotHash, replay: f.replay, runId: f.runId} : null)); window.__world.worldPanel.openTab('replay'); });
    await p.locator('.replay-view').waitFor(); await p.waitForTimeout(200);
    const root = p.locator('.recorded-replay'), beforeFixture = requests.length;
    await p.evaluate(() => window.__world.worldPanel.refresh()); await p.waitForTimeout(200);
@@ -107,9 +107,17 @@ async (page) => {
    await root.getByLabel('Recorded run', {exact: true}).selectOption('empty'); await root.getByRole('button', {name: 'Load recorded run', exact: true}).click();
    await p.waitForFunction(() => document.querySelector('.recorded-replay').dataset.status === 'empty');
    check(vp, 'a genuinely empty record keeps its initial public scene and says snapshot-only', await root.locator('.recorded-state tbody tr').count() === 10 && (await root.textContent()).includes('initial public snapshot'));
+   await root.getByLabel('Recorded run', {exact:true}).selectOption('paused'); await root.getByRole('button',{name:'Load recorded run',exact:true}).click();
+   await p.waitForFunction(() => document.querySelector('.recorded-replay').dataset.status === 'ready');
+   const pausePosition = root.getByLabel('Recorded replay position'); await pausePosition.fill((await pausePosition.getAttribute('max')) || '0'); await pausePosition.dispatchEvent('input');
+   await p.waitForFunction(() => window.__world.getMetrics().live.version === 3); await p.waitForTimeout(250);
+   const pauseView = await p.evaluate(() => ({paused:window.__world.liveScene.projection.world.muses.find(m=>m.id==='00-jolly').paused,status:window.__world.getMetrics().live.muses.find(m=>m.id==='00-jolly').frame.status,card:document.getElementById('activity-title').textContent}));
+   check(vp,'public world-level pause map reaches the recorded actor and selected-Muse card',!!pauseView.paused && pauseView.status.includes('paused (delegation revoked)') && pauseView.card.includes('paused (delegation revoked)'),JSON.stringify(pauseView));
+   await pausePosition.fill('0'); await pausePosition.dispatchEvent('input'); await p.waitForFunction(() => window.__world.getMetrics().live.version === 0);
+   check(vp,'seeking before the recorded pause clears only the recorded pause projection',await p.evaluate(() => !window.__world.liveScene.projection.world.muses.find(m=>m.id==='00-jolly').paused && !window.__world.getMetrics().live.muses.find(m=>m.id==='00-jolly').frame.status.includes('paused') && window.__world.getMetrics().live.liveVersion === 100));
    const beforeLive = requests.length; await root.getByRole('button', {name: 'Return to live world', exact: true}).click();
    await p.waitForFunction(() => !!document.querySelector('.world-tabs [data-tab=feed].active')); await p.waitForTimeout(200);
-   await p.waitForFunction(() => window.__world.getMetrics().live?.active && !window.__world.getMetrics().live.replay && window.__world.getMetrics().live.version === 100);
+   check(vp, 'return from a replay opened in Story switches the actual scene to live world', await p.evaluate(() => window.__world.mode === 'world' && window.__world.getMetrics().live.active && !window.__world.getMetrics().live.replay));
    check(vp, 'null frame restores the same actor roots and latest live projection', await p.evaluate(roots => JSON.stringify(window.__world.getMetrics().live.muses.map(m=>m.rootId)) === JSON.stringify(roots) && document.getElementById('muse-source').textContent.includes('SHARED WORLD'), liveRoots));
    check(vp, 'return to live clears recorded projection and starts fresh live GETs', requests.length > beforeLive && await p.evaluate(() => window.__replayFrames.at(-1) === null));
    check(vp, 'all recorded loading/playing/evidence operations made zero writes, model or MCP calls', requests.every(r => r.method === 'GET' && !['/api/muse', '/mcp', '/api/owner/approvals', '/api/session'].includes(r.path)) && allRequests.every(r => r.method === 'GET' && !/api\.meta\.ai|\/mcp(?:\?|$)/.test(r.url)));
