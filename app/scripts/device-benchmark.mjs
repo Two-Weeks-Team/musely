@@ -42,6 +42,13 @@ async function auditSource(pin){
 const PROFILE_CACHE_POLICY='unchanged-profile-cache';
 export const createMeasurementReport=(opts,pin)=> ({kind:opts.kind,pin,conditions:{durationMs:DURATION_MS,dprCap:1.5,route:'story-manual-210',cachePolicy:opts.kind==='first-load'?'target cache disabled; service worker bypass;4Mbps/150ms':PROFILE_CACHE_POLICY,documentPolicy:opts.kind==='first-load'?'network document':'frozen HTML interception',globalCacheCleared:false},startedAt:new Date().toISOString(),complete:false,writes:[],errors:[],memory:{samples:[]},cleanup:{targetClosed:false,browserClosed:false,forwardChanged:false}});
 export const measurementContext=report=> ({model:report.model,android:report.android,chrome:report.chrome,viewport:report.device.viewport,dpr:report.device.dpr.applied,route:'story-manual-210',cachePolicy:PROFILE_CACHE_POLICY});
+export const measurementPassed=report=> report.complete&&Array.isArray(report.metrics?.errors)&&report.metrics.errors.length===0&&!report.errors.length&&!report.writes.length&&!report.cleanup.restorationErrors?.length&&Object.values(report.gate??{}).every(x=>x===true)&&(report.kind!=='mobile-210'||report.memory.complete===true&&report.memory.comparison?.numericPass===true&&report.baselineProvenance?.complete===true)&&!(report.contextMismatches?.length);
+export async function finalizeMeasurement(report,c){
+ // Always replace an earlier sample: unavailable final metrics are not an error-free observation.
+ report.metrics=null;
+ try{if(c)report.metrics=await c.evaluate('window.__world?.getMetrics?.() ?? null');}catch(error){report.metricsReadError=String(error);}
+ report.measuredChecksPass=measurementPassed(report);
+}
 export async function runMeasurement(opts,pin){
  const refusals=validateFreeze(pin,opts);if(refusals.length)throw Error('Measurement refused before CDP: '+refusals.join(', '));
  if(!opts.execute)throw Error('Measurement requires explicit --execute after root release freeze');
@@ -87,7 +94,7 @@ export async function runMeasurement(opts,pin){
     await c.evaluate(performanceStartExpression);
     const began=Date.now();let nextPss=0,nextNote=0;
     while(!(await c.evaluate('window.__d04.done'))){const elapsed=Date.now()-began;if(elapsed>240000)throw Error('210s collector did not finish');if(opts.kind==='mobile-210'&&elapsed>=nextPss){report.memory.samples.push({elapsed:elapsed/1000,...samplePss(opts.serial)});writeFileSync(join(opts.out,'memory-progress.json'),JSON.stringify(report.memory.samples));nextPss+=10000;}if(elapsed>=nextNote){console.log('D04 '+opts.kind+' '+Math.round(elapsed/1000)+'s');nextNote+=30000;}await delay(500);}
-    const raw=await c.evaluate('window.__d04');report.frames=raw.frames;report.visibilityChanges=raw.visibility;report.performance=summarizeFrames(raw.frames);report.metrics=await c.evaluate('window.__world.getMetrics()');
+    const raw=await c.evaluate('window.__d04');report.frames=raw.frames;report.visibilityChanges=raw.visibility;report.performance=summarizeFrames(raw.frames);
     report.gate={fps:report.performance.complete&&report.performance.medianFps>=(opts.kind==='desktop-210'?55:30),p95:report.performance.p95FrameMs<=(opts.kind==='desktop-210'?33:50),visible:raw.visibility.length===0};
     if(opts.kind==='mobile-210'){
      report.memory.samples.push({elapsed:(Date.now()-began)/1000,...samplePss(opts.serial)});const all=report.memory.samples.every(x=>x.complete);report.memory.complete=all;report.memory.peakKiB=all?Math.max(...report.memory.samples.map(x=>x.pssKiB)):null;report.memory.endKiB=all?report.memory.samples.at(-1).pssKiB:null;
@@ -107,8 +114,9 @@ export async function runMeasurement(opts,pin){
   report.sourceAfter=await auditSource(pin);report.complete=true;
  }catch(error){report.error=String(error);}
  finally{
-  if(c){const restore=async(method,params)=>{try{await c.send(method,params);}catch(error){(report.cleanup.restorationErrors??=[]).push({method,error:String(error)});}};if(networkChanged){await restore('Network.emulateNetworkConditions',{offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1});await restore('Network.setCacheDisabled',{cacheDisabled:false});await restore('Network.setBypassServiceWorker',{bypass:false});}if(intercepted)await restore('Fetch.disable');if(lifecycle)await restore('Page.setLifecycleEventsEnabled',{enabled:false});try{await c.evaluate(performanceCleanupExpression);}catch(error){(report.cleanup.restorationErrors??=[]).push({method:'visibility listener cleanup',error:String(error)});}c.close();report.cleanup.ownCdpConnectionClosed=true;}
-  report.measuredChecksPass=report.complete&&!report.errors.length&&!report.writes.length&&!report.cleanup.restorationErrors?.length&&Object.values(report.gate??{}).every(x=>x===true)&&(opts.kind!=='mobile-210'||report.memory.complete===true&&report.memory.comparison?.numericPass===true&&report.baselineProvenance?.complete===true)&&!(report.contextMismatches?.length);report.acceptance='Separate device acceptance review required; collector completion is not overall C11 PASS';report.finishedAt=new Date().toISOString();writeFileSync(join(opts.out,'results.json'),JSON.stringify(report,null,2)+'\n',{flag:'wx'});
+  if(c){const restore=async(method,params)=>{try{await c.send(method,params);}catch(error){(report.cleanup.restorationErrors??=[]).push({method,error:String(error)});}};if(networkChanged){await restore('Network.emulateNetworkConditions',{offline:false,latency:0,downloadThroughput:-1,uploadThroughput:-1});await restore('Network.setCacheDisabled',{cacheDisabled:false});await restore('Network.setBypassServiceWorker',{bypass:false});}if(intercepted)await restore('Fetch.disable');if(lifecycle)await restore('Page.setLifecycleEventsEnabled',{enabled:false});try{await c.evaluate(performanceCleanupExpression);}catch(error){(report.cleanup.restorationErrors??=[]).push({method:'visibility listener cleanup',error:String(error)});}}
+  await finalizeMeasurement(report,c);if(c){c.close();report.cleanup.ownCdpConnectionClosed=true;}
+  report.acceptance='Separate device acceptance review required; collector completion is not overall C11 PASS';report.finishedAt=new Date().toISOString();writeFileSync(join(opts.out,'results.json'),JSON.stringify(report,null,2)+'\n',{flag:'wx'});
  }
  return report;
 }

@@ -134,3 +134,32 @@ test('a serialized collector report can be reused as a consistent baseline witho
  assert.equal(JSON.stringify(baseline),wire,'baseline validation must not rewrite historical evidence');
  const changed=JSON.parse(wire);changed.conditions.cachePolicy='cache-disabled';assert.ok(compareBaselineContext(changed,context).conflicts.includes('cachePolicy'),'a genuine conflicting policy must still be rejected');
 });
+
+test('handled application errors fail the actual acceptance gate for every measurement kind',async()=>{
+ const {createMeasurementReport,measurementPassed}=await import('./device-benchmark.mjs');
+ for(const kind of ['first-load','desktop-210','mobile-210','eight-budget','live-observation']){
+  const report=createMeasurementReport({kind},{});Object.assign(report,{complete:true,gate:{measured:true},metrics:{errors:[]},memory:{complete:true,comparison:{numericPass:true}},baselineProvenance:{complete:true}});
+  assert.equal(measurementPassed(report),true,kind+' error-free existing result');
+  report.metrics.errors.push('MapLibre: failed map resource');assert.equal(measurementPassed(report),false,kind+' handled error');
+ }
+});
+test('uncaught application errors still fail and absent metrics cannot be inferred error-free',async()=>{
+ const {createMeasurementReport,measurementPassed}=await import('./device-benchmark.mjs');
+ const report=createMeasurementReport({kind:'first-load'},{});Object.assign(report,{complete:true,gate:{measured:true},metrics:{errors:[]}});
+ report.errors.push('Uncaught page exception');assert.equal(measurementPassed(report),false);report.errors=[];
+ for(const metrics of [undefined,null,{}, {errors:null},{errors:'not an array'}]){report.metrics=metrics;assert.equal(measurementPassed(report),false,'missing or malformed application error observation');}
+});
+
+test('the common finalizer freshly collects application metrics for every kind and refuses missing observations',async()=>{
+ const {createMeasurementReport,finalizeMeasurement}=await import('./device-benchmark.mjs'),{Script}=await import('node:vm');
+ for(const kind of ['first-load','desktop-210','mobile-210','eight-budget','live-observation']){
+  const report=createMeasurementReport({kind},{});Object.assign(report,{complete:true,gate:{measured:true},metrics:{errors:['stale sample']},memory:{complete:true,comparison:{numericPass:true}},baselineProvenance:{complete:true}});
+  let reads=0,current={errors:[]};const c={evaluate:async expression=>new Script(expression).runInNewContext({window:{__world:{getMetrics(){reads++;return structuredClone(current);}}}})};
+  await finalizeMeasurement(report,c);assert.equal(reads,1,kind+' final metrics were read');assert.equal(report.measuredChecksPass,true);assert.deepEqual(report.metrics,current);
+  current.errors.push('handled map failure');await finalizeMeasurement(report,c);assert.equal(reads,2);assert.equal(report.measuredChecksPass,false);assert.deepEqual(report.metrics.errors,['handled map failure']);
+  current={errors:[]};report.errors.push('uncaught exception');await finalizeMeasurement(report,c);assert.equal(report.measuredChecksPass,false);report.errors=[];
+  await finalizeMeasurement(report,{evaluate:async()=>null});assert.equal(report.measuredChecksPass,false);assert.equal(report.metrics,null);
+  report.metrics={errors:[]};await finalizeMeasurement(report,{evaluate:async()=>{throw Error('metrics read failed');}});assert.equal(report.measuredChecksPass,false);assert.equal(report.metrics,null);assert.match(report.metricsReadError,/metrics read failed/);
+  report.metrics={errors:[]};await finalizeMeasurement(report,null);assert.equal(report.measuredChecksPass,false);assert.equal(report.metrics,null);
+ }
+});
