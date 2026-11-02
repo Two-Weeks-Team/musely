@@ -228,7 +228,7 @@ test('TargetCDP drains asynchronous handlers through close and preserves the fir
  c.on('Other.event',()=>{throw Error('second');});socket.dispatchEvent(new MessageEvent('message',{data:JSON.stringify({method:'Other.event',params:{}})}));await c.settleEvents();assert.equal(c.eventError,'Error: after cleanup');
 });
 
-async function offlineFirstLoad(t,{stage='sourceAfter',url='https://foreign.invalid/private',method='GET',error='Failed to continue request'}={}){
+async function offlineFirstLoad(t,{stage='sourceAfter',url='https://foreign.invalid/private',method='GET',error='Failed to continue request',failSourceAfter=null}={}){
  const {TargetCDP,runMeasurement}=await import('./device-benchmark.mjs'),{EIGHT_KIT_PATHS}=await import('./device-metrics.mjs'),{mkdtemp,rm}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),{createHash}=await import('node:crypto'),{default:childProcess}=await import('node:child_process'),{syncBuiltinESMExports}=await import('node:module');
  const dir=await mkdtemp(join(tmpdir(),'d04-late-'));t.after(()=>rm(dir,{recursive:true,force:true}));const origin='https://musely.net',html='<html>offline fixture</html>',bytes=Buffer.byteLength(html),digest=createHash('sha256').update(html).digest('hex');
  const pin={...await freezeFixture(),referenceDevice:'MacBookPro18,2',htmlSHA256:digest,files:['index.html',...EIGHT_KIT_PATHS].map(path=>({path,sha256:digest,bytes}))};
@@ -248,7 +248,7 @@ async function offlineFirstLoad(t,{stage='sourceAfter',url='https://foreign.inva
   close(){this.dispatchEvent(new Event('close'));}
  }
  const socket=new Socket(),c=new TargetCDP(socket),oldFetch=globalThis.fetch,oldConnect=TargetCDP.connect,oldExec=childProcess.execFileSync;let rootReads=0;const commands=[];const send=socket.send.bind(socket);socket.send=text=>{commands.push(JSON.parse(text));return send(text);};
- globalThis.fetch=async target=>{const u=new URL(target);if(u.pathname==='/json/list')return new Response(JSON.stringify([{id:'target',type:'page',url:origin+'/',webSocketDebuggerUrl:'ws://offline.invalid'}]));if(u.pathname==='/api/status')return new Response('{}');if(u.href===origin+'/'&&++rootReads===2&&stage==='sourceAfter')socket.fault();return new Response(html);};TargetCDP.connect=async()=>c;childProcess.execFileSync=()=> 'MacBookPro18,2';syncBuiltinESMExports();
+ globalThis.fetch=async target=>{const u=new URL(target);if(u.pathname==='/json/list')return new Response(JSON.stringify([{id:'target',type:'page',url:origin+'/',webSocketDebuggerUrl:'ws://offline.invalid'}]));if(u.pathname==='/api/status')return new Response('{}');if(u.href===origin+'/'&&++rootReads===2){if(failSourceAfter)throw failSourceAfter;if(stage==='sourceAfter')socket.fault();}return new Response(html);};TargetCDP.connect=async()=>c;childProcess.execFileSync=()=> 'MacBookPro18,2';syncBuiltinESMExports();
  try{const report=await runMeasurement({kind:'first-load',endpoint:'http://127.0.0.1:1',targetId:'target',execute:true,out:dir},pin);return {report,commands,c};}finally{globalThis.fetch=oldFetch;TargetCDP.connect=oldConnect;childProcess.execFileSync=oldExec;syncBuiltinESMExports();}
 }
 
@@ -258,5 +258,41 @@ test('fatal events during sourceAfter and asynchronous cleanup fail the serializ
 
 test('offline firstload keeps narrow stale tile reads nonfatal, strict RUM denials and inspector buffers',async t=>{
  const {report,commands}=await offlineFirstLoad(t,{url:'https://tiles.openfreemap.org/planet/20261025_080012_pt/14/2633/6350.pbf',error:'Invalid InterceptionId.'});assert.equal(report.measuredChecksPass,true);assert.equal(report.interceptionErrors[0].classification,'stale-public-map-read');assert.deepEqual(commands.find(x=>x.method==='Network.enable').params,{maxTotalBufferSize:64*1024*1024,maxResourceBufferSize:16*1024*1024});assert.equal(commands.filter(x=>x.method==='Fetch.continueRequest').length,1,'no retry');
- for(const separator of ['?','#']){const {report}=await offlineFirstLoad(t,{url:'https://musely.net/cdn-cgi/rum'+separator,method:'POST'});assert.equal(report.measuredChecksPass,false);assert.equal(report.writes[0][separator==='?'?'query':'fragment'],true);assert.equal(report.writes[0].action,'aborted');assert.equal(report.networkAudit.continuedWriteRequests,0);}
+ for(const separator of ['?','#']){const {report}=await offlineFirstLoad(t,{url:'https://musely.net/cdn-cgi/rum'+separator,method:'POST'});assert.equal(report.measuredChecksPass,separator==='?');assert.equal(report.writes[0][separator==='?'?'query':'fragment'],true);assert.equal(report.writes[0].action,'aborted');assert.equal(report.networkAudit.continuedWriteRequests,0);}
+});
+
+test('every public source probe closes its own connection with a finite deadline; HTTP errors and tampering still fail without retry',async()=>{
+ const {auditSource}=await import('./device-benchmark.mjs'),{createHash}=await import('node:crypto');const hash=x=>createHash('sha256').update(x).digest('hex'),origin='https://musely.net',vendor='https://static.cloudflareinsights.com/beacon.min.js/v123abc',html='<script src="/runtime.js"></script><script src="'+vendor+'"></script>',js='/* fixture */',pin={origin,htmlAccept:'text/html',htmlSHA256:hash(html),files:[{path:'index.html',bytes:Buffer.byteLength(html),sha256:hash(html)},{path:'runtime.js',bytes:Buffer.byteLength(js),sha256:hash(js)}],externalCodeFiles:[{url:vendor,bytes:Buffer.byteLength(js),sha256:hash(js)}]};
+ const before=globalThis.fetch;let calls=[],badURL=null,tamper=false;globalThis.fetch=async(url,opts={})=>{calls.push({url,opts});return new Response(url===badURL?(tamper?'changed':'failure'):url===origin+'/api/status'?'{}':url===origin+'/'||url===origin+'/index.html'?html:js,{status:url===badURL&&!tamper?503:200});};
+ try{await auditSource(pin);assert.equal(calls.length,5);for(const {opts} of calls){assert.equal(opts.headers.Connection,'close');assert.ok(opts.signal instanceof AbortSignal);assert.equal(opts.signal.aborted,false);}assert.deepEqual(calls.filter(x=>[origin+'/',origin+'/index.html'].includes(x.url)).map(x=>x.opts.headers.Accept),['text/html','text/html']);assert.equal(calls.at(-1).opts.redirect,'error');assert.equal(calls.at(-1).opts.credentials,'omit');
+  for(const url of [origin+'/',origin+'/api/status',origin+'/runtime.js',vendor]){badURL=url;calls=[];await assert.rejects(()=>auditSource(pin));assert.equal(calls.filter(x=>x.url===url).length,1,'no retry on HTTP failure');}
+  tamper=true;for(const url of [origin+'/',origin+'/runtime.js',vendor]){badURL=url;calls=[];await assert.rejects(()=>auditSource(pin));assert.equal(calls.filter(x=>x.url===url).length,1,'no retry on altered bytes');}
+ }finally{globalThis.fetch=before;}
+});
+
+test('public-probe timeout propagates once and cause diagnostics retain only bounded code/name',async()=>{
+ const {auditSource,errorCauseMetadata}=await import('./device-benchmark.mjs');const beforeFetch=globalThis.fetch,beforeTimeout=AbortSignal.timeout;let calls=0,deadline;
+ AbortSignal.timeout=ms=>{deadline=ms;const c=new AbortController();queueMicrotask(()=>c.abort(new DOMException('fixture timeout','TimeoutError')));return c.signal;};globalThis.fetch=async(url,opts)=>{calls++;return new Promise((resolve,reject)=>opts.signal.addEventListener('abort',()=>reject(opts.signal.reason),{once:true}));};
+ try{await assert.rejects(()=>auditSource({origin:'https://musely.net'}),error=>error.name==='TimeoutError');assert.equal(calls,1);assert.equal(deadline,10000);}finally{globalThis.fetch=beforeFetch;AbortSignal.timeout=beforeTimeout;}
+ const failure=Error('fetch failed',{cause:Object.assign(Error('sensitive cause message'),{code:'UND_ERR_SOCKET',stack:'sensitive stack',headers:{authorization:'sensitive key'},socket:{remoteAddress:'sensitive address'}})});
+ assert.deepEqual(errorCauseMetadata(failure),{code:'UND_ERR_SOCKET',name:'Error'});assert.equal(JSON.stringify(errorCauseMetadata(failure)).includes('sensitive'),false);assert.deepEqual(errorCauseMetadata({cause:{code:'https://private.invalid/?key=secret',name:'invalid/name'}}),{code:null,name:null});assert.equal(errorCauseMetadata(Error('no cause')),null);
+});
+
+test('query-state metadata distinguishes none, empty and nonempty without changing telemetry permission',async t=>{
+ const {urlQueryState}=await import('./device-benchmark.mjs');for(const [url,state] of [['https://example.invalid/path','none'],['https://example.invalid/path?','empty'],['https://example.invalid/path?#x','empty'],['https://example.invalid/path?private=value','nonempty'],['https://example.invalid/path#?private=value','none']])assert.equal(urlQueryState(url),state);
+ for(const [suffix,state] of [['','none'],['?','empty'],['?private=value','nonempty']]){const {report}=await offlineFirstLoad(t,{method:'POST',url:'https://musely.net/cdn-cgi/rum'+suffix});assert.equal(report.writes[0].queryState,state);assert.equal(report.writes[0].query,suffix.includes('?'));assert.equal(report.writes[0].action,'aborted');assert.equal(report.measuredChecksPass,suffix===''||suffix==='?');assert.equal(JSON.stringify(report).includes('private=value'),false);}
+});
+
+
+test('sourceAfter transport failure keeps the collector failed and stores only cause code/name',async t=>{
+ const failure=TypeError('fetch failed',{cause:Object.assign(Error('private diagnostic message'),{code:'UND_ERR_SOCKET',headers:{authorization:'secret'},socket:{remoteAddress:'private'},stack:'private stack'})});
+ const {report}=await offlineFirstLoad(t,{failSourceAfter:failure});assert.equal(report.complete,false);assert.equal(report.measuredChecksPass,false);assert.equal(report.error,'TypeError: fetch failed');assert.deepEqual(report.errorCause,{code:'UND_ERR_SOCKET',name:'Error'});assert.equal(JSON.stringify(report).includes('private diagnostic message'),false);assert.equal(JSON.stringify(report).includes('authorization'),false);
+});
+
+test('only explicit empty-query RUM denials join legacy no-query records; unknown or contradictory rows stay fatal',async()=>{
+ const {deniedTelemetry,createMeasurementReport,measurementPassed}=await import('./device-benchmark.mjs'),origin='https://musely.net',legacy={method:'POST',origin,path:'/cdn-cgi/rum',query:false,fragment:false,credentials:false,action:'aborted'};
+ for(const row of [legacy,{...legacy,queryState:'none'},{...legacy,query:true,queryState:'empty'}])assert.equal(deniedTelemetry(row,origin),true);
+ for(const changed of [{query:false,queryState:'empty'},{query:false,queryState:'nonempty'},{query:false,queryState:'unknown'},{query:false,queryState:null},{query:true},{query:true,queryState:'none'},{query:true,queryState:'nonempty'},{query:true,queryState:'unknown'},{query:undefined,queryState:'empty'},{query:'true',queryState:'empty'},{query:true,queryState:'empty',fragment:true},{query:true,queryState:'empty',credentials:true},{query:true,queryState:'empty',origin:'https://foreign.invalid'},{query:true,queryState:'empty',path:'/api/muse'},{query:true,queryState:'empty',action:'abort-pending'},{query:true,queryState:'empty',method:'GET'}]){
+  const row={...legacy,...changed};assert.equal(deniedTelemetry(row,origin),false,JSON.stringify(changed));const report=Object.assign(createMeasurementReport({kind:'first-load'},{origin}),{complete:true,gate:{arrival:true},metrics:{errors:[]},writes:[row]});assert.equal(measurementPassed(report),false);
+ }
 });
