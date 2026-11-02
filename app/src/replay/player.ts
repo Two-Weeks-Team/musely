@@ -18,6 +18,8 @@ export type RecordedFrame = {replay: true; runId: string; worldId: string; recor
 function bad(detail: string): never { throw new ReplayRecordError('invalid_record', detail); }
 const obj = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
 const integer = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
+// Geographic distance yields fractional arrival milliseconds; preserve the recorded ETA without rounding.
+const arrivalTime = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= Number.MAX_SAFE_INTEGER;
 export const recordedStateHash = (body: string) => sha256Hex('musely-run-state-v1\n' + body);
 export function assertCompatible(r: unknown, expected: RunVersions = currentVersions()): asserts r is RunRecord {
   if (!obj(r)) bad('run header is not an object');
@@ -35,7 +37,7 @@ function readSnapshot(s: unknown, worldId: string): Record<string, any> {
   const ids = state.muses.map((m: any) => obj(m) && typeof m.id === 'string' && typeof m.place === 'string' && Array.isArray(m.inventory) && m.inventory.every((i: unknown) => typeof i === 'string') ? m.id : bad('invalid Muse in snapshot'));
   if (new Set(ids).size !== ids.length) bad('duplicate Muse in snapshot');
   for (const m of state.muses) {
-    if (m.travel !== null && m.travel !== undefined && (!obj(m.travel) || typeof m.travel.to !== 'string' || !integer(m.travel.departAt) || !integer(m.travel.arriveAt) || m.travel.arriveAt < m.travel.departAt || typeof m.travel.speed !== 'string')) bad('invalid travel in snapshot');
+    if (m.travel !== null && m.travel !== undefined && (!obj(m.travel) || typeof m.travel.to !== 'string' || !integer(m.travel.departAt) || !arrivalTime(m.travel.arriveAt) || m.travel.arriveAt < m.travel.departAt || typeof m.travel.speed !== 'string')) bad('invalid travel in snapshot');
     if (m.beat !== null && m.beat !== undefined && (!obj(m.beat) || typeof m.beat.id !== 'string' || !integer(m.beat.startedAt) || !integer(m.beat.endsAt) || (m.beat.clip != null && typeof m.beat.clip !== 'string'))) bad('invalid beat in snapshot');
   }
   return state;
