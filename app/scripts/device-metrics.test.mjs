@@ -17,9 +17,9 @@ test('DPR,viewport,device,OS,browser,route and cache provenance must match befor
  assert.deepEqual(compareContext(c,{...c}),[]);for(const key of Object.keys(c)){const n={...c,[key]:key==='viewport'?[390,844]:'other'};assert.ok(compareContext(c,n).includes(key),key);}
  assert.ok(compareContext(c,{...c,cachePolicy:null}).includes('cachePolicy'));
 });
-test('freeze gate rejects all measurement before a pinned release and refuses another mobile target',()=>{
+test('freeze gate rejects all measurement before a pinned release and refuses another mobile target',async()=>{
  assert.ok(validateFreeze({}, {kind:'mobile-210',endpoint:'http://127.0.0.1:9222',targetId:'task-target'}).length);
- const pin={status:'frozen',referenceDevice:'SM-S918N',releaseSHA:'a'.repeat(40),workerVersion:'12345678-1234-1234-1234-123456789abc',configSHA256:'b'.repeat(64),htmlSHA256:'c'.repeat(64),origin:'https://musely.net',targetId:'task-target',dpr:1.5,durationMs:210000};
+ const pin={...await freezeFixture(),status:'frozen',referenceDevice:'SM-S918N',releaseSHA:'a'.repeat(40),workerVersion:'12345678-1234-1234-1234-123456789abc',configSHA256:'b'.repeat(64),htmlSHA256:'c'.repeat(64),origin:'https://musely.net',targetId:'task-target',dpr:1.5,durationMs:210000};
  assert.ok(validateFreeze({...pin,referenceDevice:null},{kind:'mobile-210',endpoint:'http://127.0.0.1:9222',targetId:'task-target'}).includes('approved_reference_required'));
  assert.deepEqual(validateFreeze(pin,{kind:'mobile-210',endpoint:'http://127.0.0.1:9222',targetId:'task-target'}),[]);
  assert.ok(validateFreeze(pin,{kind:'mobile-210',endpoint:'http://127.0.0.1:9222',targetId:'other'}).includes('wrong_target'));
@@ -51,4 +51,53 @@ test('eight-actor payload requires every shared kit file and does not apply its 
 test('every injected page expression parses without evaluating a browser or starting measurement',async()=>{
  const {Script}=await import('node:vm');const {PAGE_EXPRESSIONS}=await import('./device-benchmark.mjs');
  for(const[name,text]of Object.entries(PAGE_EXPRESSIONS))assert.doesNotThrow(()=>new Script(text),name);
+});
+
+const context={model:'SM-S918N',android:'16',chrome:'156',viewport:[411,742],dpr:1.5,route:'story-manual-210',cachePolicy:'unchanged-profile-cache'};
+async function freezeFixture(){const {EIGHT_KIT_PATHS}=await import('./device-metrics.mjs');return {status:'frozen',referenceDevice:'SM-S918N',releaseSHA:'a'.repeat(40),workerVersion:'12345678-1234-1234-1234-123456789abc',configSHA256:'b'.repeat(64),htmlSHA256:'c'.repeat(64),origin:'https://musely.net',targetId:'target',dpr:1.5,durationMs:210000,files:[{path:'index.html',sha256:'c'.repeat(64),bytes:1},...EIGHT_KIT_PATHS.map(path=>({path,sha256:'d'.repeat(64),bytes:1}))]};}
+const opts={kind:'mobile-210',endpoint:'http://127.0.0.1:9222',targetId:'target'};
+test('required HTML and all twelve served GLBs must be unique and bound before measurement',async()=>{
+ const p=await freezeFixture();assert.deepEqual(validateFreeze(p,opts),[]);
+ for(const change of [p=>delete p.files,p=>p.files=[],p=>p.files.pop(),p=>p.files.push(p.files[0]),p=>p.files[0].sha256='0'.repeat(64),p=>p.files[1].sha256='invalid',p=>p.files[1].bytes=-1,p=>p.files[1].path='../private']){const bad=structuredClone(p);change(bad);assert.ok(validateFreeze(bad,opts).length);}
+});
+test('baseline artifact context rather than pin declarations governs provenance',async()=>{
+ const {compareBaselineContext}=await import('./device-metrics.mjs');
+ const full=compareBaselineContext({context},context);assert.deepEqual(full.mismatches,[]);assert.equal(full.complete,true);
+ const forged=compareBaselineContext({context:{...context,model:'other',dpr:3}},context);assert.deepEqual(forged.mismatches.sort(),['dpr','model']);assert.equal(forged.complete,false);assert.ok(compareBaselineContext({context,device:{dpr:{applied:3}}},context).conflicts.includes('dpr'));
+ const legacy=compareBaselineContext({device:{viewport:[411,742],dpr:{device:2.625,applied:1.5}},android:'16',chrome:'156'},context);
+ assert.deepEqual(legacy.mismatches,[]);assert.equal(legacy.recorded.model,undefined);assert.deepEqual(legacy.missing.sort(),['cachePolicy','model','route']);assert.equal(legacy.complete,false);
+});
+test('baseline hash or recorded context mismatch is rejected before any CDP/source request',async t=>{
+ const {runMeasurement}=await import('./device-benchmark.mjs'),{mkdtemp,writeFile,rm}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),{createHash}=await import('node:crypto');
+ const dir=await mkdtemp(join(tmpdir(),'d04-baseline-'));t.after(()=>rm(dir,{recursive:true,force:true}));const path=join(dir,'baseline.json'),raw=JSON.stringify({context:{...context,dpr:3},memory:{peakKiB:1,endKiB:1}});await writeFile(path,raw);
+ const pin={...await freezeFixture(),baselineContext:context,baselineSHA256:createHash('sha256').update(raw).digest('hex')},before=globalThis.fetch;let requests=0;globalThis.fetch=async()=>{requests++;throw Error('unexpected request');};
+ try{await assert.rejects(()=>runMeasurement({...opts,execute:true,out:join(dir,'out'),baseline:path},pin),/baseline.*context/);await assert.rejects(()=>runMeasurement({...opts,execute:true,out:join(dir,'out2'),baseline:path},{...pin,baselineSHA256:'0'.repeat(64)}),/baseline.*hash/);assert.equal(requests,0);}finally{globalThis.fetch=before;}
+});
+
+test('static runtime JS/CSS references including module preloads require served source coverage',async()=>{
+ const {externalCodePaths}=await import('./device-metrics.mjs');
+ assert.deepEqual(externalCodePaths('<script src="/runtime.js"></script><link href="styles.css" rel="stylesheet"><link rel=modulepreload href="chunk.js">','https://musely.net'),['runtime.js','styles.css','chunk.js']);
+ assert.deepEqual(externalCodePaths('<script>const example=\'<script src="/not-loaded.js">\';</script><!-- <script src="/comment.js"> -->','https://musely.net'),[]);
+ assert.throws(()=>externalCodePaths('<script src="https://other.invalid/main.js"></script>','https://musely.net'),/not_pinned/);
+});
+test('visibility changes are retained while RAF is suspended and its independent listener is removed',async()=>{
+ const {Script}=await import('node:vm'),{PAGE_EXPRESSIONS}=await import('./device-benchmark.mjs');let clock=0,queued=0;
+ class Doc extends EventTarget{visibilityState='visible';handlers=new Set();addEventListener(n,fn,...rest){if(n==='visibilitychange')this.handlers.add(fn);super.addEventListener(n,fn,...rest);}removeEventListener(n,fn,...rest){this.handlers.delete(fn);super.removeEventListener(n,fn,...rest);}}
+ const document=new Doc(),window={__world:{setMode(){},startStory(){}}},sandbox={document,window,performance:{now:()=>clock},requestAnimationFrame(){queued++;}};
+ new Script(PAGE_EXPRESSIONS.performanceStartExpression).runInNewContext(sandbox);assert.equal(queued,1);clock=100;document.visibilityState='hidden';document.dispatchEvent(new Event('visibilitychange'));clock=200;document.visibilityState='visible';document.dispatchEvent(new Event('visibilitychange'));
+ assert.deepEqual(Array.from(window.__d04.visibility,e=>e.state),['hidden','visible']);assert.equal(document.handlers.size,1);
+ new Script(PAGE_EXPRESSIONS.performanceCleanupExpression).runInNewContext(sandbox);assert.equal(document.handlers.size,0);assert.equal(window.__d04,undefined);assert.equal(window.__d04Visibility,undefined);
+});
+test('cold-arrival browser callback exposes identical pass and ok false for gate and catch failures',async()=>{
+ const {readFile}=await import('node:fs/promises'),{Script}=await import('node:vm');const source=await readFile(new URL('./cold-arrival.browser.js',import.meta.url),'utf8'),callback=new Script('('+source+')').runInNewContext({URL});
+ for(const throws of [false,true]){let i=0;const browser={newContext:async()=>{const index=i++,p={on(){},route:async()=>{},goto:async()=>{if(throws)throw Error('fixture navigation failed');},screenshot:async()=>{},waitForTimeout:async()=>{},evaluate:async fn=>{const s=fn.toString();if(s.includes('const seen'))return {readable:9001};if(s.includes('elapsed:'))return {elapsed:3,zoom:10};if(s.includes('map.getZoom'))return index===0?11.079629629629629:10.429629629629629;return undefined;}};return {newPage:async()=>p,newCDPSession:async()=>({send:async()=>{},on(){}}),close:async()=>{}};}};
+ const result=await callback({url:()=> 'http://127.0.0.1:1',context:()=>({browser:()=>browser})});assert.equal(result.cases.length,2);assert.ok(result.cases.every(c=>c.pass===false&&c.ok===false));assert.equal(result.cases.some(c=>c.ok===false),true,'common runner must exit as failure');}
+});
+
+test('runtime script omitted from manifest fails source audit before CDP opens',async t=>{
+ const {runMeasurement,TargetCDP}=await import('./device-benchmark.mjs'),{mkdtemp,rm}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),{createHash}=await import('node:crypto');
+ const dir=await mkdtemp(join(tmpdir(),'d04-source-'));t.after(()=>rm(dir,{recursive:true,force:true}));const html='<script src="/runtime.js"></script>',pin=await freezeFixture();pin.htmlSHA256=createHash('sha256').update(html).digest('hex');pin.files[0]={path:'index.html',sha256:pin.htmlSHA256,bytes:Buffer.byteLength(html)};
+ const prior=globalThis.fetch,connect=TargetCDP.connect;let opened=false;
+ globalThis.fetch=async url=>new Response(new URL(url).pathname==='/json/list'?JSON.stringify([{id:'target',type:'page',url:pin.origin,webSocketDebuggerUrl:'ws://127.0.0.1:1/mock'}]):new URL(url).pathname==='/'?html:'{}');TargetCDP.connect=async()=>{opened=true;throw Error('must not connect');};
+ try{const result=await runMeasurement({...opts,kind:'first-load',execute:true,out:join(dir,'out')},pin);assert.match(result.error,/runtime code missing from manifest/);assert.equal(result.measuredChecksPass,false);assert.equal(opened,false);}finally{globalThis.fetch=prior;TargetCDP.connect=connect;}
 });

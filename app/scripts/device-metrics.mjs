@@ -30,7 +30,34 @@ export function validateFreeze(pin,opts){
  if(opts.kind==='desktop-210'&&pin.referenceDevice!=='MacBookPro18,2'||opts.kind==='mobile-210'&&pin.referenceDevice!=='SM-S918N')errors.push('reference_kind_mismatch');
  if(pin.dpr!==DPR_CAP)errors.push('dpr_not_1_5');if(pin.durationMs!==DURATION_MS)errors.push('duration_not_210s');
  if(!['mobile-210','desktop-210','first-load','eight-budget','live-observation'].includes(opts.kind))errors.push('unknown_measurement_kind');
+ const files=pin.files,seen=new Set();
+ if(!Array.isArray(files)||!files.length)errors.push('served_manifest_required');
+ else{
+  for(const file of files){if(!file||typeof file.path!=='string'||!file.path||file.path.split('/').some(s=>!s||s==='.'||s==='..')||!/^[A-Za-z0-9_./-]+$/.test(file.path))errors.push('invalid_manifest_path');
+   if(seen.has(file?.path))errors.push('duplicate_manifest_path');seen.add(file?.path);
+   if(!hex(file?.sha256,64)||!Number.isSafeInteger(file?.bytes)||file.bytes<=0)errors.push('invalid_manifest_file');}
+  if(['index.html',...EIGHT_KIT_PATHS].some(path=>!seen.has(path)))errors.push('required_served_file_missing');
+  if(files.find(f=>f?.path==='index.html')?.sha256!==pin.htmlSHA256)errors.push('html_manifest_binding');
+ }
  return errors;
 }
 export const EIGHT_KIT_PATHS=['base/lod0.glb','base/lod1.glb','base/lod2.glb','base/clips.glb','attachments/props.glb',...['01-sunny','02-moss','03-ripple','05-bloom','06-ink','07-tempo','08-orbit'].map(id=>'attachments/'+id+'.glb')].map(p=>'character-kit/runtime/'+p);
 export function eightPayload(files){const byPath=new Map(files.map(x=>[x.path,x])),missing=EIGHT_KIT_PATHS.filter(p=>!Number.isFinite(byPath.get(p)?.bytes));const bytes=missing.length?null:EIGHT_KIT_PATHS.reduce((n,p)=>n+byPath.get(p).bytes,0);return {scope:'shared eight-character runtime GLBs including props/clips; nine-variant extras excluded',bytes,missing,limitBytes:15*1024*1024,pass:bytes===null?null:bytes<=15*1024*1024};}
+
+const CONTEXT_KEYS=['model','android','chrome','viewport','dpr','route','cachePolicy'];
+/** Recorded values stay separate from operator declarations; missing historical evidence is not inferred. */
+export function compareBaselineContext(b,declared){
+ const recorded={...b.context},conflicts=[];
+ for(const [k,v] of Object.entries({model:b.model??b.device?.model,android:b.android,chrome:b.chrome,viewport:b.device?.viewport,dpr:typeof b.device?.dpr==='number'?b.device.dpr:b.device?.dpr?.applied,route:b.route??b.conditions?.route,cachePolicy:b.cachePolicy})){if(recorded[k]!=null&&v!=null&&JSON.stringify(recorded[k])!==JSON.stringify(v))conflicts.push(k);if(recorded[k]==null&&v!=null)recorded[k]=v;}
+ const missing=CONTEXT_KEYS.filter(k=>recorded[k]==null),mismatches=CONTEXT_KEYS.filter(k=>conflicts.includes(k)||recorded[k]!=null&&(declared?.[k]==null||JSON.stringify(recorded[k])!==JSON.stringify(declared[k])));
+ return {recorded,declared,missing,mismatches,conflicts,complete:!missing.length&&!mismatches.length,limitations:missing.map(k=>'Baseline artifact did not record '+k+'; declaration is not measurement evidence')};
+}
+/** Static HTML script/style references must be included in the same-origin served manifest. */
+export function externalCodePaths(html,origin){
+ const paths=new Set();
+ const tags=html.replace(/<!--[\s\S]*?-->/g,'').replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,m=>m.slice(0,m.indexOf('>')+1)).match(/<(?:script|link)\b[^>]*>/gi)??[];
+ for(const tag of tags){const attrs=Object.fromEntries([...tag.matchAll(/([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)].map(m=>[m[1].toLowerCase(),m[2]??m[3]??m[4]]));
+  const script=/^<script\b/i.test(tag),rel=attrs.rel??'',codeLink=/\b(?:stylesheet|modulepreload)\b/i.test(rel)||/\bpreload\b/i.test(rel)&&['script','style'].includes(attrs.as);
+  const href=script?attrs.src:(codeLink?attrs.href:null);if(!href)continue;const u=new URL(href,origin+'/');if(u.origin!==origin||u.username||u.password||u.search)throw Error('external_code_origin_or_query_not_pinned');paths.add(decodeURIComponent(u.pathname).replace(/^\//,''));}
+ return [...paths];
+}

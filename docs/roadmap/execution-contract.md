@@ -134,6 +134,7 @@
 
 - 현재 실행 대화의 명시적 승인에 따라 D-04 기준 데스크톱을 **MacBookPro18,2**로 변경한다. 위 MacBook Air M1 원문은 이력으로 보존하며 Pro 결과를 Air M1 실측으로 기재하지 않는다. 210초 경로와 FPS/p95 기준은 유지한다.
 - 실제 모바일은 Galaxy S23 Ultra(SM-S918N), Android 16/API 36이다. 승인된 동일 기기·DPR 1.5·210초 baseline 비교에서 Chrome process-group PSS peak/end 증가를 각각 `max(baseline의 20%, 64MiB)` 이하로 판정하고 crash/지속 상승은 원시 추세로 별도 확인한다. 임의의 절대 total-memory 상한을 추가하지 않는다.
+- 측정 pin은 HTML과 필수 runtime 자산 및 외부 JS/CSS의 served manifest를 묶고, baseline 파일 hash와 실제 기록된 공통 context를 대조한다. 과거 미기록 기기/OS/route/cache는 선언으로 보충한 실측으로 쓰지 않으며 수치 비교와 context 확인을 구분한다. RAF 정지 중에도 visibilitychange 기록을 유지한다.
 - 재현 도구·실제 도착 기준·캐시 동등성 한계·8명/10명 분리와 최종 release 동결 전 측정 금지는 [DEVICE_ACCEPTANCE](../../app/docs/DEVICE_ACCEPTANCE.md)를 따른다. 준비 문서는 기기 통과 증거가 아니다.
 
 ## C12 — 외부 의존성·범위 밖
