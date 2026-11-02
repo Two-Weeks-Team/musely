@@ -1,3 +1,5 @@
+import {mountRecordedReplay, recordedReplayState, type ReplayClock} from './recorded-replay.ts';
+import type {RecordedEvent, RecordedFrame} from '../replay/player.ts';
 import data from '../../fixtures/replay-run.json';
 import {computeAutonomy} from './autonomy.ts';
 import {createPlayer, EMPTY_FILTER, formatT, matchFilter, SPEEDS, visibleEvents} from './replay-core.ts';
@@ -5,13 +7,16 @@ import type {Filter, ReplayEvent, ReplayRun, Speed} from './replay-core.ts';
 export type {ReplayEvent, ReplayRun} from './replay-core.ts';
 
 export type ReplayCtx = {
-  showEvidence: (e: ReplayEvent, trigger: HTMLElement) => void;
-  sourceLabel: (e: ReplayEvent) => {text: string; cls: string};
-  describe: (e: ReplayEvent) => string;
+  showEvidence: (e: ReplayEvent | RecordedEvent, trigger: HTMLElement) => void;
+  sourceLabel: (e: ReplayEvent | RecordedEvent) => {text: string; cls: string};
+  describe: (e: ReplayEvent | RecordedEvent) => string;
   museName: (id: string | null | undefined) => string;
   placeName: (id: string | null | undefined) => string;
   at: (ms: number) => string;
+  onFrame?: (frame: RecordedFrame | null) => void;
+  returnLive?: () => void;
 };
+export const getReplayClock = (): ReplayClock => recordedReplayState.clock ?? replayPlayer;
 export const RUN: ReplayRun = data as ReplayRun;
 // Notifications let the evidence owner pause/resume this single clock without owning our timer.
 type Action = 'play' | 'pause' | 'speed' | 'seek' | 'restart';
@@ -35,10 +40,11 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: stri
 const button = (text: string, cls = 'secondary') => { const node = el('button', cls, text); node.type = 'button'; return node; };
 
 export function mountReplay(body: HTMLElement, ctx: ReplayCtx): {destroy(): void} {
-  const root = el('section', 'replay-view');
+  const root = el('section', 'replay-view'), fixture = el('section', 'fixture-replay');
+  const recorded = mountRecordedReplay(root, ctx, active => { fixture.hidden = active; if (active) replayPlayer.pause(); });
   const badges = el('div', 'legend');
   badges.append(el('span', 'src src-scripted', RUN.label), el('span', 'src src-planned', 'PLANNED · real run player (I-11)'));
-  root.append(badges, el('p', 'muted', RUN.note));
+  fixture.append(badges, el('p', 'muted', RUN.note));
 
   const controls = el('div', 'replay-controls'); controls.setAttribute('role', 'group'); controls.setAttribute('aria-label', 'Replay controls');
   const toggle = button('Play'), restart = button('Restart');
@@ -51,7 +57,7 @@ export function mountReplay(body: HTMLElement, ctx: ReplayCtx): {destroy(): void
   const time = el('p', 'replay-time');
   controls.append(range, time);
   const status = el('p', 'muted replay-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-  root.append(controls, status);
+  fixture.append(controls, status);
 
   let filter: Filter = {...EMPTY_FILTER};
   const filters = el('div', 'replay-filters'); filters.setAttribute('role', 'group'); filters.setAttribute('aria-label', 'Find moments');
@@ -83,7 +89,7 @@ export function mountReplay(body: HTMLElement, ctx: ReplayCtx): {destroy(): void
   };
   empty.append(clear);
   const list = el('ul', 'ev-list');
-  root.append(filters, count, empty, list, el('h4', '', 'Autonomy · visible fixture sample'));
+  fixture.append(filters, count, empty, list, el('h4', '', 'Autonomy · visible fixture sample'));
   const period = el('p', 'muted');
   const wrap = el('div', 'replay-table-wrap'), table = el('table', 'data');
   const caption = el('caption', 'muted', 'Autonomy measurements for the visible scripted fixture events');
@@ -91,7 +97,7 @@ export function mountReplay(body: HTMLElement, ctx: ReplayCtx): {destroy(): void
   for (const text of ['Measure', 'Value', 'Sample', 'Note']) { const th = el('th', '', text); th.scope = 'col'; headRow.append(th); }
   head.append(headRow);
   const tableBody = el('tbody'); table.append(caption, head, tableBody); wrap.append(table);
-  root.append(period, wrap); body.append(root);
+  fixture.append(period, wrap); root.append(fixture); body.append(root);
 
   const rows = new Map<string, HTMLLIElement>();
   let previousVisible = '', destroyed = false;
@@ -171,7 +177,7 @@ export function mountReplay(body: HTMLElement, ctx: ReplayCtx): {destroy(): void
   listeners.add(onAction); document.addEventListener('visibilitychange', resetTime);
   syncControls(); drawMoments(); syncTimer();
   return {destroy() {
-    if (destroyed) return; destroyed = true; stopTimer(); listeners.delete(onAction);
+    if (destroyed) return; destroyed = true; recorded.destroy(); stopTimer(); listeners.delete(onAction);
     document.removeEventListener('visibilitychange', resetTime); replayPlayer.pause();
   }};
 }

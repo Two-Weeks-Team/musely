@@ -19,6 +19,24 @@ import {createWorld, tick, ENGINE_VERSION, TICK_MS} from '../src/engine/world.ts
 import {PLACES} from '../src/engine/places.ts';
 import {Trust} from '../worker/core/trust.ts';
 import {revokeMuse} from '../worker/core/owner-control.ts';
+import {makeHooks} from '../src/engine/rules.ts';
+
+test('I-11 run-log-2 keeps exact public after-snapshots with inputs and events', () => {
+  const {rt, sql} = setup({model: null});
+  rt.commitExternal(T0 + 1000, 'replay-public-change', st => {
+    st.muses[0].place = 'commons:garden';
+    st.muses[0].reflection = 'private free text must only be a hash';
+  });
+  const row = rt.runLog.inputs(rt.runLog.current.runId).at(-1);
+  assert.equal(rt.runLog.current.schemaVersion, 'run-log-2');
+  assert.deepEqual(row.afterSnapshot, {hash: row.afterHash, body: snapshotBody(rt.state())});
+  assert.equal(row.afterSnapshotError, null);
+  assert.equal(bodyHash(row.afterSnapshot.body), row.afterHash);
+  assert.ok(!row.afterSnapshot.body.includes('private free text must only be a hash'));
+  const stored = sql.exec('SELECT after_snapshot, after_snapshot_error FROM run_inputs WHERE seq = ?', row.seq).toArray()[0];
+  assert.equal(stored.after_snapshot, row.afterSnapshot.body);
+  assert.equal(stored.after_snapshot_error, null);
+});
 
 const TX_SQL = /^\s*(BEGIN|SAVEPOINT|COMMIT|ROLLBACK|RELEASE|END)\b/i;
 // Durable Object SQL stand-in (as in world-runtime.test.mjs): only transactionSync opens a transaction.
@@ -637,4 +655,81 @@ test('review 3: greet, postcard and wants text from a connected Muse never reach
   const log = JSON.stringify(runs(sql)) + JSON.stringify(inputs(sql));
   for (const t of Object.values(TEXTS)) assert.equal(log.includes(t), false, `${t} is in the run log`);
   assert.ok(log.includes(textHash(TEXTS.goal)), 'the goal is named by its hash');
+});
+
+test('I-11 v1 migration preserves old records, adds nullable after-snapshots, rotates once and restarts idempotently', () => {
+  const {rt, sql, ledger} = setup({model: null});
+  rt.commitExternal(T0 + 1000, 'legacy-row', st => { st.muses[0].place = 'commons:garden'; });
+  // Recreate the original column layout in this in-memory fixture, as a pre-v2 deployment stored it.
+  sql.db.exec('ALTER TABLE run_inputs DROP COLUMN after_snapshot');
+  sql.db.exec('ALTER TABLE run_inputs DROP COLUMN after_snapshot_error');
+  sql.db.exec('ALTER TABLE run_counts DROP COLUMN replay_bytes');
+  sql.exec("UPDATE runs SET schema_version = 'run-log-1'");
+  const oldRuns = JSON.stringify(runs(sql)), oldRows = inputs(sql), oldRunId = rt.runLog.current.runId;
+  const restart = () => { const next = new WorldRuntime(sql, {worldId: 'w', ledger, meetingGate: 'off', model: null}); next.init(T0 + 2000); return next; };
+  const next = restart();
+  assert.equal(JSON.stringify(runs(sql).slice(0, 1)), oldRuns);
+  const migrated = inputs(sql);
+  assert.deepEqual(migrated.map(({after_snapshot, after_snapshot_error, ...x}) => x), oldRows);
+  assert.ok(migrated.every(x => x.after_snapshot === null && x.after_snapshot_error === null));
+  assert.equal(next.runLog.current.schemaVersion, 'run-log-2');
+  assert.equal(next.runLog.current.prevRunId, oldRunId);
+  assert.equal(next.runLog.current.origin, 'version_change');
+  assert.equal(next.runLog.inputs(oldRunId)[0].afterSnapshot, null);
+  const before = JSON.stringify(runs(sql)); restart(); restart();
+  assert.equal(JSON.stringify(runs(sql)), before, 'one new run, never repeated on restart');
+});
+
+test('I-11 oversized or budget-exhausted public snapshots are explicit gaps and never stop or delete a world commit', () => {
+  const {rt, sql} = setup({model: null});
+  rt.commitExternal(T0 + 1000, 'oversized', st => { st.muses[0].inventory.push('x'.repeat(600_000)); });
+  const large = rt.runLog.inputs(rt.runLog.current.runId).at(-1);
+  assert.equal(large.afterSnapshot, null); assert.equal(large.afterSnapshotError, 'snapshot_too_large');
+  assert.ok(rt.state().muses[0].inventory.at(-1).length === 600_000, 'the live commit was not rejected');
+  sql.exec('UPDATE run_counts SET replay_bytes = ? WHERE run_id = ?', 64 * 1024 * 1024, rt.runLog.current.runId);
+  rt.commitExternal(T0 + 2000, 'budget-full', st => { st.muses[0].inventory.pop(); });
+  const full = rt.runLog.inputs(rt.runLog.current.runId).at(-1);
+  assert.equal(full.afterSnapshot, null); assert.equal(full.afterSnapshotError, 'replay_storage_limit');
+  assert.equal(rt.runLog.inputs(rt.runLog.current.runId).length, 2, 'the ordered history remains intact');
+});
+
+test('I-11 four-hour rule-world snapshot size sample stays inside its recorded replay budget', async () => {
+  const {rt, sql} = setup({model: null, hooks: makeHooks()});
+  for (let k = 0; k < 240; k++) await rt.heartbeat(T0 + k * TICK_MS);
+  const rows = rt.runLog.inputs(rt.runLog.current.runId, 0, 1000);
+  const sizes = rows.map(r => r.afterSnapshot ? new TextEncoder().encode(r.afterSnapshot.body).byteLength : 0);
+  const total = sizes.reduce((a, b) => a + b, 0), peak = Math.max(...sizes);
+  assert.equal(rows.length, 240); assert.ok(rows.every(r => r.afterSnapshot && !r.afterSnapshotError));
+  assert.ok(total < 64 * 1024 * 1024); assert.ok(peak <= 512 * 1024);
+  assert.equal(sql.exec('SELECT replay_bytes FROM run_counts WHERE run_id = ?', rt.runLog.current.runId).toArray()[0].replay_bytes, total);
+  console.log(JSON.stringify({i11StorageSample: {kind: '240 simulated rule heartbeats, no real time or model calls', rows: rows.length, peakBytes: peak, totalBytes: total, meanBytes: Math.round(total / rows.length), budgetBytes: 64 * 1024 * 1024, itemHistoryRows: rt.state().items.history.length}}));
+});
+
+test('I-11 bounded checkpoint API pages still load the exact complete frozen run through the real Worker entry', async () => {
+ const hooks = `export async function resolve(spec, ctx, next) { if (spec === 'cloudflare:workers') return {url: 'data:text/javascript,export class DurableObject { constructor(ctx, env) { this.ctx = ctx; this.env = env; } }', shortCircuit: true}; return next(spec, ctx); }`;
+ register('data:text/javascript,' + encodeURIComponent(hooks));
+ const {default: worker, WorldDO} = await import('../worker/index.ts'), {loadRecordedRun} = await import('../src/replay/loader.ts'), {loadRun} = await import('../src/replay/player.ts');
+ const sql = sqlite(); let ready, alarm = null;
+ const ctx = {storage: {sql: {exec: sql.exec}, transactionSync: sql.transactionSync, getAlarm: async () => alarm, setAlarm: async x => alarm = x}, blockConcurrencyWhile: f => ready = f()};
+ const env = {MODEL_ID: 'test', MODEL_BASE: 'https://invalid.example', DAILY_BUDGET_USD: '1', ALLOWED_HOSTS: 'musely.net', PUBLIC_ORIGIN: 'https://musely.net', TURNSTILE_SITEKEY: 'x'};
+ const dobj = new WorldDO(ctx, env); await ready; env.WORLD = {idFromName: () => 'id', get: () => dobj}; env.ASSETS = {fetch: async () => new Response('asset')};
+ for (let k = 1; k <= 26; k++) dobj.runtime.commitExternal(T0 + k * 1000, 'large-public-fixture-' + k, st => { st.muses[0].inventory = ['x'.repeat(200_000), 'item-' + k]; });
+ const runId = dobj.runtime.runLog.current.runId, requests = [];
+ const read = async (path, init) => { requests.push({path, ...init}); return worker.fetch(new Request('https://musely.net' + path, init), env); };
+ const page = await read(`/api/world/run/inputs?runId=${runId}&limit=1000`, {method: 'GET'}), text = await page.text(), rows = JSON.parse(text);
+ assert.ok(rows.length > 0 && rows.length < 16, 'byte bound applies before the count bound');
+ assert.ok(Buffer.byteLength(text) <= 2 * 1024 * 1024);
+ const loaded = await loadRecordedRun(read, runId), player = loadRun(loaded); player.seek(Number.MAX_SAFE_INTEGER);
+ assert.deepEqual(player.getFrame().publicState, publicState(dobj.runtime.state()));
+ assert.equal(loaded.inputs.length, dobj.runtime.runLog.boundary(runId).inputs);
+ assert.ok(requests.every(r => r.method === 'GET' && !r.body));
+});
+
+test('I-11 rebuilding a missing counter cache retains checkpoint bytes instead of resetting the replay budget', () => {
+ const {rt, sql, ledger} = setup({model: null}); rt.commitExternal(T0 + 1000, 'checkpoint', st => st.muses[0].place = 'commons:garden');
+ const runId = rt.runLog.current.runId, bytes = Buffer.byteLength(rt.runLog.inputs(runId)[0].afterSnapshot.body);
+ sql.exec('DELETE FROM run_counts WHERE run_id = ?', runId);
+ const next = new WorldRuntime(sql, {worldId: 'w', ledger, meetingGate: 'off', model: null}); next.init(T0 + 2000);
+ assert.equal(next.runLog.current.runId, runId);
+ assert.equal(sql.exec('SELECT replay_bytes FROM run_counts WHERE run_id = ?', runId).toArray()[0].replay_bytes, bytes);
 });

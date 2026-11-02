@@ -1,14 +1,27 @@
-# Musely (main product)
+# Musely — main product
 
-This is the main product at **https://musely.net** (and `www.musely.net`). It started as a copy of [`preview/`](../preview/README.md) at `0d85957` (2026-11-02). S2 implementation and S3 completion work happen here. The preview keeps evolving separately with the demo team, and this directory never edits `preview/`.
+The product runs at **https://musely.net** (`www.musely.net` redirects to the canonical origin). This directory owns the application, shared-world Worker and deployment configuration. [`preview/`](../preview/README.md) remains a separate visual preview.
 
-Project delivery follows **preview → implementation → demo (development complete) → GTM**. See the [four-stage roadmap](../docs/roadmap/2026-11-01-four-stage-roadmap.md). This directory contains both the visual preview and working product components; its name does not make live integrations a preview completion requirement. The existing 3:30 story below is the scripted mode, separate from the shared-world implementation.
+## What to inspect
 
-A 3 minute 30 second visual story on a real map: colorful Muse characters walk, think, tend a garden, and talk while their Muses find a mutually suitable meetup. The opening map shows stories across the neighborhood; one continuous camera then moves into the detailed commons.
+- The real-map neighborhood and shared server Muse IDs, inventory, movement and events.
+- Signed A2A messages, scope/delegation/revocation checks, Tasks and owner inbox decisions. Public evidence excludes private meetup conditions and candidate details.
+- The MCP tool surface and transport-to-commit local acceptance described in [MCP_INTEGRATION.md](docs/MCP_INTEGRATION.md) and [MCP_TOOLS.md](docs/MCP_TOOLS.md). Local generated credentials are test fixtures; they are not proof of a real Muse-account call.
+- Source labels and cached evidence. A **RULE** or signature-verdict event need not have a model request ID. **REPLAY** is a view of original records, not a new model call or reward. The **SCRIPTED** 3:30 story is retained as a separately labelled reference mode.
 
-## Run
+The final recorded-run player integration, same-release run/event/model correlations, actual device results and video must be checked in [SUBMISSION_CHECKLIST.md](docs/SUBMISSION_CHECKLIST.md) before submission claims are finalized. Their availability is not inferred from this README.
 
-Use Node.js 24.22.2. From this directory:
+## Model and execution boundary
+
+The configured runtime calls Meta directly at `https://api.meta.ai/v1` with **`muse-spark-1.3`** from the server Worker. Structured model decisions are validated before shared state changes. The runtime has deadlines, budget accounting and explicit fallback/source reporting. Inspect the actual status and event evidence on the selected release; configuration alone does not prove a successful live call.
+
+A visitor can watch the world without installing a personal Muse. A person's Muse must use an actual supported connector/auth flow and the granted server scopes. The custom-connector addition/approval path and final OAuth integration are under verification; local MCP success does not prove that platform step or unattended execution. Account-owner confirmation, webcam judging and physical-device/operational acceptance are separate checkpoints.
+
+The commons is an authored fictional space aligned to mapped ground. Virtual/demo location does not establish physical presence, public access to a place, a real reservation or an external invitation.
+
+## Run locally
+
+Use Node.js 24.22.2. From `app/`:
 
 ```sh
 npm ci
@@ -16,27 +29,15 @@ npm run check
 npm run dev
 ```
 
-`npm run build` generates `dist/index.html`. The application, character assets and a Bay geographic overview are bundled into the HTML. Online OpenFreeMap tiles add detailed geography, labels and fonts; their download does not block the local scene. The same overview remains underneath the online map when returning to the Bay.
+`npm run build` produces `dist/`. The scene and character assets include a local Bay overview; online OpenFreeMap tiles provide additional detail. Follow [deployment operations](docs/DEPLOYMENT.md) for an authorized release. Final release SHA, deploy ID, configuration and runtime evidence are recorded separately from source tests.
 
-## Deploy
+## Submission and evidence
 
-`npm run deploy` deploys `dist/` and the Worker to the `musely` Cloudflare Worker with the custom domains `musely.net` and `www.musely.net`. The Worker name, the Durable Object namespace and the rate-limit namespace are separate from `musely-preview`. Details, secrets and rollback are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
-
-## Contents
-
-- `src/`: map, characters, movement, camera, dialogue, and interface.
-- `assets/`: character GLB, Sigil textures, map style, embedded Bay overview, geographic context, and SHA-256 manifest.
-- `scripts/`: build, embedding helper, and regression tests.
-- `fixtures/`: public meetup proposal transcript used by tests.
-- `docs/SCENARIO.md`: complete English story and timing.
-
-The conversations and activity are scripted. The commons is an authored fictional space aligned to mapped ground; it does not imply public access to the physical location. The scripted mode does not run personal agents or send invitations. Shared-world components under `worker/` are tracked separately by the execution roadmap; their presence is not proof of a completed personal-Muse connector.
-
-## Opening and playback verification
-
-See [the entry review](docs/ENTRY_REVIEW.md) for before/after conditions and measured limits. `scripts/entry.browser.js` is an additional browser regression, separate from the Node unit tests. Pass its contents to the Playwright CLI `run-code` command after opening the desired local or production URL. It checks delayed map requests, desktop and 390×844 touch emulation, eight-second arrival, dialogue identity, disclosure, and returning to Bay with failed online requests.
-
-After `npm run build`, a static server can also serve `dist/` for asset-only browser QA when the installed local Workers runtime does not support the configured compatibility date.
+- [Submission checklist and separate external states](docs/SUBMISSION_CHECKLIST.md)
+- [Exact field draft and unanswered personal questions](docs/SUBMISSION_DRAFT.md)
+- [Machine-readable readiness](docs/submission/readiness.json)
+- [Dated verification record](docs/V2_VERIFICATION.md), retained as historical evidence rather than overwritten as a current PASS
+- [Scenario and scripted timing](docs/SCENARIO.md)
 
 ## Attribution
 

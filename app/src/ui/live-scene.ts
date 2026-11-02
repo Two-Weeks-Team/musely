@@ -1,12 +1,14 @@
 // I-09: read-only server snapshot/event → existing rig, props, labels and four small effects.
 // The scripted eight-character scene stays intact; live mode reuses its matching IDs and adds Ember/Copper.
 import * as T from 'three';
+import type {RecordedFrame} from '../replay/player.ts';
+import {SceneProjection, frameSource} from './recorded-scene.ts';
 import {loadMuseLight, type MaterialLibrary} from '../character-kit/MaterialLibrary.ts';
 import type {MuseActor} from '../character-kit/MuseActor.ts';
 import {MUSE_VARIANTS, propsUrl} from '../character-kit/catalog.ts';
 import {chooseLods} from '../character-kit/residents.ts';
 import {surfaceHeightAt} from '../surfaces.ts';
-import {LiveProjection, UPPER_BONES, inventorySummary, museName, ownerOf, type ActorFrame, type FxKind, type LiveWorld, type LiveEvent} from './live-scene-core.ts';
+import {UPPER_BONES, inventorySummary, museName, ownerOf, type ActorFrame, type FxKind, type LiveWorld, type LiveEvent} from './live-scene-core.ts';
 
 type Host = {scene: T.Scene; actors: MuseActor[] | null | undefined; muses: T.Object3D[]; shadows: T.Mesh[];
   selection: T.Object3D; library: MaterialLibrary | null | undefined; shadowTexture: T.Texture | null; ambient(t: number): void};
@@ -15,7 +17,9 @@ type Point = {x: number; y: number};
 const FX: Record<FxKind, number> = {teleport: 0x8fb8ff, item: 0xffd27d, stamp: 0x92d7b3, trade_lock: 0xe0b2f7};
 
 export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () => ({x: -100, y: -100})) {
-  const projection = new LiveProjection(), entries = new Map<string, Entry>(), errors: string[] = [];
+  const store = new SceneProjection();
+  let projection = store.projection;
+  const entries = new Map<string, Entry>(), errors: string[] = [];
   let active = false, disposed = false, frames = new Map<string, ActorFrame>(), now = 0, selected = '00-jolly';
   let lods = MUSE_VARIANTS.map(() => 2 as 0 | 1 | 2);
   const root = typeof document === 'undefined' ? null : document.createElement('div');
@@ -61,8 +65,9 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
     }
     if (!value) for (const mesh of [...effects.values()]) mesh.visible = false;
   }
-  function accept(world: LiveWorld, events: readonly LiveEvent[]) {return !disposed && projection.accept(world, events);}
-  const sourceOf = (id: string) => [...projection.events].reverse().find(e => e.muse === id || e.other === id)?.source ?? 'rule';
+  function accept(world: LiveWorld, events: readonly LiveEvent[]) {return !disposed && store.accept(world, events);}
+  function setRecordedFrame(frame: RecordedFrame | null) {if (disposed) return; store.setRecordedFrame(frame); projection = store.projection; if (root) root.dataset.replay = String(store.replay);}
+  const sourceOf = (id: string) => frameSource(projection, frames.get(id), id);
   function update(at: number, selectedId = selected) {
     now = at; selected = selectedId;
     if (disposed || !active || !projection.world) return;
@@ -87,8 +92,9 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
         e.label.textContent = `${museName(f.id)}${f.line ? ': ' + f.line : f.card ? ' · ' + f.card : ''}`;
         e.label.dataset.version = String(projection.world.version ?? projection.world.tick);
         e.label.dataset.source = sourceOf(f.id);
+        e.label.dataset.replay = String(store.replay);
         e.label.dataset.visual = f.visual;
-        e.label.title = `${f.status}${f.fallback ? ' · ' + f.fallback : ''}`;
+        e.label.title = `${store.replay ? 'REPLAY · ' : ''}${f.status}${f.fallback ? ' · ' + f.fallback : ''}`;
       }
     }
     const ordered = MUSE_VARIANTS.map(v => entries.get(v.id));
@@ -109,7 +115,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
     host.ambient(at / 1000);
   }
   function getMetrics() {
-    return {active, worldId: projection.world?.worldId ?? null, version: projection.world?.version ?? null, at: now, errors: [...errors],
+    return {active, replay: store.replay, liveVersion: store.live.world?.version ?? null, recordedAt: store.recordedAt, worldId: projection.world?.worldId ?? null, version: projection.world?.version ?? null, at: now, errors: [...errors],
       effects: Object.fromEntries([...effects].map(([k, m]) => [k, m.visible ? m.count : 0])),
       muses: (projection.world?.muses ?? []).map(m => {const e = entries.get(m.id), f = frames.get(m.id); return {id: m.id, variant: e?.actor.variant ?? null, owner: ownerOf(m.id), inventory: [...m.inventory], inventorySummary: inventorySummary(m.inventory).text,
         version: projection.world?.version ?? null, rootId: e?.actor.root.uuid ?? null, position: e?.actor.root.position.toArray() ?? null, floorY: f ? surfaceHeightAt(f.x, f.z) + .006 : null,
@@ -120,5 +126,5 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
     for (const e of entries.values()) if (e.extra) {e.actor.dispose(); e.shadow.removeFromParent(); e.shadow.geometry.dispose(); (e.shadow.material as T.Material).dispose();}
     for (const mesh of [...effects.values()]) {mesh.removeFromParent(); mesh.geometry.dispose(); (mesh.material as T.Material).dispose();}
   }
-  return {ready, accept, setActive, update, getMetrics, dispose, projection, get frames() {return frames;}, get active() {return active;}};
+  return {ready, accept, setRecordedFrame, setActive, update, getMetrics, dispose, get projection() {return projection;}, get liveProjection() {return store.live;}, get frames() {return frames;}, get active() {return active;}};
 }

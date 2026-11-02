@@ -13,3 +13,7 @@ These paths fall outside the repository license:
 - Any Muse/Jolly model, texture, render or capture produced from the files above, including build output in `app/dist/` and `preview/dist/`.
 
 The surrounding code, the Sigil textures, the map work and the scenario remain under the repository license.
+
+## Submission context
+
+This notice preserves the Meta attribution and the distinction between repository code and excluded character-derived assets. It does not itself establish permission for a separate submission or media-use grant. The current disclosure and verification gates are in [the submission checklist](../docs/SUBMISSION_CHECKLIST.md). No ownership or reuse right is added by that checklist.
