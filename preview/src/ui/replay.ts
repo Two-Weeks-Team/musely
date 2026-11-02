@@ -73,7 +73,7 @@ export function mountReplay(body: HTMLElement, ctx: ReplayCtx): {destroy(): void
   const places = [...new Set(RUN.events.map(e => e.place).filter((id): id is string => !!id))];
   const museSelect = select('Muse', muses.map(id => [id, ctx.museName(id)]), v => { filter.muse = v; });
   const placeSelect = select('Place', places.map(id => [id, ctx.placeName(id)]), v => { filter.place = v; });
-  const partSelect = select('Time of day', [['night', 'Night (00–06)'], ['morning', 'Morning (06–12)'], ['afternoon', 'Afternoon (12–18)'], ['evening', 'Evening (18–24)']], v => { filter.part = v as Filter['part']; });
+  const partSelect = select('Time of day (your time)', [['night', 'Night (00–06)'], ['morning', 'Morning (06–12)'], ['afternoon', 'Afternoon (12–18)'], ['evening', 'Evening (18–24)']], v => { filter.part = v as Filter['part']; });
   const count = el('p', 'muted'); count.setAttribute('role', 'status');
   const empty = el('div'); empty.append(el('p', 'muted', 'No moment matches. Clear the filters.'));
   const clear = button('Clear filters'); clear.onclick = () => {

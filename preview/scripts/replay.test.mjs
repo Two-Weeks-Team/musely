@@ -32,6 +32,15 @@ test('filters match tags, either participant, place and Los Angeles time with AN
   for (const f of [{tag: 'p0_trade'}, {muse: '02-moss'}, {place: 'commons:garden'}, {part: 'night'}, {tag: 'first_trade', part: 'evening'}]) assert.equal(matchFilter(e, {...EMPTY_FILTER, ...f}, 'America/Los_Angeles'), false);
   for (const [hour, part] of [[0, 'night'], [6, 'morning'], [12, 'afternoon'], [18, 'evening']]) assert.equal(matchFilter({...e, at: Date.parse('2026-11-02T08:00:00Z') + hour * 3600000}, {...EMPTY_FILTER, part}, 'America/Los_Angeles'), true);
 });
+test('without a zone argument the time-of-day filter uses the viewer\'s own zone (the path the page takes)', () => {
+  const was = process.env.TZ, e = {tags: [], muse: '00-jolly', other: null, place: 'commons:cafe', at: Date.parse('2026-11-01T17:00:00Z')};
+  try {
+    for (const [tz, part] of [['Asia/Seoul', 'night'], ['Europe/London', 'afternoon'], ['America/Los_Angeles', 'morning']]) { // 02:00, 17:00, 09:00 local
+      process.env.TZ = tz;
+      for (const p of ['night', 'morning', 'afternoon', 'evening']) assert.equal(matchFilter(e, {...EMPTY_FILTER, part: p}), p === part, `${tz} ${p}`);
+    }
+  } finally { if (was === undefined) delete process.env.TZ; else process.env.TZ = was; }
+});
 test('fixture is a scoped, ordered scenario with catalog ids and genuine recorded model references', () => {
   const run = read('../fixtures/replay-run.json'), library = read('../fixtures/replay-library.json');
   assert.equal(run.label, 'SCRIPTED · PREVIEW FIXTURE'); assert.equal(run.day, '2026-11-01'); assert.equal(run.durationSec, 1800);

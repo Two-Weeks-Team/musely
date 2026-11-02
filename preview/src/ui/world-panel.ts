@@ -10,7 +10,7 @@ import {HARNESSES, harnessById} from '../engine/harness';
 import {PLACES, PLACE_BY_ID} from '../engine/places';
 import {itemName} from '../engine/items';
 import {MUSE_VARIANTS} from '../character-kit/catalog';
-import {createWorld, tick, TICK_MS} from '../engine/world';
+import {createWorld, tick, TICK_MS, localClock} from '../engine/world';
 import {makeHooks} from '../engine/rules';
 import {ensureSession, sparkStatus} from '../live';
 import {ritualCard} from './ritual';
@@ -32,9 +32,10 @@ const placeName = (id: string | null | undefined) => (id ? PLACE_BY_ID.get(id)?.
 const color = (id: string) => MUSE_VARIANTS.find(v => v.id === id)?.body ?? '#E8DDC7';
 // Every time on screen is the viewer's own time (their device's time zone). The world itself keeps Menlo Park time for its day and its
 // beats; only what is shown is converted.
-const clockFmt = new Intl.DateTimeFormat(undefined, {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
-const at = (ms: number) => clockFmt.format(new Date(ms));
-const viewerZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'your time zone';
+// The formatters are made per call: a formatter keeps the zone it was built in, and a device can change zone during a session.
+const at = (ms: number) => new Intl.DateTimeFormat(undefined, {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}).format(new Date(ms));
+const viewerDay = (ms: number) => new Intl.DateTimeFormat(undefined, {month: 'short', day: 'numeric'}).format(new Date(ms));
+const viewerZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'your time zone';
 
 export function sourceLabel(e: Pick<Ev, 'source' | 'data'>): {text: string; cls: string} {
   if (e.source === 'live' && e.data?.actor === 'your Muse') return {text: 'LIVE · your Muse', cls: 'src-live'};
@@ -248,7 +249,7 @@ export function mountWorldPanel(map: LibreMap) {
     const dl = el('dl', 'facts');
     const fact = (k: string, v: unknown) => { if (v === undefined || v === null || v === '') return; dl.append(el('dt', '', k), el('dd', '', typeof v === 'string' ? v : JSON.stringify(v))); };
     if (e.fixture) fact('Record', 'Preview fixture (SCRIPTED) — not a live record');
-    fact(`When (your time · ${viewerZone})`, at(e.at) + ` · tick ${e.tick} · event ${e.id}`);
+    fact(`When (your time · ${viewerZone()})`, `${viewerDay(e.at)}, ${at(e.at)}` + ` · tick ${e.tick} · event ${e.id}`);
     fact('Muse', museName(e.muse)); fact('Other', e.other ? museName(e.other) : null); fact('Place', placeName(e.place));
     const ev = e.data?.evidence;
     const orig = typeof ev?.replayOf === 'string' ? ev.replayOf : ev?.replayOf?.requestId, rec = typeof ev?.replayOf === 'object' ? ev.replayOf : null;
@@ -344,7 +345,7 @@ export function mountWorldPanel(map: LibreMap) {
   async function render() {
     // Each render owns a generation; a slower render for a previous tab never writes into the current one.
     const mine = ++generation, stale = () => mine !== generation;
-    const day = world?.day ?? new Date().toISOString().slice(0, 10);
+    const day = world?.day ?? localClock(Date.now()).date; // the world's own (Menlo Park) day
     tabs.querySelectorAll('button').forEach(b => { const on = (b as HTMLElement).dataset.tab === tab; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
     if (tab !== 'replay') leaveReplay();
     else if (replayView && body.querySelector('.replay-view')) return; // already on screen: keep playing
