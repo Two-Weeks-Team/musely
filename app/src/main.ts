@@ -53,7 +53,7 @@ const initialStyle={...style,sources:{'arrival-overview':{type:'geojson',data:ar
 const kitLight=kitLibrary?Promise.all([kitLibrary.load(lodUrl(2,kitLibrary.base)),kitLibrary.load(clipsUrl(kitLibrary.base))]).then(()=>'kit',()=>'kit-failed'):Promise.resolve('no-kit');
 let onlineMapAddedAtMs=0;
 function addOnlineMap(){if(onlineMapAddedAtMs)return;onlineMapAddedAtMs=performance.now();for(const [id,source] of Object.entries(style.sources))map.addSource(id,source as any);const before=map.getLayer('musely-world')?'musely-world':undefined;for(const layer of style.layers.slice(1))map.addLayer(layer as any,before);}
-let sceneReadyAtMs=0,onlineMapReadyAtMs=0,detailReadyAtMs=0;
+let sceneReadyAtMs=0,onlineMapReadyAtMs=0,detailReadyAtMs=0,initialEntryCamera=false;
 const ratio=pixelRatioFor();
 const map=new LibreMap({container:'map',pixelRatio:ratio.applied,style:initialStyle as unknown as StyleSpecification,center:anchor,zoom:innerWidth<700?9.6:10.25,pitch:54,bearing:BEARING,minZoom:8,maxZoom:23.8,maxPitch:65,attributionControl:false,canvasContextAttributes:{antialias:true,preserveDrawingBuffer:true},fadeDuration:200});
 map.on('styleimagemissing',e=>{if(!map.hasImage(e.id))map.addImage(e.id,{width:1,height:1,data:new Uint8Array(4)});});
@@ -74,9 +74,9 @@ $('follow').onclick=()=>{manual();follow=true;$('follow').classList.add('active'
 // button then ends the cue and resumes; otherwise it toggles the user's own pause.
 function syncPause(){const held=cues.length>0;$('pause').textContent=held?'Paused for preview':clock.paused?(mode==='world'?'Resume view':'Resume world'):(mode==='world'?'Pause view':'Pause world');$('pause').setAttribute('aria-pressed',String(held||clock.paused));}
 $('pause').onclick=()=>{if(cues.length){endCues();clock.paused=false;last=performance.now();syncPause();updateUI();return;}clock.paused=!clock.paused;if(clock.paused)map.stop();else if(mode==='world')void worldPanel.refresh();syncPause();};
-function startStory(){endCues();markMode('story');follow=false;clock=makeClock();lifeTime=0;selected=0;ownerDecision='pending';$('decision-note').textContent='Local interaction only. Nothing is sent or booked.';tour=true;tourCamera=true;document.body.classList.add('story-mode');$('tour').classList.add('active');$('tour').textContent='Story · 0:00 / 3:30';syncPause();map.jumpTo({center:anchor,zoom:innerWidth<700?9.6:10.25,pitch:54,bearing:BEARING});last=performance.now();}
-$('tour').onclick=startStory;
-function seekStory(t:number){endCues();follow=false;$('follow').classList.remove('active');clock.elapsed=Math.max(0,Math.min(DURATION,t));clock.tourFinished=clock.elapsed>=DURATION;lifeTime=clock.elapsed;tour=!clock.tourFinished;tourCamera=true;bubbles?.invalidate();if(clock.tourFinished){$('tour').textContent='Replay story · 3:30';$('tour').classList.remove('active');}updateUI();}
+function startStory(initialEntry=false){initialEntryCamera=initialEntry;endCues();markMode('story');follow=false;clock=makeClock();lifeTime=0;selected=0;ownerDecision='pending';$('decision-note').textContent='Local interaction only. Nothing is sent or booked.';tour=true;tourCamera=true;document.body.classList.add('story-mode');$('tour').classList.add('active');$('tour').textContent='Story · 0:00 / 3:30';syncPause();map.jumpTo({center:anchor,zoom:innerWidth<700?9.6:10.25,pitch:54,bearing:BEARING});last=performance.now();}
+$('tour').onclick=()=>startStory();
+function seekStory(t:number){initialEntryCamera=false;endCues();follow=false;$('follow').classList.remove('active');clock.elapsed=Math.max(0,Math.min(DURATION,t));clock.tourFinished=clock.elapsed>=DURATION;lifeTime=clock.elapsed;tour=!clock.tourFinished;tourCamera=true;bubbles?.invalidate();if(clock.tourFinished){$('tour').textContent='Replay story · 3:30';$('tour').classList.remove('active');}updateUI();}
 $('story-scrubber').oninput=()=>seekStory(Number(($('story-scrubber') as HTMLInputElement).value));
 $('about').onclick=()=>$('about-dialog').showPopover();$('close-about').onclick=()=>$('about-dialog').hidePopover();
 $('meetup').onclick=()=>$('meetup-dialog').showPopover();$('close-meetup').onclick=()=>$('meetup-dialog').hidePopover();
@@ -106,7 +106,7 @@ let world:Awaited<ReturnType<typeof makeWorld>>,renderer:T.WebGLRenderer,camera:
 const localMatrix=new T.Matrix4().makeTranslation(origin.x,origin.y,origin.z).multiply(new T.Matrix4().makeScale(unit,-unit,unit)).multiply(new T.Matrix4().makeRotationX(Math.PI/2)).multiply(new T.Matrix4().makeRotationY(-gridYaw));
 const layer:CustomLayerInterface={id:'musely-world',type:'custom',renderingMode:'3d',onAdd(_map,gl){renderer=new T.WebGLRenderer({canvas:map.getCanvas(),context:gl as WebGL2RenderingContext,antialias:true});renderer.autoClear=false;renderer.outputColorSpace=T.SRGBColorSpace;renderer.toneMapping=T.NoToneMapping;renderer.toneMappingExposure=1.15;camera=new T.Camera();if(world?.actors){const pmrem=new T.PMREMGenerator(renderer),room=new RoomEnvironment();world.scene.environment=pmrem.fromScene(room,.04).texture;world.scene.environmentIntensity=.12;room.dispose();pmrem.dispose();renderer.resetState();}},render(gl,args){
  const now=performance.now(),rawDt=(now-last)/1000,dt=Math.min(rawDt,.1);last=now;if(!clock.paused){if(tour){clock=advance(clock,rawDt);lifeTime=clock.elapsed;}else lifeTime+=dt;}
- if(tourCamera){const c=tourCameraAt(clock.elapsed,selected,innerWidth<700),g=toGeo(c.x,c.z);
+ if(tourCamera){const c=tourCameraAt(clock.elapsed,selected,innerWidth<700,initialEntryCamera),g=toGeo(c.x,c.z);
   const center:[number,number]=[g.lng,g.lat];
   map.jumpTo({center,zoom:c.zoom,pitch:54,bearing:BEARING});
  }else if(follow&&!map.isMoving()){const p=showingLive()?(liveScene?.frames.get(liveSelected)??positionAt(selected,lifeTime)):positionAt(selected,lifeTime);map.setCenter(toGeo(p.x,p.z));}
@@ -118,7 +118,7 @@ const layer:CustomLayerInterface={id:'musely-world',type:'custom',renderingMode:
  if(now-fpsStart>=1000){fps=Math.round(fpsFrames*1000/(now-fpsStart));fpsFrames=0;fpsStart=now;}
  if(now-lastUI>200){updateUI();bubbles?.invalidate();$('time-label').textContent=clock.paused?(mode==='world'?'VIEW PAUSED · SHARED WORLD STILL RUNNING':'A quiet pause'):tour?`STORY ${Math.floor(clock.elapsed/60)}:${String(Math.floor(clock.elapsed%60)).padStart(2,'0')} / 3:30`:'A LITTLE LIFE, IN MOTION';if(tour)$('tour').textContent=`Story · ${Math.floor(clock.elapsed/60)}:${String(Math.floor(clock.elapsed%60)).padStart(2,'0')} / 3:30`;lastUI=now;}
  bubbles?.update(lifeTime);const storyBubbles=document.getElementById('world-bubbles');if(storyBubbles)storyBubbles.hidden=showingLive();updateCues(now);
- if(!ready){ready=true;sceneReadyAtMs=performance.now();if(autoplay)startStory();$('loading').hidden=true;statuses.push('world rendered');}
+ if(!ready){ready=true;sceneReadyAtMs=performance.now();if(autoplay)startStory(true);$('loading').hidden=true;statuses.push('world rendered');}
  if(!detailReadyAtMs&&map.getZoom()>=20.35)detailReadyAtMs=performance.now();
  map.triggerRepaint();
 }};
