@@ -67,3 +67,6 @@ test('D02 blank C10 evidence fields cannot be promoted to a release acceptance r
  const meta={classification:'simulation',issueId:62,owner:'Codex',commitSha:'source',environment:'local',configVersion:'test',testedAt:'now',command:'test',result:'local-only',artifact:'local.json',limitations:[]};
  for(const key of ['owner','commitSha','environment','testedAt','command','result','artifact'])assert.throws(()=>verifyRelease({...meta,[key]:' '}),/missing/);
 });
+test('D02 P0 full-state digest must also stay unchanged, beyond the public allow-list',async()=>{
+ const {p0}=await buildControlledProof();p0.fullStateAfterHash='changed-private-state';assert.throws(()=>verifyP0(p0),/full state/);
+});

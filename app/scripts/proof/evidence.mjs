@@ -13,6 +13,7 @@ export function verifyP0(p) {
  requireProof(hash(verified.data.content)===hash(refused.data.content),'P0 business content changed');
  for(const k of ['delegation_ref','scope','scope_hash','agent_id'])requireProof(verified.data.envelope?.[k] && verified.data.envelope[k]===refused.data.envelope?.[k],'P0 delegation/business identity changed: '+k);
  for(const k of ['message_id','nonce'])requireProof(verified.data.envelope?.[k] && refused.data.envelope?.[k] && verified.data.envelope[k]!==refused.data.envelope[k],'P0 fresh '+k);
+ requireProof(typeof p.fullStateBeforeHash==='string'&&p.fullStateBeforeHash===p.fullStateAfterHash&&p.refusalResult?.stateUnchanged===true,'P0 full state changed after refusal');
  requireProof(hash(p.beforeRefusal)===hash(p.afterRefusal),'P0 state changed after refusal');
  requireProof(p.trade?.kind==='trade_completed' && p.trade.seq>verified.seq && p.trade.seq<revoked.seq && p.trade.data.envelope.message_id===verified.data.envelope.message_id,'P0 first trade actually committed');
  return {status:'verified',cause:'delegation_revoked',freshMessage:true,freshNonce:true,stateUnchanged:true,eventIds:[verified.id,p.trade.id,revoked.id,refused.id]};
