@@ -5,7 +5,7 @@ import {verifyCard, buildCard, signCard, type CardCheck} from '../../src/identit
 import {verifyDelegation, delegationRef} from '../../src/identity/delegation.ts';
 import {generateKeyPair} from '../../src/identity/jws.ts';
 import {detectInjection, wrapUntrusted, INJECTION_LIMIT_NOTE} from '../../src/identity/untrusted.ts';
-import {checkTrade, commitTrade, itemName} from '../../src/engine/items.ts';
+import {checkTrade, commitTrade, itemName, historyFault} from '../../src/engine/items.ts';
 import {harnessById, SCOPES} from '../../src/engine/harness.ts';
 import {placeById, distanceM} from '../../src/engine/places.ts';
 import type {WorldRuntime} from './world-runtime.ts';
@@ -19,13 +19,13 @@ const nowOf = (c: Ctx) => (c.now ? c.now() : Date.now());
 export const envelopeEvidence = (s: Signed) => ({message_id: s.envelope.message_id, agent_id: s.envelope.agent_id, delegation_ref: s.envelope.delegation_ref, signer_kind: s.envelope.signer_kind, scope: s.envelope.scope, scope_hash: s.envelope.scope_hash, content_hash: s.envelope.content_hash, nonce: s.envelope.nonce, expires_at: s.envelope.expires_at, owner_claimed: s.envelope.owner_claimed});
 
 /** A trade the owner's Muse can actually make now: nearby partner, both items held and the rules allow it. */
-export function findOwnerTrade(s: WorldState, revoked: (museId: string) => boolean = () => false) {
+export function findOwnerTrade(s: WorldState, revoked: (museId: string) => boolean = () => false, at?: number) {
   const me = s.muses.find(m => m.id === OWNER_SLOT)!;
   const here = placeById(me.place);
   // A partner whose owner revoked its delegation (paused) cannot answer: it is never picked.
   const partners = s.muses.filter(m => m.id !== OWNER_SLOT && !m.travel && !s.paused?.[m.id] && !revoked(m.id)).sort((a, b) => distanceM(here, placeById(a.place)) - distanceM(here, placeById(b.place)));
   for (const p of partners) for (const give of me.inventory) for (const want of p.inventory) {
-    if (checkTrade(s.items, s.day, me, p, give, want).ok) return {partner: p.id, give, want};
+    if (checkTrade(s.items, s.day, me, p, give, want, 0, at).ok) return {partner: p.id, give, want};
   }
   return null;
 }
@@ -33,7 +33,7 @@ export function findOwnerTrade(s: WorldState, revoked: (museId: string) => boole
 /** Sends a signed trade proposal from the owner's Muse; it commits only through executeCommand. */
 export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; plan?: {partner: string; give: string; want: string}}) {
   const s = c.runtime.state();
-  const plan = opts.plan ?? findOwnerTrade(s, id => c.trust.suspended(id));
+  const plan = opts.plan ?? findOwnerTrade(s, id => c.trust.suspended(id), nowOf(c));
   if (!plan) return {ok: false as const, reason: 'no_valid_trade_now'};
   const exec = opts.stale ? await c.trust.storedExecutor(OWNER_SLOT, 'server_custodial') : await c.trust.executor(OWNER_SLOT, 'server_custodial', c.ownerRoot);
   const content = {kind: 'propose_trade', give: plan.give, want: plan.want, to: plan.partner};
@@ -54,7 +54,8 @@ export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; 
     apply: (st, emit, at) => {
       emit({at, source: 'live', kind: 'a2a_verified', muse: OWNER_SLOT, other: plan.partner, line: 'Signature, delegation, scope, expiry, nonce: verified', data: {steps: ['signature', 'recipient', 'delegation', 'scope', 'expiry', 'content', 'replay', 'counterparty'], envelope: evidence, content, label: opts.label}, tags: ['p0_valid']});
       const a = st.muses.find(m => m.id === OWNER_SLOT)!, b = st.muses.find(m => m.id === plan.partner)!;
-      const check = checkTrade(st.items, st.day, a, b, plan.give, plan.want, 0, at);
+      // A tampered item history refuses the swap (I-06) instead of throwing inside the commit.
+      const check = historyFault(st.items, false, at) ? {ok: false as const, reason: 'history_tamper'} : checkTrade(st.items, st.day, a, b, plan.give, plan.want, 0, at);
       if (!check.ok) { emit({at, source: 'rule', kind: 'trade_rejected', muse: plan.partner, other: OWNER_SLOT, line: 'Not this time.', data: {reason_public: null, rule: check.reason}, tags: ['trade_rejected']}); return {ok: false, code: check.reason}; }
       commitTrade(st.items, st.day, a, b, plan.give, plan.want, at);
       emit({at, source: 'live', kind: 'trade_completed', muse: OWNER_SLOT, other: plan.partner, place: a.place, line: `Traded ${itemName(plan.give)} ↔ ${itemName(plan.want)}`, data: {give: plan.give, want: plan.want, receipt: true, envelope: evidence}, tags: ['ability_change', 'p0_trade']});
@@ -82,7 +83,7 @@ export async function runP0(c: Ctx) {
     if (!('plan' in first)) return {ok: false as const, phase: 'valid' as const, reason: first.reason};
     return {ok: first.ok, phase: 'valid' as const, before: first.verdict, plan: first.plan, next: 'owner_revoke'};
   }
-  const job = lastP0Job(c) ?? findOwnerTrade(c.runtime.state(), id => c.trust.suspended(id));
+  const job = lastP0Job(c) ?? findOwnerTrade(c.runtime.state(), id => c.trust.suspended(id), nowOf(c));
   if (!job) return {ok: false as const, phase: 'after_revoke' as const, reason: 'no_valid_trade_now'};
   const before = JSON.stringify(c.runtime.state());
   const second = await ownerTrade(c, {stale: true, label: 'p0-after-revoke', plan: job});

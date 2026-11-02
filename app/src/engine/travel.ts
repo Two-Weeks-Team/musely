@@ -3,7 +3,7 @@
 // verified teleport, which spends a Taxi Token at once.
 import {tripMs, type MuseState, type WorldState, type WorldEvent, type Hooks, type Source} from './world.ts';
 import {placeById, distanceM, type Place} from './places.ts';
-import {speedFor, sweepExpired} from './items.ts';
+import {speedFor, sweepExpired, historyFault} from './items.ts';
 import {placeCell, teleportCheck} from './location.ts';
 import {rngFor} from './rng.ts';
 
@@ -43,7 +43,7 @@ export function followOwner(s: WorldState, now: number, emit: Emit, hooks: Hooks
   if (!m) return null;
   m.anchor = owner.cell;
   // Outside the tick: passes that expired since the last sweep must not carry this trip (I-06).
-  for (const e of sweepExpired(s, now)) emit(e);
+  if (!historyFault(s.items, false, now)) for (const e of sweepExpired(s, now)) emit(e);
   // A paused Muse (delegation revoked) does not follow; the owner cell is still recorded.
   if (s.paused?.[m.id]) return {mode: 'paused' as const};
   if (placeCell(m.place) === owner.cell && !m.travel) return {mode: 'stay' as const};

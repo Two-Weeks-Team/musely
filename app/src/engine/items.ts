@@ -10,8 +10,8 @@ export type ItemSpec = {
   id: string; name: string; category: Category;
   permanent: boolean; consumable: boolean; transferable: boolean; stackable: boolean;
   expiresHours?: number;
-  /** Ability the item changes (layer 1 reward). */
-  ability?: 'bus_speed' | 'teleport' | 'night_sky' | 'events' | 'plant' | 'extra_activity' | 'campfire_talk' | 'send_postcard' | 'extra_spotlight' | 'level';
+  /** Ability the item changes (layer 1 reward). Set only when an effect rule implements it, and named like that rule. */
+  ability?: 'bus_speed' | 'teleport' | 'night_sky' | 'plant' | 'extra_activity' | 'send_postcard' | 'extra_spotlight';
   owner?: string;            // role tools belong to a character
   visual: 'prop' | 'card' | 'stamp' | 'glow';
   sellable: boolean;         // convenience only (GTM later); provenance never
@@ -31,7 +31,7 @@ export const EFFECT_RULES = {
   send_postcard: {does: 'one stamp is spent per postcard mailed (send_postcard tool)', where: 'mcp-tools.ts send_postcard'},
   night_sky: {does: 'opens the night_pass_stargaze beat 19:00-03:00 at parks, gardens, benches, the campfire and landmarks', where: 'beats.ts night_pass_stargaze'},
   extra_activity: {does: 'one more discovery after the daily 10 (at most one ticket a day); the ticket is spent', where: 'items.ts discover, receiveDiscovery'},
-  extra_spotlight: {does: 'spent for one extra spotlight turn ahead of the rotation; the rotation does not skip anyone', where: 'items.ts itemUpkeep'},
+  extra_spotlight: {does: 'spent at the end of a tick for one extra spotlight turn on the next tick, ahead of the rotation; nobody loses a turn (not for a connected Muse)', where: 'items.ts spendSpotlightTickets, world.ts tick'},
 } as const;
 export type EffectRule = keyof typeof EFFECT_RULES;
 export type ItemEffect = {rule: EffectRule} | {effect: 'none'; reason: string};
@@ -80,16 +80,16 @@ export const ITEMS: ItemSpec[] = [
     .map(([id, name]) => S(id, name, 'stamp', {permanent: true, transferable: false, visual: 'stamp'})),
   // Role tools (permanent, level up; held by their character)
   ...([['sun_badge', 'Sun Badge', '01-sunny'], ['watering_can', 'Watering Can', '02-moss'], ['paper_map', 'Paper Map', '03-ripple'], ['brass_lantern', 'Brass Lantern', '04-ember'], ['petal_patch', 'Petal Patch', '05-bloom'], ['book_glasses', 'Book & Glasses', '06-ink'], ['headphones', 'Headphones', '07-tempo'], ['star_pin', 'Star Pin', '08-orbit'], ['pocket_gadget', 'Pocket Gadget', '09-copper']] as const)
-    .map(([id, name, owner]) => S(id, name, 'role_tool', {permanent: true, transferable: false, owner, ability: 'level', visual: 'prop'})),
+    .map(([id, name, owner]) => S(id, name, 'role_tool', {permanent: true, transferable: false, owner, visual: 'prop'})),
   // Passes (time-limited)
   S('transit_pass', 'Transit Pass', 'pass', {expiresHours: 24, ability: 'bus_speed', sellable: true}),
   S('night_pass', 'Night Pass', 'pass', {expiresHours: 24, ability: 'night_sky', sellable: true}),
-  S('event_pass', 'Event Pass', 'pass', {expiresHours: 24, ability: 'events', sellable: true}),
+  S('event_pass', 'Event Pass', 'pass', {expiresHours: 24, sellable: true}),
   S('garden_pass', 'Garden Pass', 'pass', {expiresHours: 24, ability: 'plant', sellable: true}),
   // Tokens (consumed)
   S('taxi_token', 'Taxi Token', 'token', {consumable: true, stackable: true, ability: 'teleport', sellable: true}),
   S('recharge_ticket', 'Recharge Ticket', 'token', {consumable: true, stackable: true, ability: 'extra_activity', sellable: true}),
-  S('invite_token', 'Invite Token', 'token', {consumable: true, stackable: true, ability: 'campfire_talk', sellable: true}),
+  S('invite_token', 'Invite Token', 'token', {consumable: true, stackable: true, sellable: true}),
   S('postage_stamp', 'Postage Stamp', 'token', {consumable: true, stackable: true, ability: 'send_postcard', sellable: true}),
   S('spotlight_ticket', 'Spotlight Ticket', 'token', {consumable: true, stackable: true, ability: 'extra_spotlight', sellable: true}),
   // Gifts and consumables
@@ -153,7 +153,13 @@ export type Ledger = {
   chain?: HistoryChain;
   /** museId → held items with an expiry (passes). Missing in older states; filled by itemUpkeep. */
   expiry?: Record<string, HeldTimed[]>;
+  /**
+   * Set when the history failed a check (historyFault). Sticky: item rules stay off until someone repairs the history
+   * and removes this. `notified` is the world day the `history_tamper` event was last logged (once a day).
+   */
+  tamper?: HistoryFault;
 };
+export type HistoryFault = {reason: string; index: number; since: number; notified?: string};
 export const GENESIS = '0'.repeat(64);
 export const emptyLedger = (): Ledger => ({finds: {}, trades: {}, history: [], chain: {head: GENESIS, anchor: GENESIS, seq: 0, legacy: 0}, expiry: {}});
 
@@ -246,6 +252,20 @@ export function verifyHistory(l: Ledger): HistoryVerdict {
   return {ok: true, chained: l.history.length - c.legacy, legacy: c.legacy, head: c.head};
 }
 
+/**
+ * Is the item history safe to write? Null when it is. Otherwise the fault, recorded on the ledger (sticky). The cheap
+ * check (every tick, every item write) seals pending appends and checks the tail; `full` (at the day change) also
+ * verifies every kept entry, which catches an edit in the middle that left the newest entry intact. Callers skip the
+ * item rules on a fault instead of throwing, so the rest of the world keeps running.
+ */
+export function historyFault(l: Ledger, full: boolean, at: number): HistoryFault | null {
+  if (l.tamper) return l.tamper;
+  let fault: {reason: string; index: number} | null = null;
+  try { readyHistory(l); } catch (e) { if (!(e instanceof HistoryTamperError)) throw e; fault = {reason: 'tail_mismatch', index: l.history.length}; }
+  if (!fault && full) { const v = verifyHistory(l); if (!v.ok) fault = {reason: v.reason, index: v.index}; }
+  return fault ? (l.tamper = {...fault, since: at}) : null;
+}
+
 // ---------- expiry (passes: `expiresHours` from acquisition) ----------
 
 const HOUR_MS = 3_600_000;
@@ -334,24 +354,31 @@ export function sweepExpired(s: {items: Ledger; muses: {id: string; place: strin
   return out;
 }
 
-/**
- * Item upkeep once per tick (world.ts) before the spotlight is chosen: chain any unchained appends, expire passes,
- * spend Spotlight Tickets for an extra turn, and trim the kept history.
- */
+/** Item upkeep once per tick (world.ts) before the spotlight is chosen: chain pending appends, expire passes, trim the history. */
 export function itemUpkeep(s: UpkeepWorld, now: number): UpkeepEvent[] {
   sealHistory(s.items);
   const out = sweepExpired(s, now);
-  // Spotlight Ticket (9: an extra free turn): the Muse joins the queue served ahead of the rotation; the rotation
-  // cursor does not move for a queued turn, so nobody loses theirs. One queued turn per Muse at a time.
+  trimHistory(s.items);
+  return out;
+}
+
+/**
+ * Spotlight Ticket (9: an extra free turn), at the very end of a tick, after this tick's turn was served: the Muse joins
+ * the queue served ahead of the rotation, so the next tick's turn is its own. The heartbeat picks the spotlight (and
+ * calls the model) from the committed state before the next tick, so it sees the same queue and the decision is not
+ * discarded. The rotation cursor does not move for a queued turn, so nobody loses theirs. One queued turn per Muse at a
+ * time; `skip` (paused or connected Muses) keeps the ticket.
+ */
+export function spendSpotlightTickets(s: UpkeepWorld, now: number, skip: (museId: string) => boolean): UpkeepEvent[] {
+  const out: UpkeepEvent[] = [];
   for (const m of s.muses) {
-    if (s.paused?.[m.id] || s.spotlight.visitorQueue.includes(m.id)) continue;
+    if (skip(m.id) || s.spotlight.visitorQueue.includes(m.id)) continue;
     const k = m.inventory.indexOf('spotlight_ticket');
     if (k < 0) continue;
     m.inventory.splice(k, 1);
     s.spotlight.visitorQueue.push(m.id);
-    out.push({at: now, source: 'rule', kind: 'spotlight_ticket_used', muse: m.id, place: m.place, line: 'Spotlight Ticket: an extra turn', data: {item: 'spotlight_ticket', queue: s.spotlight.visitorQueue.length}, tags: ['ability_change']});
+    out.push({at: now, source: 'rule', kind: 'spotlight_ticket_used', muse: m.id, place: m.place, line: 'Spotlight Ticket: an extra turn next', data: {item: 'spotlight_ticket', queue: s.spotlight.visitorQueue.length}, tags: ['ability_change']});
   }
-  trimHistory(s.items);
   return out;
 }
 
@@ -370,7 +397,8 @@ export function discover(l: Ledger, day: string, museId: string, place: Place, i
   const stamp = STAMP_FOR[place.kind] && !inventory.includes(STAMP_FOR[place.kind]!) ? STAMP_FOR[place.kind]! : null;
   const postcard = place.zone !== 'commons' && !inventory.includes(postcardId(place)) ? postcardId(place) : null;
   const relic = place.relic && !inventory.includes(place.relic) ? place.relic : null;
-  const pool = FIND_AT[place.kind] ?? [];
+  // A pass is not stackable: a Muse that already holds one does not find another (its clock would be ambiguous).
+  const pool = (FIND_AT[place.kind] ?? []).filter(i => !(itemSpec(i)?.category === 'pass' && !itemSpec(i)?.stackable && inventory.includes(i)));
   if (!stamp && !postcard && !relic && !pool.length) return {ok: false, reason: 'nothing_here'};
   const item = pool.length ? pool[Math.floor(rand() * pool.length)] : (relic ?? postcard ?? stamp)!;
   // Decay: the same kind of item found again today gives no curiosity reward.
@@ -395,19 +423,21 @@ export function canCraftTransitPass(l: Ledger, day: string, museId: string) {
 export type TradeCheck = {ok: true} | {ok: false; reason: 'not_held' | 'not_transferable' | 'relic' | 'too_far' | 'pair_limit' | 'no_ability_change' | 'same_item' | 'counter_limit' | 'expired'};
 
 /**
- * Layer 1 change: does receiving `item` change what `museId` can do (or open a goal)? An item changes abilities only
- * when it carries an implemented effect rule (ITEM_EFFECTS); a few gifts count because they serve harness goals.
+ * Layer 1 change: does receiving `item` change what the receiver can do (or open a goal)? An item changes abilities
+ * when it carries an implemented effect rule (ITEM_EFFECTS); an item in the receiver's public `wants` opens its goal
+ * even without a rule (Sunny's Invite Token); a few gifts count because they serve harness goals.
  */
-export function abilityGain(item: string, inventory: readonly string[]) {
+export function abilityGain(item: string, inventory: readonly string[], wants: readonly string[] = []) {
   const spec = itemSpec(item);
   if (!spec) return false;
   if (inventory.includes(item) && !spec.stackable) return false;
-  if (effectRule(item)) return true;
+  if (effectRule(item) || wants.includes(item)) return true;
   return ['clover_seed', 'fruit', 'coffee', 'tea', 'wildflower'].includes(item) || spec.category === 'crafted' || spec.category === 'postcard';
 }
 
 /** `at` (the engine's now) enables the expiry check; a pass at or past its expiry cannot be traded. */
-export function checkTrade(l: Ledger, day: string, a: {id: string; place: string; inventory: readonly string[]}, b: {id: string; place: string; inventory: readonly string[]}, give: string, want: string, counterRound = 0, at?: number): TradeCheck {
+type Trader = {id: string; place: string; inventory: readonly string[]; wants?: {items: readonly string[]}};
+export function checkTrade(l: Ledger, day: string, a: Trader, b: Trader, give: string, want: string, counterRound = 0, at?: number): TradeCheck {
   if (counterRound > RULES.maxCounterOffers) return {ok: false, reason: 'counter_limit'};
   if (give === want) return {ok: false, reason: 'same_item'};
   if (!a.inventory.includes(give) || !b.inventory.includes(want)) return {ok: false, reason: 'not_held'};
@@ -421,7 +451,7 @@ export function checkTrade(l: Ledger, day: string, a: {id: string; place: string
   const key = [a.id, b.id].sort().join('|');
   if ((l.trades[day]?.[key] ?? 0) >= RULES.pairTradesPerDay) return {ok: false, reason: 'pair_limit'};
   // Decay: an exchange that changes nobody's abilities is not counted as a trade.
-  if (!abilityGain(want, a.inventory) && !abilityGain(give, b.inventory)) return {ok: false, reason: 'no_ability_change'};
+  if (!abilityGain(want, a.inventory, a.wants?.items) && !abilityGain(give, b.inventory, b.wants?.items)) return {ok: false, reason: 'no_ability_change'};
   return {ok: true};
 }
 

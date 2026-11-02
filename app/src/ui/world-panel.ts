@@ -8,7 +8,7 @@
 import {Marker, type Map as LibreMap} from 'maplibre-gl';
 import {HARNESSES, harnessById} from '../engine/harness';
 import {PLACES, PLACE_BY_ID} from '../engine/places';
-import {itemName} from '../engine/items';
+import {itemName, ITEMS, effectRule} from '../engine/items';
 import {MUSE_VARIANTS} from '../character-kit/catalog';
 import {createWorld, tick, TICK_MS, localClock} from '../engine/world';
 import {makeHooks} from '../engine/rules';
@@ -111,7 +111,8 @@ async function dayEvents(day: string): Promise<DayLog> {
 // Autonomy (direction 2.2): the six numbers come from autonomy.ts (contract C09), over the live log or the replay fixture.
 
 // ---------- P1 (direction 2.1): before/after an ability item ----------
-const ABILITY_ITEMS = ['transit_pass', 'taxi_token', 'garden_pass', 'invite_token', 'night_pass', 'event_pass'];
+// Passes and tokens with an implemented effect rule (I-06 ITEM_EFFECTS), so the P1 view follows the effect table.
+const ABILITY_ITEMS = ITEMS.filter(i => (i.category === 'pass' || i.category === 'token') && effectRule(i.id)).map(i => i.id);
 export function liveP1(evs: Ev[], windowMs = 2 * 3_600_000) {
   const gains: {muse: string; item: string; at: number; via: string}[] = [];
   for (const e of evs) {

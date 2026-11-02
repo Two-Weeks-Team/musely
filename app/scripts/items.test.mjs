@@ -2,13 +2,20 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
+import {DatabaseSync} from 'node:sqlite';
+import {Ledger as CostLedger} from '../worker/core/ledger.ts';
+import {WorldRuntime} from '../worker/core/world-runtime.ts';
+import {Trust, OWNER_SLOT} from '../worker/core/trust.ts';
+import {ConnectedHost} from '../worker/core/connected.ts';
+import {runTool} from '../worker/core/mcp-tools.ts';
+import {findOwnerTrade} from '../worker/core/a2a.ts';
 import {ITEMS, ITEM_BY_ID, ITEM_EFFECTS, EFFECT_RULES, effectRule, discover, receiveDiscovery, checkTrade, commitTrade, emptyLedger, speedFor, RULES, canCraftTransitPass, itemSpec,
   appendHistory, verifyHistory, trimHistory, sealHistory, historyHash, HistoryTamperError, GENESIS, HISTORY_KEEP, grantItem, transferItem, sweepExpired, takeTimed, isExpired, abilityGain} from '../src/engine/items.ts';
 import {sha256Hex} from '../src/engine/sha256.ts';
-import {BEATS} from '../src/engine/beats.ts';
+import {BEATS, inHours} from '../src/engine/beats.ts';
 import {placeById, PLACES} from '../src/engine/places.ts';
-import {createWorld, tick, TICK_MS} from '../src/engine/world.ts';
-import {makeHooks} from '../src/engine/rules.ts';
+import {createWorld, tick, TICK_MS, spotlightFor, localClock} from '../src/engine/world.ts';
+import {makeHooks, resolveMeeting} from '../src/engine/rules.ts';
 import {rngFor} from '../src/engine/rng.ts';
 
 const T0 = Date.parse('2026-11-03T16:00:00Z');
@@ -85,7 +92,11 @@ test('P1: the same start with and without a Transit Pass / Garden Pass diverges 
   assert.notDeepEqual(trips(base).map(e => e.data.to), trips(boosted).map(e => e.data.to), 'different destinations');
   const blooms = r => r.log.filter(e => e.kind === 'craft' && e.data.item === 'bloom').length;
   assert.ok(blooms(boosted) >= blooms(base), 'Garden Pass + Clover Seed lets Moss grow a Bloom');
-  console.log(JSON.stringify({rippleTrips: [trips(base).length, trips(boosted).length], busRides: bus.length, maxReachM: [reach(base), reach(boosted)], blooms: [blooms(base), blooms(boosted)], trades: [base.log.filter(e => e.kind === 'trade_completed').length, boosted.log.filter(e => e.kind === 'trade_completed').length], discoveries: [base.log.filter(e => e.kind === 'discover').length, boosted.log.filter(e => e.kind === 'discover').length]}));
+  // Lower bounds with slack below the values measured at I-06 (trades 2 / 2, discoveries 91 / 93, reach 1227 / 2369 m).
+  const trades = r => r.log.filter(e => e.kind === 'trade_completed').length, finds = r => r.log.filter(e => e.kind === 'discover').length;
+  assert.ok(trades(base) >= 1 && trades(boosted) >= 1, `cooperation still happens (trades ${trades(base)} / ${trades(boosted)})`);
+  assert.ok(finds(base) >= 40 && finds(boosted) >= 40, `discoveries ${finds(base)} / ${finds(boosted)}`);
+  assert.ok(reach(boosted) > reach(base), 'the pass carries Ripple farther');
 });
 
 test('a Taxi Token is consumed by the teleport it enables', () => {
@@ -121,12 +132,38 @@ const PROBES = {
   teleport: () => speedFor([], placeById('commons:campfire'), placeById('bay:stanford')) === 'walk' && speedFor(['taxi_token'], placeById('commons:campfire'), placeById('bay:stanford')) === 'taxi',
   plant: () => bloomRun(true).blooms > 0 && bloomRun(false).blooms === 0,
   bloom_seed: () => { const r = plantFinish(); return r.blooms === 1 && r.seeds === 0 && r.passKept; },
-  // The postage rule lives in the MCP tool; scripts/mcp.test.mjs asserts the refusal without a stamp and the spend with one.
-  send_postcard: () => /refused, 'needs_postage_stamp'\)/.test(readFileSync(new URL('./mcp.test.mjs', import.meta.url), 'utf8')) && /!t\.muse\(OWNER_SLOT\)\.inventory\.includes\('postage_stamp'\)/.test(readFileSync(new URL('./mcp.test.mjs', import.meta.url), 'utf8')),
+  // The postage rule lives in the MCP tool: run the real tool without a stamp (refused) and with one (spent).
+  send_postcard: async () => {
+    const t = await toolWorld();
+    t.edit(st => { const me = st.muses.find(m => m.id === OWNER_SLOT); me.inventory = ['postcard:bay:stanford']; });
+    const without = await t.call('send_postcard', {to: '02-moss', item: 'postcard:bay:stanford'});
+    t.edit(st => st.muses.find(m => m.id === OWNER_SLOT).inventory.push('postage_stamp'));
+    const sent = await t.call('send_postcard', {to: '02-moss', item: 'postcard:bay:stanford'});
+    return without.structuredContent.refused === 'needs_postage_stamp' && sent.isError === false && !t.muse(OWNER_SLOT).inventory.includes('postage_stamp') && !t.muse(OWNER_SLOT).inventory.includes('postcard:bay:stanford');
+  },
   night_sky: () => nightRun({pass: true}).stargaze > 0 && nightRun({pass: false}).stargaze === 0,
   extra_activity: () => { const r = tenFinds(['recharge_ticket']); return r.eleventh.ok && r.eleventh.spent === 'recharge_ticket' && !tenFinds([]).eleventh.ok; },
   extra_spotlight: () => spotlightTurns(true) === spotlightTurns(false) + 1,
 };
+// The MCP tools over the same Trust + WorldRuntime + ConnectedHost the world Durable Object uses (node:sqlite).
+// Delegations carry a real 24 h expiry, so this clock starts at the real time.
+const sqlite = () => { const db = new DatabaseSync(':memory:'); let depth = 0; return {exec(q, ...b) { const st = db.prepare(q); if (/^\s*(select|with)/i.test(q)) return {toArray: () => st.all(...b)}; st.run(...b); return {toArray: () => []}; }, transactionSync(fn) { const sp = 'tx' + depth++; db.exec('SAVEPOINT ' + sp); try { const r = fn(); db.exec('RELEASE ' + sp); return r; } catch (e) { db.exec('ROLLBACK TO ' + sp); db.exec('RELEASE ' + sp); throw e; } finally { depth--; } }}; };
+async function toolWorld() {
+  const now = Math.floor(Date.now() / 60_000) * 60_000, sql = sqlite();
+  const cost = new CostLedger(sql, {dailyCapUsd: 1}); cost.init();
+  const trust = new Trust(sql); trust.init();
+  const pair = await crypto.subtle.generateKey({name: 'ECDSA', namedCurve: 'P-256'}, true, ['sign', 'verify']);
+  const ownerRoot = await crypto.subtle.exportKey('jwk', pair.privateKey);
+  await trust.ensureAgents(ownerRoot);
+  const hooks = makeHooks();
+  const runtime = new WorldRuntime(sql, {worldId: 'w', meetingGate: 'off', ledger: cost, model: null, hooks, delegationValid: m => !trust.suspended(m)});
+  runtime.init(now);
+  const host = new ConnectedHost({sql, trust, runtime, hooks, baseUrl: 'https://musely.net', ownerRoot: () => ownerRoot, ownerClaimed: () => true, now: () => now});
+  host.init();
+  const {row} = await host.keys.issue(OWNER_SLOT, now);
+  const ctx = {trust, runtime, hooks, ownerRoot, ownerClaimed: true, baseUrl: 'https://musely.net', key: row, now: () => now};
+  return {now, runtime, call: (name, args = {}) => runTool(ctx, name, args), edit: fn => runtime.commitExternal(now, 'test-' + Math.random(), fn), muse: id => runtime.state().muses.find(m => m.id === id), events: kind => runtime.events(0, 2000).filter(e => e.kind === kind)};
+}
 function bloomRun(withPass) {
   let s = createWorld('bloom-probe', T0);
   const moss = at(s, '02-moss');
@@ -143,8 +180,8 @@ function plantFinish() {
   const r = tick(s, {now: T0}, makeHooks()), m = at(r.state, '02-moss');
   return {blooms: m.inventory.filter(i => i === 'bloom').length, seeds: m.inventory.filter(i => i === 'clover_seed').length, passKept: m.inventory.includes('garden_pass'), craft: r.events.find(e => e.kind === 'craft' && e.muse === '02-moss'), s: r.state};
 }
-function nightRun({pass, start = NIGHT, acquiredAt = start}) {
-  let s = createWorld('night-probe', start);
+function nightRun({pass, start = NIGHT, acquiredAt = start, world = 'night-probe'}) {
+  let s = createWorld(world, start);
   const orbit = at(s, '08-orbit'); orbit.place = 'commons:garden';
   if (pass) grantItem(s.items, orbit, 'night_pass', acquiredAt, orbit.place, 'craft');
   const r = runTicks(s, start, 180);
@@ -164,6 +201,20 @@ function spotlightTurns(ticket) {
   return r.log.filter(e => e.kind === 'spotlight' && e.muse === '05-bloom').length;
 }
 
+// The trade column of every item row, from checkTrade / abilityGain (not from the matrix generator).
+const TRADE_TEXT = {relic: 'trade: never (relic)', fixed: 'trade: never (not transferable)', gain: 'trade: counts as an ability change for the receiver', wanted: 'trade: counts only for a receiver that wants it'};
+function TRADE_COLUMN(id) {
+  // The counter item changes nothing for the giver, so the verdict is about `id` alone.
+  const w = id === 'pastry' ? 'snack_box' : 'pastry', l = emptyLedger(), a = muse('03-ripple', 'commons:cafe', [id]), b = muse('02-moss', 'commons:cafe', [w]);
+  const r = checkTrade(l, DAY, a, b, id, w, 0, T0);
+  if (r.reason === 'relic') return TRADE_TEXT.relic;
+  if (r.reason === 'not_transferable') return TRADE_TEXT.fixed;
+  if (r.ok) return TRADE_TEXT.gain;
+  assert.equal(r.reason, 'no_ability_change', id);
+  assert.deepEqual(checkTrade(l, DAY, a, {...b, wants: {items: [id]}}, id, w, 0, T0), {ok: true}, `${id}: wanted, it trades`);
+  return TRADE_TEXT.wanted;
+}
+
 // ---- AC1: every catalog id has data, an effect (rule or explicit fallback), a visual and a test ----
 test('AC1 coverage: every catalog id carries an effect rule or an explicit none with a reason; no effect entry is orphaned', () => {
   assert.equal(CATALOG.length, 59);
@@ -174,6 +225,7 @@ test('AC1 coverage: every catalog id carries an effect rule or an explicit none 
     if ('rule' in e) assert.ok(EFFECT_RULES[e.rule], `${id}: unknown rule ${e.rule}`);
     else { assert.equal(e.effect, 'none', id); assert.ok(e.reason.length >= 20, `${id}: fallback needs a reason`); }
     if (spec.expiresHours) assert.ok(spec.expiresHours > 0 && !spec.permanent, `${id}: a timed item is not permanent`);
+    if (spec.ability) assert.equal(spec.ability, effectRule(id), `${id}: a declared ability must be the implemented rule`);
   }
   assert.deepEqual(Object.keys(ITEM_EFFECTS).sort(), [...CATALOG].sort(), 'effect table keys are exactly the catalog ids');
   // Every implemented rule is used by an item and has a behaviour probe below.
@@ -188,10 +240,13 @@ test('AC1 coverage: every catalog id carries an effect rule or an explicit none 
     const rule = effectRule(id);
     if (rule) assert.ok(row.includes(`effect rule \`${rule}\``) && !row.includes('effect none'), `${id}: matrix must name rule ${rule}`);
     else assert.ok(row.includes('effect none (fallback)') && !row.includes('effect rule'), `${id}: matrix must say fallback`);
+    const trade = TRADE_COLUMN(id);
+    assert.ok(row.includes(trade), `${id}: matrix trade column must say "${trade}"`);
+    for (const other of Object.values(TRADE_TEXT)) if (other !== trade) assert.ok(!row.includes(other), `${id}: matrix claims "${other}"`);
   }
 });
 
-for (const [rule, probe] of Object.entries(PROBES)) test(`AC1 effect probe: ${rule} changes what the holder does`, () => assert.equal(probe(), true, rule));
+for (const [rule, probe] of Object.entries(PROBES)) test(`AC1 effect probe: ${rule} changes what the holder does`, async () => assert.equal(await probe(), true, rule));
 
 test('AC1 effect: items without a rule change no ability, so trading only them is no trade', () => {
   const l = emptyLedger(), a = muse('01-sunny', 'commons:cafe', ['invite_token']), b = muse('04-ember', 'commons:cafe', ['event_pass']);
@@ -201,9 +256,34 @@ test('AC1 effect: items without a rule change no ability, so trading only them i
   assert.equal(abilityGain('night_pass', []), true, 'a rule item does change abilities');
 });
 
+test('AC1 effect: an item the receiver publicly wants opens its goal, so it trades even without a rule (Invite Token, Event Pass)', () => {
+  const l = emptyLedger(), ripple = muse('03-ripple', 'commons:cafe', ['invite_token', 'event_pass']);
+  const sunny = {...muse('01-sunny', 'commons:cafe', ['pastry']), wants: {items: ['fruit', 'invite_token', 'coffee']}};
+  const tempo = {...muse('07-tempo', 'commons:cafe', ['pastry']), wants: {items: ['mixtape', 'event_pass', 'snack_box']}};
+  assert.equal(abilityGain('invite_token', [], ['invite_token']), true);
+  assert.equal(abilityGain('invite_token', ['invite_token'], ['invite_token']), true, 'stackable: a second one still serves the goal');
+  assert.equal(abilityGain('event_pass', ['event_pass'], ['event_pass']), false, 'a pass already held opens nothing');
+  assert.deepEqual(checkTrade(l, DAY, ripple, sunny, 'invite_token', 'pastry', 0, T0), {ok: true});
+  assert.deepEqual(checkTrade(l, DAY, ripple, tempo, 'event_pass', 'pastry', 0, T0), {ok: true});
+  assert.deepEqual(checkTrade(l, DAY, ripple, {...sunny, wants: {items: []}}, 'invite_token', 'pastry', 0, T0), {ok: false, reason: 'no_ability_change'}, 'without the want it is no trade');
+  // The offline rule path: the resident accepts what it wants.
+  let s = createWorld('wants', T0);
+  const a = at(s, '03-ripple'), b = at(s, '01-sunny');
+  a.place = b.place = 'commons:cafe'; a.inventory = ['invite_token']; b.inventory = ['pastry']; a.intent = {kind: 'trade', target: b.id, give: 'invite_token', want: 'pastry'};
+  const out = resolveMeeting(s.items, s, a, b, placeById('commons:cafe'), () => .99, T0);
+  assert.ok(out.some(e => e.kind === 'trade_completed'), 'Sunny takes the Invite Token she wants');
+});
+
 test('AC1 night_sky: the Night Pass beat only opens at night, only while the pass is valid', () => {
   assert.ok(BEATS.find(b => b.id === 'night_pass_stargaze').needs.includes('night_pass'));
   assert.equal(nightRun({pass: true, start: NOON}).stargaze, 0, 'not at noon');
+  // After midnight it stays open until 03:00 and closes then.
+  const beat = BEATS.find(b => b.id === 'night_pass_stargaze');
+  assert.deepEqual([0, 1, 2, 3, 4, 18, 19, 23].map(h => inHours(beat, h)), [true, true, true, false, false, false, true, true], 'open 19:00-02:59');
+  const starts = [];
+  for (let k = 0; k < 8; k++) starts.push(...nightRun({pass: true, start: Date.parse('2026-11-04T10:30:00Z'), world: 'night-late-' + k}).log.filter(e => e.kind === 'beat' && e.data.beat === 'night_pass_stargaze').map(e => localClock(e.at)));
+  assert.ok(starts.length > 0, 'opens when the run starts at 02:30');
+  assert.ok(starts.every(c => c.hour === 2), `no Night Pass beat starts at or after 03:00 (${starts.map(c => c.hhmm)})`);
   const stale = nightRun({pass: true, acquiredAt: NIGHT - 24 * H});
   assert.equal(stale.stargaze, 0, 'an expired pass opens nothing');
   assert.ok(stale.log.some(e => e.kind === 'item_expired' && e.data.item === 'night_pass'));
@@ -218,15 +298,50 @@ test('AC1 extra_activity: one Recharge Ticket a day buys exactly one find past 1
   assert.equal(r.l.finds[DAY]['03-ripple'].length, RULES.perDay + RULES.rechargesPerDay);
 });
 
-test('AC1 extra_spotlight: the ticket is spent for an extra turn and the rotation skips nobody', () => {
-  let s = createWorld('spot', T0);
+test('AC1 extra_spotlight: spent at the end of a tick, so the heartbeat\'s pre-tick spotlight decision is kept and the holder gets the next turn', () => {
+  const s = createWorld('spot', T0);
   at(s, '05-bloom').inventory.push('spotlight_ticket');
-  const first = tick(s, {now: T0}, makeHooks());
+  // The heartbeat picks the spotlight from the committed state before the tick and calls the model for it.
+  const spot = spotlightFor(s, T0);
+  assert.equal(spot.muse, s.muses[0].id);
+  const decision = {muse: spot.muse, freedom: spot.freedom, source: 'live', output: {decision: 'go', target_place: 'Commons Cafe', target_agent: '', offer_item: '', want_item: '', public_reason: 'coffee', line: 'Coffee time'}};
+  const first = tick(s, {now: T0, decision}, makeHooks());
+  assert.ok(!first.events.some(e => e.kind === 'decision_rejected'), 'the decision for the pre-tick spotlight is not discarded');
+  assert.ok(first.events.some(e => e.kind === 'spotlight' && e.muse === spot.muse && e.data.live === true));
   assert.ok(first.events.some(e => e.kind === 'spotlight_ticket_used' && e.muse === '05-bloom'));
-  assert.equal(first.events.find(e => e.kind === 'spotlight').muse, '05-bloom', 'the extra turn comes first');
-  assert.equal(first.state.spotlight.cursor, 0, 'the rotation did not move');
   assert.ok(!at(first.state, '05-bloom').inventory.includes('spotlight_ticket'));
-  assert.equal(tick(first.state, {now: T0 + TICK_MS}, makeHooks()).events.find(e => e.kind === 'spotlight').muse, s.muses[0].id);
+  assert.equal(first.state.spotlight.cursor, 1);
+  // The next heartbeat sees the same queue: Bloom's extra turn, and the rotation does not move for it.
+  assert.equal(spotlightFor(first.state, T0 + TICK_MS).muse, '05-bloom');
+  const second = tick(first.state, {now: T0 + TICK_MS}, makeHooks());
+  assert.equal(second.events.find(e => e.kind === 'spotlight').muse, '05-bloom');
+  assert.equal(second.state.spotlight.cursor, 1, 'nobody lost a turn');
+  assert.equal(tick(second.state, {now: T0 + 2 * TICK_MS}, makeHooks()).events.find(e => e.kind === 'spotlight').muse, s.muses[1].id);
+});
+
+test('AC1 extra_spotlight: a connected Muse (it decides in its owner\'s runtime) keeps its ticket', () => {
+  const s = createWorld('spot-connected', T0);
+  at(s, '05-bloom').inventory.push('spotlight_ticket');
+  s.inbox.connected['05-bloom'] = T0;
+  const r = tick(s, {now: T0}, makeHooks());
+  assert.ok(!r.events.some(e => e.kind === 'spotlight_ticket_used'));
+  assert.ok(at(r.state, '05-bloom').inventory.includes('spotlight_ticket'));
+  assert.deepEqual(r.state.spotlight.visitorQueue, []);
+});
+
+test('AC2 a Muse holding a pass does not find a second one (passes do not stack); the find falls back to another item', () => {
+  const garden = placeById('commons:garden'), last = () => .99;
+  assert.equal(discover(emptyLedger(), DAY, '02-moss', garden, [], last, 1).item, 'garden_pass', 'the last pool slot is the Garden Pass');
+  for (const r of [0, .34, .5, .67, .99]) {
+    const d = discover(emptyLedger(), DAY, '02-moss', garden, ['garden_pass'], () => r, 1);
+    assert.equal(d.ok, true); assert.notEqual(d.item, 'garden_pass');
+  }
+  const l = emptyLedger(), m = muse('02-moss', 'commons:garden');
+  grantItem(l, m, 'garden_pass', 1, m.place, 'discover');
+  const d = discover(l, DAY, m.id, garden, m.inventory, last, 2);
+  receiveDiscovery(l, m, d, 2);
+  assert.equal(m.inventory.filter(i => i === 'garden_pass').length, 1);
+  assert.equal(l.expiry['02-moss'].length, 1, 'one pass, one clock');
 });
 
 // ---- AC2: boundary values of the abuse limits ----
@@ -287,6 +402,14 @@ test('AC3 expiry: a pass is valid at 23h59m after acquisition and expired at 24h
   assert.equal(verifyHistory(l).ok, true);
 });
 
+test('AC3 expiry: the owner Muse\'s P0 trade search (findOwnerTrade) never offers an expired pass', () => {
+  const s = createWorld('p0-expired', T0), me = at(s, OWNER_SLOT);
+  me.inventory = ['garden_pass'];
+  s.items.expiry = {[OWNER_SLOT]: [{item: 'garden_pass', at: T0 - 24 * H, expiresAt: T0}]};
+  assert.equal(findOwnerTrade(s, () => false, T0 - 60_000)?.give, 'garden_pass', 'still valid a minute before');
+  assert.equal(findOwnerTrade(s, () => false, T0), null, 'expired: no plan');
+});
+
 test('AC3 expiry in the engine: the tick at 24h removes the pass, logs item_expired, and the next trips walk', () => {
   let s = createWorld('expire', T0);
   const ripple = at(s, '03-ripple');
@@ -326,6 +449,8 @@ test('AC3 expiry carries over: a trade or gift hands on the remaining time; only
   assert.equal(verifyHistory(l).ok, true);
 });
 
+// Guards a path no tool reaches today: send_postcard takes only postcard ids, so a pass is never mailed through MCP.
+// Mail.timed keeps the rule true if another path (or a wider schema) ever mails a pass.
 test('AC3 expiry carries over in the mail: the clock keeps running in transit and moves to the receiver', () => {
   let s = createWorld('mail-clock', T0);
   const ripple = at(s, '03-ripple');
@@ -445,4 +570,56 @@ test('AC4 history in the engine: an old stored world keeps ticking, its history 
   const v = verifyHistory(r.s.items);
   assert.equal(v.ok, true); assert.equal(v.legacy, 1); assert.ok(v.chained > 0, 'new moves were chained');
   assert.ok(r.s.items.expiry['03-ripple'].some(x => x.item === 'transit_pass' && x.expiresAt === T0 + 24 * H), 'the unrecorded pass started its clock at the first tick');
+});
+
+// ---- AC4: a tampered history halts item rules, never the world ----
+const breakTail = st => { st.items.history.pop(); };
+test('AC4 tamper in the engine: the tick still commits, item rules stop, history_tamper is logged once a day', () => {
+  let s = createWorld('tamper', T0);
+  const moss = at(s, '02-moss');
+  for (let i = 0; i < 3; i++) grantItem(s.items, moss, 'spark', T0, moss.place, 'craft');
+  breakTail(s);
+  const kept = s.items.history.length;
+  const r = runTicks(s, T0, 120);
+  const tamper = r.log.filter(e => e.kind === 'history_tamper');
+  assert.equal(tamper.length, 1, 'once for the day'); assert.equal(tamper[0].data.reason, 'tail_mismatch');
+  assert.equal(r.s.tick, 120, 'every tick committed');
+  assert.ok(r.log.some(e => e.kind === 'depart') && r.log.some(e => e.kind === 'beat') && r.log.filter(e => e.kind === 'spotlight').length === 120, 'movement, beats and the spotlight go on');
+  assert.equal(r.log.filter(e => ['discover', 'trade_completed', 'craft', 'item_expired', 'spotlight_ticket_used'].includes(e.kind)).length, 0, 'no item rule ran');
+  assert.equal(r.s.items.history.length, kept, 'nothing was appended');
+  const next = tick(r.s, {now: Date.parse('2026-11-04T16:00:00Z')}, makeHooks());
+  assert.equal(next.events.filter(e => e.kind === 'history_tamper').length, 1, 'logged again on the next day');
+});
+
+test('AC4 tamper at the day change: a middle edit whose own hash (and the ones after, short of the newest) was recomputed is caught by the full check', () => {
+  for (const upTo of ['one', 'all-but-newest']) {
+    let s = createWorld('tamper-mid', T0);
+    const moss = at(s, '02-moss');
+    for (let i = 0; i < 6; i++) grantItem(s.items, moss, 'spark', T0, moss.place, 'craft');
+    const h = s.items.history;
+    h[2].to = '00-jolly';
+    const end = upTo === 'one' ? 3 : h.length - 1;
+    for (let i = 2; i < end; i++) { if (i > 2) h[i].prevHash = h[i - 1].hash; h[i].hash = historyHash(h[i]); }
+    const same = tick(s, {now: T0}, makeHooks());
+    assert.equal(same.events.filter(e => e.kind === 'history_tamper').length, 0, `${upTo}: the cheap tail check cannot see it`);
+    const day = tick(same.state, {now: Date.parse('2026-11-04T16:00:00Z')}, makeHooks());
+    const ev = day.events.filter(e => e.kind === 'history_tamper');
+    assert.equal(ev.length, 1, upTo); assert.equal(ev[0].data.reason, 'broken_link');
+    assert.ok(day.events.some(e => e.kind === 'new_day'));
+  }
+});
+
+test('AC4 tamper through the runtime and MCP: the heartbeat commits, item tools are refused with history_tamper, other tools still work', async () => {
+  const t = await toolWorld();
+  t.edit(st => { const me = st.muses.find(m => m.id === OWNER_SLOT); me.inventory.push('coffee'); grantItem(st.items, me, 'spark', t.now, me.place, 'craft'); grantItem(st.items, me, 'spark', t.now, me.place, 'craft'); breakTail(st); });
+  assert.equal((await t.runtime.heartbeat(t.now + TICK_MS)).status, 'committed');
+  assert.equal(t.events('history_tamper').length, 1);
+  for (const [name, args] of [['discover', {}], ['give_gift', {to: '08-orbit', item: 'coffee'}], ['craft', {recipe: 'transit_pass'}]]) {
+    const r = await t.call(name, args);
+    assert.equal(r.structuredContent.refused, 'history_tamper', name);
+  }
+  assert.ok(t.muse(OWNER_SLOT).inventory.includes('coffee'), 'nothing moved');
+  assert.equal((await t.call('greet', {text: 'Hello, neighbors!'})).isError, false, 'a non-item write still runs');
+  assert.equal((await t.runtime.heartbeat(t.now + 2 * TICK_MS)).status, 'committed');
+  assert.equal(t.events('history_tamper').length, 1, 'still once a day');
 });

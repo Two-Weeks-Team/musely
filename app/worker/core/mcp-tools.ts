@@ -14,7 +14,7 @@ import {verifyCard} from '../../src/identity/card.ts';
 import {detectInjection, INJECTION_LIMIT_NOTE} from '../../src/identity/untrusted.ts';
 import {HARNESS_IDS, harnessById, type ScopeId} from '../../src/engine/harness.ts';
 import {placeById, distanceM, WALK_MPS, type Place} from '../../src/engine/places.ts';
-import {ITEM_BY_ID, itemSpec, itemName, checkTrade, commitTrade, discover, receiveDiscovery, grantItem, transferItem, appendHistory, sweepExpired, takeTimed, canCraftTransitPass, abilityGain, RULES} from '../../src/engine/items.ts';
+import {ITEM_BY_ID, itemSpec, itemName, checkTrade, commitTrade, discover, receiveDiscovery, grantItem, transferItem, appendHistory, sweepExpired, takeTimed, historyFault, HistoryTamperError, canCraftTransitPass, abilityGain, RULES} from '../../src/engine/items.ts';
 import {BEATS} from '../../src/engine/beats.ts';
 import {updateWants, localClock, type WorldState, type MuseState, type WorldEvent, type Hooks} from '../../src/engine/world.ts';
 import {rngFor} from '../../src/engine/rng.ts';
@@ -48,6 +48,8 @@ const museProp = (description: string): Prop => ({type: 'string', enum: OTHER_MU
 const itemProp = (description: string): Prop => ({type: 'string', pattern: ITEM_PATTERN, maxLength: 90, description});
 const taskProp: Prop = {type: 'string', pattern: '^task_[0-9a-z]{1,10}$', description: 'Task id from heartbeat_check'};
 const textProp = (max: number, description: string): Prop => ({type: 'string', minLength: 1, maxLength: max, description});
+/** Write tools that move, grant or spend items: refused while the item history is tampered with (I-06). */
+const ITEM_WRITES = new Set(['discover', 'craft', 'propose_trade', 'counter_trade', 'accept_trade', 'send_postcard', 'give_gift']);
 const RECIPES = ['transit_pass', ...new Set(BEATS.filter(b => b.result?.craft).map(b => b.result!.craft!))];
 
 function checkArgs(schema: Schema, raw: unknown): Record<string, unknown> {
@@ -166,9 +168,14 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
       const tag = (e: Omit<WorldEvent, 'id' | 'tick'>) => emit(tagLocation(st.owner, e));
       const live: Emit = e => tag({...e, source: 'live', data: {...(e.data ?? {}), actor: 'your Muse', tool: tool.name, key_id: c.key.id, envelope}});
       const rule: Emit = e => tag({...e, source: 'rule'});
-      // Passes that expired since the last tick stop working before this tool reads the inventory (I-06).
-      for (const e of sweepExpired(st, at2)) rule(e);
-      const o = apply(st, live, rule, at2);
+      // Passes that expired since the last tick stop working before this tool reads the inventory (I-06). A tampered
+      // item history refuses item writes (history_tamper) and skips the sweep; other writes still run.
+      const fault = historyFault(st.items, false, at2);
+      if (!fault) for (const e of sweepExpired(st, at2)) rule(e);
+      const itemWrite = ITEM_WRITES.has(tool.name) || (tool.name === 'move' && content.mode === 'teleport');
+      let o: ReturnType<Apply>;
+      if (fault && itemWrite) o = {ok: false, reason: 'history_tamper'};
+      else try { o = apply(st, live, rule, at2); } catch (e) { if (!(e instanceof HistoryTamperError)) throw e; o = {ok: false, reason: 'history_tamper'}; }
       if (!o.ok && !o.extra?.logged) live({at: at2, source: 'live', kind: 'action_refused', muse: me, other: recipientMuse, line: null, data: {reason: o.reason, content}, tags: []});
       return o.ok ? {ok: true, output: {outcome: o, envelope}} : {ok: false, code: o.reason, output: {outcome: o, envelope}};
     },
@@ -193,7 +200,7 @@ function residentAnswers(st: WorldState, t: Task, rule: Emit, live: Emit, at: nu
   const offer = t.offer!, resident = museOf(st, t.awaiting!), proposer = museOf(st, offer.by);
   const rand = rngFor(st.seed, st.tick, t.id, t.round);
   const check = checkTrade(st.items, st.day, proposer, resident, offer.give, offer.want, t.round);
-  const accept = check.ok && abilityGain(offer.give, resident.inventory) && (wantsOf(resident).includes(offer.give) || rand() < .55);
+  const accept = check.ok && abilityGain(offer.give, resident.inventory, wantsOf(resident)) && (wantsOf(resident).includes(offer.give) || rand() < .55);
   if (accept) return completeTrade(st, t, resident.id, live, rule, at, ownerMuse, 'rule');
   if (check.ok || check.reason === 'no_ability_change') {
     // Counter with something the resident wants from the proposer, if counters remain.
