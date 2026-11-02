@@ -1,0 +1,11 @@
+{
+  // Email Routing target for support@musely.net and privacy@musely.net.
+  // Forwards every message to both operators. Each destination must be verified in Email Routing.
+  "name": "musely-mail",
+  "account_id": "d0d06bd043ebf75c9fd8aba7c458243a",
+  "compatibility_date": "2026-10-31",
+  "main": "index.js",
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {"FORWARD_TO": "sejun@2weeks.co,sangguen@2weeks.co"}
+}
