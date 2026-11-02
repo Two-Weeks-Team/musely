@@ -1,0 +1,8 @@
+{
+  "reference": "ref-jolly-front-card-20261031",
+  "referenceObservedWidthHeight": 0.9016393442622951,
+  "meshFrontalWidthHeight": 0.8972767576931421,
+  "relativeDifference": -0.004838505103969659,
+  "meshHeightM": 0.899757444858551,
+  "interpretation": "Overall silhouette ratio only. Poster landmarks are approximate perspective observations; this is not a full silhouette IoU or 1:1 multiview claim."
+}

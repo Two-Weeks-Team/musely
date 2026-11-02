@@ -1,0 +1,545 @@
+{
+  "label": "SCRIPTED · PREVIEW FIXTURE",
+  "note": "This is a stored scenario, not an actual execution record. Verification outcomes, approvals and state hashes are illustrative fixture values. Only the two model references come from the recorded fallback library. Playback makes no API or model calls and grants no rewards.",
+  "worldId": "fixture-world",
+  "runId": "fixture-run-1",
+  "day": "2026-11-01",
+  "startAt": 1793552400000,
+  "durationSec": 1800,
+  "events": [
+    {
+      "seq": 1,
+      "id": "fx-0001",
+      "t": 0,
+      "tick": 0,
+      "at": 1793552400000,
+      "source": "rule",
+      "kind": "beat",
+      "muse": "00-jolly",
+      "place": "commons:cafe",
+      "data": {
+        "beat": "drink_coffee"
+      },
+      "tags": [],
+      "fixture": true
+    },
+    {
+      "seq": 2,
+      "id": "fx-0002",
+      "t": 30,
+      "tick": 0,
+      "at": 1793552430000,
+      "source": "replay",
+      "kind": "spotlight",
+      "muse": "03-ripple",
+      "place": "commons:cafe",
+      "data": {
+        "decision": "walk to Hamilton Park",
+        "freedom": "where",
+        "line": "Taking the long way to Hamilton Park, map in hand!",
+        "offer_item": "",
+        "public_reason": "Hamilton Park is nearby and good for route spotting",
+        "target_agent": "",
+        "target_place": "Hamilton Park",
+        "want_item": "",
+        "target": "osm:way/30118918",
+        "evidence": {
+          "replayOf": {
+            "action": "spotlight",
+            "muse": "03-ripple",
+            "recordedAt": "2026-11-01T06:30:26.666Z",
+            "model": "muse-spark-1.3",
+            "requestId": "2c7fc75e-4284-40b1-8059-6a2e34851934",
+            "responseId": "chatcmpl-01a195cd-5dec-707b-845f-4b0c527ebfb7",
+            "latencyMs": 2784
+          }
+        }
+      },
+      "tags": [
+        "off_script"
+      ],
+      "fixture": true,
+      "line": "Taking the long way to Hamilton Park, map in hand!"
+    },
+    {
+      "seq": 3,
+      "id": "fx-0003",
+      "t": 60,
+      "tick": 1,
+      "at": 1793552460000,
+      "source": "rule",
+      "kind": "depart",
+      "muse": "03-ripple",
+      "place": "commons:cafe",
+      "data": {
+        "to": "osm:way/30118918",
+        "speed": "walk",
+        "distanceM": 420
+      },
+      "tags": [],
+      "fixture": true
+    },
+    {
+      "seq": 4,
+      "id": "fx-0004",
+      "t": 90,
+      "tick": 1,
+      "at": 1793552490000,
+      "source": "rule",
+      "kind": "encounter",
+      "muse": "00-jolly",
+      "place": "commons:cafe",
+      "data": {
+        "initiatedByIntent": true,
+        "actorOrigin": "muse"
+      },
+      "tags": [],
+      "fixture": true,
+      "other": "02-moss"
+    },
+    {
+      "seq": 5,
+      "id": "fx-0005",
+      "t": 120,
+      "tick": 2,
+      "at": 1793552520000,
+      "source": "live",
+      "kind": "cards_verified",
+      "muse": "00-jolly",
+      "place": "commons:cafe",
+      "data": {
+        "aVerifiesB": {
+          "ok": true
+        },
+        "bVerifiesA": {
+          "ok": true
+        }
+      },
+      "tags": [],
+      "fixture": true,
+      "other": "02-moss"
+    },
+    {
+      "seq": 6,
+      "id": "fx-0006",
+      "t": 180,
+      "tick": 3,
+      "at": 1793552580000,
+      "source": "rule",
+      "kind": "trade_proposed",
+      "muse": "00-jolly",
+      "place": "commons:cafe",
+      "data": {
+        "give": "coffee",
+        "want": "transit_pass"
+      },
+      "tags": [],
+      "fixture": true,
+      "other": "02-moss"
+    },
+    {
+      "seq": 7,
+      "id": "fx-0007",
+      "t": 240,
+      "tick": 4,
+      "at": 1793552640000,
+      "source": "live",
+      "kind": "a2a_verified",
+      "muse": "00-jolly",
+      "place": "commons:cafe",
+      "data": {
+        "envelope": {
+          "message_id": "fx-message-1",
+          "signer_kind": "agent",
+          "delegation_ref": "fx-delegation",
+          "scope": "world_item_trade",
+          "scope_hash": "fx-scope-hash",
+          "content_hash": "fx-content-hash",
+          "owner_claimed": false
+        },
+        "steps": [
+          "signature",
+          "delegation",
+          "scope",
+          "expiry",
+          "content",
+          "replay"
+        ]
+      },
+      "tags": [
+        "p0_valid"
+      ],
+      "fixture": true,
+      "other": "02-moss"
+    },
+    {
+      "seq": 8,
+      "id": "fx-0008",
+      "t": 300,
+      "tick": 5,
+      "at": 1793552700000,
+      "source": "rule",
+      "kind": "trade_completed",
+      "muse": "00-jolly",
+      "place": "commons:cafe",
+      "data": {
+        "give": "coffee",
+        "want": "transit_pass",
+        "beforeHash": "fx-before-trade",
+        "afterHash": "fx-after-trade"
+      },
+      "tags": [
+        "first_trade",
+        "ability_change",
+        "p0_trade"
+      ],
+      "fixture": true,
+      "other": "02-moss"
+    },
+    {
+      "seq": 9,
+      "id": "fx-0009",
+      "t": 360,
+      "tick": 6,
+      "at": 1793552760000,
+      "source": "rule",
+      "kind": "arrive",
+      "muse": "03-ripple",
+      "place": "osm:way/30118918",
+      "data": {
+        "speed": "walk"
+      },
+      "tags": [],
+      "fixture": true
+    },
+    {
+      "seq": 10,
+      "id": "fx-0010",
+      "t": 420,
+      "tick": 7,
+      "at": 1793552820000,
+      "source": "rule",
+      "kind": "beat",
+      "muse": "03-ripple",
+      "place": "osm:way/30118918",
+      "data": {
+        "beat": "inspect_map"
+      },
+      "tags": [],
+      "fixture": true
+    },
+    {
+      "seq": 11,
+      "id": "fx-0011",
+      "t": 480,
+      "tick": 8,
+      "at": 1793552880000,
+      "source": "rule",
+      "kind": "encounter",
+      "muse": "01-sunny",
+      "place": "commons:campfire",
+      "data": {
+        "initiatedByIntent": false,
+        "actorOrigin": "person"
+      },
+      "tags": [],
+      "fixture": true,
+      "other": "04-ember"
+    },
+    {
+      "seq": 12,
+      "id": "fx-0012",
+      "t": 540,
+      "tick": 9,
+      "at": 1793552940000,
+      "source": "live",
+      "kind": "cards_verified",
+      "muse": "01-sunny",
+      "place": "commons:campfire",
+      "data": {
+        "aVerifiesB": {
+          "ok": true
+        },
+        "bVerifiesA": {
+          "ok": false,
+          "reason": "unknown_key"
+        }
+      },
+      "tags": [],
+      "fixture": true,
+      "other": "04-ember"
+    },
+    {
+      "seq": 13,
+      "id": "fx-0013",
+      "t": 600,
+      "tick": 10,
+      "at": 1793553000000,
+      "source": "live",
+      "kind": "impostor_rejected",
+      "muse": "04-ember",
+      "place": "commons:campfire",
+      "data": {
+        "verdict": {
+          "ok": false,
+          "reason": "unknown_key"
+        }
+      },
+      "tags": [
+        "impostor_rejected"
+      ],
+      "fixture": true
+    },
+    {
+      "seq": 14,
+      "id": "fx-0014",
+      "t": 660,
+      "tick": 11,
+      "at": 1793553060000,
+      "source": "live",
+      "kind": "injection_blocked",
+      "muse": "06-ink",
+      "place": "commons:bookshelf",
+      "data": {
+        "kinds": [
+          "instruction_override"
+        ],
+        "limit": "A scripted example, not a security guarantee"
+      },
+      "tags": [
+        "injection_blocked"
+      ],
+      "fixture": true,
+      "other": "09-copper"
+    },
+    {
+      "seq": 15,
+      "id": "fx-0015",
+      "t": 720,
+      "tick": 12,
+      "at": 1793553120000,
+      "source": "replay",
+      "kind": "spotlight",
+      "muse": "01-sunny",
+      "place": "commons:cafe",
+      "data": {
+        "decision": "greet Ember at the campfire",
+        "freedom": "who",
+        "line": "Hiya Ember! Come join our circle, warm seats and stories waiting!",
+        "offer_item": "",
+        "public_reason": "Ember is at the Campfire a few meters away",
+        "target_agent": "04-ember",
+        "target_place": "Campfire",
+        "want_item": "",
+        "target": "commons:campfire",
+        "evidence": {
+          "replayOf": {
+            "action": "spotlight",
+            "muse": "01-sunny",
+            "recordedAt": "2026-11-01T06:30:29.691Z",
+            "model": "muse-spark-1.3",
+            "requestId": "d92f021a-6a73-4fbc-95c8-b7e199dddb53",
+            "responseId": "chatcmpl-01a195cd-699d-760c-b4f8-e5e90d98caf9",
+            "latencyMs": 3023
+          }
+        }
+      },
+      "tags": [
+        "off_script"
+      ],
+      "fixture": true,
+      "line": "Hiya Ember! Come join our circle, warm seats and stories waiting!"
+    },
+    {
+      "seq": 16,
+      "id": "fx-0016",
+      "t": 780,
+      "tick": 13,
+      "at": 1793553180000,
+      "source": "rule",
+      "kind": "depart",
+      "muse": "01-sunny",
+      "place": "commons:cafe",
+      "data": {
+        "to": "commons:campfire",
+        "speed": "walk",
+        "distanceM": 25
+      },
+      "tags": [],
+      "fixture": true
+    },
+    {
+      "seq": 17,
+      "id": "fx-0017",
+      "t": 840,
+      "tick": 14,
+      "at": 1793553240000,
+      "source": "rule",
+      "kind": "encounter",
+      "muse": "03-ripple",
+      "place": "osm:way/30118918",
+      "data": {
+        "initiatedByIntent": true,
+        "actorOrigin": "muse"
+      },
+      "tags": [],
+      "fixture": true,
+      "other": "06-ink"
+    },
+    {
+      "seq": 18,
+      "id": "fx-0018",
+      "t": 900,
+      "tick": 15,
+      "at": 1793553300000,
+      "source": "rule",
+      "kind": "approval_requested",
+      "muse": "03-ripple",
+      "place": "osm:way/30118918",
+      "data": {
+        "requestId": "fx-approval-1"
+      },
+      "tags": [],
+      "fixture": true,
+      "other": "06-ink",
+      "line": "The candidate needs both owners to approve."
+    },
+    {
+      "seq": 19,
+      "id": "fx-0019",
+      "t": 960,
+      "tick": 16,
+      "at": 1793553360000,
+      "source": "rule",
+      "kind": "meetup_candidate",
+      "muse": "03-ripple",
+      "place": "osm:way/30118918",
+      "data": {
+        "requestId": "fx-approval-1"
+      },
+      "tags": [],
+      "fixture": true,
+      "other": "06-ink",
+      "line": "A scripted meeting candidate, not a confirmed appointment."
+    },
+    {
+      "seq": 20,
+      "id": "fx-0020",
+      "t": 1020,
+      "tick": 17,
+      "at": 1793553420000,
+      "source": "live",
+      "kind": "a2a_refused",
+      "muse": "00-jolly",
+      "place": "commons:cafe",
+      "data": {
+        "step": "scope",
+        "reason": "out_of_scope"
+      },
+      "tags": [
+        "p0_refused"
+      ],
+      "fixture": true
+    },
+    {
+      "seq": 21,
+      "id": "fx-0021",
+      "t": 1080,
+      "tick": 18,
+      "at": 1793553480000,
+      "source": "rule",
+      "kind": "decision_rejected",
+      "muse": "09-copper",
+      "place": "commons:workbench",
+      "data": {
+        "reason": "out_of_scope"
+      },
+      "tags": [],
+      "fixture": true
+    },
+    {
+      "seq": 22,
+      "id": "fx-0022",
+      "t": 1140,
+      "tick": 19,
+      "at": 1793553540000,
+      "source": "rule",
+      "kind": "discover",
+      "muse": "02-moss",
+      "place": "commons:garden",
+      "data": {
+        "item": "clover_seed"
+      },
+      "tags": [
+        "ability_change"
+      ],
+      "fixture": true
+    },
+    {
+      "seq": 23,
+      "id": "fx-0023",
+      "t": 1200,
+      "tick": 20,
+      "at": 1793553600000,
+      "source": "rule",
+      "kind": "arrive",
+      "muse": "01-sunny",
+      "place": "commons:campfire",
+      "data": {
+        "speed": "walk"
+      },
+      "tags": [],
+      "fixture": true
+    },
+    {
+      "seq": 24,
+      "id": "fx-0024",
+      "t": 1320,
+      "tick": 22,
+      "at": 1793553720000,
+      "source": "rule",
+      "kind": "encounter",
+      "muse": "05-bloom",
+      "place": "commons:benches",
+      "data": {},
+      "tags": [],
+      "fixture": true,
+      "other": "07-tempo"
+    },
+    {
+      "seq": 25,
+      "id": "fx-0025",
+      "t": 1500,
+      "tick": 25,
+      "at": 1793553900000,
+      "source": "replay",
+      "kind": "spotlight",
+      "muse": "08-orbit",
+      "place": "commons:hq",
+      "data": {
+        "freedom": "plan",
+        "decision": "A recorded-output example with missing evidence"
+      },
+      "tags": [],
+      "fixture": true,
+      "line": "Missing evidence is shown as missing."
+    },
+    {
+      "seq": 26,
+      "id": "fx-0026",
+      "t": 1800,
+      "tick": 30,
+      "at": 1793554200000,
+      "source": "scripted",
+      "kind": "spotlight",
+      "muse": "02-moss",
+      "place": "commons:garden",
+      "data": {
+        "freedom": "where",
+        "live": false
+      },
+      "tags": [],
+      "fixture": true
+    }
+  ]
+}

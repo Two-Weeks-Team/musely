@@ -1,0 +1,27 @@
+{
+  "stage": "shape and portable materials",
+  "vertices": 18105,
+  "triangles": 22886,
+  "bounds": {
+    "min": [
+      -0.40335628390312195,
+      -0.19109158217906952,
+      0.0
+    ],
+    "max": [
+      0.40397515892982483,
+      0.19201166927814484,
+      0.899757444858551
+    ]
+  },
+  "source": "character-kit/source/muse_family.blend",
+  "glb": "character-kit/runtime/base/lod0.glb",
+  "views": [
+    "front",
+    "three-quarter",
+    "side",
+    "back"
+  ],
+  "oldFileNotSaved": true,
+  "sha256": "6543bd2d53731e4512f11ad3ccffb92b6339464df00d80dd7f8ccbe7d80af771"
+}

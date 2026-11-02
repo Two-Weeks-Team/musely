@@ -1,0 +1,409 @@
+{
+ "info": {
+  "url": "https://preview.musely.net/",
+  "startedAt": "2026-11-02T03:09:20.620Z",
+  "finishedAt": "2026-11-02T03:12:06.564Z",
+  "browser": "156.0.8078.76",
+  "node": "v24.22.2",
+  "platform": "darwin arm64"
+ },
+ "ok": true,
+ "cases": [
+  {
+   "vp": "desktop",
+   "name": "starts in Live world with ?autoplay=0",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "Story mode plays the scripted story",
+   "ok": true,
+   "detail": "elapsed 3.5"
+  },
+  {
+   "vp": "desktop",
+   "name": "Live world stops the story and offers to resume",
+   "ok": true,
+   "detail": "Resume story · 0:03 zoom 15.2"
+  },
+  {
+   "vp": "desktop",
+   "name": "returning to Story resumes where it left",
+   "ok": true,
+   "detail": "left 3.5 resumed 4.1"
+  },
+  {
+   "vp": "desktop",
+   "name": "selected Muse, state and source stay from close-up to map and back",
+   "ok": true,
+   "detail": "Noa's Muse | far: Noa's Muse · Gardening… · scripted story"
+  },
+  {
+   "vp": "desktop",
+   "name": "trade cue: both characters play their clip with the item card",
+   "ok": true,
+   "detail": "[\"handoff_receive\",\"handoff_give\"] Jolly: clip, item shown as a card · Ripple: clip, item shown as a card. The world is paused while it plays."
+  },
+  {
+   "vp": "desktop",
+   "name": "cue ends: labels removed, hold released, world resumes",
+   "ok": true,
+   "detail": "{\"cues\":0,\"paused\":false,\"held\":null}"
+  },
+  {
+   "vp": "desktop",
+   "name": "a Muse outside the commons gets a stated fallback; the one inside plays",
+   "ok": true,
+   "detail": "Ink: clip, item shown as a card · Copper: not in the commons (card only). The world is paused while it plays."
+  },
+  {
+   "vp": "desktop",
+   "name": "a clip with a 3D prop shows the prop (Moss writes the postcard on a notepad)",
+   "ok": true,
+   "detail": "{\"result\":\"Moss: clip with its 3D notepad. The world is paused while it plays.\",\"card\":\"PREVIEW FLOW · Moss+ PostcardI'll send you a postcard.clip write_note · 3D prop notepad\",\"visual\":\"complete\",\"held\":\"write_note\",\"shown\":true}"
+  },
+  {
+   "vp": "desktop",
+   "name": "location: entry says the source is a labelled virtual preset (DEMO) and no GPS is read",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "location: GPS permission states are shown without asking the browser",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "location: the owner moves the target cell; the Muse walks with an ETA",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "location reject: not arrived yet means no discovery and no trade",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "location reject: a teleport without a Taxi Token is refused",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "location: a verified teleport with a Taxi Token arrives at once and uses the token",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "location success: arrived, so discovery is allowed at the current place",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "location cancel: switching back does not teleport the Muse; it walks back",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "location retry: the neighborhood is verified again and the walk continues",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "location: the browser was never asked for a position",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "Story -> cue -> Live world: the cue ending does not restart the story or snap the camera back",
+   "ok": true,
+   "detail": "{\"a\":{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":5.010700000047688,\"zoom\":15.2,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:05\",\"cues\":0},\"b\":{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":5.010700000047688,\"zoom\":15.2,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:05\",\"cues\":0}}"
+  },
+  {
+   "vp": "desktop",
+   "name": "Live world -> cue -> Story: the cue ending does not stop the story",
+   "ok": true,
+   "detail": "{\"a\":{\"mode\":\"story\",\"tour\":true,\"tourCamera\":true,\"paused\":false,\"elapsed\":8.309,\"zoom\":21.45,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Story · 0:08 / 3:30\",\"cues\":0},\"b\":{\"mode\":\"story\",\"tour\":true,\"tourCamera\":true,\"paused\":false,\"elapsed\":9.23890000009536,\"zoom\":21.45,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Story · 0:09 / 3:30\",\"cues\":0}}"
+  },
+  {
+   "vp": "desktop",
+   "name": "during a cue the pause button reads \"Paused for preview\" and is pressed",
+   "ok": true,
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":true,\"elapsed\":9.407200000047677,\"zoom\":20.73236875180597,\"pauseText\":\"Paused for preview\",\"pressed\":\"true\",\"tourText\":\"Resume story · 0:09\",\"cues\":1}"
+  },
+  {
+   "vp": "desktop",
+   "name": "pressing it ends the cue and resumes the world",
+   "ok": true,
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":9.407200000047677,\"zoom\":21.898952448917612,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:09\",\"cues\":0}"
+  },
+  {
+   "vp": "desktop",
+   "name": "when the cue runs out the button is back to \"Pause world\"",
+   "ok": true,
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":9.407200000047677,\"zoom\":22.3,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:09\",\"cues\":0}"
+  },
+  {
+   "vp": "desktop",
+   "name": "a world you paused yourself stays paused after a cue, and the button says so",
+   "ok": true,
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":true,\"elapsed\":9.407200000047677,\"zoom\":22.3,\"pauseText\":\"Resume world\",\"pressed\":\"true\",\"tourText\":\"Resume story · 0:09\",\"cues\":0}"
+  },
+  {
+   "vp": "desktop",
+   "name": "a new cue releases the previous character's hold",
+   "ok": true,
+   "detail": "[null,\"write_note\"]"
+  },
+  {
+   "vp": "desktop",
+   "name": "?entry=watch boots: the story plays, mode controls and cues exist, no errors",
+   "ok": true,
+   "detail": "{\"w\":{\"mode\":\"story\",\"tour\":true,\"cue\":\"function\",\"pressed\":\"true\"},\"werr\":[]}"
+  },
+  {
+   "vp": "desktop",
+   "name": "props file missing: the cue says fallback and does not claim a 3D prop",
+   "ok": true,
+   "detail": "{\"result\":{\"variant\":\"02-moss\",\"shown\":true,\"visual\":\"fallback\",\"prop\":null,\"reason\":\"prop_unavailable\"},\"visual\":\"fallback\",\"text\":\"PREVIEW FLOW · no props+ Notepadfallback: clip write_note plays, but the 3D notepad is not loaded yet · item shown as a card\",\"propsLoaded\":false}"
+  },
+  {
+   "vp": "desktop",
+   "name": "props file missing: the card stays a fallback after the on-demand load fails",
+   "ok": true,
+   "detail": "{\"visual\":\"fallback\",\"text\":\"PREVIEW FLOW · no props+ Notepadfallback: clip write_note plays, but the 3D notepad is not loaded yet · item shown as a card\"}"
+  },
+  {
+   "vp": "desktop",
+   "name": "slow props file: the cue starts as a fallback and the card becomes the 3D prop when it arrives",
+   "ok": true,
+   "detail": "{\"first\":{\"result\":{\"variant\":\"02-moss\",\"shown\":true,\"visual\":\"fallback\",\"prop\":null,\"reason\":\"prop_unavailable\"},\"visual\":\"fallback\",\"propsLoaded\":false},\"later\":{\"visual\":\"complete\",\"text\":\"PREVIEW FLOW · slow props+ Notepadclip write_note · 3D prop notepad\",\"shown\":true},\"serr\":[]}"
+  },
+  {
+   "vp": "desktop",
+   "name": "no /api writes",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "desktop",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "starts in Live world with ?autoplay=0",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "Story mode plays the scripted story",
+   "ok": true,
+   "detail": "elapsed 3.5"
+  },
+  {
+   "vp": "mobile",
+   "name": "Live world stops the story and offers to resume",
+   "ok": true,
+   "detail": "Resume story · 0:03 zoom 15.2"
+  },
+  {
+   "vp": "mobile",
+   "name": "Live world at 390 px: neither the story heading nor the time caption prints over the welcome card",
+   "ok": true,
+   "detail": "{\"heading\":null,\"caption\":null,\"welcome\":{\"x\":16,\"y\":125,\"width\":285,\"height\":395.953125}}"
+  },
+  {
+   "vp": "mobile",
+   "name": "returning to Story resumes where it left",
+   "ok": true,
+   "detail": "left 3.5 resumed 4.1"
+  },
+  {
+   "vp": "mobile",
+   "name": "header rows do not cover the caption or story heading at 390 px",
+   "ok": true,
+   "detail": "0 overlaps"
+  },
+  {
+   "vp": "mobile",
+   "name": "selected Muse, state and source stay from close-up to map and back",
+   "ok": true,
+   "detail": "Noa's Muse | far: Noa's Muse · Gardening… · scripted story"
+  },
+  {
+   "vp": "mobile",
+   "name": "trade cue: both characters play their clip with the item card",
+   "ok": true,
+   "detail": "[\"handoff_receive\",\"handoff_give\"] Jolly: clip, item shown as a card · Ripple: clip, item shown as a card. The world is paused while it plays."
+  },
+  {
+   "vp": "mobile",
+   "name": "cue ends: labels removed, hold released, world resumes",
+   "ok": true,
+   "detail": "{\"cues\":0,\"paused\":false,\"held\":null}"
+  },
+  {
+   "vp": "mobile",
+   "name": "a Muse outside the commons gets a stated fallback; the one inside plays",
+   "ok": true,
+   "detail": "Ink: clip, item shown as a card · Copper: not in the commons (card only). The world is paused while it plays."
+  },
+  {
+   "vp": "mobile",
+   "name": "a clip with a 3D prop shows the prop (Moss writes the postcard on a notepad)",
+   "ok": true,
+   "detail": "{\"result\":\"Moss: clip with its 3D notepad. The world is paused while it plays.\",\"card\":\"PREVIEW FLOW · Moss+ PostcardI'll send you a postcard.clip write_note · 3D prop notepad\",\"visual\":\"complete\",\"held\":\"write_note\",\"shown\":true}"
+  },
+  {
+   "vp": "mobile",
+   "name": "location: entry says the source is a labelled virtual preset (DEMO) and no GPS is read",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "location: GPS permission states are shown without asking the browser",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "location: the owner moves the target cell; the Muse walks with an ETA",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "location reject: not arrived yet means no discovery and no trade",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "location reject: a teleport without a Taxi Token is refused",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "location: a verified teleport with a Taxi Token arrives at once and uses the token",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "location success: arrived, so discovery is allowed at the current place",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "location cancel: switching back does not teleport the Muse; it walks back",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "location retry: the neighborhood is verified again and the walk continues",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "location: the browser was never asked for a position",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "Story -> cue -> Live world: the cue ending does not restart the story or snap the camera back",
+   "ok": true,
+   "detail": "{\"a\":{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":5.652099999904633,\"zoom\":15.2,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:05\",\"cues\":0},\"b\":{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":5.652099999904633,\"zoom\":15.2,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:05\",\"cues\":0}}"
+  },
+  {
+   "vp": "mobile",
+   "name": "Live world -> cue -> Story: the cue ending does not stop the story",
+   "ok": true,
+   "detail": "{\"a\":{\"mode\":\"story\",\"tour\":true,\"tourCamera\":true,\"paused\":false,\"elapsed\":8.94609999990461,\"zoom\":20.8,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Story · 0:08 / 3:30\",\"cues\":0},\"b\":{\"mode\":\"story\",\"tour\":true,\"tourCamera\":true,\"paused\":false,\"elapsed\":9.87940000009533,\"zoom\":20.8,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Story · 0:09 / 3:30\",\"cues\":0}}"
+  },
+  {
+   "vp": "mobile",
+   "name": "during a cue the pause button reads \"Paused for preview\" and is pressed",
+   "ok": true,
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":true,\"elapsed\":10.062700000047647,\"zoom\":20.448572192007095,\"pauseText\":\"Paused for preview\",\"pressed\":\"true\",\"tourText\":\"Resume story · 0:10\",\"cues\":1}"
+  },
+  {
+   "vp": "mobile",
+   "name": "pressing it ends the cue and resumes the world",
+   "ok": true,
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":10.062700000047647,\"zoom\":21.84875994792649,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:10\",\"cues\":0}"
+  },
+  {
+   "vp": "mobile",
+   "name": "when the cue runs out the button is back to \"Pause world\"",
+   "ok": true,
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":false,\"elapsed\":10.062700000047647,\"zoom\":22.3,\"pauseText\":\"Pause world\",\"pressed\":\"false\",\"tourText\":\"Resume story · 0:10\",\"cues\":0}"
+  },
+  {
+   "vp": "mobile",
+   "name": "a world you paused yourself stays paused after a cue, and the button says so",
+   "ok": true,
+   "detail": "{\"mode\":\"world\",\"tour\":false,\"tourCamera\":false,\"paused\":true,\"elapsed\":10.062700000047647,\"zoom\":22.3,\"pauseText\":\"Resume world\",\"pressed\":\"true\",\"tourText\":\"Resume story · 0:10\",\"cues\":0}"
+  },
+  {
+   "vp": "mobile",
+   "name": "a new cue releases the previous character's hold",
+   "ok": true,
+   "detail": "[null,\"write_note\"]"
+  },
+  {
+   "vp": "mobile",
+   "name": "?entry=watch boots: the story plays, mode controls and cues exist, no errors",
+   "ok": true,
+   "detail": "{\"w\":{\"mode\":\"story\",\"tour\":true,\"cue\":\"function\",\"pressed\":\"true\"},\"werr\":[]}"
+  },
+  {
+   "vp": "mobile",
+   "name": "props file missing: the cue says fallback and does not claim a 3D prop",
+   "ok": true,
+   "detail": "{\"result\":{\"variant\":\"02-moss\",\"shown\":true,\"visual\":\"fallback\",\"prop\":null,\"reason\":\"prop_unavailable\"},\"visual\":\"fallback\",\"text\":\"PREVIEW FLOW · no props+ Notepadfallback: clip write_note plays, but the 3D notepad is not loaded yet · item shown as a card\",\"propsLoaded\":false}"
+  },
+  {
+   "vp": "mobile",
+   "name": "props file missing: the card stays a fallback after the on-demand load fails",
+   "ok": true,
+   "detail": "{\"visual\":\"fallback\",\"text\":\"PREVIEW FLOW · no props+ Notepadfallback: clip write_note plays, but the 3D notepad is not loaded yet · item shown as a card\"}"
+  },
+  {
+   "vp": "mobile",
+   "name": "slow props file: the cue starts as a fallback and the card becomes the 3D prop when it arrives",
+   "ok": true,
+   "detail": "{\"first\":{\"result\":{\"variant\":\"02-moss\",\"shown\":true,\"visual\":\"fallback\",\"prop\":null,\"reason\":\"prop_unavailable\"},\"visual\":\"fallback\",\"propsLoaded\":false},\"later\":{\"visual\":\"complete\",\"text\":\"PREVIEW FLOW · slow props+ Notepadclip write_note · 3D prop notepad\",\"shown\":true},\"serr\":[]}"
+  },
+  {
+   "vp": "mobile",
+   "name": "no /api writes",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "vp": "mobile",
+   "name": "no page errors",
+   "ok": true,
+   "detail": ""
+  }
+ ]
+}

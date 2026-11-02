@@ -1,0 +1,7 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';
+import {ROUNDS,activityAt,positionAt,advance,makeClock} from '../src/activity.ts';
+test('five exact public proposal votes and final candidate',()=>{assert.deepEqual(ROUNDS.map(r=>[r.time,r.place,r.jimin,r.sora]),[['19:45','Riverside',false,true],['19:45','HQ-front cafe',false,true],['19:00','Riverside',false,true],['20:30','Riverside',false,true],['19:00','HQ-front cafe',true,true]]);assert.equal(activityAt(150).phase,'approval');assert.equal(activityAt(80).committed,false)});
+test('walking routes are continuous at every segment and loop boundary',()=>{for(let i=0;i<8;i++)for(let t=0.01;t<211;t+=.05){const a=positionAt(i,t-.01),b=positionAt(i,t);assert.ok(Math.hypot(a.x-b.x,a.z-b.z)<.025)}});
+test('pause, tab-time cap and finite tour boundary',()=>{let c=makeClock();c=advance(c,1);assert.equal(c.elapsed,1);c.paused=true;c=advance(c,1);assert.equal(c.elapsed,1);c.paused=false;c=advance(c,900);assert.equal(c.elapsed,1.1);c.elapsed=209.99;c=advance(c,.04);assert.equal(c.elapsed,210);assert.equal(c.tourFinished,true)});
+import {readFileSync} from 'node:fs';
+test('supplied public transcript rows stay byte-for-byte exact',()=>{const fixture=JSON.parse(readFileSync('fixtures/life-meetup.json','utf8'));assert.deepEqual(ROUNDS.map((r,i)=>`PROPOSE R${i+1} · ${r.time} · ${r.place} · Jimin's Muse ${r.jimin?'✓ yes':'✕ no'} · Sora's Muse ✓ yes`),fixture.rows.slice(1,6));});
