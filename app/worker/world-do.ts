@@ -30,7 +30,9 @@ export class WorldDO extends DurableObject<Env> {
     this.ritual = new RitualStore(ctx.storage.sql);
     this.ownerRoot = env.OWNER_ROOT_JWK ? JSON.parse(env.OWNER_ROOT_JWK) : null;
     const hooks = makeHooks();
-    this.runtime = new WorldRuntime(ctx.storage.sql, {
+    // The runtime commits inside the storage transaction; every other store shares the same SQL handle.
+    const txSql = {exec: (q: string, ...b: unknown[]) => ctx.storage.sql.exec(q, ...b), transactionSync: <T>(fn: () => T) => ctx.storage.transactionSync(fn)};
+    this.runtime = new WorldRuntime(txSql, {
       // Live decisions for a Muse whose delegation was revoked (and not re-issued) are discarded.
       delegationValid: museId => !this.trust.suspended(museId),
       // Every meeting: both Agent Cards and delegations are verified before any greeting or trade.

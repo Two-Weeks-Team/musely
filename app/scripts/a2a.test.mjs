@@ -7,7 +7,8 @@ import {Trust, OWNER_SLOT} from '../worker/core/trust.ts';
 import {runP0, verifyMeeting, impostorCheck, injectionCheck, findOwnerTrade} from '../worker/core/a2a.ts';
 import {makeHooks} from '../src/engine/rules.ts';
 
-const sqlite = () => { const db = new DatabaseSync(':memory:'); return {exec(q, ...b) { const st = db.prepare(q); if (/^\s*(select|with)/i.test(q)) return {toArray: () => st.all(...b)}; st.run(...b); return {toArray: () => []}; }}; };
+// transactionSync stands in for ctx.storage.transactionSync: a savepoint that rolls back on a throw.
+const sqlite = () => { const db = new DatabaseSync(':memory:'); let depth = 0; return {exec(q, ...b) { const st = db.prepare(q); if (/^\s*(select|with)/i.test(q)) return {toArray: () => st.all(...b)}; st.run(...b); return {toArray: () => []}; }, transactionSync(fn) { const sp = 'tx' + depth++; db.exec('SAVEPOINT ' + sp); try { const r = fn(); db.exec('RELEASE ' + sp); return r; } catch (e) { db.exec('ROLLBACK TO ' + sp); db.exec('RELEASE ' + sp); throw e; } finally { depth--; } }}; };
 const T0 = Date.parse('2026-11-03T16:00:00Z');
 async function setup() {
   const sql = sqlite(), ledger = new Ledger(sql, {dailyCapUsd: 1}); ledger.init();
@@ -15,7 +16,7 @@ async function setup() {
   const pair = await crypto.subtle.generateKey({name: 'ECDSA', namedCurve: 'P-256'}, true, ['sign', 'verify']);
   const ownerRoot = await crypto.subtle.exportKey('jwk', pair.privateKey);
   await trust.ensureAgents(ownerRoot);
-  const runtime = new WorldRuntime(sql, {worldId: 'w', ledger, model: null, hooks: makeHooks(), delegationValid: m => !trust.suspended(m)});
+  const runtime = new WorldRuntime(sql, {worldId: 'w', meetingGate: 'off', ledger, model: null, hooks: makeHooks(), delegationValid: m => !trust.suspended(m)});
   runtime.init(T0);
   runtime.commitExternal(T0, 'welcome', st => st.muses.find(m => m.id === OWNER_SLOT).inventory.push('coffee', 'postage_stamp'));
   return {trust, runtime, ctx: {trust, runtime, ownerRoot, ownerClaimed: true, baseUrl: 'https://musely.net'}};

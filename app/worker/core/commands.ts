@@ -1,23 +1,23 @@
 // Shared-state write commands (C03, C04). Every agent write (MCP tools, the owner's Muse trade) runs here:
 //   1. wrapper ↔ signed fields: commandId = message_id, actorId = agent_id, action, worldId, and the signed
 //      content is exactly {worldId, expectedVersion, action, payload}
-//   2. the envelope signature (no registry writes yet), so only the proven actor can reach its stored results
+//   2. the envelope signature, then revocation (a revoked actor reaches no stored result), so only the proven,
+//      current actor can read its results
 //   3. stored result for (actor, commandId): same payload → that result again, nothing re-applied;
-//      a different payload → command_conflict
-//   4. recipient, delegation, scope, expiry, content, approval and nonce (verifyEnvelope), then the
-//      counterparty's card and delegation when the action has one
+//      a different payload → command_conflict; the same id still in flight → in_progress (retryable)
+//   4. recipient, delegation, scope, expiry, content, approval and an unused nonce (verifyEnvelope with
+//      claim: false), then the counterparty's card and delegation when the action has one
 //   5. expectedVersion against the current world → stale_world
-//   6. optional work outside the transaction (a model call). The commit point re-checks the world version
-//      and both delegations: a late answer is logged and discarded, never committed
-//   7. apply, version bump, events and the result row in one synchronous block.
-// A refusal changes no inventory, place, Task or reward: it leaves a refusal event (at a commit that does
-// not move the world version) and is not stored. Once step 4 passed, the nonce and message id are spent, so
-// re-planning after stale_world needs a new commandId.
+//   6. optional work outside the transaction (a model call); its settle() always runs
+//   7. one storage transaction: the stored row again, the world version and both delegations (a late answer is
+//      discarded), the nonce claim, then apply, version, events and the result row.
+// A refusal changes no inventory, place, Task or reward and spends no nonce, so the same id can be retried
+// once the cause is gone. It leaves one refusal event per (actor, code, step) and window; repeats are counted.
 import {canonicalize} from '../../src/identity/jcs.ts';
 import {signEnvelope, verifySignature, verifyEnvelope, contentHash, type Signed} from '../../src/identity/envelope.ts';
 import type {ScopeId} from '../../src/engine/harness.ts';
 import type {WorldState, WorldEvent} from '../../src/engine/world.ts';
-import type {WorldRuntime} from './world-runtime.ts';
+import type {WorldRuntime, CommandRow} from './world-runtime.ts';
 import type {Trust, Executor} from './trust.ts';
 
 export const COMMANDS_TABLE = 'CREATE TABLE IF NOT EXISTS commands (actor_id TEXT NOT NULL, command_id TEXT NOT NULL, payload_hash TEXT NOT NULL, action TEXT NOT NULL, result TEXT NOT NULL, output TEXT, at INTEGER NOT NULL, PRIMARY KEY (actor_id, command_id))';
@@ -35,8 +35,8 @@ export type CommandHandler<T = unknown> = {
   /** Who this command must be addressed to, decided by the verifier: the peer agent, or worldHandler(worldId). */
   recipient: string;
   counterparty?: () => Promise<PeerCheck>;
-  /** Work outside the transaction. It settles its own model cost before returning (C05), so a discarded answer is still paid for. */
-  think?: () => Promise<T>;
+  /** Work outside the transaction. executeCommand calls the returned settle() whatever happens next (C05), so a discarded answer is still paid for. */
+  think?: () => Promise<{thought: T; settle?: () => void}>;
   apply: (st: WorldState, emit: Emit, at: number, thought: T | undefined) => Applied;
   /** Logs a refusal (the default is one command_refused event). Owner notifications may be added here. */
   refused?: (st: WorldState, emit: Emit, r: Refused, at: number) => void;
@@ -44,7 +44,10 @@ export type CommandHandler<T = unknown> = {
 export type CommandOutcome = {result: CommandResult; output: unknown; duplicate: boolean; verified: boolean; refused: Refused | null};
 export type CommandCtx = {trust: Trust; runtime: WorldRuntime};
 
-const RETRYABLE = new Set(['stale_world']);
+const RETRYABLE = new Set(['stale_world', 'in_progress']);
+/** Refusals that are about timing or retries, not about the actor's authority: no owner Blocked notice, no p0_refused tag. */
+export const quietRefusal = (code: string) => ['stale_world', 'command_conflict', 'replay', 'in_progress'].includes(code);
+const LATE: Record<string, string> = {stale_world: 'world changed while the model was answering', delegation_revoked: 'delegation revoked before commit'};
 export const worldHandler = (worldId: string) => `musely:world:${worldId}`;
 export const commandContent = (c: Pick<WorldCommand, 'worldId' | 'expectedVersion' | 'action' | 'payload'>) => ({worldId: c.worldId, expectedVersion: c.expectedVersion, action: c.action, payload: c.payload});
 /** The command's identity for duplicates: a retry may be re-signed against a newer version, so the version is not part of it. */
@@ -65,51 +68,75 @@ const bound = (c: CommandCtx, cmd: WorldCommand) => {
 
 export async function executeCommand<T>(c: CommandCtx, cmd: WorldCommand, h: CommandHandler<T>, now = Date.now()): Promise<CommandOutcome> {
   const id = String(cmd?.commandId ?? '').slice(0, 64);
+  let proven = false;
   const refuse = (step: string, code: string, opts: {verified?: boolean; event?: Omit<WorldEvent, 'id' | 'tick'>} = {}): CommandOutcome => {
     const r: Refused = {step, code, retryable: RETRYABLE.has(code)};
-    // Each refusal is its own record: repeated refusals of one id in the same millisecond must not collide.
-    const events = c.runtime.commitRefusal(now, `cmd-refused-${id}-${Math.random().toString(36).slice(2, 8)}`, (st, emit) => {
-      if (opts.event) emit(opts.event);
-      else if (h.refused) h.refused(st, emit, r, now);
-      else emit({at: now, source: 'live', kind: 'command_refused', muse: null, data: {step, reason: code, action: cmd?.action ?? null, command_id: id}, tags: []});
+    // An unproven actor id is attacker-chosen, so it is not used as a key.
+    const actor = proven ? cmd.actorId : 'unverified', key = `${actor}:${code}:${step}`;
+    const events = c.runtime.commitRefusal(now, `cmd-refused-${actor}-${id}-${Math.random().toString(36).slice(2, 8)}`, (st, emit) => {
+      if (!c.runtime.noteRefusal(key, now)) return;
+      const tagged: Emit = e => emit({...e, data: {...(e.data ?? {}), dedup_key: key}});
+      if (opts.event) tagged(opts.event);
+      else if (h.refused) h.refused(st, tagged, r, now);
+      else tagged({at: now, source: 'live', kind: 'command_refused', muse: null, data: {step, reason: code, action: cmd?.action ?? null, command_id: id}, tags: []});
     });
     return {result: {ok: false, commandId: id, worldVersion: c.runtime.state().version, eventIds: events.map(x => x.id), error: {code, retryable: r.retryable}}, output: null, duplicate: false, verified: !!opts.verified, refused: r};
   };
-  // 1–2. The wrapper says what was signed, and the actor really signed it.
+  const stored = (row: CommandRow): CommandOutcome => ({result: row.result, output: row.output, duplicate: true, verified: true, refused: null});
+  // 1–2. The wrapper says what was signed, the actor really signed it, and its delegation is current.
   if (!bound(c, cmd)) return refuse('binding', 'bad_command');
   const sig = await verifySignature(cmd.signed, c.trust);
   if (!sig.ok) return refuse(sig.step, sig.reason);
-  // 3. The first result for this actor and id.
+  proven = true;
+  const e = cmd.signed.envelope;
+  const current = () => !c.trust.isRevoked(e.delegation_ref) && c.trust.delegationVersion(e.agent_id) === sig.delegation.version;
+  if (!current()) return refuse('delegation', 'delegation_revoked');
+  // 3. The first result for this actor and id, or the same id still running.
   const hash = await payloadHash(cmd);
   const prior = c.runtime.commandRow(cmd.actorId, cmd.commandId);
-  if (prior) return prior.payloadHash === hash ? {result: prior.result, output: prior.output, duplicate: true, verified: true, refused: null} : refuse('replay', 'command_conflict');
-  // 4. A new request: the full envelope check, then the other side of a peer action.
-  const verdict = await verifyEnvelope(cmd.signed, c.trust, now, {recipient: h.recipient});
-  if (!verdict.ok) {
-    // A concurrent retry of the same id loses the nonce race; once the first has committed it gets that result.
-    const first = verdict.reason === 'replay' ? c.runtime.commandRow(cmd.actorId, cmd.commandId) : null;
-    if (first?.payloadHash === hash) return {result: first.result, output: first.output, duplicate: true, verified: true, refused: null};
-    return refuse(verdict.step, verdict.reason);
+  if (prior) return prior.payloadHash === hash ? stored(prior) : refuse('replay', 'command_conflict');
+  const flight = `${cmd.actorId}:${cmd.commandId}`;
+  if (c.runtime.pending.has(flight)) return refuse('replay', 'in_progress');
+  c.runtime.pending.add(flight);
+  let settle: (() => void) | undefined;
+  try {
+    // 4. A new request: the full envelope check without spending the nonce, then the peer's side.
+    const verdict = await verifyEnvelope(cmd.signed, c.trust, now, {recipient: h.recipient, claim: false});
+    if (!verdict.ok) return refuse(verdict.step, verdict.reason);
+    const peer = h.counterparty ? await h.counterparty() : null;
+    if (peer && !peer.ok) return refuse('counterparty', peer.reason, {verified: true});
+    // 5. The world the actor planned against.
+    if (c.runtime.state().version !== cmd.expectedVersion) return refuse('version', 'stale_world', {verified: true});
+    // 6. Outside the transaction.
+    let thought: T | undefined;
+    if (h.think) {
+      try { const t = await h.think(); thought = t.thought; settle = t.settle; } catch { return refuse('think', 'decision_unavailable', {verified: true}); }
+    }
+    // 7. Commit point: one storage transaction.
+    const box: {applied: Applied} = {applied: {ok: false, code: 'not_applied'}};
+    const label = `cmd-${cmd.actorId}-${id}`;
+    const done = c.runtime.commitCommand(now, label, {
+      guard: () => {
+        const again = c.runtime.commandRow(cmd.actorId, cmd.commandId);
+        if (again) return again.payloadHash === hash ? 'duplicate' : 'command_conflict';
+        if (c.runtime.state().version !== cmd.expectedVersion) return 'stale_world';
+        if (!current() || (peer?.ok && !peer.current(now))) return 'delegation_revoked';
+        // Last: the nonce is spent only by the commit that uses it (rolled back with it on a throw).
+        return c.trust.claimNonce(e.agent_id, e.nonce, e.message_id, e.expires_at) ? null : 'replay';
+      },
+      mutate: (st, emit) => (box.applied = h.apply(st, emit, now, thought)),
+      record: (version, events) => {
+        const a = box.applied;
+        const result: CommandResult = {ok: a.ok, commandId: cmd.commandId, worldVersion: version, eventIds: events.map(x => x.id), ...(a.ok ? {} : {error: {code: a.code, retryable: false}})};
+        return {actorId: cmd.actorId, commandId: cmd.commandId, action: cmd.action, row: {payloadHash: hash, result, output: a.output ?? null}};
+      },
+    });
+    if (done.aborted === 'duplicate') return stored(c.runtime.commandRow(cmd.actorId, cmd.commandId)!);
+    if (done.aborted !== null) return refuse('commit', done.aborted, {verified: true, event: LATE[done.aborted] ? {at: now, source: 'live', kind: 'decision_discarded', muse: null, data: {reason: LATE[done.aborted], action: cmd.action, command_id: id, thought: h.think ? 'discarded' : null}, tags: []} : undefined});
+    return {result: done.row.result, output: done.row.output, duplicate: false, verified: true, refused: null};
+  } finally {
+    c.runtime.pending.delete(flight);
+    try { settle?.(); } catch (err) { console.error('command settle failed', err); }
   }
-  const peer = h.counterparty ? await h.counterparty() : null;
-  if (peer && !peer.ok) return refuse('counterparty', peer.reason, {verified: true});
-  // 5. The world the actor planned against.
-  if (c.runtime.state().version !== cmd.expectedVersion) return refuse('version', 'stale_world', {verified: true});
-  // 6. Outside the transaction.
-  let thought: T | undefined;
-  if (h.think) { try { thought = await h.think(); } catch { return refuse('think', 'decision_unavailable', {verified: true}); } }
-  // Commit point: synchronous from here on.
-  const e = cmd.signed.envelope, d = verdict.delegation;
-  const actorCurrent = !c.trust.isRevoked(e.delegation_ref) && c.trust.delegationVersion(e.agent_id) === d.version;
-  const late = c.runtime.state().version !== cmd.expectedVersion ? {code: 'stale_world', reason: 'world changed while the model was answering'}
-    : !actorCurrent || (peer?.ok && !peer.current(now)) ? {code: 'delegation_revoked', reason: 'delegation revoked before commit'} : null;
-  if (late) return refuse('commit', late.code, {verified: true, event: {at: now, source: 'live', kind: 'decision_discarded', muse: null, data: {reason: late.reason, action: cmd.action, command_id: id, thought: h.think ? 'discarded' : null}, tags: []}});
-  // 7. Apply, bump, log and store together.
-  const box: {applied: Applied} = {applied: {ok: false, code: 'not_applied'}};
-  const done = c.runtime.commitCommand(now, `cmd-${id}`, (st, emit) => { box.applied = h.apply(st, emit, now, thought); }, (version, events) => {
-    const a = box.applied;
-    const result: CommandResult = {ok: a.ok, commandId: cmd.commandId, worldVersion: version, eventIds: events.map(x => x.id), ...(a.ok ? {} : {error: {code: a.code, retryable: false}})};
-    return {actorId: cmd.actorId, commandId: cmd.commandId, action: cmd.action, row: {payloadHash: hash, result, output: a.output ?? null}};
-  });
-  return {result: done.row.result, output: done.row.output, duplicate: false, verified: true, refused: null};
 }
+

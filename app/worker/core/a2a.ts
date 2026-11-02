@@ -11,7 +11,7 @@ import {placeById, distanceM} from '../../src/engine/places.ts';
 import type {WorldRuntime} from './world-runtime.ts';
 import {Trust, OWNER_SLOT, type Executor} from './trust.ts';
 import type {WorldState, Hooks} from '../../src/engine/world.ts';
-import {executeCommand, signCommand, type PeerCheck} from './commands.ts';
+import {executeCommand, signCommand, quietRefusal, type PeerCheck} from './commands.ts';
 
 export type Ctx = {trust: Trust; runtime: WorldRuntime; ownerRoot: JsonWebKey | null; ownerClaimed: boolean; baseUrl: string; now?: () => number};
 const nowOf = (c: Ctx) => (c.now ? c.now() : Date.now());
@@ -52,9 +52,12 @@ export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; 
       emit({at, source: 'live', kind: 'trade_completed', muse: OWNER_SLOT, other: plan.partner, place: a.place, line: `Traded ${itemName(plan.give)} ↔ ${itemName(plan.want)}`, data: {give: plan.give, want: plan.want, receipt: true, envelope: evidence}, tags: ['ability_change', 'p0_trade']});
       return {ok: true};
     },
-    refused: (_st, emit, r, at) => emit({at, source: 'live', kind: 'a2a_refused', muse: OWNER_SLOT, other: plan.partner, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, envelope: evidence, content, label: opts.label}, tags: ['p0_refused']}),
+    refused: (_st, emit, r, at) => emit({at, source: 'live', kind: quietRefusal(r.code) ? 'command_refused' : 'a2a_refused', muse: OWNER_SLOT, other: plan.partner, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, envelope: evidence, content, label: opts.label}, tags: quietRefusal(r.code) ? [] : ['p0_refused']}),
   }, nowOf(c));
-  return {ok: out.verified, verdict: out.verified ? 'verified' : out.refused!.code, events: out.result.eventIds, command: out.result, plan};
+  // ok means the trade really committed; a verified request the rules turned down is `rejected:<rule>`.
+  const committed = out.result.ok && !out.refused;
+  const verdict = out.refused ? out.refused.code : committed ? 'verified' : `rejected:${out.result.error?.code ?? 'unknown'}`;
+  return {ok: committed, verdict, events: out.result.eventIds, command: out.result, plan};
 }
 
 /** P0 (direction 2.1): valid delegation → trade commits; owner revokes; the same request → refused. */
@@ -63,6 +66,8 @@ export async function runP0(c: Ctx) {
   if (c.trust.suspended(OWNER_SLOT)) c.trust.redelegate(OWNER_SLOT);
   const first = await ownerTrade(c, {label: 'p0-valid'});
   if (!('plan' in first)) return {ok: false, reason: first.reason};
+  // P0 shows a committed trade first; without one there is nothing to revoke against.
+  if (!first.ok) return {ok: false, reason: first.verdict, before: first.verdict};
   const version = await c.trust.revoke(OWNER_SLOT);
   c.runtime.commitExternal(nowOf(c), 'p0-revoke', (_s, emit) => emit({at: nowOf(c), source: 'live', kind: 'delegation_revoked', muse: OWNER_SLOT, line: 'Owner revoked the delegation', data: {newVersion: version}, tags: ['revocation']}));
   // The same request content, re-signed with the delegation that was just revoked.
@@ -118,11 +123,10 @@ export async function peerCheck(c: CredCtx, museId: string, now: number): Promis
 /**
  * The heartbeat's meeting gate (6.5, C04). Before the tick, every Muse's card and delegation are verified
  * (async crypto); the returned gate runs inside the tick, re-checks revocation synchronously and decides
- * before any greeting, trade or memory. A refused pair is logged at most once per 30 minutes (process
- * memory only, never world state).
+ * before any greeting, trade or memory. A refusal carries a dedup key: the runtime logs it once per pair,
+ * reason and window (persisted, so a restart does not repeat it).
  */
 export class MeetingCheck {
-  private logged = new Map<string, number>();
   private ctx: () => CredCtx;
   constructor(ctx: () => CredCtx) { this.ctx = ctx; }
   async prepare(s: WorldState, now: number): Promise<NonNullable<Hooks['canMeet']>> {
@@ -133,11 +137,9 @@ export class MeetingCheck {
       const pa = credentialProblem(c.trust, ca, at), pb = credentialProblem(c.trust, cb, at);
       const view = (cr: Credential | null | undefined) => cr ? {card: cr.card, delegation: cr.delegation.ok ? {ref: cr.delegation.ref, version: cr.delegation.version, signer_kind: cr.delegation.signer_kind} : cr.delegation} : null;
       if (!pa && !pb) return {ok: true, event: {at, source: 'live', kind: 'cards_verified', muse: a.id, other: b.id, place: place.id, line: 'Agent Cards and delegations verified both ways', data: {stage: 'verify', aVerifiesB: cb!.card, bVerifiesA: ca!.card, delegations: {[a.id]: view(ca), [b.id]: view(cb)}}, tags: []}};
-      const key = [a.id, b.id].sort().join('|'), last = this.logged.get(key);
-      if (last !== undefined && at - last < 30 * 60_000) return {ok: false, event: null};
-      this.logged.set(key, at);
+      const pair = [a.id, b.id].sort(), codes = pair.map(id => (id === a.id ? pa : pb) ?? 'ok').join('|');
       const impostor = [pa, pb].some(p => p?.startsWith('card_'));
-      return {ok: false, event: {at, source: 'live', kind: 'meeting_refused', muse: a.id, other: b.id, place: place.id, line: 'Meeting refused before greeting: credentials did not verify', data: {stage: 'verify', refused: {[a.id]: pa, [b.id]: pb}, delegations: {[a.id]: view(ca), [b.id]: view(cb)}}, tags: impostor ? ['meeting_refused', 'impostor_rejected'] : ['meeting_refused']}};
+      return {ok: false, event: {at, source: 'live', kind: 'meeting_refused', muse: a.id, other: b.id, place: place.id, line: 'Meeting refused before greeting: credentials did not verify', data: {stage: 'verify', refused: {[a.id]: pa, [b.id]: pb}, delegations: {[a.id]: view(ca), [b.id]: view(cb)}, dedup_key: `meeting:${pair.join('|')}:${codes}:verify`}, tags: impostor ? ['meeting_refused', 'impostor_rejected'] : ['meeting_refused']}};
     };
   }
 }
