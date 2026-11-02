@@ -1,6 +1,7 @@
+import {annotationDom} from './test-support/annotation-dom.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createPlan, publicReadAllowed, validatePlan, validateReference} from './lib/demo-video.mjs';
+import {annotationFor,createPlan, publicReadAllowed, validatePlan, validateReference} from './lib/demo-video.mjs';
 
 test('D05 prepares exactly 180 seconds and cannot accept pending release or missing event links',()=>{
  const p=createPlan();assert.equal(p.cuts.reduce((n,c)=>n+c.duration,0),180);
@@ -58,7 +59,7 @@ async function mediaFixture(t){
  for(const r of c.refs){const raw=JSON.stringify({runId:r.runId,runIdStored:true,run:{runId:r.runId,schemaVersion:'run-log-2'},input:{seq:r.inputSeq,runId:r.runId},event:{id:r.eventId,runId:r.runId,inputSeq:r.inputSeq,source:r.originalSource,data:{evidence:{requestId:r.requestId}}}});r.file=c.id+'-'+r.runId+'.event.json';r.sha256=sha(raw);await writeFile(join(dir,r.file),raw);}
  c.media=[];for(const v of c.views.length?c.views:[{id:'main',runId:'A',duration:c.duration,seekSec:0,snapshotHash:c.snapshotHash}]){
   const file=c.id+'-'+v.id+'.NOT-VIDEO',receiptFile=file+'.json',bytes=Buffer.from('OFFLINE NOT VIDEO '+file),refs=c.refs.filter(r=>r.runId===v.runId),takeId=c.id+'-'+v.id;
-  await writeFile(join(dir,file),bytes);const receipt={schema:'musely-demo-capture-2',kind:'recorded_public_capture',cutId:c.id,viewId:v.id,takeId,release:structuredClone(p.release),runId:v.runId,seekSec:v.seekSec,durationSeconds:v.duration,label:'REPLAY',virtual:true,originalSources:['live'],startOffsetSec:0,blockedRequests:0,refs,observed:{runId:v.runId,hash:v.snapshotHash,label:true},media:{file,sha256:sha(bytes),bytes:bytes.length}};
+  await writeFile(join(dir,file),bytes);const receipt={schema:'musely-demo-capture-2',kind:'recorded_public_capture',cutId:c.id,viewId:v.id,takeId,release:structuredClone(p.release),runId:v.runId,seekSec:v.seekSec,durationSeconds:v.duration,label:'REPLAY',virtual:true,originalSources:['live'],startOffsetSec:0,blockedRequests:0,refs,provenanceLabel:{...annotationFor(p,c,v),visible:true,valid:true},observed:{runId:v.runId,hash:v.snapshotHash,label:true},media:{file,sha256:sha(bytes),bytes:bytes.length}};
   await writeFile(join(dir,receiptFile),JSON.stringify(receipt));c.media.push({file,sha256:sha(bytes),receipt:receiptFile,viewId:v.id,takeId,runId:v.runId,duration:v.duration,refs});
  }}return {dir,p};
 }
@@ -95,10 +96,10 @@ test('D05 explicit P1 view and exact take duration are required before HTML GET 
 async function captureFixture(t,{bootstrap=[],recording=[]}={}){
  const {dir,p}=await mediaFixture(t),cut=p.cuts[11];cut.duration=1/16;p.cuts[0].duration+=6-cut.duration;
  const html='OFFLINE FROZEN HTML',before=globalThis.fetch;globalThis.fetch=async()=>new Response(html);t.after(()=>{globalThis.fetch=before;});p.release.htmlSha256=sha(html);
- let route,videoPath,mediaDir,bodyReads=0;const aborted=[],continued=[];
+ const annotation=annotationDom();let route,videoPath,mediaDir,bodyReads=0;const aborted=[],continued=[];
  const fire=async ({path,method='GET',origin=p.origin})=>{const url=origin+path,request={url:()=>url,method:()=>method,postData(){bodyReads++;throw Error('body must not be read');},headers(){throw Error('headers must not be read');}};await route({request:()=>request,abort:async()=>aborted.push({path,method}),continue:async()=>continued.push({path,method})});};
  const button=name=>({click:async()=>{if(name==='Play recorded run')for(const r of recording)await fire(r);}}),root={getByRole:(_role,{name})=>button(name),locator:()=>({fill:async()=>{},dispatchEvent:async()=>{},selectOption:async()=>{}}),evaluate:async()=>({runId:'A',hash:cut.snapshotHash,label:true})};
- const page={video:()=>({path:async()=>videoPath}),goto:async()=>{for(const r of bootstrap)await fire(r);},waitForFunction:async()=>{},locator:()=>root,evaluate:async fn=>fn.toString().includes('projection.events')?cut.refs.map(r=>r.eventId):undefined};
+ const page={video:()=>({path:async()=>videoPath}),goto:async()=>{for(const r of bootstrap)await fire(r);},waitForFunction:async()=>{},locator:()=>root,evaluate:async(fn,arg)=>fn.toString().includes('projection.events')?cut.refs.map(r=>r.eventId):annotation.evaluate(fn,arg)};
  const browser={newContext:async options=>{mediaDir=options.recordVideo.dir;videoPath=join(mediaDir,'OFFLINE-FIXTURE.NOT-VIDEO');await writeFile(videoPath,'OFFLINE MOCK BYTES NOT FOOTAGE');return {route:async(_pattern,fn)=>{route=fn;},newPage:async()=>page,close:async()=>{}};}};
  return {dir,p,cut,browser,aborted,continued,get mediaDir(){return mediaDir;},get bodyReads(){return bodyReads;}};
 }
@@ -141,9 +142,9 @@ test('D05 s05 can use a pinned actual controlled pair without inventing model or
  const{verifyBundle}=await import('./lib/demo-video.mjs'),f=await controlledBundle(t);assert.deepEqual(await verifyBundle(f.p,f.dir),[]);assert.ok(f.c.refs.every(r=>!r.requestId&&!r.signedVerdict&&r.role==='controlled-p1'));
 });
 async function controlledMedia(t){
- const f=await controlledBundle(t);for(const cut of f.p.cuts)for(const m of cut.media??[]){const path=join(f.dir,m.receipt),receipt=JSON.parse(await readFile(path,'utf8'));receipt.tooling=structuredClone(f.p.tooling);await writeFile(path,JSON.stringify(receipt));}f.c.media=[];for(const v of f.c.views){const file='CONTROLLED-OFFLINE-'+v.id+'.NOT-VIDEO',receipt=file+'.json',bytes=Buffer.from('OFFLINE TEST ONLY '+v.id),refs=f.c.refs.filter(r=>r.runId===v.runId),takeId='controlled-'+v.id;
- const controlledLabel={valid:true,visible:true,text:'REPLAY | CONTROLLED COMPARISON (SIMULATION) | '+v.id.toUpperCase()+' | VIRTUAL WORLD | LOCAL REPLAY | NO MODEL CALL | build '+f.p.release.sourceSha.slice(0,12),sourceSha:f.p.release.sourceSha,variant:v.id};
- const r={schema:'musely-demo-capture-2',kind:'recorded_public_capture',cutId:'s05',viewId:v.id,takeId,release:structuredClone(f.p.release),tooling:structuredClone(f.p.tooling),controlledPair:structuredClone(f.c.controlledPair),controlledLabel,runId:v.runId,seekSec:v.seekSec,durationSeconds:10,label:'REPLAY',virtual:true,originalSources:['replay'],startOffsetSec:0,blockedRequests:0,refs,observed:{runId:v.runId,hash:v.snapshotHash,label:true},media:{file,sha256:sha(bytes),bytes:bytes.length}};
+ const f=await controlledBundle(t);for(const cut of f.p.cuts)for(const m of cut.media??[]){const path=join(f.dir,m.receipt),receipt=JSON.parse(await readFile(path,'utf8'));receipt.tooling=structuredClone(f.p.tooling);receipt.provenanceLabel={...annotationFor(f.p,cut,{id:receipt.viewId,runId:receipt.runId}),visible:true,valid:true};await writeFile(path,JSON.stringify(receipt));}f.c.media=[];for(const v of f.c.views){const file='CONTROLLED-OFFLINE-'+v.id+'.NOT-VIDEO',receipt=file+'.json',bytes=Buffer.from('OFFLINE TEST ONLY '+v.id),refs=f.c.refs.filter(r=>r.runId===v.runId),takeId='controlled-'+v.id;
+ const controlledLabel={valid:true,visible:true,text:annotationFor(f.p,f.c,v).text,sourceSha:f.p.release.sourceSha,variant:v.id};
+ const r={schema:'musely-demo-capture-2',kind:'recorded_public_capture',cutId:'s05',viewId:v.id,takeId,release:structuredClone(f.p.release),tooling:structuredClone(f.p.tooling),controlledPair:structuredClone(f.c.controlledPair),controlledLabel,runId:v.runId,seekSec:v.seekSec,durationSeconds:10,label:'REPLAY',virtual:true,originalSources:['replay'],startOffsetSec:0,blockedRequests:0,refs,provenanceLabel:{...annotationFor(f.p,f.c,v),visible:true,valid:true},observed:{runId:v.runId,hash:v.snapshotHash,label:true},media:{file,sha256:sha(bytes),bytes:bytes.length}};
  await writeFile(join(f.dir,file),bytes);await writeFile(join(f.dir,receipt),JSON.stringify(r));f.c.media.push({file,receipt,sha256:sha(bytes),viewId:v.id,takeId,runId:v.runId,duration:10,refs});}return f;
 }
 test('D05 controlled media receipts require continuous label, artifact binding and tooling separate from release',async t=>{
