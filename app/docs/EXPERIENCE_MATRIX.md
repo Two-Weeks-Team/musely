@@ -485,6 +485,11 @@ Open decisions. Undecided facts are not invented as values; a task that needs on
 The outcomes of DEC-01 and DEC-10 on build `8ccb2b3` are recorded in `preview/docs/PREVIEW_ACCEPTANCE.md` (DEC-01 was released by the owner's decision of 2026-11-02; the DEC-10 release condition is met). The other decisions stay open.
 
 
+
+### I-03B local HTTPS integration (2026-11-02)
+
+All 20 MCP tools have real localhost TLS → Worker entry → WorldDO → signature/scope → transactional commit coverage in `scripts/mcp-integration.test.mjs`; all 16 signed writes exercise success/retry and scope/revocation/identity refusals. Agent inbox deadlines, trade/counter/receipt, gift/postcard, help, campfire and dual-owner revision/hash/approval_refs are included. Jolly is a valid peer for every key; self-targets use the authenticated current Muse. Delayed verification rechecks deadline and claim before mutation. [Matrix and limits](MCP_INTEGRATION.md). Generated-credential SQLite fixture results are separate from deployment and actual Muse-account receipts (I-04/D-01).
+
 ## I-09 shared-world projection update
 
 The app Live world scene, pins and selected Muse card use the same server IDs, version, inventory and event projection. The separate Story mode remains scripted. `docs/LIVE_SCENE.md` records the event/clip/prop/effect and fallback table, ten-character budget scope and tests. Local renderer fixtures are distinct from production, connector and physical-device acceptance.
