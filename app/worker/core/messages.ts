@@ -238,6 +238,8 @@ registerTaskKind('help', {
   firstRevision: () => 1,
   ownerApproval: false,
 });
+/** Permanent provenance and role tools can be worked on, but never spent as a service part. */
+const spendablePart = (item: string) => { const spec = itemSpec(item); return !!spec && !spec.permanent; };
 export const serviceable = (svc: HelpService, item: string) => { const spec = itemSpec(item); return !!spec && svc.about.includes(spec.category) && item !== svc.result; };
 export const helpServicesView = () => Object.fromEntries(Object.entries(HELP_SERVICES).map(([id, x]) => [id, {name: name(id), service: x.service, about: x.aboutText, needs: x.part, result: x.result}]));
 
@@ -250,6 +252,7 @@ export function proposeHelp(st: WorldState, me: string, a: {to: string; item: st
   if (m.travel || h.travel) return {ok: false, reason: 'travelling'};
   if (!near(m, h)) return {ok: false, reason: 'too_far'};
   if (!m.inventory.includes(a.item)) return {ok: false, reason: 'not_held'};
+  if (a.needs !== null && !spendablePart(a.needs)) return {ok: false, reason: 'not_consumable'};
   if (a.needs !== null && a.needs === a.item) return {ok: false, reason: 'same_item'};
   if (a.needs !== null && !m.inventory.includes(a.needs)) return {ok: false, reason: 'not_held', extra: {item: a.needs}};
   if (inbox.tasks.some(t => t.kind === 'help' && t.status === 'pending' && [t.from, t.to].includes(me) && [t.from, t.to].includes(a.to))) return {ok: false, reason: 'open_task_exists'};
@@ -270,7 +273,7 @@ function residentHelps(st: WorldState, t: Task, rule: Emit, at: number): 'comple
     rule({at, source: 'rule', kind: 'help_rejected', muse: t.to, other: t.from, place: helper.place, line: 'Not something I can help with.', data: {task_id: t.id, reason_public: null, stage: 'negotiate'}, tags: []});
     return 'rejected';
   }
-  if (help.part === svc.part && req.inventory.includes(svc.part)) { completeHelp(st, t, 'rule', rule, at); return 'completed'; }
+  if (help.part === svc.part && req.inventory.includes(svc.part) && completeHelp(st, t, 'rule', rule, at)) return 'completed';
   help.asked = svc.part;
   transitionTask(t, 'input-required', {by: t.to, action: 'answer', at, via: 'rule', awaiting: t.from, deadline: at + TASK_TTL_MS});
   rule({at, source: 'rule', kind: 'help_input_required', muse: t.to, other: t.from, place: helper.place, line: `I need ${itemName(svc.part)} for this.`, data: {task_id: t.id, needs: svc.part, deadline: t.deadline, stage: 'negotiate'}, tags: []});
@@ -280,6 +283,7 @@ function residentHelps(st: WorldState, t: Task, rule: Emit, at: number): 'comple
 /** Finishes a help Task (the caller checked distance, travel and that the item and part are held). */
 function completeHelp(st: WorldState, t: Task, via: 'live' | 'rule', emit: Emit, at: number) {
   const svc = HELP_SERVICES[t.to], help = t.help!, req = museOf(st, t.from), helper = museOf(st, t.to), part = help.part!;
+  if (!spendablePart(part) || !req.inventory.includes(part)) return false;
   // The grant goes first: it checks the item history before anything moves (I-06).
   grantItem(st.items, req, svc.result, at, helper.place, 'craft');
   req.inventory.splice(req.inventory.indexOf(part), 1);
@@ -289,6 +293,7 @@ function completeHelp(st: WorldState, t: Task, via: 'live' | 'rule', emit: Emit,
   const reflections = {[req.id]: `${name(helper.id)} helped with my ${itemName(help.item)}: got ${itemName(svc.result)}`.slice(0, 100), [helper.id]: `Helped ${name(req.id)} with ${itemName(help.item)} (${svc.service})`.slice(0, 100)};
   req.reflection = reflections[req.id]; helper.reflection = reflections[helper.id];
   emit({at, source: via, kind: 'help_completed', muse: helper.id, other: req.id, place: helper.place, line: svc.line, data: {task_id: t.id, service: svc.service, item: help.item, part, result: svc.result, accepted_by: helper.id, accepted_via: via, reflections, stage: 'complete'}, tags: ['help_completed']});
+  return true;
 }
 
 /** The help Task `id` if it is open and waiting for `me`; an overdue one expires now. Else the refusal reason. */
@@ -321,6 +326,7 @@ export function answerHelp(st: WorldState, me: string, a: {taskId: string; answe
     if (a.answer === 'need_item') return {ok: false, reason: 'wrong_answer'};
     const part = help.asked;
     if (!part) return {ok: false, reason: 'nothing_asked'};
+    if (!spendablePart(part)) return {ok: false, reason: 'not_consumable'};
     const why = reachable(); if (why) return why;
     if (!req.inventory.includes(part)) return {ok: false, reason: 'missing_part', extra: {needs: part}};
     help.part = part;
@@ -330,6 +336,7 @@ export function answerHelp(st: WorldState, me: string, a: {taskId: string; answe
   }
   if (a.answer === 'need_item') {
     const need = a.item!;
+    if (!spendablePart(need)) return {ok: false, reason: 'not_consumable'};
     if (need === help.item) return {ok: false, reason: 'same_item'};
     help.asked = need;
     transitionTask(t, 'input-required', {by: me, action: 'answer', at, via: 'live', awaiting: t.from, deadline: at + TASK_TTL_MS});
@@ -338,6 +345,7 @@ export function answerHelp(st: WorldState, me: string, a: {taskId: string; answe
   }
   if (!serviceable(svc, help.item)) return {ok: false, reason: 'item_not_serviceable', extra: {about: svc.aboutText}};
   if (!help.part) return {ok: false, reason: 'needs_input', extra: {hint: 'answer need_item with the item you need first'}};
+  if (!spendablePart(help.part)) return {ok: false, reason: 'not_consumable'};
   const why = reachable(); if (why) return why;
   if (!req.inventory.includes(help.part)) return {ok: false, reason: 'missing_part', extra: {needs: help.part}};
   completeHelp(st, t, 'live', live, at);

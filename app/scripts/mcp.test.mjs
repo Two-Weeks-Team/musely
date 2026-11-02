@@ -796,7 +796,7 @@ test('I-13 tools: invite_campfire, propose_help and answer_help are listed with 
   const residents = ['01-sunny', '02-moss', '03-ripple', '04-ember', '05-bloom', '06-ink', '07-tempo', '08-orbit', '09-copper'];
   const item = description => ({type: 'string', pattern: '^([a-z0-9_]{1,40}|postcard:[A-Za-z0-9:/_.-]{1,80})$', maxLength: 90, description});
   assert.deepEqual(byName.invite_campfire.inputSchema, {type: 'object', additionalProperties: false, required: ['to'], properties: {
-    to: {type: 'array', items: {type: 'string', enum: residents}, minItems: 1, maxItems: 8, uniqueItems: true, description: 'Muses to invite (1 to 8, no repeats)'},
+    to: {type: 'array', items: {type: 'string', enum: ['00-jolly', ...residents]}, minItems: 1, maxItems: 8, uniqueItems: true, description: 'Muses to invite (1 to 8, no repeats)'},
     text: {type: 'string', minLength: 1, maxLength: 140, description: 'Optional short public invitation line'}, ...command}});
   assert.deepEqual(byName.propose_help.inputSchema, {type: 'object', additionalProperties: false, required: ['to', 'item'], properties: {
     to: {type: 'string', enum: residents, description: 'Nearby Muse to ask'},

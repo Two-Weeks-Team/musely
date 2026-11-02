@@ -335,7 +335,7 @@ test('AC4 signature, scope, deadline and revocation on every message kind, and t
   const toRevoked = await t.call('propose_help', {to: '04-ember', item: 'postcard:commons:cafe'});
   assert.equal(toRevoked.structuredContent.refused, 'counterparty_delegation_revoked');
   assert.equal(t.state().inbox.tasks.filter(x => x.kind === 'help' && x.to === '04-ember').length, 0);
-  // The requester revoked: its pending help Task is cancelled at once, its open invite on the next tick, and its calls are refused.
+  // The requester revoked: its pending help Task and open invites are cancelled at once, and its calls are refused.
   await revokeMuse({trust: t.trust, runtime: t.runtime}, COPPER, 'test');
   await redelegateMuse({trust: t.trust, runtime: t.runtime}, COPPER, 'test');
   const pending = await t.call('propose_help', {to: COPPER, item: 'bloom'});
@@ -430,4 +430,66 @@ test('AC4 purge: the invitation and help request lines written under a key are a
   const invInput = inputs.map(x => JSON.parse(x)).find(x => JSON.stringify(x).includes('invite_campfire'));
   assert.ok(invInput, 'the invite command is in the run log');
   assert.match(JSON.stringify(invInput), /"omitted":\["text"\]/);
+});
+
+
+test('I-13 a connected peer can invite the owner Muse and cannot invite itself', async () => {
+  const t = await setup({peer: true});
+  t.edit(st => { give(st, COPPER, 'invite_token', 'invite_token'); for (const id of [OWNER_SLOT, COPPER, '01-sunny']) place(st, id, 'commons:cafe'); });
+  const before = count(t.muse(COPPER).inventory, 'invite_token');
+  const r = await t.callPeer('invite_campfire', {to: [OWNER_SLOT, '01-sunny']});
+  assert.equal(r.isError, false, JSON.stringify(r));
+  assert.ok(r.structuredContent.invite.to.includes(OWNER_SLOT));
+  assert.equal(count(t.muse(COPPER).inventory, 'invite_token'), before - 1);
+  const self = await t.callPeer('invite_campfire', {to: [COPPER]});
+  assert.equal(self.structuredContent.refused, 'self_invite');
+  assert.equal(count(t.muse(COPPER).inventory, 'invite_token'), before - 1);
+});
+
+test('I-13 revoke then re-delegate cannot revive a previous campfire invitation', async () => {
+  const t = await setup();
+  t.edit(st => { give(st, OWNER_SLOT, 'invite_token'); for (const id of [OWNER_SLOT, '01-sunny', '04-ember']) place(st, id, 'commons:cafe'); });
+  const r = await t.call('invite_campfire', {to: ['01-sunny', '04-ember']});
+  assert.equal(r.isError, false);
+  const id = r.structuredContent.invite.id;
+  await revokeMuse({trust:t.trust,runtime:t.runtime,now:()=>t.clock.now},OWNER_SLOT,'test');
+  assert.equal(t.invite(id).status, 'cancelled', 'cancel in the revocation commit, before any heartbeat');
+  redelegateMuse({trust:t.trust,runtime:t.runtime,now:()=>t.clock.now},OWNER_SLOT,'test');
+  t.edit(st => { for (const m of [OWNER_SLOT, '01-sunny', '04-ember']) place(st,m,'commons:campfire'); });
+  await t.tickOnce();
+  assert.equal(t.invite(id).status,'cancelled');
+  assert.equal(t.events('campfire_gathering').filter(e=>e.data.invite_id===id).length,0);
+});
+
+test('I-13 a revoked invitee cannot rejoin an old invitation by re-delegating', async () => {
+  const t = await setup({peer:true});
+  t.edit(st=>{give(st,OWNER_SLOT,'invite_token');for(const m of [OWNER_SLOT,COPPER,'01-sunny'])place(st,m,'commons:cafe');});
+  const r=await t.call('invite_campfire',{to:[COPPER,'01-sunny']});const id=r.structuredContent.invite.id;
+  await revokeMuse({trust:t.trust,runtime:t.runtime,now:()=>t.clock.now},COPPER,'test');
+  assert.equal(t.invite(id).answers[COPPER].answer,'unavailable');
+  redelegateMuse({trust:t.trust,runtime:t.runtime,now:()=>t.clock.now},COPPER,'test');
+  t.edit(st=>{for(const m of [OWNER_SLOT,COPPER,'01-sunny'])place(st,m,'commons:campfire');});
+  await t.tickOnce();
+  assert.equal(t.invite(id).answers[COPPER].answer,'unavailable');
+  assert.equal(t.events('campfire_gathering').filter(e=>e.data.invite_id===id).length,0);
+});
+
+test('I-13 permanent stamps and role tools cannot be requested, supplied or consumed as help parts', async () => {
+  const t=await setup({peer:true});
+  t.edit(st=>{place(st,OWNER_SLOT,'commons:cafe');place(st,COPPER,'commons:cafe');give(st,OWNER_SLOT,'bloom','stamp_park','watering_can');});
+  const direct=await t.call('propose_help',{to:COPPER,item:'bloom',needs:'stamp_park'});
+  assert.equal(direct.structuredContent.refused,'not_consumable');
+  const p=await t.call('propose_help',{to:COPPER,item:'bloom'});const id=p.structuredContent.task.id;
+  for(const item of ['stamp_park','watering_can']){
+    const ask=await t.callPeer('answer_help',{task_id:id,answer:'need_item',item});
+    assert.equal(ask.structuredContent.refused,'not_consumable',item);
+  }
+  // Persisted or legacy malformed progress must also fail closed at the supply and final consumption boundaries.
+  t.edit(st=>{const x=st.inbox.tasks.find(x=>x.id===id);x.help.asked='stamp_park';x.awaiting=OWNER_SLOT;});
+  assert.equal((await t.call('answer_help',{task_id:id,answer:'accept'})).structuredContent.refused,'not_consumable');
+  t.edit(st=>{const x=st.inbox.tasks.find(x=>x.id===id);x.help.part='stamp_park';x.awaiting=COPPER;});
+  const before=[...t.muse(OWNER_SLOT).inventory];
+  assert.equal((await t.callPeer('answer_help',{task_id:id,answer:'accept'})).structuredContent.refused,'not_consumable');
+  assert.deepEqual(t.muse(OWNER_SLOT).inventory,before);
+  assert.equal(t.events('help_completed').length,0);
 });
