@@ -25,7 +25,7 @@ export type ItemSpec = {
  */
 export const EFFECT_RULES = {
   bus_speed: {does: 'trips over 250 m ride the bus (5x walking speed)', where: 'items.ts speedFor'},
-  teleport: {does: 'verified-neighborhood teleport; one token spent per teleport', where: 'items.ts speedFor, location.ts teleportCheck, travel.ts teleport'},
+  teleport: {does: 'verified-neighborhood teleport; one token spent per teleport. Only the owner\'s Muse, into its owner\'s verified cell: residents have no neighborhood verification', where: 'items.ts speedFor, rules.ts makeHooks, location.ts teleportCheck, travel.ts teleport'},
   plant: {does: 'opens the garden_plant beat (with a Clover Seed) that grows a Bloom', where: 'beats.ts garden_plant'},
   bloom_seed: {does: 'consumed by garden_plant into a Bloom; the Garden Pass is kept', where: 'beats.ts garden_plant, world.ts finishBeat'},
   send_postcard: {does: 'one stamp is spent per postcard mailed (send_postcard tool)', where: 'mcp-tools.ts send_postcard'},
@@ -470,8 +470,11 @@ export function commitTrade(l: Ledger, day: string, a: {id: string; inventory: s
   appendHistory(l, {item: want, from: b.id, to: a.id, place: a.place, at, via: 'trade'});
 }
 
-/** Abilities that items grant for a trip (hook for the engine). */
-export function speedFor(inventory: string[], from: Place, to: Place, neighborhoodVerified = true): 'walk' | 'bus' | 'taxi' {
+/**
+ * Abilities that items grant for a trip (hook for the engine). A Taxi Token teleports only when the caller has checked the
+ * neighborhood verification for this trip (direction v2, 13, 13.1: location.ts teleportCheck); unverified is the default.
+ */
+export function speedFor(inventory: string[], from: Place, to: Place, neighborhoodVerified = false): 'walk' | 'bus' | 'taxi' {
   if (inventory.includes('taxi_token') && neighborhoodVerified && (to.zone === 'bay' || distanceM(from, to) > 800)) return 'taxi';
   if (inventory.includes('transit_pass') && distanceM(from, to) > 250) return 'bus';
   return 'walk';

@@ -57,8 +57,8 @@ export type EncounterReply = {muse: string; other: string; place: string; encoun
 export type Hooks = {
   /** Item discovery etc. when a Muse arrives somewhere (task 4 rules). */
   onArrive?: (s: WorldState, m: MuseState, place: Place, rand: () => number, at: number) => Omit<WorldEvent, 'id' | 'tick'>[];
-  /** Speed a Muse may use for a trip (items change abilities; task 4). */
-  speedFor?: (m: MuseState, from: Place, to: Place) => Speed;
+  /** Speed a Muse may use for a trip (items change abilities; task 4). `s` lets the hook check neighborhood verification (13.1). */
+  speedFor?: (m: MuseState, from: Place, to: Place, s?: WorldState) => Speed;
   /** Trades, gifts and help when two Muses meet (task 4 rules). */
   onEncounter?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, rand: () => number, at: number) => Omit<WorldEvent, 'id' | 'tick'>[];
   /** Credential check before two Muses meet (C04). On refusal neither Muse changes; only `event` is logged. */
@@ -277,7 +277,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       const picked = chooseDestination(s, m, rand, clock.hour);
       // A Muse following its owner (13.1) wanders only inside the owner's cell.
       const dest = picked && m.anchor && placeCell(picked) !== m.anchor ? null : picked;
-      if (dest) { startTrip(m, place, dest, now, 'scripted', emit, hooks); continue; }
+      if (dest) { startTrip(s, m, place, dest, now, 'scripted', emit, hooks); continue; }
     }
     const beat = weightedPick(rand, stay, b => beatWeight(b, m.id));
     if (beat) startBeat(m, beat, place, now, 'scripted', emit, s);
@@ -380,14 +380,14 @@ function finishBeat(m: MuseState, now: number, emit: (e: Omit<WorldEvent, 'id' |
   m.beat = null;
 }
 
-function startTrip(m: MuseState, from: Place, to: Place, now: number, source: Source, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void, hooks: Hooks) {
-  const speed = hooks.speedFor?.(m, from, to) ?? 'walk';
+function startTrip(s: WorldState, m: MuseState, from: Place, to: Place, now: number, source: Source, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void, hooks: Hooks) {
+  const speed = hooks.speedFor?.(m, from, to, s) ?? 'walk';
   const ms = tripMs(from, to, speed);
   // A Taxi Token is spent when the in-world teleport starts (not a payment, not a booking).
   if (speed === 'taxi') { const k = m.inventory.indexOf('taxi_token'); if (k >= 0) m.inventory.splice(k, 1); }
   m.travel = {to: to.id, departAt: now, arriveAt: now + ms, speed, chosen: source === 'live' || source === 'replay'};
   m.beat = null;
-  emit({at: now, source, kind: 'depart', muse: m.id, place: from.id, data: {to: to.id, speed, etaMs: Math.round(ms), distanceM: Math.round(distanceM(from, to))}, tags: []});
+  emit({at: now, source, kind: 'depart', muse: m.id, place: from.id, data: {to: to.id, speed, etaMs: Math.round(ms), distanceM: Math.round(distanceM(from, to)), ...(speed === 'taxi' ? {spent: 'taxi_token', neighborhood: 'verified (virtual, demo)'} : {})}, tags: []});
 }
 
 function findPlaceByName(name: string): Place | null {
@@ -412,10 +412,11 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   if (freedom === 'where' || freedom === 'plan') {
     const dest = findPlaceByName(o.target_place);
     if (!dest) return reject('unknown place: ' + o.target_place.slice(0, 40));
-    if (dest.zone === 'bay' && !m.inventory.includes('taxi_token') && !m.inventory.includes('transit_pass')) return reject('Bay places need a Taxi Token or Transit Pass');
+    // A Taxi Token counts only where it may teleport (13.1: the owner's verified cell); otherwise a Bay trip needs the bus.
+    if (dest.zone === 'bay' && !m.inventory.includes('transit_pass') && hooks.speedFor?.(m, here, dest, s) !== 'taxi') return reject('Bay places need a Transit Pass, or a Taxi Token in a verified neighborhood');
     const offScript = dest.id !== scripted?.id;
     emit({...base, kind: 'spotlight', place: here.id, line: o.line || null, data: {...base.data, target: dest.id, live: true, offScript}, tags: offScript ? ['off_script'] : []});
-    if (dest.id !== here.id) startTrip(m, here, dest, now, d.source, emit, hooks);
+    if (dest.id !== here.id) startTrip(s, m, here, dest, now, d.source, emit, hooks);
     return;
   }
   if (freedom === 'who') {
@@ -424,7 +425,7 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
     m.intent = {kind: 'greet', target: other.id};
     emit({...base, kind: 'spotlight', place: here.id, other: other.id, line: o.line || null, data: {...base.data, live: true, offScript: true}, tags: ['off_script']});
     const there = placeById(other.travel?.to ?? other.place);
-    if (there.id !== here.id) startTrip(m, here, there, now, d.source, emit, hooks);
+    if (there.id !== here.id) startTrip(s, m, here, there, now, d.source, emit, hooks);
     return;
   }
   // offer: propose an in-world trade or gift with an item the Muse actually holds.
@@ -434,7 +435,7 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   m.intent = {kind: 'trade', target: other.id, give: o.offer_item || null, want: o.want_item || null};
   if (o.want_item && ITEM_BY_ID.has(o.want_item) && !m.wants.items.includes(o.want_item)) updateWants(m, {items: [o.want_item, ...m.wants.items].slice(0, 4)}, d.source === 'live' ? 'spark' : m.wants.source, now);
   const there = placeById(other.travel?.to ?? other.place);
-  if (there.id !== here.id) startTrip(m, here, there, now, d.source, emit, hooks);
+  if (there.id !== here.id) startTrip(s, m, here, there, now, d.source, emit, hooks);
   emit({...base, kind: 'trade_intent', place: here.id, other: other.id, line: o.line || null, data: {...base.data, give: o.offer_item || null, want: o.want_item || null, live: true}, tags: ['off_script']});
 }
 

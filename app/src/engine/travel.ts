@@ -22,7 +22,7 @@ export function beginTrip(m: MuseState, to: Place, now: number, source: Source, 
 
 /** Verified teleport: the owner's cell is verified, the destination is in it, and a Taxi Token is spent. */
 export function teleport(s: WorldState, m: MuseState, to: Place, now: number, source: Source, emit: Emit, hooks: Hooks, why: string): string | null {
-  const refusal = teleportCheck(s.owner, m.inventory, to);
+  const refusal = teleportCheck(s.owner, m, to);
   if (refusal) return refusal;
   const from = placeById(m.place);
   m.inventory.splice(m.inventory.indexOf('taxi_token'), 1);

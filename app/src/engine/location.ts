@@ -96,12 +96,37 @@ export function tagLocation<E extends {muse: string | null; other?: string | nul
   return {...e, data: {...(e.data ?? {}), location: VIRTUAL_LABEL}};
 }
 
-/** Teleport rule (13, 13.1): the destination is in the owner's cell, that cell is verified, and a Taxi Token is held. */
-export function teleportCheck(owner: OwnerLocation | undefined, inventory: readonly string[], to: Place): string | null {
-  if (!owner || !owner.verified || owner.source !== 'virtual') return 'neighborhood_not_verified';
+/**
+ * Teleport rule (13, 13.1): the Muse is the owner's Muse, the destination is in the owner's cell, that cell is verified,
+ * and a Taxi Token is held. Neighborhood verification belongs to an owner location, so a resident (no owner) or any Muse
+ * other than the owner's is never verified.
+ */
+export function teleportCheck(owner: OwnerLocation | undefined, muse: {id: string; inventory: readonly string[]}, to: Place): string | null {
+  if (!owner || owner.muse !== muse.id || !owner.verified || owner.source !== 'virtual') return 'neighborhood_not_verified';
   if (placeCell(to) !== owner.cell) return 'not_in_owner_cell';
-  if (!inventory.includes('taxi_token')) return 'no_taxi_token';
+  if (!muse.inventory.includes('taxi_token')) return 'no_taxi_token';
   return null;
+}
+
+/**
+ * Device location → preset neighborhood (13.1 "real GPS", S1–S3: the permission flow only). The browser maps the device position to
+ * the nearest preset within NEIGHBORHOOD_KM and keeps only the preset id: the coordinates are neither returned, sent nor stored.
+ * Outside every preset's radius (for example the team in Korea) the answer is null and the virtual location stays in use.
+ */
+export const NEIGHBORHOOD_KM = 15;
+export function nearestPreset(lat: number, lng: number): PresetId | null {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  let best: PresetId | null = null, bestKm = Infinity;
+  for (const p of PRESETS) {
+    const km = haversineKm(lat, lng, placeById(p.place).lat, placeById(p.place).lng);
+    if (km < bestKm) { best = p.id; bestKm = km; }
+  }
+  return bestKm <= NEIGHBORHOOD_KM ? best : null;
+}
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const r = Math.PI / 180, dLat = (lat2 - lat1) * r, dLng = (lng2 - lng1) * r;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
 /** Resolves a move target: a catalog place id or a preset id. */

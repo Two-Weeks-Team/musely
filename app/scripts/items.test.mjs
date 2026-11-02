@@ -14,6 +14,7 @@ import {ITEMS, ITEM_BY_ID, ITEM_EFFECTS, EFFECT_RULES, effectRule, discover, rec
 import {sha256Hex} from '../src/engine/sha256.ts';
 import {BEATS, inHours} from '../src/engine/beats.ts';
 import {placeById, PLACES} from '../src/engine/places.ts';
+import {placeCell} from '../src/engine/location.ts';
 import {createWorld, tick, TICK_MS, spotlightFor, localClock} from '../src/engine/world.ts';
 import {makeHooks, resolveMeeting} from '../src/engine/rules.ts';
 import {rngFor} from '../src/engine/rng.ts';
@@ -71,10 +72,25 @@ test('items change abilities: Transit Pass rides the bus, Taxi Token teleports t
   const from = placeById('commons:campfire'), far = PLACES.filter(p => p.zone === 'neighborhood').at(-1), bay = placeById('bay:stanford');
   assert.equal(speedFor([], from, far), 'walk');
   assert.equal(speedFor(['transit_pass'], from, far), 'bus');
-  assert.equal(speedFor(['taxi_token'], from, bay), 'taxi');
+  assert.equal(speedFor(['taxi_token'], from, bay), 'walk', 'unverified by default: a Taxi Token alone does not teleport (13.1)');
+  assert.equal(speedFor(['taxi_token'], from, bay, true), 'taxi');
 });
 
 // P1 (direction 2.1): same start, same seed — the only difference is one item. Choices, movement and cooperation differ.
+/** Bus departures of `muse` while it held no Transit Pass (crafted, traded or given passes count; expiry ends one). Must be 0. */
+function busWithoutPass(log, muse, holding) {
+  let n = 0;
+  for (const e of log) {
+    const d = e.data ?? {};
+    if (e.kind === 'craft' && e.muse === muse && d.item === 'transit_pass') holding = true;
+    if (e.kind === 'item_expired' && e.muse === muse && d.item === 'transit_pass') holding = false;
+    if (e.kind === 'trade_completed' && ((e.muse === muse && d.want === 'transit_pass') || (e.other === muse && d.give === 'transit_pass'))) holding = true;
+    if (e.kind === 'trade_completed' && ((e.muse === muse && d.give === 'transit_pass') || (e.other === muse && d.want === 'transit_pass'))) holding = false;
+    if (e.kind === 'discover' && e.muse === muse && d.item === 'transit_pass') holding = true;
+    if (e.kind === 'depart' && e.muse === muse && d.speed === 'bus' && !holding) n++;
+  }
+  return n;
+}
 function runWith(give) {
   const hooks = makeHooks();
   let s = createWorld('p1-world', T0); const log = [];
@@ -87,7 +103,9 @@ test('P1: the same start with and without a Transit Pass / Garden Pass diverges 
   const trips = r => r.log.filter(e => e.kind === 'depart' && e.muse === '03-ripple');
   const bus = trips(boosted).filter(e => e.data.speed === 'bus');
   assert.ok(bus.length > 0, 'Ripple rides the bus only when it holds the pass');
-  assert.equal(trips(base).filter(e => e.data.speed === 'bus').length, 0);
+  // Without the given pass Ripple may still craft one (three bus stops, I-08: residents no longer take taxis), but never rides before it.
+  assert.equal(busWithoutPass(base.log, '03-ripple', false), 0);
+  assert.ok(trips(base).filter(e => e.data.speed === 'bus').length < bus.length, 'the given pass rides the bus more');
   const reach = r => Math.max(0, ...trips(r).map(e => e.data.distanceM));
   assert.notDeepEqual(trips(base).map(e => e.data.to), trips(boosted).map(e => e.data.to), 'different destinations');
   const blooms = r => r.log.filter(e => e.kind === 'craft' && e.data.item === 'bloom').length;
@@ -99,22 +117,26 @@ test('P1: the same start with and without a Transit Pass / Garden Pass diverges 
   assert.ok(reach(boosted) > reach(base), 'the pass carries Ripple farther');
 });
 
-test('a Taxi Token is consumed by the teleport it enables', () => {
+test('a Taxi Token is consumed by the teleport it enables (the owner\'s Muse, into its verified owner cell)', () => {
   const hooks = makeHooks();
   let s = createWorld('taxi', T0);
-  const ripple = s.muses.find(m => m.id === '03-ripple');
-  ripple.inventory.push('taxi_token');
-  const decision = n => ({muse: '03-ripple', freedom: 'where', source: 'live', output: {decision: 'go', target_place: 'Stanford', target_agent: '', offer_item: '', want_item: '', public_reason: 'reading', line: ''}});
-  // advance until Ripple holds the spotlight
+  const jolly = s.muses.find(m => m.id === OWNER_SLOT);
+  jolly.inventory.push('taxi_token');
+  // The owner is "at" Stanford with a verified neighborhood (13.1, demo verification of the virtual cell).
+  s.owner = {...s.owner, preset: 'stanford', cell: placeCell('bay:stanford'), target: 'bay:stanford', verified: true};
+  const decision = () => ({muse: OWNER_SLOT, freedom: 'where', source: 'live', output: {decision: 'go', target_place: 'Stanford', target_agent: '', offer_item: '', want_item: '', public_reason: 'reading', line: ''}});
+  // advance until the owner's Muse holds the spotlight
   for (let i = 0; i < 20; i++) {
     const now = T0 + i * TICK_MS, sp = (s.muses[s.spotlight.cursor % 10]).id;
-    const r = tick(s, {now, decision: sp === '03-ripple' ? decision() : null}, hooks); s = r.state;
-    if (r.events.some(e => e.kind === 'depart' && e.muse === '03-ripple' && e.data.speed === 'taxi')) {
-      assert.ok(!s.muses.find(m => m.id === '03-ripple').inventory.includes('taxi_token'));
+    const r = tick(s, {now, decision: sp === OWNER_SLOT ? decision() : null}, hooks); s = r.state;
+    const dep = r.events.find(e => e.kind === 'depart' && e.muse === OWNER_SLOT && e.data.speed === 'taxi');
+    if (dep) {
+      assert.ok(!s.muses.find(m => m.id === OWNER_SLOT).inventory.includes('taxi_token'));
+      assert.equal(dep.data.spent, 'taxi_token');
       return;
     }
   }
-  assert.fail('Ripple never took the taxi');
+  assert.fail('the owner\'s Muse never took the taxi');
 });
 
 // ===================== I-06 (#53): effects, expiry, history chain =====================
@@ -129,8 +151,9 @@ const NIGHT = Date.parse('2026-11-04T04:00:00Z'), NOON = Date.parse('2026-11-03T
 // One behaviour probe per implemented effect rule: the same situation with and without the item differs.
 const PROBES = {
   bus_speed: () => { const from = placeById('commons:campfire'), far = PLACES.filter(p => p.zone === 'neighborhood').at(-1); return speedFor([], from, far) === 'walk' && speedFor(['transit_pass'], from, far) === 'bus'; },
-  teleport: () => speedFor([], placeById('commons:campfire'), placeById('bay:stanford')) === 'walk' && speedFor(['taxi_token'], placeById('commons:campfire'), placeById('bay:stanford')) === 'taxi',
-  plant: () => bloomRun(true).blooms > 0 && bloomRun(false).blooms === 0,
+  teleport: () => speedFor([], placeById('commons:campfire'), placeById('bay:stanford')) === 'walk' && speedFor(['taxi_token'], placeById('commons:campfire'), placeById('bay:stanford'), true) === 'taxi',
+  // Without the given pass Moss may find one in the garden later; no Bloom grows before it holds one.
+  plant: () => { const w = bloomRun(true), wo = bloomRun(false); return w.blooms > 0 && wo.beforePass === 0 && w.blooms > wo.beforePass; },
   bloom_seed: () => { const r = plantFinish(); return r.blooms === 1 && r.seeds === 0 && r.passKept; },
   // The postage rule lives in the MCP tool: run the real tool without a stamp (refused) and with one (spent).
   send_postcard: async () => {
@@ -168,8 +191,15 @@ function bloomRun(withPass) {
   let s = createWorld('bloom-probe', T0);
   const moss = at(s, '02-moss');
   if (withPass) grantItem(s.items, moss, 'garden_pass', T0, moss.place, 'craft');
-  const r = runTicks(s, T0, 600);
-  return {blooms: r.log.filter(e => e.kind === 'craft' && e.data.item === 'bloom' && e.muse === '02-moss').length};
+  // beforePass: Blooms grown in ticks before Moss first held a Garden Pass (found, traded or given).
+  const hooks = makeHooks(); let blooms = 0, beforePass = 0, held = withPass;
+  for (let i = 0; i < 600; i++) {
+    const r = tick(s, {now: T0 + i * TICK_MS}, hooks); s = r.state;
+    const n = r.events.filter(e => e.kind === 'craft' && e.data.item === 'bloom' && e.muse === '02-moss').length;
+    blooms += n; if (!held) beforePass += n;
+    held ||= at(s, '02-moss').inventory.includes('garden_pass');
+  }
+  return {blooms, beforePass};
 }
 /** Moss finishing a garden_plant beat now, holding one Clover Seed and a Garden Pass. */
 function plantFinish() {
@@ -420,7 +450,9 @@ test('AC3 expiry in the engine: the tick at 24h removes the pass, logs item_expi
   assert.ok(after.events.some(e => e.kind === 'item_expired' && e.muse === '03-ripple' && e.data.item === 'transit_pass'));
   assert.ok(!at(after.state, '03-ripple').inventory.includes('transit_pass'));
   const later = runTicks(after.state, T0 + 24 * H + TICK_MS, 240);
-  assert.equal(later.log.filter(e => e.kind === 'depart' && e.muse === '03-ripple' && e.data.speed === 'bus').length, 0);
+  // Ripple may craft a new pass at three bus stops later; it never rides the bus before that.
+  assert.equal(busWithoutPass(later.log, '03-ripple', false), 0);
+  assert.ok(later.log.some(e => e.kind === 'depart' && e.muse === '03-ripple' && e.data.speed === 'walk'), 'the next trips walk');
   assert.equal(verifyHistory(later.s.items).ok, true);
 });
 

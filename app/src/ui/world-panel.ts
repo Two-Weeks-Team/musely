@@ -23,6 +23,9 @@ import {computeAutonomy} from './autonomy';
 import {EMPTY_FILTER, matchFilter, type Filter} from './replay-core';
 import {sourceLabel, modelNote} from './source-label';
 import {taskCancelledText, envelopeFacts} from './evidence-text';
+import {mountLocationChip, deviceLocationCard} from './location-bar';
+import {museLine, snapshotOf, type OwnerLocationView} from './location-state';
+import {placeCell} from '../engine/location';
 export {sourceLabel};
 
 type Ev = {seq: number; id: string; tick: number; at: number; source: 'live' | 'rule' | 'scripted' | 'replay'; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data: any; tags: string[]};
@@ -186,6 +189,8 @@ export function mountWorldPanel(map: LibreMap) {
   const spot = el('span', 'spot-chip'); spot.id = 'spot-chip'; spot.textContent = 'Spotlight · …';
   header.insertBefore(spot, header.querySelector('#about'));
   header.insertBefore(open, header.querySelector('#about'));
+  // Owner location (13.1): always on screen while the virtual location is used, in story and world mode alike.
+  const locChip = mountLocationChip(header, spot);
 
   const note = el('div', 'commons-note', 'Commons scene: scripted 3:30 story · the live world runs on the map and in Live world');
   note.id = 'commons-note';
@@ -451,24 +456,31 @@ export function mountWorldPanel(map: LibreMap) {
     const dl = el('dl', 'facts');
     const f = (k: string, v: unknown) => { if (v !== undefined && v !== null && v !== '') dl.append(el('dt', '', k), el('dd', '', String(v))); };
     const m = loc.muse ?? {};
-    f('Owner cell', `${loc.cell_label ?? ''} (${loc.cell ?? '?'})${loc.neighborhood_verified ? ' · neighborhood verified' : ''}`);
-    f("Muse's current place", m.place?.name ?? m.place?.id);
-    f('Muse is', m.travelling_to ? `walking to ${m.travelling_to.name ?? m.travelling_to.id} (${m.speed ?? 'walk'}), about ${Math.max(1, Math.round((m.eta_ms ?? 0) / 60000))} min` : m.at_owner_cell ? 'with the owner' : 'away from the owner cell');
+    const held = world?.muses.find(x => x.id === m.id)?.inventory.filter(i => i === 'taxi_token').length ?? null;
+    f('Owner destination cell', `${loc.cell_label ?? ''} (${loc.cell ?? '?'}) · ${loc.neighborhood_verified ? 'neighborhood verified (virtual, demo)' : 'neighborhood not verified'}`);
+    f("Muse's current cell", m.place ? `${m.place.name ?? m.place.id} (${PLACE_BY_ID.has(m.place.id) ? placeCell(m.place.id) : '?'})` : null);
+    f('Muse is', museLine(snapshotOf(loc, r.at), Date.now()));
+    f('Teleport', `needs the neighborhood verified and a Taxi Token${held === null ? '' : ` (holds ${held})`}; one token per teleport`);
     box.append(dl, el('p', 'muted', 'The owner cell is where the Muse walks to and what neighborhood verification checks. Discovery, trades and the MCP world state use the Muse\'s own current place, which changes only by travelling or a verified teleport. No device GPS spoofing or VPN.'));
     const presets = (loc.presets ?? []) as {id: string; label: string}[];
     if (presets.length) {
       const lab = el('label', 'fld'); lab.append(el('span', '', 'Virtual location preset'));
       const sel = el('select'); sel.setAttribute('aria-label', 'Virtual location preset'); lab.append(sel);
       for (const p of presets) { const o = el('option', '', p.label); o.value = p.id; if (p.id === loc.preset) o.selected = true; sel.append(o); }
+      // Demo neighborhood verification (13.1): staged on the virtual cell, cleared when the owner moves to another cell.
+      const vlab = el('label', 'fld check'); const verify = el('input'); verify.type = 'checkbox'; verify.id = 'loc-verify'; verify.checked = !!loc.neighborhood_verified;
+      vlab.append(verify, el('span', '', 'Verify this neighborhood (virtual, demo)'));
       const go = el('button', 'secondary', 'Move owner here (owner session)'); go.type = 'button';
       const msg = el('p', 'muted'); msg.setAttribute('role', 'status');
       go.onclick = async () => {
-        const res = await fetchJson<{follow?: {mode?: string} | null}>('/api/owner/location', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({source: 'virtual', preset: sel.value})});
-        msg.textContent = res.ok ? (res.data.follow?.mode === 'paused' ? 'Owner location set. The Muse is paused (delegation revoked), so it stays where it is until the owner delegates again.' : 'Moved. Watch the Muse walk on the map.') : /HTTP 40[13]/.test(res.error) ? 'Only the owner session can move the owner. Start it in the Identity tab.' : `Could not move the owner (${res.error}). Nothing changed.`;
+        const res = await fetchJson<{follow?: {mode?: string; etaMs?: number} | null}>('/api/owner/location', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({source: 'virtual', preset: sel.value, verify: verify.checked})});
+        const mode = res.ok ? res.data.follow?.mode : null, mins = res.ok && res.data.follow?.etaMs ? `, about ${Math.max(1, Math.round(res.data.follow.etaMs / 60_000))} min` : '';
+        msg.textContent = res.ok ? (mode === 'paused' ? 'Owner location set. The Muse is paused (delegation revoked), so it stays where it is until the owner delegates again.' : mode === 'teleport' ? 'Teleported: the neighborhood is verified and one Taxi Token was spent.' : mode === 'stay' ? 'Owner location set. The Muse is already in this cell.' : mode === 'bus' ? `Moved. The Muse rides the bus${mins}.` : `Moved. The Muse walks there${mins}. Watch it on the map.`) : /HTTP 40[13]/.test(res.error) ? 'Only the owner session can move the owner. Start it in the Identity tab.' : `Could not move the owner (${res.error}). Nothing changed.`;
         await refresh();
       };
-      box.append(lab, go, msg);
+      box.append(lab, vlab, go, msg);
     }
+    box.append(el('h4', '', 'Device location (GPS)'), deviceLocationCard());
     const see = el('button', 'secondary', 'See the preview location states (scripted)'); see.type = 'button'; see.onclick = () => { selectFlow('location-walk'); tab = 'flows'; void render(); };
     box.append(see);
     body.append(box);
@@ -479,10 +491,13 @@ export function mountWorldPanel(map: LibreMap) {
     // Replay makes no requests: nothing refreshes while it is on screen, whoever asked (a poll, a Retry, or a button chain that
     // began before it opened). The next refresh after the replay asks again.
     if (isolation.replay) return;
+    const locReq = load<OwnerLocationView>('location', '/api/owner/location');
     // First load takes the newest events (the live tail); later polls fetch only what is new since then.
     const [wr, er] = await Promise.all([load<WorldView>('world', '/api/world'), load<Ev[]>('events', lastSeq ? `/api/world/events?since=${lastSeq}&limit=500` : '/api/world/events?tail=200')]);
+    const lr = await locReq;
     if (isolation.replay || (!wr.ok && wr.error === BLOCKED) || (!er.ok && er.error === BLOCKED)) return; // asked before the replay opened: not applied; the next refresh fetches it again
     if (wr.ok) world = wr.data;
+    locChip.update(lr);
     if (er.ok && er.data.length) { events.push(...er.data); events = events.slice(-1500); lastSeq = er.data[er.data.length - 1].seq; }
     pins.update(world);
     const last = [...events].reverse().find(e => e.kind === 'spotlight' || e.kind === 'spotlight_fallback');
