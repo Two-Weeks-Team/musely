@@ -4,6 +4,8 @@ import {mkdir,readFile} from 'node:fs/promises';
 import {resolve,relative} from 'node:path';
 import {performance} from 'node:perf_hooks';
 import {randomUUID} from 'node:crypto';
+import {controlledBinding,DEMO_TOOL_VERSION} from './lib/controlled-p1.mjs';
+import {controlledLabelFor,installControlledLabel,readControlledLabel} from './lib/controlled-label.mjs';
 import {captureRequestPolicy,verifyBundle,checkHtml,sha,writeNew,cutViews} from './lib/demo-video.mjs';
 export async function captureDemoCut(browser,plan,cutId,dir,{prepare,play=true,viewId,runId:chosenRunId,seconds}={}){
  const errors=await verifyBundle(plan,dir);if(errors.length)throw Error(errors.join('\n'));
@@ -46,14 +48,15 @@ export async function captureDemoCut(browser,plan,cutId,dir,{prepare,play=true,v
   };
   await checkpoint();if(prepare)await prepare(page,root,cut);
   // Framing/evidence actions may not silently change the checkpoint the receipt claims.
+  if(cut.controlledPair){await page.evaluate(installControlledLabel,controlledLabelFor(plan,view));if((await page.evaluate(readControlledLabel))?.valid!==true)throw Error('controlled_simulation_label_missing');}
   const observed=await checkpoint();
   if(blocked)throw Error('capture_blocked_requests:'+blocked);
   phase='recording';started=performance.now();if(play)await root.getByRole('button',{name:'Play recorded run',exact:true}).click();
   // The operator can refine camera/cut framing in a subsequent take; this read-only take has no hidden actions.
-  await new Promise(r=>setTimeout(r,(takeSeconds+1)*1000));await context.close();clip=await video.path();
+  await new Promise(r=>setTimeout(r,(takeSeconds+1)*1000));const controlledLabel=cut.controlledPair?await page.evaluate(readControlledLabel):null;if(cut.controlledPair&&controlledLabel?.valid!==true)throw Error('controlled_simulation_label_lost');await context.close();clip=await video.path();
   await checkHtml(plan);if(blocked)throw Error('capture_blocked_requests:'+blocked);
   const file=relative(resolve(dir),clip),bytes=await readFile(clip),media={file,sha256:sha(bytes),bytes:bytes.length};
-  const receipt={schema:'musely-demo-capture-2',kind:'recorded_public_capture',cutId,viewId:view.id,takeId,release:structuredClone(plan.release),runId,seekSec:view.seekSec,durationSeconds:takeSeconds,label:'REPLAY',virtual:true,originalSources:[...new Set(refs.map(r=>r.originalSource))].sort(),media,startOffsetSec:(started-videoEpoch)/1000,offsetBasis:'monotonic page creation; inspect first frame during human review',refs,observed,...audit(),requests,at:new Date().toISOString(),wallSeconds:(performance.now()-started)/1000,finalAcceptance:'not_measured'};
+  const receipt={schema:'musely-demo-capture-2',kind:'recorded_public_capture',cutId,viewId:view.id,takeId,release:structuredClone(plan.release),tooling:structuredClone(plan.tooling??{version:DEMO_TOOL_VERSION}),...(cut.controlledPair?{controlledPair:controlledBinding(cut),controlledLabel}:{}),runId,seekSec:view.seekSec,durationSeconds:takeSeconds,label:'REPLAY',virtual:true,originalSources:[...new Set(refs.map(r=>r.originalSource))].sort(),media,startOffsetSec:(started-videoEpoch)/1000,offsetBasis:'monotonic page creation; inspect first frame during human review',refs,observed,...audit(),requests,at:new Date().toISOString(),wallSeconds:(performance.now()-started)/1000,finalAcceptance:'not_measured'};
   const receiptFile=resolve(mediaDir,'receipt.json');await writeNew(receiptFile,JSON.stringify(receipt,null,2)+'\n');
   return {file,sha256:media.sha256,receipt:relative(resolve(dir),receiptFile),duration:takeSeconds,viewId:view.id,takeId,runId,refs};
  }finally{try{await context.close();}finally{await writeNew(resolve(mediaDir,'network-audit.json'),JSON.stringify(audit(),null,2)+'\n');}}

@@ -4,6 +4,8 @@ import {resolve,relative,isAbsolute,dirname} from 'node:path';
 import {createHash} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
+import {verifyControlledPair,controlledBinding,DEMO_TOOL_VERSION} from './controlled-p1.mjs';
+import {controlledLabelFor} from './controlled-label.mjs';
 export const run=promisify(execFile), sha=b=>createHash('sha256').update(b).digest('hex');
 export const SHOTS=[
  ['s01',12,'A living place','World overview: people delegate; Muses meet and act.'],
@@ -61,7 +63,7 @@ export function validatePlan(p){
  if(c.id==='s05'&&(new Set(views.map(v=>canonical([v.runId,v.seekSec,v.snapshotHash]))).size!==2||views.length!==2||!['before','after'].every((id,i)=>views[i]?.id===id&&views[i]?.duration===10)))e.push('s05:before_after_views_required');
  for(const v of views){
  if(!/^[A-Za-z0-9_-]+$/.test(v.id??'')||typeof v.runId!=='string'||!v.runId||!Number.isFinite(v.duration)||v.duration<=0)e.push(c.id+':bad_view_identity_or_duration');
- if(!Number.isFinite(v.seekSec)||v.seekSec<0)e.push(c.id+':missing_recorded_seek');if(!/^[a-f0-9]{64}$/.test(v.snapshotHash??''))e.push(c.id+':missing_snapshot_hash');
+ if(!Number.isFinite(v.seekSec)||v.seekSec<0||Math.abs(v.seekSec*10-Math.round(v.seekSec*10))>1e-8)e.push(c.id+':missing_recorded_seek');if(!/^[a-f0-9]{64}$/.test(v.snapshotHash??''))e.push(c.id+':missing_snapshot_hash');
  if(!c.refs?.some(r=>r.runId===v.runId))e.push(c.id+':view_missing_refs');
  }
  if(c.refs?.some(r=>!views.some(v=>v.runId===r.runId)))e.push(c.id+':unfilmed_reference_run');
@@ -75,12 +77,16 @@ export function signedVerdict(e){
  if(['a2a_refused','command_refused'].includes(e?.kind)&&typeof d.reason==='string'&&d.envelope?.message_id)return 'refused:'+d.reason;
  return null;
 }
-export function validateReference(r,b){
+function referenceJoin(r,b){
  const e=[],v=b?.event;if(!v||v.id!==r.eventId)e.push('event_mismatch');
  if(!b?.runIdStored||b.runId!==r.runId||b.run?.runId!==r.runId||v?.runId!==r.runId)e.push('run_mismatch');
  if(b?.run?.schemaVersion!=='run-log-2')e.push('run_log_2_required');
  if(b?.input?.seq!==r.inputSeq||b?.input?.runId!==r.runId||v?.inputSeq!==r.inputSeq)e.push('commit_mismatch');
  if(!['live','rule','scripted','replay'].includes(r.originalSource)||v?.source!==r.originalSource)e.push('source_mismatch');
+ return e;
+}
+export function validateReference(r,b){
+ const e=referenceJoin(r,b),v=b?.event;
  if(r.requestId){if(v?.data?.evidence?.requestId!==r.requestId)e.push('request_mismatch');}
  else if(r.role!=='support'&&(!r.signedVerdict||signedVerdict(v)!==r.signedVerdict))e.push('model_request_or_signed_verdict_required');
  if(r.requestId&&r.signedVerdict&&signedVerdict(v)!==r.signedVerdict)e.push('verdict_mismatch');
@@ -106,8 +112,11 @@ export async function collect(p,dir,fetcher=fetch){
 }
 export async function verifyBundle(p,dir){
  const errors=validatePlan(p);
- for(const c of p.cuts??[])if(!(c.refs??[]).some(r=>r.requestId||r.signedVerdict))errors.push(c.id+':missing_evidence_anchor');
- for(const c of p.cuts??[])for(const r of c.refs??[]){try{const raw=await readFile(inside(dir,r.file));if(sha(raw)!==r.sha256)throw Error('raw_hash_mismatch');for(const x of validateReference(r,JSON.parse(raw)))errors.push(c.id+':'+x);}catch(e){errors.push(c.id+':'+e.message);}}
+ for(const c of p.cuts??[]){
+  let controlled=false;if(c.controlledPair){try{await verifyControlledPair(p,c,dir);controlled=true;}catch(e){errors.push(c.id+':'+e.message);}}
+  if(!controlled&&!(c.refs??[]).some(r=>r.requestId||r.signedVerdict))errors.push(c.id+':missing_evidence_anchor');
+  for(const r of c.refs??[]){try{const raw=await readFile(inside(dir,r.file));if(sha(raw)!==r.sha256)throw Error('raw_hash_mismatch');for(const x of(controlled?referenceJoin:validateReference)(r,JSON.parse(raw)))errors.push(c.id+':'+x);}catch(e){errors.push(c.id+':'+e.message);}}
+ }
  return errors;
 }
 export async function checkHtml(p,fetcher=fetch){if(sha(await publicGet(new URL('/',p.origin).href,p.origin,fetcher))!==p.release.htmlSha256)throw Error('release_html_changed');}
@@ -133,6 +142,8 @@ export async function verifyMedia(p,dir){
    const receipt=JSON.parse(await readFile(inside(dir,segment.receipt),'utf8'));
    if(receipt.media?.file!==segment.file||receipt.media?.sha256!==segment.sha256||receipt.media?.bytes!==raw.length)throw Error(c.id+':media_binding_mismatch');
    if(receipt.schema!=='musely-demo-capture-2'||receipt.kind!=='recorded_public_capture'||receipt.cutId!==c.id||receipt.viewId!==view.id||receipt.takeId!==segment.takeId||receipt.runId!==view.runId||receipt.durationSeconds!==view.duration||canonical(receipt.release)!==canonical(p.release)||!Number.isFinite(receipt.startOffsetSec)||receipt.startOffsetSec<0||receipt.blockedRequests!==0||receipt.label!=='REPLAY'||receipt.virtual!==true||canonical(receipt.originalSources)!==canonical(sources(refs))||receipt.observed?.runId!==view.runId||receipt.observed?.label!==true||receipt.observed?.hash!==view.snapshotHash||receipt.seekSec!==view.seekSec)throw Error(c.id+':capture_receipt_mismatch');
+   if(p.tooling&&(receipt.tooling?.version!==DEMO_TOOL_VERSION||canonical(receipt.tooling)!==canonical(p.tooling)))throw Error(c.id+':tooling_capture_binding_mismatch');
+   if(c.controlledPair){const label=controlledLabelFor(p,view),observed=receipt.controlledLabel;if(receipt.tooling?.version!==DEMO_TOOL_VERSION||canonical(receipt.tooling)!==canonical(p.tooling)||canonical(receipt.controlledPair)!==canonical(controlledBinding(c))||observed?.valid!==true||observed.visible!==true||observed.text!==label.text||observed.sourceSha!==label.sourceSha||observed.variant!==label.variant)throw Error(c.id+':controlled_capture_binding_mismatch');}
    const bootstrap=receipt.bootstrapDeniedReads??[],telemetry=receipt.deniedTelemetry??[];
    if(!validDeniedRows(bootstrap,'bootstrap-denied-read',p.origin)||!validDeniedRows(telemetry,'denied-telemetry',p.origin)||(bootstrap.length||telemetry.length)&&(receipt.denialsAreAccessReceipts!==false||receipt.continuedWriteRequests!==0)||(receipt.continuedWriteRequests??0)!==0)throw Error(c.id+':denied_request_audit_mismatch');
    if(!Array.isArray(receipt.refs)||!Array.isArray(segment.refs)||canonical(refKeys(receipt.refs))!==canonical(refKeys(refs))||canonical(refKeys(segment.refs))!==canonical(refKeys(refs)))throw Error(c.id+':captured_refs_mismatch');
@@ -146,7 +157,7 @@ export async function render(p,dir,ffmpeg,font){
  const rows=await verifyMedia(p,dir),parts=[];await mkdir(resolve(dir,'render'),{recursive:true});
  for(const [index,{cut:c,segment,receipt,clip}] of rows.entries()){
  const target=resolve(dir,'render',c.id+'-'+index+'.mp4'),text=resolve(dir,'render',c.id+'-'+index+'.txt');
- await writeNew(text,`REPLAY${c.id==='s05'?' | CONTROLLED COMPARISON (SIMULATION)':''} | original: ${receipt.originalSources.join(', ')} | VIRTUAL LOCATION (DEMO)\n${c.title} | Meta Muse Spark | build ${p.release.sourceSha.slice(0,12)}`);
+ await writeNew(text,`REPLAY${c.id==='s05'?' | CONTROLLED COMPARISON (SIMULATION)':''} | original: ${receipt.originalSources.join(', ')} | VIRTUAL LOCATION (DEMO)\n${c.title} | ${c.controlledPair?'controlled input, no model call':'Meta Muse Spark'} | build ${p.release.sourceSha.slice(0,12)}`);
  const esc=s=>s.replaceAll('\\','\\\\').replaceAll(':','\\:').replaceAll("'","'\\''");
  const vf=`scale=1920:960:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:0:color=black,drawtext=fontfile='${esc(resolve(font))}':textfile='${esc(text)}':fontcolor=white:fontsize=28:x=24:y=978:line_spacing=8`;
  await run(ffmpeg,['-hide_banner','-loglevel','error','-n','-ss',String(receipt.startOffsetSec),'-i',clip,'-t',String(segment.duration),'-an','-vf',vf,'-r','30','-c:v','libx264','-pix_fmt','yuv420p','-movflags','+faststart',target]);parts.push(target);
@@ -155,5 +166,5 @@ export async function render(p,dir,ffmpeg,font){
  const video=resolve(dir,'musely-180s-review.mp4');await run(ffmpeg,['-hide_banner','-loglevel','error','-n','-f','concat','-safe','0','-i',list,'-c','copy','-movflags','+faststart',video]);
  const decoded=await run(ffmpeg,['-v','error','-i',video,'-progress','pipe:1','-f','null','-']);const times=[...decoded.stdout.matchAll(/out_time_us=(\d+)/g)].map(x=>Number(x[1])/1e6);const seconds=Math.max(...times);
  if(Math.abs(seconds-180)>.1)throw Error('decoded_duration_not_180:'+seconds);
- const receipt={kind:'rendered_needs_playback_review',durationSeconds:seconds,sha256:sha(await readFile(video)),release:p.release,finalAcceptance:'not_measured',audio:'none',takes:rows.map(({cut,view,segment})=>({cutId:cut.id,viewId:view.id,takeId:segment.takeId,runId:view.runId,duration:segment.duration,file:segment.file,sha256:segment.sha256,receipt:segment.receipt}))};await writeNew(resolve(dir,'render-receipt.json'),JSON.stringify(receipt,null,2)+'\n');return receipt;
+ const receipt={kind:'rendered_needs_playback_review',durationSeconds:seconds,sha256:sha(await readFile(video)),release:p.release,tooling:p.tooling??{version:DEMO_TOOL_VERSION},finalAcceptance:'not_measured',audio:'none',takes:rows.map(({cut,view,segment})=>({cutId:cut.id,viewId:view.id,takeId:segment.takeId,runId:view.runId,duration:segment.duration,file:segment.file,sha256:segment.sha256,receipt:segment.receipt}))};await writeNew(resolve(dir,'render-receipt.json'),JSON.stringify(receipt,null,2)+'\n');return receipt;
 }
