@@ -493,3 +493,7 @@ All 20 MCP tools have real localhost TLS → Worker entry → WorldDO → signat
 ## I-09 shared-world projection update
 
 The app Live world scene, pins and selected Muse card use the same server IDs, version, inventory and event projection. The separate Story mode remains scripted. `docs/LIVE_SCENE.md` records the event/clip/prop/effect and fallback table, ten-character budget scope and tests. Local renderer fixtures are distinct from production, connector and physical-device acceptance.
+
+## I-07 owner workflow evidence update (2026-11-03)
+
+EXP-REWARD/EXP-MEETUP/EXP-COMMS/AUTONOMY may reuse the [I-07 acceptance record](OWNER_WORKFLOW_ACCEPTANCE.md): local Task/privacy/migration criteria and150actual deployed owner/demo-peer checks, now accompanied by the machine-verified claim and positive bilateral approval. The record separates original8b13execution from unchanged494owner-workflow source, local fixtures from production, and two authenticated principals from two real people. Earlier catalog/prototype rows above remain historical descriptions; this update records the I-07implementation evidence. Personal Muse, webcam, remaining downstream criteria and wholeS3 remain separate.
