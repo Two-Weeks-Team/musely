@@ -53,6 +53,6 @@ export function computeAutonomy(events: AutoEvent[], scope: AutoScope): AutoResu
     row('abilities', 'Ability changes', `${hashed.filter(e => e.data.beforeHash !== e.data.afterHash).length} changes`, `n=${tagged.length} events`, hashed.length > 0, observations || !hashed.length ? [`${observations} tagged observations (before/after state not recorded)`] : []),
     row('blocks', 'Blocks', `${ofKind('injection_blocked').length} instructions blocked · ${ofKind('decision_rejected').length} out-of-scope decisions refused`, `n=${ofKind('injection_blocked').length + ofKind('decision_rejected').length} events`),
   ];
-  const period = `${scope.label} · ${scope.day} (Menlo Park day) · ${unique.length} events · ${sources.live} live / ${sources.rule} rule / ${sources.scripted} scripted / ${sources.replay} replay · worldId: ${scope.worldId || 'not recorded'} · runId: ${scope.runId || 'not recorded'}${!scope.complete ? ` · partial sample${scope.partialReason ? ': ' + scope.partialReason : ''}` : ''}`;
+  const period = `${scope.label} · ${scope.day} (Menlo Park world day) · ${unique.length} events · ${sources.live} live / ${sources.rule} rule / ${sources.scripted} scripted / ${sources.replay} replay · worldId: ${scope.worldId || 'not recorded'} · runId: ${scope.runId || 'not recorded'}${!scope.complete ? ` · partial sample${scope.partialReason ? ': ' + scope.partialReason : ''}` : ''}`;
   return {scope: {...scope}, period, eventCount: unique.length, duplicates: events.length - unique.length, sources, rows};
 }

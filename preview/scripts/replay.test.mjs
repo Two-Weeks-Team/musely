@@ -28,9 +28,9 @@ test('formatT and visible events are a read-only time projection, including rewi
 test('filters match tags, either participant, place and Los Angeles time with AND semantics', () => {
   const e = {tags: ['first_trade'], muse: '00-jolly', other: '03-ripple', place: 'commons:cafe', at: Date.parse('2026-11-01T17:00:00Z')};
   assert.equal(matchFilter(e, EMPTY_FILTER), true);
-  for (const f of [{tag: 'first_trade'}, {muse: '03-ripple'}, {place: 'commons:cafe'}, {part: 'morning'}, {tag: 'first_trade', muse: '00-jolly', part: 'morning', place: 'commons:cafe'}]) assert.equal(matchFilter(e, {...EMPTY_FILTER, ...f}), true);
-  for (const f of [{tag: 'p0_trade'}, {muse: '02-moss'}, {place: 'commons:garden'}, {part: 'night'}, {tag: 'first_trade', part: 'evening'}]) assert.equal(matchFilter(e, {...EMPTY_FILTER, ...f}), false);
-  for (const [hour, part] of [[0, 'night'], [6, 'morning'], [12, 'afternoon'], [18, 'evening']]) assert.equal(matchFilter({...e, at: Date.parse('2026-11-02T08:00:00Z') + hour * 3600000}, {...EMPTY_FILTER, part}), true);
+  for (const f of [{tag: 'first_trade'}, {muse: '03-ripple'}, {place: 'commons:cafe'}, {part: 'morning'}, {tag: 'first_trade', muse: '00-jolly', part: 'morning', place: 'commons:cafe'}]) assert.equal(matchFilter(e, {...EMPTY_FILTER, ...f}, 'America/Los_Angeles'), true);
+  for (const f of [{tag: 'p0_trade'}, {muse: '02-moss'}, {place: 'commons:garden'}, {part: 'night'}, {tag: 'first_trade', part: 'evening'}]) assert.equal(matchFilter(e, {...EMPTY_FILTER, ...f}, 'America/Los_Angeles'), false);
+  for (const [hour, part] of [[0, 'night'], [6, 'morning'], [12, 'afternoon'], [18, 'evening']]) assert.equal(matchFilter({...e, at: Date.parse('2026-11-02T08:00:00Z') + hour * 3600000}, {...EMPTY_FILTER, part}, 'America/Los_Angeles'), true);
 });
 test('fixture is a scoped, ordered scenario with catalog ids and genuine recorded model references', () => {
   const run = read('../fixtures/replay-run.json'), library = read('../fixtures/replay-library.json');

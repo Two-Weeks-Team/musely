@@ -28,11 +28,12 @@ export function createPlayer(durationSec: number, _now?: () => number) {
 
 export type Filter = {tag: string; muse: string; place: string; part: '' | 'night' | 'morning' | 'afternoon' | 'evening'};
 export const EMPTY_FILTER: Filter = Object.freeze({tag: '', muse: '', place: '', part: ''});
-const hour = new Intl.DateTimeFormat('en-US', {timeZone: 'America/Los_Angeles', hour: 'numeric', hourCycle: 'h23'});
-export function matchFilter(e: Pick<ReplayEvent, 'tags' | 'muse' | 'other' | 'place' | 'at'>, f: Filter): boolean {
+/** Hour of the day as the viewer sees it: their own time zone unless one is given (tests pass one). */
+const hourIn = (tz?: string) => new Intl.DateTimeFormat('en-US', {...(tz ? {timeZone: tz} : {}), hour: 'numeric', hourCycle: 'h23'});
+export function matchFilter(e: Pick<ReplayEvent, 'tags' | 'muse' | 'other' | 'place' | 'at'>, f: Filter, tz?: string): boolean {
   if (f.tag && !e.tags.includes(f.tag) || f.muse && e.muse !== f.muse && e.other !== f.muse || f.place && e.place !== f.place) return false;
   if (f.part) {
-    const h = Number(hour.format(e.at));
+    const h = Number(hourIn(tz).format(e.at));
     const part = h < 6 ? 'night' : h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
     if (f.part !== part) return false;
   }

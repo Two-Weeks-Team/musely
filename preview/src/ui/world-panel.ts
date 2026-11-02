@@ -30,8 +30,11 @@ const museName = (id: string | null | undefined) => (id ? (id === '00-jolly' ? "
 const shortName = (id: string | null | undefined) => (id ? harnessById(id).name : 'World');
 const placeName = (id: string | null | undefined) => (id ? PLACE_BY_ID.get(id)?.name ?? id : '');
 const color = (id: string) => MUSE_VARIANTS.find(v => v.id === id)?.body ?? '#E8DDC7';
-const clockFmt = new Intl.DateTimeFormat('en-US', {timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit', hour12: false});
+// Every time on screen is the viewer's own time (their device's time zone). The world itself keeps Menlo Park time for its day and its
+// beats; only what is shown is converted.
+const clockFmt = new Intl.DateTimeFormat(undefined, {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
 const at = (ms: number) => clockFmt.format(new Date(ms));
+const viewerZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'your time zone';
 
 export function sourceLabel(e: Pick<Ev, 'source' | 'data'>): {text: string; cls: string} {
   if (e.source === 'live' && e.data?.actor === 'your Muse') return {text: 'LIVE · your Muse', cls: 'src-live'};
@@ -245,7 +248,7 @@ export function mountWorldPanel(map: LibreMap) {
     const dl = el('dl', 'facts');
     const fact = (k: string, v: unknown) => { if (v === undefined || v === null || v === '') return; dl.append(el('dt', '', k), el('dd', '', typeof v === 'string' ? v : JSON.stringify(v))); };
     if (e.fixture) fact('Record', 'Preview fixture (SCRIPTED) — not a live record');
-    fact('When (Menlo Park)', at(e.at) + ` · tick ${e.tick} · event ${e.id}`);
+    fact(`When (your time · ${viewerZone})`, at(e.at) + ` · tick ${e.tick} · event ${e.id}`);
     fact('Muse', museName(e.muse)); fact('Other', e.other ? museName(e.other) : null); fact('Place', placeName(e.place));
     const ev = e.data?.evidence;
     const orig = typeof ev?.replayOf === 'string' ? ev.replayOf : ev?.replayOf?.requestId, rec = typeof ev?.replayOf === 'object' ? ev.replayOf : null;
@@ -331,7 +334,7 @@ export function mountWorldPanel(map: LibreMap) {
     const muses = [...new Set(hl.flatMap(e => [e.muse, e.other ?? null]).filter((m): m is string => !!m))].sort();
     const places = [...new Set(hl.map(e => e.place).filter((p): p is string => !!p))].sort();
     const fields = el('div', 'fields');
-    fields.append(field('Muse', [['', 'Any Muse'], ...muses.map(m => [m, shortName(m)] as [string, string])], 'muse'), field('Place', [['', 'Any place'], ...places.map(p => [p, placeName(p)] as [string, string])], 'place'), field('Time of day (Menlo Park)', PARTS, 'part'));
+    fields.append(field('Muse', [['', 'Any Muse'], ...muses.map(m => [m, shortName(m)] as [string, string])], 'muse'), field('Place', [['', 'Any place'], ...places.map(p => [p, placeName(p)] as [string, string])], 'place'), field('Time of day (your time)', PARTS, 'part'));
     const clear = el('button', 'secondary', 'Clear filters'); clear.type = 'button'; clear.onclick = () => { hf = {...EMPTY_FILTER}; void render(); };
     draw();
     return [bar, fields, clear, status, ul];

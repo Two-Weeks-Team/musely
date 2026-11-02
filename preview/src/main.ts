@@ -201,6 +201,8 @@ function updateCues(now:number){
 setFlowCue(previewCue);
 // Header height drives the caption and story heading offsets so wrapped header rows never cover them (390 px).
 const headerEl=document.querySelector('header')!;new ResizeObserver(()=>document.documentElement.style.setProperty('--header-h',headerEl.getBoundingClientRect().bottom+'px')).observe(headerEl);
+// The selected-Muse card lives between the header and the footer: both heights are measured, so a long line or a short screen never lets it cover either.
+const footerEl=document.querySelector('footer')!;new ResizeObserver(()=>document.documentElement.style.setProperty('--footer-h',footerEl.getBoundingClientRect().height+'px')).observe(footerEl);
 markMode(mode);
 // Entry paths (P-02): watch, a local harness trial, or the staged connection walkthrough. Preview state only.
 // Mounted last: ?entry=watch calls onWatch (startStory) while mounting, which needs the mode controls and cue state above.

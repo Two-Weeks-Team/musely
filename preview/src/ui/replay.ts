@@ -135,7 +135,7 @@ export function mountReplay(body: HTMLElement, ctx: ReplayCtx): {destroy(): void
     toggle.textContent = state.playing ? 'Pause' : 'Play'; toggle.setAttribute('aria-pressed', String(state.playing));
     for (const [speed, b] of speedButtons) b.setAttribute('aria-pressed', String(state.speed === speed));
     range.value = String(state.cursor); range.setAttribute('aria-valuetext', `${formatT(state.cursor)} of ${formatT(state.durationSec)}`);
-    time.textContent = `${formatT(state.cursor)} / ${formatT(state.durationSec)} · ${state.speed}× · ${ctx.at(RUN.startAt + state.cursor * 1000)} Menlo Park`;
+    time.textContent = `${formatT(state.cursor)} / ${formatT(state.durationSec)} · ${state.speed}× · ${ctx.at(RUN.startAt + state.cursor * 1000)} your time`;
   }
   function stopTimer() { if (timer !== null) { clearInterval(timer); timer = null; } }
   function syncTimer() {

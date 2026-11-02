@@ -80,3 +80,24 @@ tr.not-measured td:nth-child(2){color:#aeb8cc;font-style:italic}
 .world-panel :is(button,a,select,summary,input):focus-visible,.evidence :is(button,a,summary):focus-visible,.evidence h3:focus-visible{outline:3px solid #FFB36B;outline-offset:2px}
 .replay-view,.replay-controls{min-width:0;max-width:100%}.replay-controls .replay-position{box-sizing:border-box;margin:0;min-width:0}
 @media(max-width:700px){.world-panel :is(.tab,button.tag,.secondary,.primary,.ev-btn,select,.close),.evidence .close{min-height:44px}.world-panel .tab{font-size:11px;padding:0 12px}.fld{flex:1 1 100%}.world-panel .src{font-size:9px}.table-wrap table{min-width:440px}.world-panel .close,.evidence .close{min-width:44px}}
+
+/* Real devices (tablets, short phones) and the selected-Muse card */
+@media(max-width:1180px){
+header{top:14px;left:14px;right:14px;gap:9px;row-gap:8px;flex-wrap:wrap}
+header>*{min-width:0;max-width:100%}
+header :is(.place,.spark-status,.spot-chip,.entry-open,.quiet){white-space:nowrap}
+.quiet{margin-left:auto}
+.top-note{display:none}
+.world-caption{top:calc(var(--header-h,70px) + 6px)}
+#story-heading{top:calc(var(--header-h,70px) + 22px)}
+}
+#muse-card{bottom:calc(var(--footer-h,118px) + 42px);max-height:calc(100% - var(--header-h,100px) - var(--footer-h,118px) - 66px);overflow-y:auto;overscroll-behavior:contain}
+@media(max-width:700px){#muse-card{bottom:calc(var(--footer-h,134px) + 39px);max-height:calc(100% - var(--header-h,100px) - var(--footer-h,134px) - 61px)}}
+/* The scene note collides with the map credit below 1180 px, and on a short phone the chapter title (repeated in the card) touches the card. */
+@media(max-width:1180px){.commons-note{display:none}}
+@media(max-width:700px) and (max-height:700px){#story-heading{display:none}}
+@media(max-height:680px){#muse-card{padding:11px 12px}#muse-card h3{margin:8px 0 3px}#muse-card .card-actions{margin-top:8px}}
+@media(max-height:520px){#muse-card{display:none}#selected-line[hidden]{display:block}}
+@media(max-width:360px){#portraits{gap:3px}#portraits>*{flex:1 1 0;min-width:0}}
+/* Short landscape tablets: the story heading is centred on the screen and reaches into the selected-Muse card (left 28 px, 308 px wide), so it moves into the free area to the right of the card. */
+@media(min-width:701px) and (max-width:1180px) and (min-height:520px) and (max-height:700px){#story-heading{left:calc((100% + 336px)/2);max-width:calc(100% - 336px - 28px)}}
