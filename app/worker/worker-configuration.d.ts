@@ -12,6 +12,8 @@ interface __BaseEnv_Env {
 	PUBLIC_ORIGIN: "https://musely.net";
 	MODEL_API_KEY: string;
 	JUDGE_TOKEN: string;
+	OWNER_CONTROL_TOKEN: string;
+	DEMO_PEER_CONTROL_TOKEN: string;
 	WORLD: DurableObjectNamespace<import("./index").WorldDO>;
 }
 declare namespace Cloudflare {
@@ -26,7 +28,7 @@ type StringifyValues<EnvType extends Record<string, unknown>> = {
 	[Binding in keyof EnvType]: EnvType[Binding] extends string ? EnvType[Binding] : string;
 };
 declare namespace NodeJS {
-	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "MODEL_ID" | "MODEL_BASE" | "DAILY_BUDGET_USD" | "TURNSTILE_SITEKEY" | "ALLOWED_HOSTS" | "MODEL_API_KEY" | "JUDGE_TOKEN">> {}
+	interface ProcessEnv extends StringifyValues<Pick<Cloudflare.Env, "MODEL_ID" | "MODEL_BASE" | "DAILY_BUDGET_USD" | "TURNSTILE_SITEKEY" | "ALLOWED_HOSTS" | "MODEL_API_KEY" | "JUDGE_TOKEN" | "OWNER_CONTROL_TOKEN" | "DEMO_PEER_CONTROL_TOKEN">> {}
 }
 declare module "*.txt" {
 	const value: string;

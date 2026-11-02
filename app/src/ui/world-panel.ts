@@ -14,6 +14,7 @@ import {createWorld, tick, TICK_MS, localClock} from '../engine/world';
 import {makeHooks} from '../engine/rules';
 import {ensureSession, sparkStatus} from '../live';
 import {ritualCard} from './ritual';
+import {ownerControlCard, p0Text} from './identity';
 import {renderFlows, flowState, selectFlow} from './preview-flows';
 import {fetchJson, newHealth, track, resState, stateText, loadLog, BLOCKED, type Health} from './resource-state';
 import {isolation, enforceIsolation} from './isolation';
@@ -70,6 +71,9 @@ export function describe(e: Ev): string {
     case 'a2a_refused': return `${a}'s request was refused at ${d.step}: ${String(d.reason).replace(/_/g, ' ')}`;
     case 'delegation_revoked': return `Owner revoked ${a}'s delegation`;
     case 'delegation_issued': return `Owner delegated ${a} again`;
+    case 'muse_paused': return `${a} is paused until the owner delegates again`;
+    case 'muse_resumed': return `${a} resumed: the owner's delegation is current again`;
+    case 'task_cancelled': return `A pending ${d.task ?? 'Task'} with ${b} was cancelled: the owner revoked ${a}'s delegation`;
     case 'impostor_rejected': return `A look-alike ${a} was refused before greeting`;
     case 'injection_blocked': return `An instruction from ${b} to ${a} was blocked`;
     case 'welcome_gift': return `${a} received a welcome gift`;
@@ -434,13 +438,13 @@ export function mountWorldPanel(map: LibreMap) {
     if (!r.ok) { const b = el('button', 'secondary', 'Retry'); b.type = 'button'; b.onclick = () => void render(); card.append(b); }
     const actions = el('div', 'id-actions');
     const result = el('p', 'muted'); result.setAttribute('role', 'status');
-    const run = (label: string, path: string) => { const b = el('button', 'secondary', label); b.type = 'button'; b.onclick = async () => {
+    const run = (label: string, path: string, text?: (j: any) => string) => { const b = el('button', 'secondary', label); b.type = 'button'; b.onclick = async () => {
       b.disabled = true; result.textContent = 'Running a real check…';
-      try { const st = await sparkStatus(); if (st) await ensureSession(st); const r = await fetch(path, {method: 'POST'}); const j = await r.json(); result.textContent = r.ok ? 'Done. The result is in the Feed and Highlights.' : `Not allowed: ${j.error ?? r.status}`; await refresh(); }
+      try { const st = await sparkStatus(); if (st) await ensureSession(st); const r = await fetch(path, {method: 'POST'}); const j = await r.json(); result.textContent = r.ok ? (text ? text(j) : 'Done. The result is in the Feed and Highlights.') : `Not allowed: ${j.error ?? r.status}`; await refresh(); }
       catch (err) { result.textContent = 'Could not run: ' + (err as Error).message; }
       b.disabled = false; }; return b; };
-    actions.append(run('Try an impostor', '/api/demo/impostor'), run('Try an instruction injection', '/api/demo/injection'), run('Run P0 (judge link)', '/api/p0/run'));
-    body.append(card, ritualCard(() => void refresh()), el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it.'), actions, result);
+    actions.append(run('Try an impostor', '/api/demo/impostor'), run('Try an instruction injection', '/api/demo/injection'), run('Run P0 step (judge link or owner)', '/api/p0/run', p0Text));
+    body.append(card, ownerControlCard(() => void refresh()), ritualCard(() => void refresh()), el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it. P0 is two runs: the first commits a signed trade, then the owner revokes (owner control above), then the second run re-sends the same job and is refused. P0 itself never revokes or delegates again.'), actions, result);
   }
 
   async function renderLocation(stale: () => boolean) {
@@ -464,11 +468,11 @@ export function mountWorldPanel(map: LibreMap) {
       const lab = el('label', 'fld'); lab.append(el('span', '', 'Virtual location preset'));
       const sel = el('select'); sel.setAttribute('aria-label', 'Virtual location preset'); lab.append(sel);
       for (const p of presets) { const o = el('option', '', p.label); o.value = p.id; if (p.id === loc.preset) o.selected = true; sel.append(o); }
-      const go = el('button', 'secondary', 'Move owner here (judge link)'); go.type = 'button';
+      const go = el('button', 'secondary', 'Move owner here (owner session)'); go.type = 'button';
       const msg = el('p', 'muted'); msg.setAttribute('role', 'status');
       go.onclick = async () => {
-        const res = await fetchJson('/api/owner/location', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({source: 'virtual', preset: sel.value})});
-        msg.textContent = res.ok ? 'Moved. Watch the Muse walk on the map.' : /HTTP 40[13]/.test(res.error) ? 'Only the judge link can move the owner in this preview.' : `Could not move the owner (${res.error}). Nothing changed.`;
+        const res = await fetchJson<{follow?: {mode?: string} | null}>('/api/owner/location', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({source: 'virtual', preset: sel.value})});
+        msg.textContent = res.ok ? (res.data.follow?.mode === 'paused' ? 'Owner location set. The Muse is paused (delegation revoked), so it stays where it is until the owner delegates again.' : 'Moved. Watch the Muse walk on the map.') : /HTTP 40[13]/.test(res.error) ? 'Only the owner session can move the owner. Start it in the Identity tab.' : `Could not move the owner (${res.error}). Nothing changed.`;
         await refresh();
       };
       box.append(lab, go, msg);

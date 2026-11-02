@@ -11,7 +11,7 @@ import {runTool, toolList, ownerView, InvalidParams, type ToolCtx} from './mcp-t
 import {dispatch, type McpOutcome} from './mcp-server.ts';
 import {defaultOwner, nextOwnerLocation, ownerLabel, tagLocation, PRESETS} from '../../src/engine/location.ts';
 import {followOwner} from '../../src/engine/travel.ts';
-import {emptyInbox, CONNECTED_MS} from '../../src/engine/inbox.ts';
+import {emptyInbox, notificationMuse, CONNECTED_MS} from '../../src/engine/inbox.ts';
 
 export type ConnectedDeps = {
   sql: Sql; trust: Trust; runtime: WorldRuntime; hooks: Hooks; baseUrl: string;
@@ -34,7 +34,7 @@ export class ConnectedHost {
     return {...ownerView(owner, s.muses.find(m => m.id === owner.muse), now), presets: PRESETS.map(p => ({id: p.id, label: p.label}))};
   }
 
-  /** Judge/owner session only (checked by the Worker route). GPS coordinates are reduced to a cell and dropped. */
+  /** Owner session only (checked by the Worker route). GPS coordinates are reduced to a cell and dropped. */
   setOwnerLocation(input: unknown) {
     const now = this.now(), s = this.d.runtime.state();
     const next = nextOwnerLocation(s.owner ?? defaultOwner(OWNER_MUSE, now), input, now);
@@ -71,12 +71,19 @@ export class ConnectedHost {
     return {id: after.id, revoked_at: after.revokedAt, muse: after.muse};
   }
 
+  /** The Muse a key belongs to (for the owner route's ownership check), or null. */
+  keyMuse(id: string) { return this.keys.byId(id)?.muse ?? null; }
+
   listKeys(muse = OWNER_MUSE) { return this.keys.list(muse).map(k => ({id: k.id, created_at: k.createdAt, last_used_at: k.lastUsedAt, revoked_at: k.revokedAt, signer_kind: k.signerKind})); }
 
   // ----- owner notifications (12.3: three kinds only) -----
-  notifications(full: boolean) {
+  /** Every notification in its public form; the details only for the Muses in `detailFor` (the asking owner's own). */
+  notifications(detailFor: readonly string[] = []) {
     const list = [...(this.d.runtime.state().inbox?.notifications ?? [])].reverse();
-    return {kinds: ['meetup_candidate', 'trade_completed', 'blocked'], notifications: list.map(n => (full ? n : {id: n.id, kind: n.kind, at: n.at, line: n.line, other: n.other}))};
+    return {kinds: ['meetup_candidate', 'trade_completed', 'blocked'], notifications: list.map(n => {
+      const muse = notificationMuse(n);
+      return detailFor.includes(muse) ? {...n, muse} : {id: n.id, kind: n.kind, at: n.at, line: n.line, other: n.other, muse};
+    })};
   }
 
   // ----- MCP -----

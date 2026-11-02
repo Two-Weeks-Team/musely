@@ -152,7 +152,7 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
     // Revoked before any custodial delegation existed: nothing may sign for this Muse; refuse without an envelope.
     c.runtime.commitRefusal(at, `mcp-${tool.name}-revoked-${Math.random().toString(36).slice(2, 10)}`, `${c.trust.agentByMuse(me)?.agentId ?? me}>${recipient}:delegation_revoked:delegation`, (st, emit) => {
       emit(tagLocation(st.owner, {at, source: 'live', kind: 'a2a_refused', muse: me, other: recipientMuse, line: 'Refused: delegation revoked', data: {step: 'delegation', reason: 'delegation_revoked', actor: 'your Muse', tool: tool.name, key_id: c.key.id, envelope: null, content}, tags: ['p0_refused']}));
-      notifyOwner(inboxOf(st), {kind: 'blocked', at, line: `Blocked: your Muse's ${tool.name.replace(/_/g, ' ')} was refused (delegation revoked)`, ref: null, other: recipientMuse});
+      notifyOwner(inboxOf(st), {kind: 'blocked', at, line: `Blocked: your Muse's ${tool.name.replace(/_/g, ' ')} was refused (delegation revoked)`, ref: null, other: recipientMuse, muse: me});
     });
     return refused('delegation_revoked', {step: 'delegation', retryable: false, envelope: null, command: {command_id: opts.commandId ?? null, expected_version: opts.expectedVersion ?? null, world_version: c.runtime.state().version, duplicate: false}});
   }
@@ -173,7 +173,7 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
     refused: (st, emit, r, at2) => {
       const envelopeFailure = !quietRefusal(r.code);
       emit(tagLocation(st.owner, {at: at2, source: 'live', kind: envelopeFailure ? 'a2a_refused' : 'command_refused', muse: me, other: recipientMuse, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, content, actor: 'your Muse', tool: tool.name, key_id: c.key.id, envelope, command_id: cmd.commandId}, tags: envelopeFailure ? ['p0_refused'] : []}));
-      if (envelopeFailure) notifyOwner(inboxOf(st), {kind: 'blocked', at: at2, line: `Blocked: your Muse's ${tool.name.replace(/_/g, ' ')} was refused (${r.code.replace(/_/g, ' ')})`, ref: envelope.message_id, other: recipientMuse});
+      if (envelopeFailure) notifyOwner(inboxOf(st), {kind: 'blocked', at: at2, line: `Blocked: your Muse's ${tool.name.replace(/_/g, ' ')} was refused (${r.code.replace(/_/g, ' ')})`, ref: envelope.message_id, other: recipientMuse, muse: me});
     },
   }, at);
   const command = {command_id: out.result.commandId, expected_version: cmd.expectedVersion, world_version: out.result.worldVersion, duplicate: out.duplicate};
@@ -219,7 +219,7 @@ function completeTrade(st: WorldState, t: Task, acceptor: string, live: Emit, ru
   void rule;
   live({at, source: 'live', kind: 'trade_completed', muse: a.id, other: b.id, place: a.place, line: `Traded ${itemName(offer.give)} ↔ ${itemName(offer.want)}`, data: {task_id: t.id, give: offer.give, want: offer.want, round: t.round, receipt: true, stage: 'swap', accepted_by: acceptor, accepted_via: by}, tags: first ? ['first_trade', 'ability_change'] : ['ability_change']});
   const other = a.id === ownerMuse ? b.id : a.id, got = a.id === ownerMuse ? offer.want : offer.give, gave = a.id === ownerMuse ? offer.give : offer.want;
-  notifyOwner(inboxOf(st), {kind: 'trade_completed', at, line: `Your Muse traded ${itemName(gave)} for ${name(other)}'s ${itemName(got)}`, ref: t.id, other});
+  notifyOwner(inboxOf(st), {kind: 'trade_completed', at, line: `Your Muse traded ${itemName(gave)} for ${name(other)}'s ${itemName(got)}`, ref: t.id, other, muse: ownerMuse});
   a.reflection = `Traded with ${name(b.id)}: got ${itemName(offer.want)}`;
   b.reflection = `Traded with ${name(a.id)}: got ${itemName(offer.give)}`;
   return 'completed';
@@ -511,7 +511,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         if (t.answers![otherId] === 'accept') {
           t.status = 'completed'; t.awaiting = null;
           live({at, source: 'live', kind: 'meetup_candidate', muse: me, other: otherId, line: `A meetup candidate with ${name(otherId)} is waiting for the owner's approval`, data: {task_id: t.id, candidate: 'private (owner only)', owner_approval: 'required'}, tags: ['meetup_candidate']});
-          notifyOwner(inboxOf(st), {kind: 'meetup_candidate', at, line: `A meetup candidate with ${name(otherId)} needs your approval`, ref: t.id, other: otherId, detail: {...t.candidate!}});
+          notifyOwner(inboxOf(st), {kind: 'meetup_candidate', at, line: `A meetup candidate with ${name(otherId)} needs your approval`, ref: t.id, other: otherId, muse: me, detail: {...t.candidate!}});
           return {ok: true, data: {task: taskView(t, me), candidate: t.candidate, owner_approval: 'required'}};
         }
         t.awaiting = otherId; t.deadline = at + TASK_TTL_MS;

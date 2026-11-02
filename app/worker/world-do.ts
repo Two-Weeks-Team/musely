@@ -11,6 +11,7 @@ import {Trust, OWNER_SLOT} from './core/trust.ts';
 import {runP0, impostorCheck, injectionCheck, MeetingCheck, type Ctx} from './core/a2a.ts';
 import {ConnectedHost} from './core/connected.ts';
 import {RitualStore, type RitualRecord} from './core/ritual.ts';
+import {revokeMuse, redelegateMuse, reconcilePaused, delegationStatus} from './core/owner-control.ts';
 
 export class WorldDO extends DurableObject<Env> {
   private ledger: Ledger;
@@ -54,6 +55,8 @@ export class WorldDO extends DurableObject<Env> {
       this.connected.init();
       this.ritual.init();
       await this.trust.ensureAgents(this.ownerRoot);
+      // The world's paused Muses always match the registry's revoked ones (C06).
+      reconcilePaused({trust: this.trust, runtime: this.runtime});
       // The owner's Muse arrives with a small welcome gift so it has something to trade (logged as a rule).
       const owner = this.runtime.state().muses.find(m => m.id === OWNER_SLOT);
       if (owner && owner.inventory.length === 0) this.runtime.commitExternal(Date.now(), 'welcome', (st, emit) => { st.muses.find(m => m.id === OWNER_SLOT)!.inventory.push('coffee', 'postage_stamp'); emit({at: Date.now(), source: 'rule', kind: 'welcome_gift', muse: OWNER_SLOT, line: 'Welcome gift: Coffee and a Postage Stamp', data: {items: ['coffee', 'postage_stamp']}, tags: []}); });
@@ -88,22 +91,32 @@ export class WorldDO extends DurableObject<Env> {
   ritualStart(session: string) { return this.ritual.start(session); }
   ritualTake(id: string, session: string) { return this.ritual.take(id, session); }
   ritualOwnerRecord() { return this.ritual.ownerRecord(); }
-  /** Logs a judged ritual (verdicts only, never frames); a passing judge-link run becomes the owner's recorded ritual. */
-  ritualRecord(rec: RitualRecord, sessionTag: string) {
-    if (rec.tier === 'judge' && rec.passed) this.ritual.saveOwnerRecord(rec);
-    return this.runtime.commitExternal(Date.now(), 'ritual', (_s, emit) => emit({at: Date.now(), source: rec.requestId ? 'live' : 'replay', kind: 'ritual_judged', muse: null, line: rec.passed ? 'Welcome ritual passed' : 'Welcome ritual not passed', data: {passed: rec.passed, results: rec.results, evidence: rec.requestId ? {model: rec.model, requestId: rec.requestId} : null, who: rec.tier === 'judge' ? 'owner (judge link)' : 'visitor ' + sessionTag, framesStored: false}, tags: ['ritual']}));
+  /**
+   * Logs a judged ritual (verdicts only, never frames). Only a passing live run made with the real owner's session
+   * becomes the owner's recorded ritual; a judge link or a visitor never writes it, and the record grants nothing.
+   */
+  ritualRecord(rec: RitualRecord, sessionTag: string, byOwner = false) {
+    if (byOwner && rec.passed) this.ritual.saveOwnerRecord(rec);
+    // A unique label: two rituals judged in the same millisecond must not share an event id (the second would be dropped).
+    return this.runtime.commitExternal(Date.now(), 'ritual-' + Math.random().toString(36).slice(2, 10), (_s, emit) => emit({at: Date.now(), source: rec.requestId ? 'live' : 'replay', kind: 'ritual_judged', muse: null, line: rec.passed ? 'Welcome ritual passed' : 'Welcome ritual not passed', data: {passed: rec.passed, results: rec.results, evidence: rec.requestId ? {model: rec.model, requestId: rec.requestId} : null, who: byOwner ? 'owner (owner session)' : rec.tier === 'judge' ? 'judge link ' + sessionTag : 'visitor ' + sessionTag, framesStored: false}, tags: ['ritual']}));
   }
   worldView() { return this.runtime.view(Date.now()); }
   worldEvents(since: number, limit: number, opts: {day?: string; tail?: number} = {}) { return this.runtime.events(since, Math.min(2000, Math.max(1, limit)), opts); }
   worldHighlights(limit: number) { return this.runtime.highlights(Math.min(300, Math.max(1, limit))); }
   // Connected Muse (direction v2, 7.2, 12.3, 13.1): MCP dispatch, agent keys, owner location, notifications.
   mcp(keyHash: string, method: string, params: unknown, isNotification: boolean) { return this.connected.mcp(keyHash, method, params, isNotification); }
-  issueAgentKey() { return this.connected.issueKey(); }
-  listAgentKeys() { return this.connected.listKeys(); }
+  issueAgentKey(muse: string) { return this.connected.issueKey(muse); }
+  listAgentKeys(muse: string) { return this.connected.listKeys(muse); }
+  agentKeyMuse(id: string) { return this.connected.keyMuse(id); }
   revokeAgentKey(id: string) { return this.connected.revokeKey(id); }
+  // Owner control (C06, I-02): revocation and the separate re-delegation; the Worker route checks the owner session.
+  ownerRevoke(muse: string, by: string) { return revokeMuse({trust: this.trust, runtime: this.runtime}, muse, by); }
+  ownerRedelegate(muse: string, by: string) { return redelegateMuse({trust: this.trust, runtime: this.runtime}, muse, by); }
+  delegationStatus(muses: string[]) { return delegationStatus({trust: this.trust, runtime: this.runtime}, muses); }
+  taskParticipants(taskId: string) { const t = this.runtime.state().inbox?.tasks.find(x => x.id === taskId); return t ? {from: t.from, to: t.to, status: t.status} : null; }
   ownerLocation() { return this.connected.ownerLocation(); }
   setOwnerLocation(input: unknown) { return this.connected.setOwnerLocation(input); }
-  ownerNotifications(full: boolean) { return this.connected.notifications(full); }
+  ownerNotifications(detailFor: string[]) { return this.connected.notifications(detailFor); }
   getClaim(agent: string): ClaimRecord | null {
     const r = this.ctx.storage.sql.exec('SELECT record FROM claims WHERE agent = ?', agent).toArray()[0];
     return r ? JSON.parse(String(r.record)) : null;

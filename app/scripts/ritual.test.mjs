@@ -17,10 +17,10 @@ test('ritual steps are server-chosen, distinct, single-use, session-bound and ex
   assert.equal(r.take(b.id, 's1', 1000 + RITUAL_TTL_MS + 1), null, 'expired');
 });
 
-test('only a passing judge-link run becomes the owner record, without frames', () => {
+test('the owner record (saved only for a passing owner-session run, see owner-control.test) keeps no frames', () => {
   const r = new RitualStore(sqlite()); r.init();
   assert.equal(r.ownerRecord(), null);
-  r.saveOwnerRecord({at: 5, passed: true, results: [{step: 'thumbs_up', passed: true, confidence: .9}], requestId: 'req', model: 'muse-spark-1.3', tier: 'judge'});
+  r.saveOwnerRecord({at: 5, passed: true, results: [{step: 'thumbs_up', passed: true, confidence: .9}], requestId: 'req', model: 'muse-spark-1.3', tier: 'owner'});
   const rec = r.ownerRecord();
   assert.equal(rec.requestId, 'req');
   assert.ok(!JSON.stringify(rec).includes('data:image'));

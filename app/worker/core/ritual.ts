@@ -38,7 +38,7 @@ export class RitualStore {
     this.sql.exec('UPDATE rituals SET used = 1 WHERE id = ?', String(id));
     return JSON.parse(String(r.steps));
   }
-  /** The owner's recorded ritual (judge-link run) is kept as the default replay; it never authenticates anyone else. */
+  /** The owner's recorded ritual (an owner-session run) is kept as the default replay; it never authenticates anyone. */
   saveOwnerRecord(rec: RitualRecord) { this.sql.exec('INSERT OR REPLACE INTO ritual_record (id, record) VALUES (1, ?)', JSON.stringify(rec)); }
   ownerRecord(): RitualRecord | null { const r = this.sql.exec('SELECT record FROM ritual_record WHERE id = 1').toArray()[0]; return r ? JSON.parse(String(r.record)) : null; }
 }
