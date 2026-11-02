@@ -1,0 +1,122 @@
+// D05 preparation only: no credentials, writes, provider calls, browser launch or publishing.
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import {resolve,relative,isAbsolute,dirname} from 'node:path';
+import {createHash} from 'node:crypto';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+export const run=promisify(execFile), sha=b=>createHash('sha256').update(b).digest('hex');
+export const SHOTS=[
+ ['s01',12,'A living place','World overview: people delegate; Muses meet and act.'],
+ ['s02',14,'Identity before action','Open original Agent Card and delegation evidence.'],
+ ['s03',20,'P0 valid delegation','Same job: valid signature and actual completed trade.'],
+ ['s04',18,'P0 revocation','Same job after revocation: refusal and unchanged inventory.'],
+ ['s05',20,'P1 reward changes a plan','Controlled before/after item comparison, identical other inputs.'],
+ ['s06',18,'Abilities in the world','Actual discovery, item change and resulting travel or cooperation.'],
+ ['s07',20,'Owners decide a promise','Public meetup flow: two approvals, one confirmation, private reasons stay private.'],
+ ['s08',14,'Muses help each other','Actual gift, postcard or completed help highlight.'],
+ ['s09',14,'Open the evidence','Selected event to run/commit/model request or signed verdict.'],
+ ['s10',14,'Replay without re-execution','Recorded 1/10/60x; samples, notes and original sources visible.'],
+ ['s11',10,'Failure stays honest','Originally observed fallback; label original source and playback.'],
+ ['s12',6,'Musely','Build, Meta attribution, virtual location and material limits.']
+];
+export function createPlan(){return {schema:'musely-demo-plan-1',status:'preparation_only',origin:'https://musely.net',release:{frozen:false,sourceSha:null,deployId:null,configVersion:null,htmlSha256:null,modelIds:[],attestation:null},review:{p0SameJob:false,p1ControlledPair:false,labelsAndAttribution:false,noPrivateContent:false,releaseAndAccountReceipts:false},cuts:SHOTS.map(([id,duration,title,intent])=>({id,duration,title,intent,label:'REPLAY',virtual:true,refs:[],seekSec:null,snapshotHash:null,views:[],media:null})),limitations:['Pending real account claim/P0 success: never fill with fixture','Root final release freeze, D02/D03/D04 receipts and actual final capture required','No final video acceptance, publication or upload authorized by preparation']};}
+const apiPaths=new Set(['/api/status','/api/world','/api/world/highlights','/api/world/event','/api/world/run','/api/world/run/inputs','/api/world/events','/api/world/autonomy']);
+export function publicReadAllowed(url,origin,method='GET'){
+ try{const u=new URL(url),o=new URL(origin);if(method!=='GET'||u.origin!==o.origin||u.username||u.password||u.hash||!['https:','http:'].includes(u.protocol))return false;
+ if(u.protocol==='http:'&&!['127.0.0.1','localhost'].includes(u.hostname))return false;
+ if(u.pathname!=='/'&&!apiPaths.has(u.pathname))return false;
+ const allowed=new Set(['id','runId','snapshot','since','limit','tail','before','from','to','day']);return [...u.searchParams.keys()].every(k=>allowed.has(k));
+ }catch{return false;}
+}
+export function validatePlan(p){
+ const e=[];if(p.schema!=='musely-demo-plan-1')e.push('bad_schema');
+ if(!p.release?.frozen)e.push('release_not_frozen');
+ for(const k of ['sourceSha','deployId','configVersion','htmlSha256','attestation'])if(!p.release?.[k])e.push('missing_release_'+k);
+ if(!/^[a-f0-9]{40}$/.test(p.release?.sourceSha??''))e.push('bad_source_sha');
+ if(!/^[a-f0-9]{64}$/.test(p.release?.htmlSha256??''))e.push('bad_html_sha');
+ if(!p.release?.modelIds?.length)e.push('missing_model_ids');
+ if(!Array.isArray(p.cuts)||p.cuts.length!==12||p.cuts.reduce((s,c)=>s+c.duration,0)!==180)e.push('duration_must_be_180');
+ for(const [i,c] of (p.cuts??[]).entries()){
+ if(c.id!==SHOTS[i]?.[0]||!Number.isFinite(c.duration)||c.duration<=0)e.push('bad_cut_order_or_duration');
+ if(c.label!=='REPLAY')e.push(c.id+':replay_label_required');if(c.virtual!==true)e.push(c.id+':virtual_label_required');
+ if(!Array.isArray(c.refs)||!c.refs.length)e.push(c.id+':missing_refs');
+ const views=c.views?.length?c.views:[{seekSec:c.seekSec,snapshotHash:c.snapshotHash}];
+ for(const v of views){if(!Number.isFinite(v.seekSec)||v.seekSec<0)e.push(c.id+':missing_recorded_seek');if(!/^[a-f0-9]{64}$/.test(v.snapshotHash??''))e.push(c.id+':missing_snapshot_hash');}
+ }
+ for(const key of ['p0SameJob','p1ControlledPair','labelsAndAttribution','noPrivateContent','releaseAndAccountReceipts'])if(p.review?.[key]!==true)e.push('human_review_required:'+key);
+ return e;
+}
+export function signedVerdict(e){
+ const d=e?.data??{};
+ if(e?.kind==='a2a_verified'&&Array.isArray(d.steps)&&['signature','delegation','scope','replay'].every(s=>d.steps.includes(s))&&d.envelope?.message_id)return 'verified';
+ if(['a2a_refused','command_refused'].includes(e?.kind)&&typeof d.reason==='string'&&d.envelope?.message_id)return 'refused:'+d.reason;
+ return null;
+}
+export function validateReference(r,b){
+ const e=[],v=b?.event;if(!v||v.id!==r.eventId)e.push('event_mismatch');
+ if(!b?.runIdStored||b.runId!==r.runId||b.run?.runId!==r.runId||v?.runId!==r.runId)e.push('run_mismatch');
+ if(b?.run?.schemaVersion!=='run-log-2')e.push('run_log_2_required');
+ if(b?.input?.seq!==r.inputSeq||b?.input?.runId!==r.runId||v?.inputSeq!==r.inputSeq)e.push('commit_mismatch');
+ if(!['live','rule','scripted','replay'].includes(r.originalSource)||v?.source!==r.originalSource)e.push('source_mismatch');
+ if(r.requestId){if(v?.data?.evidence?.requestId!==r.requestId)e.push('request_mismatch');}
+ else if(r.role!=='support'&&(!r.signedVerdict||signedVerdict(v)!==r.signedVerdict))e.push('model_request_or_signed_verdict_required');
+ if(r.requestId&&r.signedVerdict&&signedVerdict(v)!==r.signedVerdict)e.push('verdict_mismatch');
+ return e;
+}
+export function inside(root,path){const p=resolve(root,path),rel=relative(resolve(root),p);if(!path||isAbsolute(path)||rel.startsWith('..')||!rel)throw Error('unsafe_relative_path');return p;}
+export async function writeNew(path,data){await mkdir(dirname(path),{recursive:true});await writeFile(path,data,{flag:'wx'});}
+export async function publicGet(url,origin,fetcher=fetch){
+ if(!publicReadAllowed(url,origin))throw Error('public_get_only');
+ const response=await fetcher(url,{method:'GET',redirect:'error',credentials:'omit',signal:AbortSignal.timeout(10_000),headers:{accept:'application/json,text/html'}});
+ if(!response.ok||response.redirected)throw Error('public_read_http_'+response.status);
+ const chunks=[];let n=0;for await(const chunk of response.body){n+=chunk.length;if(n>8*1024*1024)throw Error('public_body_too_large');chunks.push(chunk);}
+ const body=Buffer.concat(chunks);if(/msly_[A-Za-z0-9_-]{43}|\"(?:access_token|private_keys)\"\s*:/i.test(body.toString()))throw Error('unexpected_sensitive_public_body');return body;
+}
+export async function collect(p,dir,fetcher=fetch){
+ await mkdir(dir,{recursive:true});const copy=structuredClone(p),receipts=[];let n=0;
+ const get=async path=>{const url=new URL(path,p.origin).href,body=await publicGet(url,p.origin,fetcher),file=`raw/${String(++n).padStart(3,'0')}.json`,receipt={url,method:'GET',at:new Date().toISOString(),file,sha256:sha(body),bytes:body.length};await writeNew(inside(dir,file),body);receipts.push(receipt);return receipt;};
+ for(const path of ['/','/api/status','/api/world/run','/api/world/highlights?limit=100'])await get(path);
+ if(copy.cuts.reduce((n,c)=>n+c.refs.length,0)>48)throw Error('too_many_cut_refs');
+ for(const c of copy.cuts)for(const r of c.refs){const x=await get('/api/world/event?id='+encodeURIComponent(r.eventId));Object.assign(r,{file:x.file,sha256:x.sha256});}
+ // Observations never attest deployment/config/source or turn a release freeze on.
+ copy.observations=receipts;await writeNew(resolve(dir,'collected-plan.json'),JSON.stringify(copy,null,2)+'\n');return copy;
+}
+export async function verifyBundle(p,dir){
+ const errors=validatePlan(p);
+ for(const c of p.cuts??[])if(!(c.refs??[]).some(r=>r.requestId||r.signedVerdict))errors.push(c.id+':missing_evidence_anchor');
+ for(const c of p.cuts??[])for(const r of c.refs??[]){try{const raw=await readFile(inside(dir,r.file));if(sha(raw)!==r.sha256)throw Error('raw_hash_mismatch');for(const x of validateReference(r,JSON.parse(raw)))errors.push(c.id+':'+x);}catch(e){errors.push(c.id+':'+e.message);}}
+ return errors;
+}
+export async function checkHtml(p,fetcher=fetch){if(sha(await publicGet(new URL('/',p.origin).href,p.origin,fetcher))!==p.release.htmlSha256)throw Error('release_html_changed');}
+export async function calibrate(ffmpeg,dir){
+ const path=resolve(dir,'CALIBRATION-NOT-ACCEPTANCE.mp4');await mkdir(dir,{recursive:true});
+ await run(ffmpeg,['-hide_banner','-loglevel','error','-n','-f','lavfi','-i','testsrc2=size=640x360:rate=30','-vf',"drawtext=fontfile=/System/Library/Fonts/Supplemental/Arial.ttf:text='LOCAL CALIBRATION - NOT ACCEPTANCE':fontsize=22:fontcolor=white:box=1:boxcolor=black:x=20:y=20",'-t','2','-an','-c:v','libx264','-pix_fmt','yuv420p','-metadata','title=LOCAL CALIBRATION ONLY - NOT MUSELY FOOTAGE',path]);
+ await run(ffmpeg,['-v','error','-i',path,'-f','null','-']);
+ const receipt={kind:'local_synthetic_calibration_not_acceptance',path,sha256:sha(await readFile(path)),durationExpectedSeconds:2,decoded:true,audio:'none',finalAcceptance:'not_measured'};
+ await writeNew(resolve(dir,'calibration.json'),JSON.stringify(receipt,null,2)+'\n');return receipt;
+}
+export async function render(p,dir,ffmpeg,font){
+ const errors=await verifyBundle(p,dir);if(errors.length)throw Error(errors.join('\n'));
+ const parts=[];await mkdir(resolve(dir,'render'),{recursive:true});
+ for(const c of p.cuts){
+ const segments=Array.isArray(c.media)?c.media:[{...c.media,duration:c.duration}];
+ if(segments.reduce((n,s)=>n+s.duration,0)!==c.duration)throw Error(c.id+':take_duration_mismatch');
+ for(const [index,segment] of segments.entries()){
+ const clip=inside(dir,segment.file),raw=await readFile(clip);if(sha(raw)!==segment.sha256)throw Error(c.id+':media_hash_mismatch');
+ const receipt=JSON.parse(await readFile(inside(dir,segment.receipt),'utf8'));
+ if(receipt.cutId!==c.id||receipt.sourceSha!==p.release.sourceSha||receipt.deployId!==p.release.deployId||receipt.htmlSha256!==p.release.htmlSha256||receipt.configVersion!==p.release.configVersion||!Number.isFinite(receipt.startOffsetSec)||receipt.blockedRequests!==0||receipt.kind!=='recorded_public_capture')throw Error(c.id+':capture_receipt_mismatch');
+ if(!receipt.refs?.length||receipt.refs.some(r=>!c.refs.some(x=>x.eventId===r.eventId&&x.runId===r.runId&&x.inputSeq===r.inputSeq)))throw Error(c.id+':captured_refs_mismatch');
+ const expectedView=c.views?.find(v=>v.runId===receipt.runId)??c;
+ if(receipt.observed?.hash!==expectedView.snapshotHash||receipt.seekSec!==expectedView.seekSec)throw Error(c.id+':captured_snapshot_mismatch');
+ const target=resolve(dir,'render',c.id+'-'+index+'.mp4'),text=resolve(dir,'render',c.id+'-'+index+'.txt');
+ await writeNew(text,`REPLAY | original: ${[...new Set(c.refs.map(r=>r.originalSource))].join(', ')} | VIRTUAL LOCATION (DEMO)\n${c.title} | Meta Muse Spark | build ${p.release.sourceSha.slice(0,12)}`);
+ const esc=s=>s.replaceAll('\\','\\\\').replaceAll(':','\\:').replaceAll("'","'\\''");
+ const vf=`scale=1920:960:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:0:color=black,drawtext=fontfile='${esc(resolve(font))}':textfile='${esc(text)}':fontcolor=white:fontsize=28:x=24:y=978:line_spacing=8`;
+ await run(ffmpeg,['-hide_banner','-loglevel','error','-n','-ss',String(receipt.startOffsetSec),'-i',clip,'-t',String(segment.duration),'-an','-vf',vf,'-r','30','-c:v','libx264','-pix_fmt','yuv420p','-movflags','+faststart',target]);parts.push(target);
+ }}
+ const list=resolve(dir,'render','concat.txt');await writeNew(list,parts.map(p=>"file '"+p.replaceAll("'","'\\''")+"'").join('\n')+'\n');
+ const video=resolve(dir,'musely-180s-review.mp4');await run(ffmpeg,['-hide_banner','-loglevel','error','-n','-f','concat','-safe','0','-i',list,'-c','copy','-movflags','+faststart',video]);
+ const decoded=await run(ffmpeg,['-v','error','-i',video,'-progress','pipe:1','-f','null','-']);const times=[...decoded.stdout.matchAll(/out_time_us=(\d+)/g)].map(x=>Number(x[1])/1e6);const seconds=Math.max(...times);
+ if(Math.abs(seconds-180)>.1)throw Error('decoded_duration_not_180:'+seconds);
+ const receipt={kind:'rendered_needs_human_playback_review',durationSeconds:seconds,sha256:sha(await readFile(video)),release:p.release,finalAcceptance:'not_measured',audio:'none'};await writeNew(resolve(dir,'render-receipt.json'),JSON.stringify(receipt,null,2)+'\n');return receipt;
+}
