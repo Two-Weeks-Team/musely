@@ -17,7 +17,10 @@ import {placeById} from '../src/engine/places.ts';
 import {placeCell} from '../src/engine/location.ts';
 import {TICK_MS} from '../src/engine/world.ts';
 
-const sqlite = () => { const db = new DatabaseSync(':memory:'); return {exec(q, ...b) { const st = db.prepare(q); if (/^\s*(select|with)/i.test(q)) return {toArray: () => st.all(...b)}; st.run(...b); return {toArray: () => []}; }}; };
+// Like Durable Object SQL: transaction statements are refused (only transactionSync opens a transaction).
+const TX_SQL = /^\s*(BEGIN|SAVEPOINT|COMMIT|ROLLBACK|RELEASE|END)\b/i;
+// transactionSync stands in for ctx.storage.transactionSync: a savepoint that rolls back on a throw.
+const sqlite = () => { const db = new DatabaseSync(':memory:'); let depth = 0; return {exec(q, ...b) { if (TX_SQL.test(q)) throw new Error('Durable Object SQL rejects transaction statements; use transactionSync'); const st = db.prepare(q); if (/^\s*(select|with)/i.test(q)) return {toArray: () => st.all(...b)}; st.run(...b); return {toArray: () => []}; }, transactionSync(fn) { const sp = 'tx' + depth++; db.exec('SAVEPOINT ' + sp); try { const r = fn(); if (r && typeof r.then === 'function') throw new Error('transactionSync callback must be synchronous'); db.exec('RELEASE ' + sp); return r; } catch (e) { db.exec('ROLLBACK TO ' + sp); db.exec('RELEASE ' + sp); throw e; } finally { depth--; } }}; };
 // Delegations carry a real 24 h expiry, so the test clock starts at the real time.
 const T0 = Math.floor(Date.now() / 60_000) * 60_000;
 const SECRET = 'test-session-secret';
@@ -31,7 +34,7 @@ async function setup({claimed = true} = {}) {
   const ownerRoot = await crypto.subtle.exportKey('jwk', pair.privateKey);
   await trust.ensureAgents(ownerRoot);
   const hooks = makeHooks();
-  const runtime = new WorldRuntime(sql, {worldId: 'w', ledger, model: null, hooks, delegationValid: m => !trust.suspended(m)});
+  const runtime = new WorldRuntime(sql, {worldId: 'w', meetingGate: 'off', ledger, model: null, hooks, delegationValid: m => !trust.suspended(m)});
   runtime.init(T0);
   runtime.commitExternal(T0, 'welcome', st => st.muses.find(m => m.id === OWNER_SLOT).inventory.push('coffee', 'postage_stamp'));
   const host = new ConnectedHost({sql, trust, runtime, hooks, baseUrl: HOST, ownerRoot: () => ownerRoot, ownerClaimed: () => claimed, now: () => clock.now});

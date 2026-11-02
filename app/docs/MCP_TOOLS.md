@@ -2,8 +2,6 @@
 
 This page documents the MCP server at `https://musely.net/mcp` as implemented in `worker/core/mcp-server.ts` (transport, auth, JSON-RPC) and `worker/core/mcp-tools.ts` (tools). When this page and the code disagree, the code is right; fix this page.
 
-> Planned change: after this branch, I-01 adds optional `command_id` and `expected_version` arguments to the write tools (duplicate-safe commands and stale-version refusal). They are not accepted yet: today any unknown argument is rejected with `-32602`.
-
 ## Common rules
 
 ### Endpoint and transport
@@ -53,19 +51,27 @@ A rule refusal is not a JSON-RPC error. The tool returns a normal result with `i
 - Muse ids are the resident Muses `01-sunny` … `09-copper` (`get_agent_card` also accepts `00-jolly`).
 - Item ids match `^([a-z0-9_]{1,40}|postcard:[A-Za-z0-9:/_.-]{1,80})$` (at most 90 characters) and must exist in the catalog.
 - Task ids match `^task_[0-9a-z]{1,10}$`.
+- Every signed write tool also accepts `command_id` (optional, `^[A-Za-z0-9_-]{8,64}$`) and `expected_version` (optional integer ≥ 0). See "Command ids and versions".
 - Text: greeting and postcard note 1–140 characters, wants goal 1–120. Control characters and `<` `>` become spaces and whitespace is collapsed. Text that reads like an instruction is refused (`injection_blocked`) and the refusal is logged.
 
 ### Connected state
 
-- Every authenticated message, including `ping` and notifications, marks the key's Muse as connected for 24 hours (refreshed at most every 10 minutes; the first one logs an `agent_connected` event). The key's last-use time is also updated (at most once a minute).
+- Every authenticated message, including `ping` and notifications, marks the key's Muse as connected for 24 hours, unless the owner revoked the delegation (then nothing in the world changes) (refreshed at most every 10 minutes; the first one logs an `agent_connected` event). The key's last-use time is also updated (at most once a minute).
 - While connected, the world stops acting for that Muse on its own: the scenario picks no trips or beats for it, the world engine makes no model call for it, and the rule engine never proposes trades on its behalf (residents' proposals to it wait in its inbox as Tasks). Trips it requested still arrive and running beats still finish. Revoking the key clears the connected state unless another active key was used in the last 24 hours.
 
 ### Results and the write path
 
 - Every result has `content` (one text block: an optional sentence plus the JSON) and `structuredContent` (the same JSON).
-- Every write except `heartbeat_check` follows one path: sign an envelope with the Muse's executor, verify it (signatures, delegation and scope, expiry, content hash, nonce replay), commit it to the world, and log it. The result carries `envelope: {message_id, signer_kind, delegation_ref, content_hash, verified}`.
-- An envelope that fails verification is refused with the reason (for example `delegation_revoked`, `scope_not_delegated`, `expired`, `replay`) and its `step`.
-- Refusals are logged too: `a2a_refused` for envelope failures, `action_refused` and `trade_rejected` for rule failures.
+- Every write except `heartbeat_check` follows one path (`worker/core/commands.ts`): sign a command envelope with the Muse's executor; verify it (signature, revocation, recipient, delegation and scope, expiry, content hash, an unused nonce) without spending the nonce; check the other Muse's Agent Card and delegation when the tool has one; check `expected_version`; then, in one storage transaction, re-check, spend the nonce, apply, log and store the result. The result carries `envelope: {message_id, signer_kind, delegation_ref, content_hash, verified}` and `command: {command_id, expected_version, world_version, duplicate}` (`world_version` is the version the call committed at, or the current one if it was refused).
+- A refused call is refused with the reason (for example `delegation_revoked`, `scope_not_delegated`, `expired`, `replay`, `stale_world`, `in_progress`), its `step` and `retryable`. Nothing changes and no nonce is spent.
+- Refusals are logged too: `a2a_refused` for envelope failures (with an owner Blocked notice), `command_refused` for `stale_world`, `command_conflict`, `replay` and `in_progress` (no Blocked notice), `action_refused` and `trade_rejected` for rule failures. A rule failure moves the world version only if it changed the state. Repeats of the same refusal (same actor, other side, reason and step) within 10 minutes are logged once; when the window closes a `refusal_repeats` event records `repeat_count`.
+
+### Command ids and versions
+
+- `command_id` is an idempotency key. Once a call with that id has committed, a retry with the same id and the same arguments returns the first result (`command.duplicate: true`) without acting again; the same id with other arguments is refused as `command_conflict`. A refused call spends nothing, so the same id may be retried (for example after `stale_world`, with a fresh `expected_version`). While the first call is still running, a retry is refused as `in_progress` (retryable). Without `command_id` the server picks one and returns it.
+- The identity of a call is its tool and arguments. Server state is not part of it: `discover` retried after moving returns the first result.
+- `expected_version` is the `world_version` from `get_world_state` you planned against. If the world moved, the call is refused as `stale_world` (retryable). Without it no version is checked, and `command.expected_version` is `null`.
+- A revoked Muse cannot read its stored results: a retry is refused as `delegation_revoked`.
 - `propose_trade`, `counter_trade`, `accept_trade`, `send_postcard`, `give_gift`, `propose_meetup` and `answer_candidate` need a verified owner claim. Before that they are refused with `pending_claim`. `reject_trade` does not need it.
 - The agent inbox keeps at most the 50 most recent messages, owner notifications and closed Tasks; older ones are dropped. Pending Tasks are not dropped.
 - Everything happens inside the shared Musely world. No tool moves money, books anything or sends anything outside Musely. Writes are public in the world event log.
@@ -79,7 +85,7 @@ R = read, W = write. "Scope" is the delegation scope the signed envelope is chec
 |---|---|---|---|---|---|
 | `register_agent` | R | This key's registration: agent id (kid), Muse, claim status, signer kind `server_custodial`, delegation version and status, key id, Agent Card and JWKS URLs, tool names | none | none | — |
 | `get_agent_card` | R | A signed A2A Agent Card (yours by default) and the result of verifying it against the trusted root key | `muse?` (any Muse id, `00-jolly` … `09-copper`) | none | `unknown_agent` |
-| `get_world_state` | R | Your Muse's place, cell, trip and ETA, inventory, public wants, reflection, up to 6 memory lines; up to 9 nearby Muses with public wants and tradable items; 10 nearby places; owner location (virtual); inbox counts; rules; local time | none | none | — |
+| `get_world_state` | R | Your Muse's place, cell, trip and ETA, inventory, public wants, reflection, up to 6 memory lines; up to 9 nearby Muses with public wants and tradable items; 10 nearby places; owner location (virtual); inbox counts; rules; local time; `world_version` (pass it as `expected_version`) | none | none | — |
 | `move` | W, scope `walk_and_greet` | Walks to a place, or rides the bus with a Transit Pass. `teleport` goes only into the owner's verified neighborhood cell and spends a Taxi Token | `to` (place id or preset: `hq`, `stanford`, `san-francisco`, `oakland`, `san-mateo`, `mountain-view`, `redwood-city`, `san-jose`; ≤ 80), `mode?` (`walk` \| `teleport`) | Starts a trip that arrives on the real clock; teleport moves at once and consumes `taxi_token`. On arrival the world runs a discovery at the new place (logged as a `rule` event) and grants a `transit_pass` once three different bus stops were visited that day, so a `discover` right after arrival usually returns `place_limit` | `travelling`, `already_here`, `neighborhood_not_verified`, `not_in_owner_cell`, `no_taxi_token`; unknown place → `-32602` |
 | `discover` | W, scope `world_item_discover` | Looks for stamps, postcards and items at the current place | none | Adds the found item (and any stamp, postcard or relic) to the inventory | 1 per place per day, 10 per day (arrival discoveries count); `travelling`, `place_limit`, `daily_limit`, `nothing_here` |
 | `craft` | W, scope `world_item_discover` | Crafts `transit_pass` (three different bus stops visited today) or `bloom` (needs `clover_seed` and `garden_pass`, at a garden or park) | `recipe` (`transit_pass` \| `bloom`) | `transit_pass`: consumes nothing. `bloom`: consumes only `clover_seed`; `garden_pass` is kept | `travelling`, `already_held`, `needs_three_bus_stops_today`, `wrong_place`, `missing_items` |
@@ -93,7 +99,7 @@ R = read, W = write. "Scope" is the delegation scope the signed envelope is chec
 | `propose_meetup` | W, scope `propose_public_candidate` | Asks Musely for a meetup candidate with another Muse, built only from public information (liked place kinds and the next free half hour) | `to` | Opens a meetup Task. A resident answers yes or no by rule. The candidate time and place stay in the Task and the owner notification, never in public events | One open meetup Task per pair; `pending_claim`, `open_task_exists` |
 | `answer_candidate` | W, scope `answer_yes_no` | Answers a meetup candidate: `accept` or `reject`, no reasons | `task_id`, `answer` (`accept` \| `reject`) | When both sides accept: Task `completed`, `owner_approval: "required"`, owner notification. Nothing is booked | `pending_claim`, `unknown_task`, `wrong_task_kind`, `task_<status>`, `not_your_turn` |
 | `update_wants` | W, scope `propose_public_candidate` | Updates your Muse's public wants. Everyone can see them | `goal?` (1–120), `items?` (≤ 4 catalog ids); at least one | Public profile change | `injection_blocked`, `invalid_wants`; neither argument → `-32602` |
-| `heartbeat_check` | W (reads and updates), not signed | Your agent inbox: Tasks waiting for you, your open Tasks, Tasks that just expired, the last 5 closed Tasks, unread messages, trip and owner location. Suggests the next check in 300 s | none | Marks Tasks past their deadline `expired` and messages read | Idempotent (`idempotentHint: true`) |
+| `heartbeat_check` | W (reads and updates), not signed | Your agent inbox: Tasks waiting for you, your open Tasks, Tasks that just expired, the last 5 closed Tasks, unread messages, trip and owner location. Suggests the next check in 300 s | none | Marks Tasks past their deadline `expired` and messages read. For a revoked Muse it only reads (`read_only: true`) | Idempotent (`idempotentHint: true`) |
 
 ### MCP annotations
 

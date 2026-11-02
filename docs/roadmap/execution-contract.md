@@ -31,6 +31,14 @@
 - 처리 순서: transport 호출자 인증 → wrapper/서명 content·actor 결합 확인 → 동일 주체+commandId의 기존 결과 조회(같은 본문만 재반환, 다른 본문 conflict) → 신규 요청의 현재 위임/클레임/승인/만료·nonce 검증 → expectedVersion 검사 → 커밋. 유효한 과거 요청의 정상 재시도를 이미 사용한 nonce로 새 실행하지 않는다. 철회된 호출 자격은 캐시 조회 전 transport에서 거부한다.
 - `expectedVersion`이 낡으면 `stale_world`로 거부하고 새 상태로 재계획한다. 읽기 조회 실패를 빈 세계/성공으로 위장하지 않는다. UI는 마지막 성공 시각과 재시도 상태를 표시한다.
 
+- 2026-11-02 구현 대응 (I-01 #47, `feature/i01-command-runtime`): 위 C03 원문과 원래 SHA·줄 참조는 당시 계약으로 남기고, 실제 구현이 다른 점만 적는다.
+  - 위치: `preview/worker/core/commands.ts`가 아니라 본 제품 `app/worker/core/commands.ts`다.
+  - 진입점: `WorldRuntime.executeCommand(command, now)` 대신 `executeCommand(ctx: {trust, runtime}, command: WorldCommand, handler: CommandHandler, now?): Promise<CommandOutcome>`다. action의 적용(apply)은 호출부(MCP 도구, 주인 Muse 거래)가 가지므로 runtime만으로는 실행할 수 없기 때문이다. `CommandOutcome.result`가 C03의 `CommandResult {ok, commandId, worldVersion, eventIds, error?: {code, retryable}}`다. DO 어댑터는 `WorldRuntime.commitCommand`·`commitRefusal`·`commandRow`이고 모두 `ctx.storage.transactionSync` 안에서 커밋한다.
+  - 서명 content는 `{worldId, expectedVersion, action, payload}` 그 자체다. 중복 판정 hash는 `{worldId, action, payload}`의 JCS 해시이며 expectedVersion을 넣지 않는다(새 버전으로 다시 서명한 재시도를 같은 명령으로 본다). 서버 상태(예: `discover`의 현재 장소)는 payload에 넣지 않는다.
+  - MCP 쓰기 도구는 선택 인자 `command_id`·`expected_version`을 받고 응답 `command`에 실제로 쓴 값을 돌려준다. `expected_version`을 생략하면 서명 content의 expectedVersion은 `null`이고 버전 검사(사전·커밋 시)를 하지 않으며, 응답 `world_version`은 실제 커밋된 버전이다. `get_world_state`가 `world_version`을 준다. 비-peer 수신자 ID는 `musely:world:<worldId>`다.
+  - 처리 순서 구체화: wrapper 결합 → 서명 → 위임 철회·버전(철회된 행위자는 저장 결과도 조회하지 못한다) → 저장 결과(같은 hash 재반환, 다른 hash `command_conflict`, 같은 ID 진행 중 `in_progress` retryable) → nonce를 소비하지 않는 envelope 검증(기대 수신자 포함) → 상대 카드·위임 → `stale_world` → 트랜잭션 밖 작업(think; 반환한 `settle`은 executeCommand가 finally에서 호출하고, think는 throw 전에 스스로 정산한다. think와 상대 확인에는 15초 데드라인) → 하나의 트랜잭션에서 저장 결과·world version·양쪽 위임을 다시 확인한 뒤 nonce 소비·적용·이벤트·결과 행. 거부는 nonce를 소비하지 않으므로 같은 commandId로 재시도할 수 있다.
+  - 거부는 world version을 올리지 않고 상태가 그대로면 세계 행을 다시 쓰지 않는다. 규칙 거부(apply 실패)는 상태가 실제로 바뀐 경우에만 버전을 올리며 결과 행은 저장한다. 같은 (actor, 상대, code, step) 거부는 10분 창에서 이벤트 하나로 합치고 횟수는 `refusals` 테이블에 둔다. 창이 닫히면 반복이 있었던 키마다 `refusal_repeats` 이벤트(`repeat_count`)를 남긴다. P0 같은 증거 흐름(`ownerTrade`)은 합치지 않는다. `decision_discarded`는 think가 있을 때만 쓰고, 그 밖의 커밋 시점 거부는 일반 거부(handler 기록·Blocked 알림)로 남긴다. `stale_world`·`command_conflict`·`replay`·`in_progress`는 주인 Blocked 알림과 `p0_refused` 태그에서 제외한다.
+
 ## C04 — 신원·권한과 커밋
 
 - 기존 `identity/envelope.ts`의 `Signed`, `Envelope`, `Verdict`, `TrustRegistry`, `verifyEnvelope`와 ES256/JCS·위임장 계약을 재사용한다. JSON 정규화/서명을 별도 임의 구현하지 않는다.
@@ -40,6 +48,8 @@
 - 시스템 주민은 등록된 시스템 루트와 위임으로 통제하며 actorOrigin system 및 demo principal임을 표시한다. 시스템 루트의 신뢰를 실제 사람의 Meta 클레임으로 표현하지 않는다. 주인 클레임 필수 정책은 connected/trial 개인 에이전트에 적용하고 visitor 미클레임 거래는 거부한다.
 - 실제 계정 클레임은 해당 주인에게만 속한다. 미클레임 방문자는 관전/격리된 체험만 가능하며 다른 Muse와 실제 거래할 수 없다. 맞이 의식 기록 재생도 새 방문자를 인증하지 않는다.
 - 철회는 현재 위임 버전을 폐기하고 대기 Task/늦은 응답을 종료한다. 새 위임 발급은 주인 의사로 별도 처리하며 테스트 편의를 위한 자동 재위임은 제품 철회 경로에 넣지 않는다.
+
+- 2026-11-02 구현 대응 (I-01 #47): 주민끼리 만나는 정상 흐름도 heartbeat가 tick 전에 양쪽 Agent Card(신뢰 루트)와 `server_heartbeat` 위임(서명·버전·철회·만료·scope)을 검증하고, 엔진의 `canMeet` gate가 커밋 시점에 철회를 다시 확인한 뒤에만 인사·거래를 실행한다. 실패하면 `meeting_refused`만 남기고 두 Muse는 바뀌지 않는다. gate가 설정되지 않았거나 검증을 실행할 수 없으면 만남을 거부한다(fail closed; 시험만 명시적으로 끌 수 있다). `verifyEnvelope`는 기대 수신자(`expect.recipient`)가 필수이며 다르면 nonce 소비 전에 `wrong_recipient`로 거부한다.
 
 ## C05 — 모델·시간·실행 한계
 

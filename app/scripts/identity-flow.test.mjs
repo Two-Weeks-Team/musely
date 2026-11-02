@@ -15,6 +15,8 @@ async function muse(version = 1, signerKind = 'browser') {
   return {root, exec, token, d: peekDelegation(token)};
 }
 const trade = {kind: 'propose_trade', give: 'transit_pass', want: 'clover_seed'};
+// Every envelope in these tests is addressed to Moss.
+const toMoss = {recipient: 'moss'};
 
 test('compact JWS round-trips and rejects tampering', async () => {
   const k = await generateKeyPair();
@@ -56,11 +58,11 @@ test('P0 core: a valid delegation commits; the same request after revocation is 
   const m = await muse(), reg = new MemoryRegistry();
   reg.roots.set(m.root.kid, m.root.publicJwk);
   const send = () => signEnvelope(m.exec, m.token, m.d, {recipient: 'moss', action: 'propose_trade', scope: 'world_item_trade', content: trade, ownerClaimed: true});
-  assert.deepEqual(await verifyEnvelope(await send(), reg).then(v => [v.ok, v.step]), [true, 'process']);
+  assert.deepEqual(await verifyEnvelope(await send(), reg, Date.now(), toMoss).then(v => [v.ok, v.step]), [true, 'process']);
   reg.revokeAll(m.root.kid); // owner revokes: version bump
-  assert.deepEqual(await verifyEnvelope(await send(), reg).then(v => [v.ok, v.reason]), [false, 'delegation_revoked']);
+  assert.deepEqual(await verifyEnvelope(await send(), reg, Date.now(), toMoss).then(v => [v.ok, v.reason]), [false, 'delegation_revoked']);
   reg.revoked.add(await delegationRef(m.token));
-  assert.equal((await verifyEnvelope(await send(), reg)).reason, 'delegation_revoked');
+  assert.equal((await verifyEnvelope(await send(), reg, Date.now(), toMoss)).reason, 'delegation_revoked');
 });
 
 test('verification order: signature, delegation, scope, expiry, content/approval, replay', async () => {
@@ -68,32 +70,32 @@ test('verification order: signature, delegation, scope, expiry, content/approval
   reg.roots.set(m.root.kid, m.root.publicJwk);
   const base = {recipient: 'moss', action: 'propose_trade', scope: 'world_item_trade', content: trade, ownerClaimed: true};
   // unknown agent
-  assert.equal((await verifyEnvelope(await signEnvelope(m.exec, m.token, m.d, base), new MemoryRegistry())).reason, 'unknown_agent');
+  assert.equal((await verifyEnvelope(await signEnvelope(m.exec, m.token, m.d, base), new MemoryRegistry(), Date.now(), toMoss)).reason, 'unknown_agent');
   // tampered envelope field → bad signature
   const s1 = await signEnvelope(m.exec, m.token, m.d, base);
-  assert.equal((await verifyEnvelope({...s1, envelope: {...s1.envelope, recipient: 'ink'}}, reg)).reason, 'bad_signature');
+  assert.equal((await verifyEnvelope({...s1, envelope: {...s1.envelope, recipient: 'ink'}}, reg, Date.now(), toMoss)).reason, 'bad_signature');
   // a different executor key signing with someone else's delegation
   const other = await generateKeyPair();
   const s2 = await signEnvelope(other, m.token, m.d, base);
-  assert.equal((await verifyEnvelope(s2, reg)).reason, 'delegation_mismatch');
+  assert.equal((await verifyEnvelope(s2, reg, Date.now(), toMoss)).reason, 'delegation_mismatch');
   // tampered content → content mismatch (and the nonce is not consumed)
   const s3 = await signEnvelope(m.exec, m.token, m.d, base);
-  assert.equal((await verifyEnvelope({...s3, content: {...trade, want: 'commons_ember'}}, reg)).reason, 'content_mismatch');
-  assert.equal((await verifyEnvelope(s3, reg)).ok, true, 'original still valid once');
+  assert.equal((await verifyEnvelope({...s3, content: {...trade, want: 'commons_ember'}}, reg, Date.now(), toMoss)).reason, 'content_mismatch');
+  assert.equal((await verifyEnvelope(s3, reg, Date.now(), toMoss)).ok, true, 'original still valid once');
   // replay of the same message
-  assert.equal((await verifyEnvelope(s3, reg)).reason, 'replay');
+  assert.equal((await verifyEnvelope(s3, reg, Date.now(), toMoss)).reason, 'replay');
   // expired message
   const s4 = await signEnvelope(m.exec, m.token, m.d, {...base, ttlMs: 1});
-  assert.equal((await verifyEnvelope(s4, reg, Date.now() + 10)).reason, 'expired');
+  assert.equal((await verifyEnvelope(s4, reg, Date.now() + 10, toMoss)).reason, 'expired');
   // forbidden scope
-  assert.equal((await verifyEnvelope(await signEnvelope(m.exec, m.token, m.d, {...base, scope: 'payment'}), reg)).reason, 'scope_forbidden');
+  assert.equal((await verifyEnvelope(await signEnvelope(m.exec, m.token, m.d, {...base, scope: 'payment'}), reg, Date.now(), toMoss)).reason, 'scope_forbidden');
   // approval scope without and with a matching owner approval
   const post = {...base, action: 'confirm_meetup', scope: 'confirm_delivery', content: {time: '17:30', place: 'Andytown Coffee'}};
-  assert.equal((await verifyEnvelope(await signEnvelope(m.exec, m.token, m.d, post), reg)).reason, 'approval_required');
+  assert.equal((await verifyEnvelope(await signEnvelope(m.exec, m.token, m.d, post), reg, Date.now(), toMoss)).reason, 'approval_required');
   reg.approvals.set('appr-1', {content_hash: await contentHash({time: '18:00', place: 'Andytown Coffee'}), agent_id: m.root.kid});
-  assert.equal((await verifyEnvelope(await signEnvelope(m.exec, m.token, m.d, {...post, approvalRef: 'appr-1'}), reg)).reason, 'approval_mismatch');
+  assert.equal((await verifyEnvelope(await signEnvelope(m.exec, m.token, m.d, {...post, approvalRef: 'appr-1'}), reg, Date.now(), toMoss)).reason, 'approval_mismatch');
   reg.approvals.set('appr-2', {content_hash: await contentHash(post.content), agent_id: m.root.kid});
-  assert.equal((await verifyEnvelope(await signEnvelope(m.exec, m.token, m.d, {...post, approvalRef: 'appr-2'}), reg)).ok, true);
+  assert.equal((await verifyEnvelope(await signEnvelope(m.exec, m.token, m.d, {...post, approvalRef: 'appr-2'}), reg, Date.now(), toMoss)).ok, true);
 });
 
 test('signer_kind travels in the envelope and must match the delegation', async () => {
@@ -101,8 +103,8 @@ test('signer_kind travels in the envelope and must match the delegation', async 
   reg.roots.set(m.root.kid, m.root.publicJwk);
   const s = await signEnvelope(m.exec, m.token, m.d, {recipient: 'moss', action: 'greet', scope: 'walk_and_greet', content: {text: 'hi'}, ownerClaimed: true});
   assert.equal(s.envelope.signer_kind, 'server_custodial');
-  assert.equal((await verifyEnvelope(s, reg)).ok, true);
-  assert.equal((await verifyEnvelope({...s, envelope: {...s.envelope, signer_kind: 'browser'}}, reg)).reason, 'delegation_mismatch');
+  assert.equal((await verifyEnvelope(s, reg, Date.now(), toMoss)).ok, true);
+  assert.equal((await verifyEnvelope({...s, envelope: {...s.envelope, signer_kind: 'browser'}}, reg, Date.now(), toMoss)).reason, 'delegation_mismatch');
 });
 
 test('peer instructions are wrapped and blocked; ordinary chat passes', () => {

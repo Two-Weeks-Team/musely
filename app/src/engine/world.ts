@@ -50,6 +50,8 @@ export type Hooks = {
   speedFor?: (m: MuseState, from: Place, to: Place) => Speed;
   /** Trades, gifts and help when two Muses meet (task 4 rules). */
   onEncounter?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, rand: () => number, at: number) => Omit<WorldEvent, 'id' | 'tick'>[];
+  /** Credential check before two Muses meet (C04). On refusal neither Muse changes; only `event` is logged. */
+  canMeet?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, at: number) => {ok: boolean; event: Omit<WorldEvent, 'id' | 'tick'> | null};
 };
 
 const fmt = new Intl.DateTimeFormat('en-CA', {timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
@@ -219,10 +221,13 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     for (let i = 0; i < group.length; i++) for (let j = i + 1; j < group.length; j++) {
       const a = group[i], b = group[j];
       if (now - (a.lastMet[b.id] ?? 0) < 30 * 60_000) continue;
-      a.lastMet[b.id] = b.lastMet[a.id] = now;
       const initiator = a.intent?.target === b.id ? a : b.intent?.target === a.id ? b : (rngFor(s.seed, s.tick, a.id, b.id)() < .5 ? a : b);
       const other = initiator === a ? b : a;
+      const gate = hooks.canMeet?.(s, initiator, other, placeById(placeId), now);
+      if (gate && !gate.ok) { if (gate.event) emit(gate.event); continue; }
+      a.lastMet[b.id] = b.lastMet[a.id] = now;
       emit({at: now, source: 'rule', kind: 'encounter', muse: initiator.id, other: other.id, place: placeId, data: {initiatedByIntent: !!initiator.intent, stage: 'recognize'}, tags: []});
+      if (gate?.event) emit(gate.event);
       for (const e of hooks.onEncounter?.(s, initiator, other, placeById(placeId), rngFor(s.seed, s.tick, initiator.id, other.id, 'meet'), now) ?? []) emit(e);
       if (initiator.intent?.target === other.id) initiator.intent = null;
       remember(a, `Met ${harnessById(b.id).name} at ${placeById(placeId).name}`);

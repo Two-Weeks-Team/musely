@@ -85,7 +85,8 @@ export class ConnectedHost {
     if (!key) return {status: 'unauthorized'};
     const now = this.now();
     this.keys.touch(key.id, now);
-    this.markConnected(key.muse, now);
+    // A revoked Muse may still read, but its calls do not change the world (not even the connected flag).
+    if (!this.d.trust.suspended(key.muse)) this.markConnected(key.muse, now);
     if (!method) return {status: 'ok', result: {}};
     const ctx: ToolCtx = {trust: this.d.trust, runtime: this.d.runtime, hooks: this.d.hooks, ownerRoot: this.d.ownerRoot(), ownerClaimed: this.d.ownerClaimed(), baseUrl: this.d.baseUrl, key, now: () => this.now()};
     try {

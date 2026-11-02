@@ -75,6 +75,9 @@ export class Trust implements TrustRegistry {
     this.sql.exec('INSERT INTO nonces (key, exp) VALUES (?, ?), (?, ?)', a, expiresAt, b, expiresAt);
     return true;
   }
+  nonceSeen(agentId: string, nonce: string, messageId: string) {
+    return this.sql.exec('SELECT 1 FROM nonces WHERE key IN (?, ?) AND exp >= ?', `${agentId}:n:${nonce}`, `${agentId}:m:${messageId}`, Date.now() - 60_000).toArray().length > 0;
+  }
   approval(ref: string) {
     const r = this.sql.exec('SELECT content_hash, agent_id FROM approvals WHERE ref = ?', ref).toArray()[0];
     return r ? {content_hash: String(r.content_hash), agent_id: String(r.agent_id)} : null;
