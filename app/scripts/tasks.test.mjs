@@ -144,7 +144,8 @@ test('I-07 AC1 trade: the first answer, at most two counters, both sides locked,
   const after = () => ({j: t.muse(JOLLY).inventory.filter(i => i === 'trade_receipt').length, c: t.muse(COPPER).inventory.filter(i => i === 'trade_receipt').length,
     swaps: t.kinds('trade_completed').filter(e => e.data.task_id === id).length, notes: t.state().inbox.notifications.filter(n => n.kind === 'trade_completed' && n.ref === id).length, history: t.state().items.history.length});
   const once = after();
-  assert.deepEqual([once.j - receipts0.j, once.c - receipts0.c, once.swaps, once.notes], [1, 1, 1, 1], 'one receipt each, one swap event, one owner receipt line');
+  assert.deepEqual(t.state().inbox.notifications.filter(n => n.kind === 'trade_completed' && n.ref === id).map(n => n.muse).sort(), [JOLLY, COPPER].sort(), 'both owners receive the completed trade');
+  assert.deepEqual([once.j - receipts0.j, once.c - receipts0.c, once.swaps, once.notes], [1, 1, 1, 2], 'one receipt each, one swap event, one notification per owner');
   // The same accept again (same command_id): the first result, nothing more. A new accept: the Task is completed.
   const retry = await t.copper.tool('accept_trade', {task_id: id, command_id: 'accept-once-0001'});
   assert.deepEqual([retry.isError, retry.structuredContent.command.duplicate], [false, true]);
@@ -203,6 +204,10 @@ test('I-07 AC2 meetup: at most five public candidates, private conditions stay i
   const first = await submitDecision(fetchAs('owner'), oi.approvals[0], 'approve', pick);
   assert.deepEqual([first.status, first.data.confirmed], [200, false]);
   assert.deepEqual(Object.keys(t.task(id).approvals), [JOLLY]);
+  const loggedApproval = JSON.parse(t.sql.exec("SELECT input FROM run_inputs WHERE label LIKE 'owner-approval-%' ORDER BY seq DESC LIMIT 1").toArray()[0].input);
+  assert.equal(loggedApproval?.action, 'owner_approval', 'owner decisions are recorded ordered inputs');
+  assert.deepEqual(loggedApproval.fields, {taskId: id, museId: JOLLY, decision: 'approve', revision: task.revision, approvalRef: t.task(id).approvals[JOLLY].ref});
+  assert.deepEqual(loggedApproval.omitted, []);
   assert.equal(embers(t, JOLLY) + embers(t, COPPER), 0, 'one approval issues nothing');
   // The peer: a different candidate, or the previous revision, does not confirm.
   const other = cands.find(c => c.id !== pick).id;
@@ -219,6 +224,7 @@ test('I-07 AC2 meetup: at most five public candidates, private conditions stay i
   const grants = t.state().items.history.filter(h => h.via === 'meetup');
   assert.deepEqual(grants.map(h => [h.item, h.to]), [['meetup_ember', JOLLY], ['meetup_ember', COPPER]]);
   assert.ok(grants.every(h => typeof h.hash === 'string'), 'chained');
+  assert.ok(publicState(t.state()).items.history.filter(h => h.via === 'meetup').every(h => h.place == null), 'private meetup place must not enter public run snapshots');
   assert.equal(verifyHistory(t.state().items).ok, true);
   const confirmed = t.kinds('meetup_confirmed');
   assert.equal(confirmed.length, 1);
@@ -475,6 +481,9 @@ test('I-07 AC5 the version 2 migration keeps every v1 Task, inbox item and agent
   assert.deepEqual([keyRows(), t.sql.exec('SELECT COUNT(*) AS n FROM agent_keys').toArray()[0].n], [keysBefore, keyCount], 'agent keys untouched');
   const mig = t.kinds('tasks_migrated');
   assert.equal(mig.length, 1);
+  const loggedMigration = JSON.parse(t.sql.exec("SELECT input FROM run_inputs WHERE label = 'tasks-v2-migrate' ORDER BY seq DESC LIMIT 1").toArray()[0].input);
+  assert.equal(loggedMigration?.action, 'tasks_migrated');
+  assert.deepEqual(loggedMigration.fields, {from: 1, to: 2, migrated: 5, failedToCancelled: 1, candidatesMoved: 2, tasks: 5});
   assert.deepEqual([mig[0].data.from, mig[0].data.to, mig[0].data.migrated, mig[0].data.failed_to_cancelled, mig[0].data.candidates_moved, mig[0].data.tasks], [1, 2, 5, 1, 2, 5]);
 
   // Restart again: nothing is written (same state row, same version, no second event).
@@ -506,4 +515,59 @@ test('I-07 Task kinds: an unregistered kind (help, before I-13) syncs with a con
   assert.deepEqual([help.schema, help.revision, taskRecord(help).payload.kind], [2, 1, 'help']);
   assert.equal(syncTask(help), false, 'idempotent');
   assert.throws(() => registerTaskKind('trade', {}), /already registered/);
+});
+
+
+test('I-07 owner intervention requests count each human side once per candidate revision', async () => {
+  const t = await twoOwners();
+  const id = await meetupToOwners(t);
+  const requests = () => t.kinds('approval_requested').filter(e => e.data.task_id === id);
+  assert.deepEqual(requests().map(e => e.muse).sort(), [JOLLY, COPPER].sort());
+  assert.equal(new Set(requests().map(e => e.data.requestId)).size, 2);
+  assert.ok(requests().every(e => e.data.revision === t.task(id).revision && typeof e.data.requestId === 'string'));
+  const task = t.task(id);
+  await t.decide('owner', body(task, 'approve', 'c1'));
+  await t.decide('owner', body(task, 'approve', 'c1'));
+  assert.equal(requests().length, 2, 'a decision retry is not another request');
+  const rid = await meetupToOwners(t, SUNNY);
+  assert.deepEqual(t.kinds('approval_requested').filter(e => e.data.task_id === rid).map(e => e.muse), [JOLLY], 'residents do not create human intervention');
+});
+
+test('I-07 a Muse cannot create a meetup with itself or leave a task or reward behind', async () => {
+  const t = await twoOwners();
+  const before = {tasks: t.state().inbox.tasks.length, history: t.state().items.history.length, inventory: [...t.muse(COPPER).inventory]};
+  const res = await t.copper.tool('propose_meetup', {to: COPPER});
+  assert.equal(res.isError, true);
+  assert.equal(res.structuredContent.refused, 'invalid_target');
+  assert.deepEqual({tasks: t.state().inbox.tasks.length, history: t.state().items.history.length, inventory: [...t.muse(COPPER).inventory]}, before);
+});
+
+
+test('I-07 a revoked owner claim blocks a peer final approval without rewards or state changes', async () => {
+  const t = await twoOwners();
+  const id = await meetupToOwners(t);
+  const task = t.task(id);
+  assert.equal((await t.decide('owner', body(task, 'approve', 'c1'))).status, 200);
+  const claim = t.dobj.getClaim('owner-muse');
+  t.dobj.setClaim('owner-muse', {...claim, status: 'claim_revoked'});
+  const before = {task: JSON.stringify(t.task(id)), items: JSON.stringify(t.state().items), version: t.state().version};
+  const res = await t.decide('peer', body(task, 'approve', 'c1'));
+  assert.deepEqual([res.status, res.body.error], [409, 'pending_claim']);
+  assert.deepEqual({task: JSON.stringify(t.task(id)), items: JSON.stringify(t.state().items), version: t.state().version}, before);
+  assert.deepEqual([embers(t, JOLLY), embers(t, COPPER), t.kinds('meetup_confirmed').length], [0, 0, 0]);
+});
+
+
+test('I-07 removing an owner control token never converts that owned Muse into a rule approver', async () => {
+  const t = await twoOwners();
+  delete t.env.OWNER_CONTROL_TOKEN;
+  await t.start();
+  const id = await meetupToOwners(t);
+  assert.equal(t.task(id).owners[JOLLY], 'owner:kim-sejun');
+  assert.equal(t.task(id).approvals[JOLLY], undefined, 'a missing token cannot grant rule consent');
+  const res = await t.decide('peer', body(t.task(id), 'approve', 'c1'));
+  assert.deepEqual([res.status, res.body.confirmed], [200, false]);
+  assert.deepEqual([embers(t, JOLLY), embers(t, COPPER)], [0, 0]);
+  const missing = await t.go('POST', '/api/owner/session', {token: OWNER_TOKEN}, {origin: ORIGIN});
+  assert.notEqual(missing.status, 200, 'the unavailable owner cannot log in with the old token');
 });

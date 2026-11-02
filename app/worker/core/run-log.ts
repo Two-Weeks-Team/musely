@@ -127,6 +127,8 @@ export function abilityHash(s: WorldState, muses: readonly string[]): string {
 
 /** Command payload fields kept per action (ids and enum values only; free text such as a greeting or a goal never). */
 export const COMMAND_FIELDS: Record<string, readonly string[]> = {
+  owner_approval: ['taskId', 'museId', 'decision', 'revision', 'approvalRef'],
+  tasks_migrated: ['from', 'to', 'migrated', 'failedToCancelled', 'candidatesMoved', 'tasks'],
   move: ['kind', 'to', 'mode'], discover: ['kind'], craft: ['kind', 'recipe'], greet: ['kind', 'to'],
   propose_trade: ['kind', 'to', 'give', 'want'], counter_trade: ['kind', 'task_id', 'give', 'want'], accept_trade: ['kind', 'task_id'], reject_trade: ['kind', 'task_id'],
   send_postcard: ['kind', 'to', 'item'], give_gift: ['kind', 'to', 'item'], propose_meetup: ['kind', 'to'], answer_candidate: ['kind', 'task_id', 'answer'], update_wants: ['kind', 'items'],

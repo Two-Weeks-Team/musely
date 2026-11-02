@@ -116,10 +116,17 @@ export class ConnectedHost {
     const now = this.now();
     // A revoked Muse's Tasks are cancelled already; its owner's decisions are refused before anything is read for writing.
     if (this.d.trust.suspended(i.muse)) return {ok: false, status: 409, code: 'delegation_revoked', retryable: false, changed: false};
+    const task = this.d.runtime.state().inbox?.tasks.find(t => t.id === i.taskId);
+    if (i.decision === 'approve' && task) {
+      const parties = [task.from, task.to];
+      if (parties.some(m => this.d.trust.suspended(m))) return {ok: false, status: 409, code: 'delegation_revoked', retryable: false, changed: false};
+      // A peer's final decision cannot confirm an owned Muse whose account claim was revoked while waiting.
+      if (parties.includes(OWNER_MUSE) && !this.d.ownerClaimed()) return {ok: false, status: 409, code: 'pending_claim', retryable: false, changed: false};
+    }
     const dry = decideApproval(structuredClone(this.d.runtime.state()), i, now, () => {});
     if (!dry.changed) return dry;
     let out: DecisionOutcome = dry;
-    this.d.runtime.commitExternal(now, 'owner-approval-' + uniq(), (st, emit) => { out = decideApproval(st, i, now, e => emit(tagLocation(st.owner, e))); });
+    this.d.runtime.commitExternal(now, 'owner-approval-' + uniq(), (st, emit) => { out = decideApproval(st, i, now, e => emit(tagLocation(st.owner, e))); }, () => ({action: 'owner_approval', payload: {taskId: i.taskId, museId: i.muse, decision: i.decision, revision: i.revision, approvalRef: out.ok ? out.task.yours?.approval_ref ?? null : null}}));
     return out;
   }
   /** The owner inbox of these Muses (the session's own): approvals waiting, recent decisions, the three notification kinds. */

@@ -224,12 +224,12 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
 }
 
 /** A resident's rule answer to the current offer (sealed: accept | counter | reject, no reasons). */
-function residentAnswers(st: WorldState, t: Task, rule: Emit, live: Emit, at: number, ownerMuse: string) {
+function residentAnswers(st: WorldState, t: Task, rule: Emit, live: Emit, at: number, ownerMuse: string, ownerOf: OwnerOf) {
   const offer = t.offer!, resident = museOf(st, t.awaiting!), proposer = museOf(st, offer.by);
   const rand = rngFor(st.seed, st.tick, t.id, t.round);
   const check = checkTrade(st.items, st.day, proposer, resident, offer.give, offer.want, t.round);
   const accept = check.ok && abilityGain(offer.give, resident.inventory, wantsOf(resident), resident.id) && (wantsOf(resident).includes(offer.give) || rand() < .55);
-  if (accept) return completeTrade(st, t, resident.id, live, rule, at, ownerMuse, 'rule');
+  if (accept) return completeTrade(st, t, resident.id, live, rule, at, ownerMuse, 'rule', ownerOf);
   if (check.ok || check.reason === 'no_ability_change') {
     // Counter with something the resident wants from the proposer, if counters remain.
     if (t.round < MAX_COUNTERS) {
@@ -247,7 +247,7 @@ function residentAnswers(st: WorldState, t: Task, rule: Emit, live: Emit, at: nu
   return 'rejected';
 }
 
-function completeTrade(st: WorldState, t: Task, acceptor: string, live: Emit, rule: Emit, at: number, ownerMuse: string, by: 'live' | 'rule') {
+function completeTrade(st: WorldState, t: Task, acceptor: string, live: Emit, rule: Emit, at: number, ownerMuse: string, by: 'live' | 'rule', ownerOf: OwnerOf) {
   const offer = t.offer!, a = museOf(st, offer.by), b = museOf(st, acceptor);
   const first = st.items.history.filter(h => h.via === 'trade').length === 0;
   commitTrade(st.items, st.day, a, b, offer.give, offer.want, at);
@@ -255,8 +255,11 @@ function completeTrade(st: WorldState, t: Task, acceptor: string, live: Emit, ru
   // The swap commits under the signed write that led to it, so it always carries that envelope evidence. Its source is
   // who accepted: the connected Muse's own call (live) or a resident's rule answer (rule, never shown as live).
   (by === 'rule' ? rule : live)({at, source: by, kind: 'trade_completed', muse: a.id, other: b.id, place: a.place, line: `Traded ${itemName(offer.give)} ↔ ${itemName(offer.want)}`, data: {task_id: t.id, give: offer.give, want: offer.want, round: t.round, receipt: true, stage: 'swap', accepted_by: acceptor, accepted_via: by}, tags: first ? ['first_trade', 'ability_change'] : ['ability_change']});
-  const other = a.id === ownerMuse ? b.id : a.id, got = a.id === ownerMuse ? offer.want : offer.give, gave = a.id === ownerMuse ? offer.give : offer.want;
-  notifyOwner(inboxOf(st), {kind: 'trade_completed', at, line: `Your Muse traded ${itemName(gave)} for ${name(other)}'s ${itemName(got)}`, ref: t.id, other, muse: ownerMuse});
+  for (const mine of [a.id, b.id]) {
+    if (!ownerOf(mine)) continue;
+    const other = a.id === mine ? b.id : a.id, got = a.id === mine ? offer.want : offer.give, gave = a.id === mine ? offer.give : offer.want;
+    notifyOwner(inboxOf(st), {kind: 'trade_completed', at, line: `Your Muse traded ${itemName(gave)} for ${name(other)}'s ${itemName(got)}`, ref: t.id, other, muse: mine});
+  }
   a.reflection = `Traded with ${name(b.id)}: got ${itemName(offer.want)}`;
   b.reflection = `Traded with ${name(a.id)}: got ${itemName(offer.give)}`;
   return 'completed';
@@ -434,7 +437,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         inbox.tasks.push(t);
         live({at, source: 'live', kind: 'trade_proposed', muse: me, other: to, place: a.place, line: `${itemName(give)} for your ${itemName(want)}?`, data: {task_id: t.id, give, want, stage: 'propose', deadline: t.deadline}, tags: []});
         // Residents answer by rule at once; a connected peer would see the Task in its own inbox instead.
-        const result = isConnected(inbox, to, at) ? 'pending' : residentAnswers(st, t, rule, live, at, ownerMuse);
+        const result = isConnected(inbox, to, at) ? 'pending' : residentAnswers(st, t, rule, live, at, ownerMuse, c.ownerOf ?? definedOwnerOf);
         return {ok: true, data: {task: viewOf(t, me), result}};
       });
     }
@@ -454,7 +457,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         t.round += 1; t.offer = {by: me, give, want}; t.awaiting = otherId; t.deadline = at + TASK_TTL_MS; t.updatedAt = at;
         t.history.push({by: me, action: 'counter', at, give, want});
         live({at, source: 'live', kind: 'trade_countered', muse: me, other: otherId, place: a.place, line: `How about my ${itemName(give)} for your ${itemName(want)}?`, data: {task_id: t.id, give, want, round: t.round, deadline: t.deadline, stage: 'negotiate'}, tags: []});
-        const result = isConnected(st.inbox, otherId, at) ? 'pending' : residentAnswers(st, t, rule, live, at, ownerMuse);
+        const result = isConnected(st.inbox, otherId, at) ? 'pending' : residentAnswers(st, t, rule, live, at, ownerMuse, c.ownerOf ?? definedOwnerOf);
         return {ok: true, data: {task: viewOf(t, me), result}};
       });
     }
@@ -475,7 +478,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         if (by.travel || mine.travel) return {ok: false, reason: 'travelling'};
         const check = checkTrade(st.items, st.day, by, mine, t.offer!.give, t.offer!.want, t.round);
         if (!check.ok) return {ok: false, reason: check.reason};
-        completeTrade(st, t, me, live, rule, at, ownerMuse, 'live');
+        completeTrade(st, t, me, live, rule, at, ownerMuse, 'live', c.ownerOf ?? definedOwnerOf);
         return {ok: true, data: {task: viewOf(t, me), receipt: 'trade_receipt'}};
       });
     }
@@ -522,6 +525,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
     case 'propose_meetup': {
       const to = String(args.to);
       return write_(to, {kind: 'propose_meetup', to}, (st, live, rule, at) => {
+        if (to === me) return {ok: false, reason: 'invalid_target'};
         const gate = claimGate(); if (gate) return gate;
         const inbox = inboxOf(st);
         const pair = (t: Task) => t.kind === 'meetup' && t.status === 'pending' && [t.from, t.to].includes(me) && [t.from, t.to].includes(to);

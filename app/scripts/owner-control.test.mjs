@@ -177,6 +177,8 @@ test('two demo principals: independent sessions; one cannot approve, revoke, re-
   const crossApprove = await t.go('POST', '/api/owner/approvals', {taskId: 'task_x1', revision: 1, contentHash: 'h', decision: 'approve'}, h(peer));
   assert.equal(crossApprove.status, 403); assert.equal(crossApprove.body.error, 'not_your_muse');
   assert.equal((await t.go('POST', '/api/owner/approvals', {taskId: 'task_x2', decision: 'approve'}, h(owner))).status, 403);
+  // This fixture isolates principal authorization; the owned Muse must also have a valid claim before approval.
+  t.dobj.setClaim('owner-muse', {agent: 'owner-muse', status: 'claimed', path: 'worker_token', handle: 'combba82', fingerprint: 'x', permalink: null, mediaId: null, postedText: null, verifiedAt: Date.now(), checkedAt: Date.now(), machineVerified: true, note: 'test'});
   const x1 = t.state().inbox.tasks.find(x => x.id === 'task_x1');
   const ownApprove = await t.go('POST', '/api/owner/approvals', {taskId: 'task_x1', revision: x1.revision, contentHash: x1.contentHash, decision: 'approve'}, h(owner));
   assert.deepEqual([ownApprove.status, ownApprove.body.error], [409, 'not_ready_for_approval']);

@@ -95,37 +95,68 @@ const name = (id: string) => harnessById(id).name;
 const KIND_LABEL: Record<Notification['kind'], string> = {meetup_candidate: 'Meetup candidate', trade_completed: 'Trade completed', blocked: 'Blocked attempt'};
 const COMMONS = PLACES.filter(p => p.zone === 'commons');
 
-/** The owner inbox card for the Identity tab. `onChange` refreshes the world view after a decision. */
-export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fetch(u, i)) {
+/** The mounted card can refresh without remounting its private editor or unchanged approval controls. */
+export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fetch(u, i), active: () => boolean = () => true) {
   const box = el('div', 'id-card owner-inbox');
   const result = el('p', 'muted'); result.setAttribute('role', 'status');
   const store = (() => { try { return window.localStorage; } catch { return null; } })();
-  let cond = loadConditions(store);
+  let cond = loadConditions(store), request = 0;
+  let view: {owner: string; waiting: HTMLElement; approvals: HTMLElement; recent: HTMLElement; notifications: HTMLElement; status: HTMLElement} | null = null;
+  const cards = new Map<string, {key: string; node: HTMLElement & {updateOther(side: Side): void}}>();
+  const refreshButton = () => { const b = el('button', 'secondary', 'Refresh owner inbox'); b.type = 'button'; b.onclick = () => void paint(); return b; };
+  // Keep nodes that already occupy the right slot connected: removing and re-appending an editor blurs it in browsers.
+  const reconcile = (parent: HTMLElement, nodes: HTMLElement[]) => {
+    nodes.forEach((node, i) => { if (parent.children[i] !== node) parent.insertBefore(node, parent.children[i] ?? null); });
+    while (parent.children.length > nodes.length) parent.children[parent.children.length - 1].remove();
+  };
 
-  async function paint() {
+  async function paint(force = false) {
+    if (!active()) return;
+    const mine = ++request, r = await loadOwnerInbox(f);
+    if (mine !== request || !active()) return;
     const head = el('span', 'eyebrow', 'OWNER INBOX · YOUR APPROVALS');
-    const r = await loadOwnerInbox(f);
-    if (r.status === 401) { box.replaceChildren(head, el('h4', '', 'Owner inbox'), el('p', 'muted', 'Start the owner session (owner control above) to see the meetups waiting for your approval.'), result); return; }
-    if (!r.ok || !r.data) { box.replaceChildren(head, el('h4', '', 'Owner inbox unavailable'), el('p', 'muted', `It could not be read (${decisionText(r)}). This is not the same as an empty inbox.`), result); return; }
-    const d = r.data as InboxAnswer;
-    const parts: HTMLElement[] = [head, el('h4', '', `Owner inbox · ${d.owner.label}`),
-      el('p', 'muted', 'This is not your Muse\'s agent inbox. Only meetups waiting for you, completed trades and blocked attempts come here. Nothing is confirmed until both sides approve the same candidates.')];
-    if (d.demo_limits) parts.push(el('span', 'src src-scripted', 'DEMO PRINCIPAL · team-controlled'), el('p', 'muted', d.demo_limits));
-    parts.push(conditionsBlock(() => void paint()));
-    parts.push(el('h4', '', `Waiting for your decision (${d.approvals.length})`));
-    if (!d.approvals.length) parts.push(el('p', 'muted', 'Nothing is waiting for you.'));
-    for (const t of d.approvals) parts.push(approvalBlock(t, d.approval_window_min));
+    if (r.status === 401) {
+      view = null; cards.clear();
+      box.replaceChildren(head, el('h4', '', 'Owner inbox'), el('p', 'muted', 'Start the owner session (owner control above) to see the meetups waiting for your approval.'), refreshButton(), result); return;
+    }
+    if (!r.ok || !r.data) {
+      const message = `It could not be read (${decisionText(r)}). This is not the same as an empty inbox.`;
+      if (view) { view.status.textContent = `Owner inbox is not updating. ${message} Showing the last successful answer.`; return; }
+      box.replaceChildren(head, el('h4', '', 'Owner inbox unavailable'), el('p', 'muted', message), refreshButton(), result); return;
+    }
+    const d = r.data as InboxAnswer, owner = JSON.stringify(d.owner);
+    if (!view || view.owner !== owner) {
+      cards.clear();
+      const waiting = el('h4'), approvals = el('div'), recent = el('div'), notifications = el('div'), status = el('p', 'muted');
+      status.setAttribute('role', 'status');
+      const parts: HTMLElement[] = [head, el('h4', '', `Owner inbox · ${d.owner.label}`),
+        el('p', 'muted', 'This is not your Muse\'s agent inbox. Only meetups waiting for you, completed trades and blocked attempts come here. Nothing is confirmed until both sides approve the same candidates.')];
+      if (d.demo_limits) parts.push(el('span', 'src src-scripted', 'DEMO PRINCIPAL · team-controlled'), el('p', 'muted', d.demo_limits));
+      parts.push(conditionsBlock(() => void paint(true)), refreshButton(), status, waiting, approvals, recent, el('h4', '', 'Notifications'), notifications, result);
+      box.replaceChildren(...parts);
+      view = {owner, waiting, approvals, recent, notifications, status};
+    }
+    view.status.textContent = '';
+    const waiting = d.approvals.filter(t => !t.yours).length;
+    view.waiting.textContent = `Waiting for your decision (${waiting})`;
+    const nodes = d.approvals.map(t => {
+      const key = JSON.stringify([{...t, theirs: null}, d.approval_window_min]), old = cards.get(t.task_id);
+      if (!force && old?.key === key) { old.node.updateOther(t.theirs); return old.node; }
+      const selected = force ? undefined : old?.node.querySelector<HTMLInputElement>('input[type=radio]:checked')?.value;
+      const node = approvalBlock(t, d.approval_window_min, selected);
+      cards.set(t.task_id, {key, node}); return node;
+    });
+    for (const id of cards.keys()) if (!d.approvals.some(t => t.task_id === id)) cards.delete(id);
+    reconcile(view.approvals, nodes.length ? nodes : [el('p', 'muted', 'Nothing is waiting for you.')]);
+    view.recent.replaceChildren();
     if (d.recent.length) {
-      parts.push(el('h4', '', 'Recent'));
       const ul = el('ul', 'ev-list');
       for (const t of d.recent) ul.append(el('li', '', `${name(t.other)} · ${t.confirmed ? `confirmed (${t.confirmed.candidate})` : t.status === 'input-required' ? 'approval window closed' : t.status}`));
-      parts.push(ul);
+      view.recent.append(el('h4', '', 'Recent'), ul);
     }
-    parts.push(el('h4', '', 'Notifications'));
     const nl = el('ul', 'ev-list');
     for (const n of d.notifications.slice(0, 20)) nl.append(el('li', '', `${at(n.at)} · ${KIND_LABEL[n.kind]} · ${n.line}`));
-    parts.push(nl.childNodes.length ? nl : el('p', 'muted', 'No notifications yet.'), result);
-    box.replaceChildren(...parts);
+    view.notifications.replaceChildren(nl.childNodes.length ? nl : el('p', 'muted', 'No notifications yet.'));
   }
 
   function conditionsBlock(repaint: () => void) {
@@ -142,17 +173,26 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fe
     return wrap;
   }
 
-  function approvalBlock(t: OwnerTask, windowMin: number) {
+  function approvalBlock(t: OwnerTask, windowMin: number, selected?: string) {
     const card = el('div', 'owner-approval');
     const dl = el('dl', 'facts');
-    const g = (k: string, v: string) => dl.append(el('dt', '', k), el('dd', '', v));
+    const g = (k: string, v: string) => { const value = el('dd', '', v); dl.append(el('dt', '', k), value); return value; };
     g('Meetup', `${name(t.muse)} with ${name(t.other)}`);
     g('Other side', t.other_side ?? '—');
     g('Decide by', `${at(t.deadline)} (a ${windowMin}-minute window, server time)`);
     g('Revision', `${t.revision} · ${t.content_hash.slice(0, 12)}`);
-    g('Their decision', t.theirs ? `${t.theirs.decision === 'approve' ? 'approved' : 'declined'}${t.theirs.candidate ? ' ' + t.theirs.candidate : t.theirs.source === 'rule' ? ' (by rule, any candidate)' : ''}` : 'not yet');
+    g('Your decision', t.yours ? `${t.yours.decision === 'approve' ? 'approved' : 'declined'}${t.yours.candidate ? ' ' + t.yours.candidate : ''}` : 'not yet');
+    const otherValue = g('Their decision', '');
+    const node = Object.assign(card, {updateOther(side: Side) { otherValue.textContent = side ? `${side.decision === 'approve' ? 'approved' : 'declined'}${side.candidate ? ' ' + side.candidate : side.source === 'rule' ? ' (by rule, any candidate)' : ''}` : 'not yet'; }});
+    node.updateOther(t.theirs);
+    if (t.yours) {
+      const chosen = t.candidates.find(c => c.id === t.yours!.candidate);
+      if (chosen) g('Chosen candidate', `${chosen.id} · ${chosen.time} · ${chosen.place}`);
+      card.append(dl, el('p', 'muted', t.yours.decision === 'approve' ? 'Waiting for the other side. Your decision on this revision is already recorded.' : 'You declined this revision. Nothing is confirmed.'));
+      return node;
+    }
     const verdicts = evaluateCandidates(t.candidates, cond);
-    const pick = suggestCandidate(t, verdicts);
+    const pick = selected && t.candidates.some(c => c.id === selected) ? selected : suggestCandidate(t, verdicts);
     const list = el('fieldset', 'owner-candidates'); list.append(el('legend', '', 'Candidates (from public information)'));
     const radios = t.candidates.map(c => {
       const v = verdicts.find(x => x.id === c.id)!;
@@ -164,19 +204,28 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fe
     const approve = el('button', 'secondary', 'Approve the chosen candidate'); approve.type = 'button';
     const decline = el('button', 'secondary', 'Decline'); decline.type = 'button';
     const send = async (decision: 'approve' | 'reject') => {
+      if (!active() || approve.disabled || decline.disabled) return;
       approve.disabled = decline.disabled = true; result.textContent = decision === 'approve' ? 'Approving…' : 'Declining…';
-      const res = await submitDecision(f, t, decision, decision === 'approve' ? radios.find(r => r.checked)?.value ?? null : null);
-      result.textContent = res.ok ? (res.data.confirmed ? `Confirmed: both sides approved. ${name(t.muse)} and ${name(t.other)} each got a Meetup Ember.` : decision === 'approve' ? 'Approved. Waiting for the other side.' : 'Declined. Nothing is confirmed and no reason was sent.') : decisionText(res);
-      await paint(); onChange();
+      try {
+        const res = await submitDecision(f, t, decision, decision === 'approve' ? radios.find(r => r.checked)?.value ?? null : null);
+        if (!active()) return;
+        result.textContent = res.ok ? (res.data.confirmed ? `Confirmed: both sides approved. ${name(t.muse)} and ${name(t.other)} each got a Meetup Ember.` : decision === 'approve' ? 'Approved. Waiting for the other side.' : 'Declined. Nothing is confirmed and no reason was sent.') : decisionText(res);
+        await paint();
+        if (active()) onChange();
+      } finally {
+        // A refresh reuses an unchanged undecided card, including its disabled buttons. Release that in-flight state;
+        // a settled decision or a lost session removed this card, so it must not bring the old controls back.
+        if (cards.get(t.task_id)?.node === node) approve.disabled = decline.disabled = false;
+      }
     };
     approve.onclick = () => void send('approve');
     decline.onclick = () => void send('reject');
     actions.append(approve, decline);
     card.append(dl, list, actions);
-    return card;
+    return node;
   }
 
   box.append(el('span', 'eyebrow', 'OWNER INBOX · YOUR APPROVALS'), el('p', 'muted', 'Checking the owner inbox…'));
   void paint();
-  return box;
+  return Object.assign(box, {refresh: () => paint()});
 }

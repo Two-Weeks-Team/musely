@@ -61,12 +61,12 @@ export function tokensConfigured(t: OwnerTokens) {
 }
 
 /**
- * The owner id of a Muse whose principal can sign in on this deployment (its control token is set and valid), else null:
- * a Muse nobody can sign in for is a resident, and its side of an owner approval is decided by rule (I-07).
+ * Ownership is stable even when its control token is missing or broken. An unavailable owner still has to approve:
+ * configuration failure must never turn an owned Muse into a resident whose consent can be supplied by rule.
  */
-export function ownerIdForMuse(t: OwnerTokens, museId: string): string | null {
+export function ownerIdForMuse(_tokens: OwnerTokens, museId: string): string | null {
   const p = PRINCIPAL_IDS.find(id => PRINCIPALS[id].muses.includes(museId));
-  return p && activeToken(t, p) ? PRINCIPALS[p].ownerId : null;
+  return p ? PRINCIPALS[p].ownerId : null;
 }
 
 /** Which principal a presented control token belongs to (constant-time compare), or null. */

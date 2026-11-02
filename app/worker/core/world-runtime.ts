@@ -379,8 +379,9 @@ export class WorldRuntime {
    * Commit point for actions outside the heartbeat (A2A trades, revocations, demo checks): the mutator runs
    * synchronously on the current state, then state, version and events are written together.
    */
-  commitExternal(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void) {
-    return this.commit(now, label, mutate, () => true, 'external').events;
+  commitExternal(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void, input?: () => {action: string; payload: unknown}) {
+    // External decisions use the same per-action allow-list as signed commands; never store raw private inputs.
+    return this.commit(now, label, mutate, () => true, 'external', input ? () => { const i = input(); return {action: i.action, ...commandFields(i.action, i.payload)}; } : undefined).events;
   }
   /**
    * Command commit point (C03), one transaction: `guard` runs first (stored-row re-check, nonce claim) and

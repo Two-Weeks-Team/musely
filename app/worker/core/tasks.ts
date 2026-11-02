@@ -207,7 +207,7 @@ export function migrateInbox(inbox: Inbox): MigrationReport {
   inbox.version = 2;
   return {from, to: 2, migrated, failedToCancelled, candidatesMoved, before, after: inboxCounts(inbox)};
 }
-type MigrationHost = {state(): WorldState; commitExternal(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void): unknown};
+type MigrationHost = {state(): WorldState; commitExternal(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void, input?: () => {action: string; payload: unknown}): unknown};
 /** At start-up (WorldDO): migrates the stored inbox once, in one commit with a `tasks_migrated` event; a restart after that writes nothing. */
 export function migrateTaskStore(runtime: MigrationHost, now: number): MigrationReport | null {
   if (!needsMigration(runtime.state().inbox)) return null;
@@ -215,7 +215,7 @@ export function migrateTaskStore(runtime: MigrationHost, now: number): Migration
   runtime.commitExternal(now, 'tasks-v2-migrate', (st, emit) => {
     report = migrateInbox((st.inbox ??= emptyInbox()));
     emit({at: now, source: 'rule', kind: 'tasks_migrated', muse: null, line: null, data: {from: report.from, to: report.to, migrated: report.migrated, failed_to_cancelled: report.failedToCancelled, candidates_moved: report.candidatesMoved, tasks: report.after.tasks}, tags: []});
-  });
+  }, () => ({action: 'tasks_migrated', payload: {from: report!.from, to: report!.to, migrated: report!.migrated, failedToCancelled: report!.failedToCancelled, candidatesMoved: report!.candidatesMoved, tasks: report!.after.tasks}}));
   return report;
 }
 
@@ -329,7 +329,7 @@ export function reviseMeetup(t: Task, candidates: MeetupCandidate[], at: number)
 
 /** Who decides for a Muse: its owner's id (a principal that can sign in on this deployment), or null for a resident. */
 export type OwnerOf = (museId: string) => string | null;
-/** The default: every Muse a principal is defined for (worker/index.ts passes the deployment's configured ones). */
+/** Every Muse assigned to a principal stays owned, including when its login token is temporarily unavailable. */
 export const definedOwnerOf: OwnerOf = museId => Object.values(PRINCIPALS).find(p => p.muses.includes(museId))?.ownerId ?? null;
 
 /**
@@ -349,6 +349,7 @@ export function startOwnerApproval(inbox: Inbox, t: Task, at: number, ownerOf: O
       emit({at, source: 'rule', kind: 'owner_decision', muse: m, other, line: `${museName(m)} has no owner here: approved by rule`, data: {task_id: t.id, decision: 'approve', revision: t.revision, approval_ref: t.approvals[m].ref, actor: 'rule', candidate: 'private (owner only)'}, tags: []});
     } else {
       notifyOwner(inbox, {kind: 'meetup_candidate', at, line: `A meetup candidate with ${museName(other)} needs your approval`, ref: t.id, other, muse: m, detail: {candidates: candidatesOf(t).map(c => ({...c})), revision: t.revision, content_hash: t.contentHash, deadline: t.deadline}});
+      emit({at, source: 'live', kind: 'approval_requested', muse: m, other, line: 'A meetup needs its owner’s decision', data: {requestId: `owner:${t.id}:${t.revision}:${m}`, task_id: t.id, revision: t.revision, actorOrigin: 'system'}, tags: []});
     }
   }
 }
@@ -430,8 +431,8 @@ export function decideApproval(st: WorldState, i: DecisionInput, at: number, emi
   if (!both) return {ok: true, duplicate: false, confirmed: false, changed: true, task: ownerTaskView(t, i.muse)};
 
   // Both sides approved this revision, hash and candidate: completed, and one Meetup Ember each (item history chain).
-  const place = cands.find(c => c.id === candidate)?.place_id ?? null;
-  for (const m of [t.from, t.to]) grantItem(st.items, st.muses.find(x => x.id === m)!, 'meetup_ember', at, place, 'meetup');
+  // The chosen place is private: item provenance is part of public run snapshots.
+  for (const m of [t.from, t.to]) grantItem(st.items, st.muses.find(x => x.id === m)!, 'meetup_ember', at, null, 'meetup');
   t.confirmed = {candidate, at}; t.status = 'completed'; t.awaiting = null; t.history.push({by: 'musely', action: 'approve', at});
   emit({at, source: 'live', kind: 'meetup_confirmed', muse: t.from, other: t.to, line: `${museName(t.from)} and ${museName(t.to)} agreed to meet (both sides approved)`, data: {task_id: t.id, revision: t.revision, approval_refs: [t.approvals[t.from].ref, t.approvals[t.to].ref], approvals: {[t.from]: t.approvals[t.from].source, [t.to]: t.approvals[t.to].source}, candidate: 'private (owner only)', granted: 'meetup_ember', stage: 'confirm'}, tags: ['meetup_confirmed']});
   return {ok: true, duplicate: false, confirmed: true, changed: true, task: ownerTaskView(t, i.muse)};
