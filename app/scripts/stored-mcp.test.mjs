@@ -84,12 +84,12 @@ test('annotation hit-testing does not schedule its own observer forever',()=>{
 });
 
 import {storedMcpLabelFor,storedMcpBinding} from './lib/stored-mcp.mjs';
-import {verifyMedia} from './lib/demo-video.mjs';
+import {annotationFor,verifyMedia} from './lib/demo-video.mjs';
 test('stored server verifier media binds its actual receipt hash and continuous truthful provenance',async t=>{
  const f=await storedBundle(t),{p,c,dir}=f,refs=c.refs,view={id:'main',runId:refs[0].runId,duration:c.duration,seekSec:c.seekSec,snapshotHash:c.snapshotHash};
  const file='OFFLINE-NOT-FOOTAGE',bytes=Buffer.from('OFFLINE UNIT TEST NOT VIDEO'),receiptFile='OFFLINE-capture-receipt.json';await writeFile(join(dir,file),bytes);
  const label={...storedMcpLabelFor(p),valid:true,visible:true};
- const r={schema:'musely-demo-capture-2',kind:'recorded_public_capture',cutId:'s07',viewId:'main',takeId:'OFFLINE-TAKE',runId:view.runId,durationSeconds:view.duration,seekSec:view.seekSec,release:p.release,tooling:p.tooling,storedMcpVerifier:storedMcpBinding(c),storedMcpLabel:label,label:'REPLAY',virtual:true,originalSources:['live'],startOffsetSec:0,blockedRequests:0,refs,observed:{runId:view.runId,hash:view.snapshotHash,label:true},media:{file,bytes:bytes.length,sha256:sha(bytes)}};
+ const r={schema:'musely-demo-capture-2',kind:'recorded_public_capture',cutId:'s07',viewId:'main',takeId:'OFFLINE-TAKE',runId:view.runId,durationSeconds:view.duration,seekSec:view.seekSec,release:p.release,tooling:p.tooling,storedMcpVerifier:storedMcpBinding(c),storedMcpLabel:label,label:'REPLAY',virtual:true,originalSources:['live'],startOffsetSec:0,blockedRequests:0,refs,provenanceLabel:{...annotationFor(p,c,view),visible:true,valid:true},observed:{runId:view.runId,hash:view.snapshotHash,label:true},media:{file,bytes:bytes.length,sha256:sha(bytes)}};
  await writeFile(join(dir,receiptFile),JSON.stringify(r));c.media=[{file,receipt:receiptFile,sha256:sha(bytes),viewId:'main',takeId:r.takeId,runId:view.runId,duration:view.duration,refs}];
  const single={...p,cuts:[c]};assert.equal((await verifyMedia(single,dir)).length,1);
  for(const mutate of[x=>delete x.storedMcpVerifier,x=>x.storedMcpVerifier.receipt.sha256='0'.repeat(64),x=>x.storedMcpLabel.valid=false,x=>x.storedMcpLabel.visible=false,x=>x.storedMcpLabel.text='signed cryptographic verification',x=>x.storedMcpLabel.sourceSha='0'.repeat(40),x=>x.storedMcpLabel.variant='s05',x=>x.tooling.sourceSha='0'.repeat(40)]){const next=structuredClone(r);mutate(next);await writeFile(join(dir,receiptFile),JSON.stringify(next));await assert.rejects(()=>verifyMedia(single,dir),/stored_mcp_capture_binding|tooling_capture_binding/);}
@@ -112,7 +112,7 @@ test('offline capture preserves stored-server provenance and rejects a later top
 });
 test('stored verification burn-in remains readable in three lines without claiming a Meta model call',async t=>{
  const {captionFor}=await import('./lib/demo-video.mjs'),f=await storedBundle(t),caption=captionFor(f.p,f.c,{originalSources:['live']});
- assert.equal(caption.split('\n').length,3);assert.ok(caption.split('\n').every(line=>line.length<=100));assert.ok(caption.includes('STORED ORIGINAL SERVER VERIFICATION | OPERATOR MCP'));assert.ok(caption.includes('NO MODEL CALL | NOT INDEPENDENT CRYPTO VERIFICATION'));assert.ok(!caption.includes('Meta Muse Spark'));
+ assert.equal(caption.split('\n').length,3);assert.ok(caption.split('\n').every(line=>line.length<=130));assert.ok(caption.includes('STORED ORIGINAL SERVER VERIFICATION | OPERATOR MCP'));assert.ok(caption.includes('NO MODEL CALL | NOT INDEPENDENT CRYPTO VERIFICATION'));assert.ok(caption.includes('PRODUCT ATTRIBUTION: Meta Muse Spark'));
 });
 test('confirmation and final owner support must reference the very same committed external input',async t=>{
  for(const mutate of[b=>b.input.input.fields.museId='00-jolly',b=>{b.input.seq++;b.event.inputSeq++;}]){const f=await storedBundle(t);await changePublic(f,3,mutate);if(f.c.refs[3].inputSeq!==JSON.parse(await readFile(join(f.dir,f.c.refs[3].file),'utf8')).input.seq)f.c.refs[3].inputSeq++;assert.ok((await verifyBundle(f.p,f.dir)).some(e=>e.startsWith('s07:stored_mcp:')));}
