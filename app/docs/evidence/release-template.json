@@ -1,0 +1,16 @@
+{
+  "issueId": 62,
+  "owner": "Codex / release operator",
+  "classification": "live",
+  "commitSha": null,
+  "PR": null,
+  "environment": "production public GET records, no new execution",
+  "deployId": null,
+  "URL": "https://musely.net",
+  "configVersion": null,
+  "testedAt": null,
+  "command": null,
+  "result": "pending final release measurement",
+  "artifact": null,
+  "limitations": ["Actual owner claim/P0 pending", "No production POST/model/quota consumption", "Physical device and real four-hour acceptance separate"]
+}
