@@ -50,3 +50,5 @@ The existing suites remain part of the full check: `mcp.test.mjs` (protocol/auth
 - Both owner sessions approve the same Task revision/content hash/candidate; `meetup_confirmed.approval_refs` match the stored decisions. Wrong owner/hash/candidate cannot confirm. Repeating a decision grants no extra Ember. Candidate time/private reasons are absent from public event/state/notification surfaces and remain in the owner's inbox.
 
 No public-service deployment, production credential, model invocation, unattended schedule, 4-hour soak, external-world action or submission receipt is established here. D-01/I-04/D-03 retain those separate acceptance records.
+
+The original bearer key is also re-read after signing and again inside the commit guard. Revoking it during a peer-card await refuses the in-flight action before nonce or command storage; another active key for the same Muse does not revive that revoked credential.

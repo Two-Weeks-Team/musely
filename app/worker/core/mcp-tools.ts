@@ -40,6 +40,8 @@ export type ToolCtx = {
   claimExempt?: boolean;
   baseUrl: string;
   key: AgentKeyRow; now: () => number;
+  /** Re-check the original bearer key after asynchronous work, before a command can spend its nonce. */
+  authorize?: () => string | null;
   /** Who decides a meetup for a Muse (its owner id) or null for a resident, which approves by rule (I-07). */
   ownerOf?: OwnerOf;
 };

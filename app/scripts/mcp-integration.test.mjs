@@ -288,3 +288,22 @@ test('I-03B stored command survives WorldDO restart; payload conflict/stale vers
  const stale=await t.tool(COPPER,'greet',{text:'old plan',command_id:'stale-retry-00001',expected_version:0});assert.equal(stale.structuredContent.refused,'stale_world');assert.deepEqual(domainState(t),before);
  const retry=data(await t.tool(COPPER,'greet',{text:'old plan',command_id:'stale-retry-00001',expected_version:t.state().version}));assert.equal(retry.command.duplicate,false);
 });
+
+test('a bearer key revoked during peer verification cannot commit an in-flight action',async test=>{
+ const t=await httpsWorld(test),trust=t.dobj.trust,card=trust.card.bind(trust);
+ await t.dobj.connected.issueKey(COPPER); // a second active key cannot revive the revoked original bearer
+ let entered,release;
+ const started=new Promise(r=>entered=r),hold=new Promise(r=>release=r);
+ trust.card=async(...args)=>{entered();await hold;return card(...args);};
+ const pending=t.tool(COPPER,'greet',{to:JOLLY,text:'This action must be revoked',command_id:'key-revoke-await-001'});
+ await started;
+ t.dobj.connected.revokeKey(t.keys[COPPER].id);
+ const before=structuredClone(domainState(t));
+ release();const out=await pending;
+ console.log(JSON.stringify({isError:out.isError,refused:out.structuredContent?.refused,greetings:t.events().filter(e=>e.kind==='greet').length}));
+ assert.equal(out.isError,true);
+ assert.deepEqual(domainState(t),before);
+ assert.equal(t.events().filter(e=>e.kind==='greet').length,0);
+ assert.equal(t.sql.exec('SELECT count(*) AS n FROM commands').toArray()[0].n,0);
+ assert.equal(t.sql.exec('SELECT count(*) AS n FROM nonces').toArray()[0].n,0);
+});

@@ -50,7 +50,7 @@ export type CommandHandler<T = unknown> = {
 };
 export type CommandOutcome = {result: CommandResult; output: unknown; duplicate: boolean; verified: boolean; refused: Refused | null};
 /** deadlineMs bounds think and counterparty (default STEP_DEADLINE_MS). */
-export type CommandCtx = {trust: Trust; runtime: WorldRuntime; deadlineMs?: number; now?: () => number};
+export type CommandCtx = {trust: Trust; runtime: WorldRuntime; deadlineMs?: number; now?: () => number; authorize?: () => string | null};
 export const STEP_DEADLINE_MS = 15_000;
 const within = <T>(p: Promise<T>, ms: number): Promise<T> => {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -104,6 +104,8 @@ export async function executeCommand<T>(c: CommandCtx, cmd: WorldCommand, h: Com
   if (!current()) return refuse('delegation', 'delegation_revoked');
   // 3. The first result for this actor and id, or the same id still running.
   const hash = await payloadHash(cmd);
+  const unauthorized = c.authorize?.();
+  if (unauthorized) return refuse('credential', unauthorized);
   const prior = c.runtime.commandRow(cmd.actorId, cmd.commandId);
   if (prior) return prior.payloadHash === hash ? stored(prior) : refuse('replay', 'command_conflict');
   const flight = `${cmd.actorId}:${cmd.commandId}`;
@@ -134,6 +136,8 @@ export async function executeCommand<T>(c: CommandCtx, cmd: WorldCommand, h: Com
     const label = `cmd-${cmd.actorId}-${id}`;
     const done = c.runtime.commitCommand(atCommit, label, {
       guard: () => {
+        const unauthorized = c.authorize?.();
+        if (unauthorized) return unauthorized;
         const again = c.runtime.commandRow(cmd.actorId, cmd.commandId);
         if (again) return again.payloadHash === hash ? 'duplicate' : 'command_conflict';
         if (stale()) return 'stale_world';
