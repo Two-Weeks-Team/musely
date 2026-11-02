@@ -12,6 +12,9 @@
 //   `application/json` response; notifications (and, in legacy, client responses) get 202 with no body.
 //   GET (no SSE stream) and DELETE (no sessions) answer 405. No Mcp-Session-Id is ever issued; one sent is ignored.
 // - Origin, when present, must be an allowed host, else 403 (DNS rebinding guard, required since 2025-11-25).
+// - Order: Origin (403), non-POST (405), Authorization shape (401), then the key is looked up before any other refusal,
+//   so an unknown or revoked key gets 401 for any body. Only notifications/* may omit the id (else 400 -32600, not run).
+//   A client's JSON-RPC response gets 202 in the handshake revisions. initialize without the modern _meta is a handshake.
 // - Auth: `Authorization: Bearer <Musely agent key>`; missing → 401, malformed, unknown or revoked → 401 with
 //   `error="invalid_token"` (RFC 6750 3.1), same body for every invalid key. MCP's own authorization spec (OAuth 2.1 +
 //   RFC 9728) is OPTIONAL and not implemented: the agent key is a static bearer credential the owner pastes into the
@@ -46,6 +49,8 @@ export type McpOutcome = {status: 'unauthorized'} | {status: 'ok'; result?: unkn
 export interface McpBackend {
   /** keyHash is the SHA-256 of the bearer key (the raw key never leaves the Worker request). */
   mcp(keyHash: string, method: string, params: unknown, isNotification: boolean): Promise<McpOutcome>;
+  /** Whether the key is active (not unknown, revoked or purged). No side effects: used before refusing a message that is not dispatched. */
+  mcpAuth(keyHash: string): Promise<boolean> | boolean;
 }
 
 const rpcJson = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -94,13 +99,11 @@ export async function handleMcpHttp(request: Request, backend: McpBackend, opts:
     return new Response(wantsHtml ? browserPage(new URL(request.url).origin) : null, {status: 405, headers: {allow: 'POST', 'cache-control': 'no-store', ...(wantsHtml ? {'content-type': 'text/html; charset=utf-8'} : {})}});
   }
 
-  const headerVersion = request.headers.get('mcp-protocol-version');
-  if (headerVersion !== null && !SUPPORTED_PROTOCOLS.includes(headerVersion)) return unsupportedVersion(null, headerVersion);
-
   const text = await request.text();
-  if (text.length > MAX_BODY) return rpcError(null, -32600, 'Request too large', 413);
-  // Authentication before any body validation: a caller without a key always learns that first
-  // (the request id is echoed when the body happens to be readable).
+  // Authentication comes first. A missing or malformed Authorization value is answered here without a lookup (the request
+  // id is echoed when the body happens to be readable). Every other refusal below first looks the key up (reject), so an
+  // unknown, revoked or purged key gets 401 whatever the body, headers or size; only a valid key learns why its message
+  // was refused. Origin (403) and a non-POST method (405) are answered before any of this.
   const authHeader = request.headers.get('authorization');
   const token = /^Bearer\s+(\S+)$/i.exec(authHeader ?? '')?.[1] ?? '';
   if (!looksLikeAgentKey(token)) {
@@ -108,61 +111,66 @@ export async function handleMcpHttp(request: Request, backend: McpBackend, opts:
     try { const j = JSON.parse(text); if (j && (typeof j.id === 'string' || typeof j.id === 'number')) id = j.id; } catch { /* unreadable body */ }
     return rpcError(id, UNAUTHORIZED, UNAUTHORIZED_MESSAGE, 401, challenge(authHeader !== null));
   }
+  const keyHash = await hashAgentKey(token);
+  let id: unknown = null;
+  const unauthorized = () => rpcError(id, UNAUTHORIZED, UNAUTHORIZED_MESSAGE, 401, challenge(true));
+  const reject = async (refusal: Response) => ((await backend.mcpAuth(keyHash)) ? refusal : unauthorized());
+
+  if (text.length > MAX_BODY) return reject(rpcError(null, -32600, 'Request too large', 413));
   let msg: unknown;
-  try { msg = JSON.parse(text); } catch { return rpcError(null, -32700, 'Parse error', 400); }
-  if (Array.isArray(msg)) return rpcError(null, -32600, 'JSON-RPC batching is not supported (removed in MCP 2025-06-18)', 400);
-  if (!isObject(msg) || msg.jsonrpc !== '2.0') return rpcError(null, -32600, 'Invalid Request', 400);
+  try { msg = JSON.parse(text); } catch { return reject(rpcError(null, -32700, 'Parse error', 400)); }
+  if (Array.isArray(msg)) return reject(rpcError(null, -32600, 'JSON-RPC batching is not supported (removed in MCP 2025-06-18)', 400));
+  if (!isObject(msg) || msg.jsonrpc !== '2.0') return reject(rpcError(null, -32600, 'Invalid Request', 400));
   const m = msg as {id?: unknown; method?: unknown; params?: unknown; result?: unknown; error?: unknown};
   const hasId = m.id !== undefined && m.id !== null;
-  if (hasId && typeof m.id !== 'string' && typeof m.id !== 'number') return rpcError(null, -32600, 'Invalid Request id', 400);
-  const id = hasId ? m.id : null;
+  if (hasId && typeof m.id !== 'string' && typeof m.id !== 'number') return reject(rpcError(null, -32600, 'Invalid Request id', 400));
+  id = hasId ? m.id : null;
   const isResponse = m.method === undefined && (m.result !== undefined || m.error !== undefined);
-  if (!isResponse && typeof m.method !== 'string') return rpcError(id, -32600, 'Invalid Request', 400);
+  if (!isResponse && typeof m.method !== 'string') return reject(rpcError(id, -32600, 'Invalid Request', 400));
   const method = isResponse ? '' : String(m.method);
 
   // ----- protocol version and era (2026-07-28 Versioning) -----
+  const headerVersion = request.headers.get('mcp-protocol-version');
+  if (headerVersion !== null && !SUPPORTED_PROTOCOLS.includes(headerVersion)) return reject(unsupportedVersion(id, headerVersion));
   const params = isObject(m.params) ? m.params : undefined;
   const meta = params && isObject(params._meta) ? params._meta : undefined;
   const bodyVersion = meta?.[META_VERSION];
   if (bodyVersion !== undefined) {
-    if (typeof bodyVersion !== 'string') return rpcError(id, -32602, `_meta["${META_VERSION}"] must be a string`, 400);
-    if (!SUPPORTED_PROTOCOLS.includes(bodyVersion)) return unsupportedVersion(id, bodyVersion);
-    if (headerVersion === null) return rpcError(id, HEADER_MISMATCH, 'Header mismatch: MCP-Protocol-Version header is required', 400);
-    if (headerVersion !== bodyVersion) return rpcError(id, HEADER_MISMATCH, `Header mismatch: MCP-Protocol-Version ${headerVersion} does not match _meta ${bodyVersion}`, 400);
+    if (typeof bodyVersion !== 'string') return reject(rpcError(id, -32602, `_meta["${META_VERSION}"] must be a string`, 400));
+    if (!SUPPORTED_PROTOCOLS.includes(bodyVersion)) return reject(unsupportedVersion(id, bodyVersion));
+    if (headerVersion === null) return reject(rpcError(id, HEADER_MISMATCH, 'Header mismatch: MCP-Protocol-Version header is required', 400));
+    if (headerVersion !== bodyVersion) return reject(rpcError(id, HEADER_MISMATCH, `Header mismatch: MCP-Protocol-Version ${headerVersion} does not match _meta ${bodyVersion}`, 400));
   }
-  const version = headerVersion ?? DEFAULT_LEGACY;
-  const modern = MODERN_PROTOCOLS.includes(version);
+  // "An initialize request selects legacy semantics": without the modern _meta it is a handshake, whatever the header says.
+  const handshake = method === 'initialize' && bodyVersion === undefined;
+  const modern = !handshake && MODERN_PROTOCOLS.includes(headerVersion ?? DEFAULT_LEGACY);
   if (modern) {
     // A modern client sends no JSON-RPC responses; its requests carry the per-request fields and the mirrored headers.
-    if (isResponse) return rpcError(null, -32600, 'Invalid Request: clients do not send JSON-RPC responses in ' + version, 400);
+    if (isResponse) return reject(rpcError(null, -32600, 'Invalid Request: clients do not send JSON-RPC responses in ' + SERVER_PROTOCOL, 400));
     if (hasId) {
-      if (bodyVersion === undefined || !isObject(meta?.[META_CAPS])) return rpcError(id, -32602, `Invalid params: _meta must carry "${META_VERSION}" and "${META_CAPS}"`, 400);
+      if (bodyVersion === undefined || !isObject(meta?.[META_CAPS])) return reject(rpcError(id, -32602, `Invalid params: _meta must carry "${META_VERSION}" and "${META_CAPS}"`, 400));
       const mcpMethod = request.headers.get('mcp-method');
-      if (mcpMethod === null) return rpcError(id, HEADER_MISMATCH, 'Header mismatch: Mcp-Method header is required', 400);
-      if (mcpMethod !== method) return rpcError(id, HEADER_MISMATCH, 'Header mismatch: Mcp-Method does not match the body method', 400);
+      if (mcpMethod === null) return reject(rpcError(id, HEADER_MISMATCH, 'Header mismatch: Mcp-Method header is required', 400));
+      if (mcpMethod !== method) return reject(rpcError(id, HEADER_MISMATCH, 'Header mismatch: Mcp-Method does not match the body method', 400));
       if (method === 'tools/call') {
         const raw = request.headers.get('mcp-name');
-        if (raw === null) return rpcError(id, HEADER_MISMATCH, 'Header mismatch: Mcp-Name header is required for tools/call', 400);
+        if (raw === null) return reject(rpcError(id, HEADER_MISMATCH, 'Header mismatch: Mcp-Name header is required for tools/call', 400));
         const name = decodeHeaderValue(raw);
-        if (name === null) return rpcError(id, HEADER_MISMATCH, 'Header mismatch: Mcp-Name is not valid Base64 UTF-8', 400);
-        if (name !== params?.name) return rpcError(id, HEADER_MISMATCH, 'Header mismatch: Mcp-Name does not match params.name', 400);
+        if (name === null) return reject(rpcError(id, HEADER_MISMATCH, 'Header mismatch: Mcp-Name is not valid Base64 UTF-8', 400));
+        if (name !== params?.name) return reject(rpcError(id, HEADER_MISMATCH, 'Header mismatch: Mcp-Name does not match params.name', 400));
       }
     }
   }
+  // Only notifications may omit the id: anything else without one (a tools/call, initialize, ...) is never dispatched.
+  if (!hasId && !isResponse && !method.startsWith('notifications/')) return reject(rpcError(null, -32600, 'Invalid Request: a request needs an id; only notifications/* may omit it', 400));
+  // A request for a method this era does not have: Method not found (2026-07-28: HTTP 404; handshake revisions: HTTP 200).
+  if (hasId && !isResponse && !(modern ? MODERN_METHODS : LEGACY_METHODS).has(method)) return reject(rpcError(id, -32601, `Method not found: ${method.slice(0, 60)}`, modern ? 404 : 200));
 
-  // Authentication on every message, including notifications and initialize.
-  const unauthorized = () => rpcError(id, UNAUTHORIZED, UNAUTHORIZED_MESSAGE, 401, challenge(true));
-  const keyHash = await hashAgentKey(token);
-  if (opts.rateLimit && method === 'tools/call' && !(await opts.rateLimit('mcp:' + keyHash.slice(0, 16)))) return rpcError(m.id, -32000, 'Too many tool calls; slow down', 429, {'retry-after': '10'});
+  // Rate limit before the world object is asked (a valid-looking key over the limit can get 429 before a lookup).
+  if (opts.rateLimit && hasId && method === 'tools/call' && !(await opts.rateLimit('mcp:' + keyHash.slice(0, 16)))) return rpcError(id, -32000, 'Too many tool calls; slow down', 429, {'retry-after': '10'});
 
-  // A request for a method this era does not have: authenticate (an empty method only checks the key), then
-  // Method not found (2026-07-28: HTTP 404; legacy: HTTP 200 as before).
-  if (hasId && !(modern ? MODERN_METHODS : LEGACY_METHODS).has(method)) {
-    const auth = await backend.mcp(keyHash, '', undefined, true);
-    if (auth.status === 'unauthorized') return unauthorized();
-    return rpcError(id, -32601, `Method not found: ${method.slice(0, 60)}`, modern ? 404 : 200);
-  }
-
+  // Dispatch: the world object authenticates again (key lookup) and records the use. A notification, or a client's
+  // JSON-RPC response in the handshake revisions, gets 202 with no body.
   const out = await backend.mcp(keyHash, method, m.params, !hasId || isResponse);
   if (out.status === 'unauthorized') return unauthorized();
   if (!hasId || isResponse) return new Response(null, {status: 202, headers: {'cache-control': 'no-store'}});

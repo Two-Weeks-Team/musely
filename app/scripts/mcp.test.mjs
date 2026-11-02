@@ -15,6 +15,7 @@ import {issueOwnerSession, readOwnerSession} from '../worker/core/owner-session.
 import {revokeMuse, redelegateMuse, delegationStatus} from '../worker/core/owner-control.ts';
 import {TOOL_NAMES, NOT_READY_TOOLS} from '../worker/core/mcp-tools.ts';
 import {SUPPORTED_PROTOCOLS, LIST_TTL_MS} from '../worker/core/mcp-server.ts';
+import {hashAgentKey} from '../worker/core/agent-keys.ts';
 import {statusOf, v1Status, taskRecord, getTaskRecord, tasksFor, awaitingAnswerFrom, transitionTask, canTransition, TASK_STATUSES, TERMINAL_STATUSES} from '../worker/core/tasks.ts';
 import {makeHooks, resolveMeeting} from '../src/engine/rules.ts';
 import {placeById} from '../src/engine/places.ts';
@@ -48,7 +49,7 @@ async function setup({claimed = true} = {}) {
   host.init();
   // The fake world Durable Object: the same method names world-do.ts exposes to the Worker.
   const stub = {
-    mcp: (...a) => host.mcp(...a), issueAgentKey: () => host.issueKey(), listAgentKeys: () => host.listKeys(), revokeAgentKey: id => host.revokeKey(id),
+    mcp: (...a) => host.mcp(...a), mcpAuth: h => host.authenticate(h), issueAgentKey: () => host.issueKey(), listAgentKeys: () => host.listKeys(), revokeAgentKey: id => host.revokeKey(id),
     ownerLocation: () => host.ownerLocation(), setOwnerLocation: i => host.setOwnerLocation(i), ownerNotifications: f => host.notifications(f),
     agentKeyMuse: id => host.keyMuse(id), ownerRevoke: (m, by) => revokeMuse({trust, runtime}, m, by), ownerRedelegate: (m, by) => redelegateMuse({trust, runtime}, m, by),
     delegationStatus: ms => delegationStatus({trust, runtime}, ms), taskParticipants: id => { const x = runtime.state().inbox?.tasks.find(k => k.id === id); return x ? {from: x.from, to: x.to, status: x.status} : null; },
@@ -513,7 +514,7 @@ test('a counter while either side is travelling is refused (no swap on the move)
 
 test('browser GET explains the endpoint (still 405); a keyless POST is 401 before any body parsing', async () => {
   const {handleMcpHttp} = await import('../worker/core/mcp-server.ts');
-  const backend = {mcp: async () => ({status: 'ok', result: {}})};
+  const backend = {mcp: async () => ({status: 'ok', result: {}}), mcpAuth: async () => true};
   const g = await handleMcpHttp(new Request('https://musely.net/mcp', {headers: {accept: 'text/html'}}), backend, {allowedHosts: ['musely.net']});
   assert.equal(g.status, 405);
   assert.match(await g.text(), /custom connector/);
@@ -718,8 +719,9 @@ test('I-03A auth: missing, malformed, unknown and revoked keys get 401 with a Be
   try {
     const t = await setup();
     // The world object (where logs and storage live) receives only the key hash.
-    const backendArgs = [], realMcp = t.stub.mcp;
+    const backendArgs = [], realMcp = t.stub.mcp, realAuth = t.stub.mcpAuth;
     t.stub.mcp = (...a) => { backendArgs.push(a); return realMcp(...a); };
+    t.stub.mcpAuth = (...a) => { backendArgs.push(a); return realAuth(...a); };
     const keep = async res => { const text = await res.text(); seen.push(text, JSON.stringify([...res.headers])); return {status: res.status, body: text ? JSON.parse(text) : null, headers: res.headers}; };
     const keyA = t.key;
     assert.equal((await keep(await t.http({jsonrpc: '2.0', id: 1, method: 'tools/list'}))).status, 200);
@@ -958,4 +960,129 @@ test('I-03A tasks.ts: v1 Task statuses map to the C06 names; records and transit
   // The live inbox Task is still the one MCP made: the facade did not take over any existing path.
   assert.equal(JSON.stringify(inbox().tasks), v1Before);
   assert.equal((await t.call('heartbeat_check')).structuredContent.your_open_tasks[0].status, 'pending', 'MCP still speaks the v1 status');
+});
+
+// ---------- PR #94 review ----------
+test('I-03A #94 handshake revisions: a client JSON-RPC response (result or error) and a notification get 202, with no header and with 2025-06-18 / 2025-11-25', async () => {
+  const t = await setup();
+  for (const headers of [{}, {'mcp-protocol-version': '2025-06-18'}, {'mcp-protocol-version': '2025-11-25'}]) {
+    for (const msg of [{jsonrpc: '2.0', id: 5, result: {}}, {jsonrpc: '2.0', id: 'srv-6', error: {code: -32601, message: 'no'}}, {jsonrpc: '2.0', method: 'notifications/initialized'}]) {
+      const r = await t.http(msg, {headers});
+      assert.equal(r.status, 202, `${JSON.stringify(headers)} ${JSON.stringify(msg)}`);
+      assert.equal(await r.text(), '');
+    }
+  }
+  // The response is authenticated like everything else, and stays refused in 2026-07-28 (clients send none there).
+  assert.equal((await t.http({jsonrpc: '2.0', id: 5, result: {}}, {token: 'msly_' + 'C'.repeat(43)})).status, 401);
+  assert.equal((await t.http({jsonrpc: '2.0', id: 5, result: {}}, {headers: {'mcp-protocol-version': MODERN}})).status, 400);
+});
+
+test('I-03A #94 a message without an id runs nothing but notifications: tools/call greet without an id gets 400 -32600 in both eras with no event or state change', async () => {
+  const t = await setup();
+  const before = dbSnapshot(t.sql); // cold: the key was never used, so even a connection refresh would show here
+  const greet = {name: 'greet', arguments: {text: 'no id, no greeting'}};
+  const cases = [
+    ['no header', {jsonrpc: '2.0', method: 'tools/call', params: greet}, {}],
+    ['2025-06-18', {jsonrpc: '2.0', method: 'tools/call', params: greet}, {'mcp-protocol-version': '2025-06-18'}],
+    ['2025-11-25', {jsonrpc: '2.0', method: 'tools/call', params: greet}, {'mcp-protocol-version': '2025-11-25'}],
+    ['2026-07-28', {jsonrpc: '2.0', method: 'tools/call', params: {...greet, _meta: META()}}, {'mcp-protocol-version': MODERN, 'mcp-method': 'tools/call', 'mcp-name': 'greet'}],
+    ['id null', {jsonrpc: '2.0', id: null, method: 'tools/call', params: greet}, {}],
+    ['initialize without id', {jsonrpc: '2.0', method: 'initialize', params: {protocolVersion: '2025-06-18', capabilities: {}, clientInfo: {name: 'x', version: '1'}}}, {}],
+    ['tools/list without id', {jsonrpc: '2.0', method: 'tools/list'}, {'mcp-protocol-version': '2025-06-18'}],
+  ];
+  for (const [label, msg, headers] of cases) {
+    const r = await t.http(msg, {headers});
+    assert.equal(r.status, 400, label);
+    assert.equal((await r.json()).error.code, -32600, label);
+  }
+  assert.deepEqual(dbSnapshot(t.sql), before, 'nothing ran, nothing was recorded');
+  assert.ok(!t.events().some(e => e.line === 'no id, no greeting'));
+  // Second fence inside the world object: a notification-flagged call to anything but notifications/* runs nothing.
+  const hash = await hashAgentKey(t.key);
+  const direct = await t.host.mcp(hash, 'tools/call', greet, true);
+  assert.equal(direct.status, 'ok'); assert.equal(direct.error.code, -32600);
+  assert.ok(!t.events().some(e => e.kind === 'greet'), 'the world object did not run the tool');
+  // Real notifications still pass in both eras.
+  assert.equal((await t.http({jsonrpc: '2.0', method: 'notifications/initialized'})).status, 202);
+  assert.equal((await t.http({jsonrpc: '2.0', method: 'notifications/x', params: {_meta: META()}}, {headers: {'mcp-protocol-version': MODERN}})).status, 202);
+});
+
+test('I-03A #94 cold call: a not-ready tool after more than 24 h refreshes the connection in one commit (one agent_connected); the tool itself changes nothing', async () => {
+  const t = await setup();
+  await t.call('get_world_state');
+  const norm = st => { const c = structuredClone(st); delete c.version; delete c.inbox.connected[OWNER_SLOT]; return c; };
+  // sqlite_sequence holds the events AUTOINCREMENT counter: it moves with the one agent_connected event.
+  const rest = snap => { const {events: _e, sqlite_sequence: _q, world: _w, agent_keys: _k, ...others} = snap; return others; };
+  t.clock.now += 25 * 3_600_000;
+  const before = dbSnapshot(t.sql), state0 = t.state(), events0 = t.events().length;
+  const r = await t.call('invite_campfire', {to: ['01-sunny']});
+  assert.equal(r.structuredContent.refused, 'capability_not_ready');
+  const after = dbSnapshot(t.sql), state1 = t.state();
+  const added = t.events().slice(events0);
+  assert.deepEqual(added.map(e => e.kind), ['agent_connected'], 'exactly one event, and it is the connection, not the tool');
+  assert.equal(state1.version - state0.version, 1, 'one commit');
+  assert.equal(state1.inbox.connected[OWNER_SLOT], t.clock.now);
+  assert.deepEqual(norm(state1), norm(state0), 'apart from the connected time the world is unchanged');
+  assert.deepEqual(after.agent_keys.map(({last_used_at: _l, ...k}) => k), before.agent_keys.map(({last_used_at: _l, ...k}) => k), 'only the key last-use time moved');
+  assert.deepEqual(rest(after), rest(before), 'no nonce, command row, refusal row or other table changed');
+  assert.deepEqual(after.sqlite_sequence.find(r => r.name === 'events').seq - before.sqlite_sequence.find(r => r.name === 'events').seq, 1);
+  // Warm right after: nothing at all.
+  const warm = dbSnapshot(t.sql);
+  await t.call('propose_help', {to: '09-copper', item: 'coffee'});
+  assert.deepEqual(dbSnapshot(t.sql), warm);
+  // After the 10-minute refresh window: one commit that moves the connected time, no event.
+  t.clock.now += 11 * 60_000;
+  const v0 = t.state().version, n0 = t.events().length;
+  await t.call('answer_help', {task_id: 'task_1', answer: 'reject'});
+  assert.equal(t.state().version - v0, 1); assert.equal(t.events().length, n0);
+  assert.equal(t.state().inbox.connected[OWNER_SLOT], t.clock.now);
+});
+
+test('I-03A #94 auth first: an unknown or revoked key gets 401 for every body; a valid key gets the specific refusal', async () => {
+  const t = await setup();
+  const issued = await t.route('POST', '/api/agent-keys');
+  const revoked = issued.body.key;
+  assert.equal((await t.route('DELETE', '/api/agent-keys/' + issued.body.id)).status, 200);
+  const unknown = 'msly_' + 'D'.repeat(43);
+  const tl = {jsonrpc: '2.0', id: 9, method: 'tools/list'};
+  const cases = [
+    ['unsupported header', tl, {'mcp-protocol-version': '1999-01-01'}, 400],
+    ['unsupported _meta', {...tl, params: {_meta: META('2099-01-01')}}, {'mcp-protocol-version': MODERN, 'mcp-method': 'tools/list'}, 400],
+    ['header mismatch', {...tl, params: {_meta: META()}}, {'mcp-protocol-version': '2025-06-18'}, 400],
+    ['Mcp-Method missing', {...tl, params: {_meta: META()}}, {'mcp-protocol-version': MODERN}, 400],
+    ['missing _meta', tl, {'mcp-protocol-version': MODERN, 'mcp-method': 'tools/list'}, 400],
+    ['no id', {jsonrpc: '2.0', method: 'tools/call', params: {name: 'greet', arguments: {text: 'x'}}}, {}, 400],
+    ['unknown method (legacy)', {jsonrpc: '2.0', id: 9, method: 'nope'}, {}, 200],
+    ['unknown method (2026-07-28)', {jsonrpc: '2.0', id: 9, method: 'nope', params: {_meta: META()}}, {'mcp-protocol-version': MODERN, 'mcp-method': 'nope'}, 404],
+    ['batch', [tl], {}, 400],
+    ['parse error', '{not json', {}, 400],
+    ['not JSON-RPC', {id: 9, method: 'tools/list'}, {}, 400],
+    ['oversize', JSON.stringify({...tl, params: {pad: 'x'.repeat(70_000)}}), {}, 413],
+    ['modern response', {jsonrpc: '2.0', id: 9, result: {}}, {'mcp-protocol-version': MODERN}, 400],
+  ];
+  for (const [label, msg, headers, validStatus] of cases) {
+    for (const token of [unknown, revoked]) {
+      const r = await t.http(msg, {token, headers});
+      assert.equal(r.status, 401, `${label} (${token === revoked ? 'revoked' : 'unknown'})`);
+      assert.equal(r.headers.get('www-authenticate'), 'Bearer realm="musely-mcp", error="invalid_token"', label);
+      assert.equal((await r.json()).error.code, -32001, label);
+    }
+    assert.equal((await t.http(msg, {headers})).status, validStatus, `${label} with a valid key`);
+  }
+  // Documented exception: the tools/call rate limit is checked before the world object, so over the limit a
+  // valid-looking key gets 429 before its lookup.
+  const limited = await handleMcpHttp(new Request(HOST + '/mcp', {method: 'POST', headers: {authorization: 'Bearer ' + unknown, 'content-type': 'application/json'}, body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/call', params: {name: 'get_world_state', arguments: {}}})}), t.stub, {allowedHosts: ['musely.net'], rateLimit: async () => false});
+  assert.equal(limited.status, 429);
+});
+
+test('I-03A #94 initialize selects the handshake: without the 2026-07-28 _meta it is answered as a handshake revision, even under a 2026-07-28 header', async () => {
+  const t = await setup();
+  const init = v => ({protocolVersion: v, capabilities: {}, clientInfo: {name: 'legacy', version: '1'}});
+  const a = await t.rpc('initialize', init('2025-06-18'), {headers: {'mcp-protocol-version': MODERN}});
+  assert.equal(a.status, 200); assert.equal(a.body.result.protocolVersion, '2025-06-18'); assert.equal(a.body.result.resultType, undefined);
+  const b = await t.rpc('initialize', init(MODERN), {headers: {'mcp-protocol-version': MODERN}});
+  assert.equal(b.status, 200); assert.equal(b.body.result.protocolVersion, '2025-11-25', 'unknown to the handshake → our latest handshake revision');
+  // With the modern _meta it is a 2026-07-28 request, and 2026-07-28 has no initialize.
+  const c = await modern(t, 'initialize', init(MODERN));
+  assert.equal(c.status, 404); assert.equal(c.body.error.code, -32601);
 });

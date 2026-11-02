@@ -3,6 +3,13 @@
 // existing behavior: the MCP tools and the engine still read and write inbox Tasks directly, and nothing here is
 // stored. A TaskRecord is computed from a Task each time it is asked for.
 //
+// Storage migration is not done here: inbox Tasks stay stored in the v1 shape and a record is computed per read. The
+// version 2 storage migration (keep id/deadline/offer/history, equal counts before and after, idempotent on restart) is I-07.
+//
+// C06: "pending은 응답 전 submitted/응답 대기 input-required로" (pending is submitted before any answer, input-required
+// while an answer is awaited). Read as: only the opening `propose` in the history → submitted; any later step (a
+// counter, or a meetup answer) → input-required, and the side in `awaiting` owes the next answer.
+//
 // Status names (C06, A2A Task states) and the v1 Task status they come from:
 //   submitted       pending, nobody has answered yet (only the opening `propose` in the history)
 //   input-required  pending after at least one answer or counter: the side in `awaiting` must answer next

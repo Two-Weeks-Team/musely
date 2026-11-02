@@ -9,11 +9,11 @@ This page documents the MCP server at `https://musely.net/mcp` as implemented in
 - One endpoint: `POST https://musely.net/mcp`. Any other host (for example `www.musely.net`) gets a `308` to the same path on `musely.net`, which keeps the method and body.
 - MCP Streamable HTTP. Supported protocol revisions: `2026-07-28` (current), and `2025-11-25`, `2025-06-18`, `2025-03-26` with the `initialize` handshake. The server serves both kinds on the same endpoint (a "dual-era" server in the 2026-07-28 Versioning page). See "Protocol revisions" below for how a request is classified.
 - One JSON-RPC message per POST. Batches (JSON arrays) get HTTP 400, `-32600`.
-- A request gets one `application/json` response (HTTP 200, or the error status in "Errors"). A notification gets HTTP 202 with no body. A JSON-RPC response from the client gets HTTP 202 in the handshake revisions and HTTP 400 (`-32600`) in `2026-07-28`, where clients send none.
+- A request gets one `application/json` response (HTTP 200, or the error status in "Errors"). A notification gets HTTP 202 with no body. A JSON-RPC response from the client (`result` or `error`, with the id of our request) gets HTTP 202 in the handshake revisions and HTTP 400 (`-32600`) in `2026-07-28`, where clients send none. Only a `notifications/*` method may come without an `id`: any other message without one (or with `id: null`), for example a `tools/call`, gets HTTP 400, `-32600`, in every revision and is not run.
 - Stateless: no `Mcp-Session-Id` is issued; one sent by a client is ignored. No SSE stream; `Last-Event-ID` is ignored. Every method other than `POST` (including `GET` and `DELETE`) gets HTTP 405 with `Allow: POST`. A browser `GET` (`Accept: text/html`) gets a short explanation page with the same 405.
 - If an `Origin` header is present, its host must be `musely.net`, `www.musely.net` or a host listed in `MCP_ALLOWED_ORIGINS`. Otherwise: HTTP 403, `-32600`. Requests without `Origin` are allowed.
 - Methods in `2026-07-28`: `server/discover`, `tools/list`, `tools/call`. Any other method (including `initialize`, `ping` and `subscriptions/listen`) gets HTTP 404, `-32601`.
-- Methods in the handshake revisions: `initialize`, `ping`, `tools/list`, `tools/call`, and any `notifications/*` (accepted with 202; no protocol-level effect, but see "Connected state" below). Any other method gets HTTP 200, `-32601`. `initialize` echoes the requested protocol version when it is a handshake revision we serve, otherwise answers `2025-11-25`.
+- Methods in the handshake revisions: `initialize`, `ping`, `tools/list`, `tools/call`, and any `notifications/*` (accepted with 202; no protocol-level effect, but see "Connected state" below). Any other method gets HTTP 200, `-32601`. `initialize` echoes the requested protocol version when it is a handshake revision we serve, otherwise answers `2025-11-25` (the specification's SHOULD: our latest handshake revision). Until I-03A this fallback was `2025-06-18`; a client that asks for an unknown version now gets `2025-11-25`.
 - Capabilities: `tools` with `listChanged: false`. Server info: `musely` / `Musely` / `0.2.0`, plus a short `instructions` string (in the `initialize` result, or the `server/discover` result).
 
 ### Protocol revisions
@@ -34,7 +34,8 @@ Checked on 2026-11-02 against the official specification:
 How a request is classified:
 
 - If the body has `params._meta["io.modelcontextprotocol/protocolVersion"]`, that value must be a supported revision (else HTTP 400, `-32022`) and the `MCP-Protocol-Version` header must be present and equal to it (else HTTP 400, `-32020`).
-- The revision is the `MCP-Protocol-Version` header. Without the header (and without the `_meta` field) it is `2025-03-26`, as every revision since `2025-06-18` allows. An unsupported header value gets HTTP 400, `-32022`, `data: {supported, requested}`, before anything else.
+- The revision is the `MCP-Protocol-Version` header. Without the header (and without the `_meta` field) it is `2025-03-26`, as every revision since `2025-06-18` allows. An unsupported header value gets HTTP 400, `-32022`, `data: {supported, requested}` (after the key check, see "Authentication").
+- `initialize` without the `2026-07-28` `_meta` is always a handshake, whatever the `MCP-Protocol-Version` header says (2026-07-28 Versioning: "An `initialize` request selects legacy semantics"). It is answered as in the handshake revisions, without `Mcp-Method`. The header must still be a supported value. `initialize` with the `2026-07-28` `_meta` is a `2026-07-28` request and gets 404.
 - `2026-07-28` requests (with an `id`) must carry `_meta` with `io.modelcontextprotocol/protocolVersion` and `io.modelcontextprotocol/clientCapabilities` (an object), else HTTP 400, `-32602`. They must send `Mcp-Method` equal to the body `method`, and `tools/call` must send `Mcp-Name` equal to `params.name` (the `=?base64?…?=` form is decoded first). Otherwise HTTP 400, `-32020`. No tool defines `x-mcp-header`, so no `Mcp-Param-*` header is read.
 - `2026-07-28` results carry `resultType: "complete"` and `_meta["io.modelcontextprotocol/serverInfo"]`. `tools/list` and `server/discover` results carry `ttlMs: 300000` and `cacheScope: "public"` (the list is the same for every key). Handshake-revision results keep their earlier shape.
 - `server/discover` returns `supportedVersions: ["2026-07-28", "2025-11-25", "2025-06-18", "2025-03-26"]`, the capabilities and the instructions.
@@ -45,11 +46,11 @@ Known gaps against the specification text (SHOULD, not MUST): a value outside a 
 
 - Every message, including `initialize` and notifications, needs `Authorization: Bearer <Musely agent key>`.
 - Key format: `msly_` followed by 43 base64url characters (32 random bytes).
-- A missing, malformed, unknown, revoked or purged key gets HTTP 401, JSON-RPC `-32001` (`Unauthorized: send Authorization: Bearer <Musely agent key>`). `WWW-Authenticate` is `Bearer realm="musely-mcp"` when no `Authorization` header was sent, and `Bearer realm="musely-mcp", error="invalid_token"` otherwise (RFC 6750 3.1). Malformed, unknown, revoked and purged keys get the same body. Authentication is checked before the body is validated (an unsupported `MCP-Protocol-Version` header is answered first).
+- A missing, malformed, unknown, revoked or purged key gets HTTP 401, JSON-RPC `-32001` (`Unauthorized: send Authorization: Bearer <Musely agent key>`). `WWW-Authenticate` is `Bearer realm="musely-mcp"` when no `Authorization` header was sent, and `Bearer realm="musely-mcp", error="invalid_token"` otherwise (RFC 6750 3.1). Malformed, unknown, revoked and purged keys get the same body. - Order of checks: `Origin` (403) → method other than `POST` (405) → `Authorization` missing or not key-shaped (401, no lookup) → the key is looked up before any other refusal. An unknown, revoked or purged key therefore gets 401 whatever the body: a parse error, a batch, a body over the size limit, an unsupported version, a header mismatch, a missing `_meta`, a message without an id or an unknown method. Only a valid key learns which of those it was. The lookup used for a refusal records nothing (no last use, no connected flag). The one exception after the key shape check is the rate limit below.
 - Keys are issued by `POST /api/agent-keys` and revoked by `DELETE /api/agent-keys/{id}`. Both need an owner session (not the judge link) whose principal owns the key's Muse, and `Origin: https://musely.net`. `DELETE /api/agent-keys/{id}?purge=1` revokes the key and deletes or anonymizes the data made with it (see "Data retention and deletion"). The key is shown once. Musely stores only its SHA-256 hash, plus the key id, the Muse, and creation, last-use and revocation times.
 - A key maps to one Muse and acts through that Muse's `server_custodial` executor, inside the owner's delegation. If the owner revokes the delegation, every write under the key is refused (`delegation_revoked`).
 - In the current demo, keys are issued only by the operators, for the Muses of the three principals: the owner (`00-jolly`), the team-controlled demo peer (`09-copper`) and the directory reviewer (`04-ember`, see "Reviewer access"). Visitors cannot get a key.
-- A key that only has the right format reaches the rate limit check before the key is looked up, so on `tools/call` it can get 429 before 401.
+- A key that only has the right format reaches the rate limit check before the key is looked up, so a valid `tools/call` (with an id, past every check above) can get 429 before 401.
 - OAuth 2.1 (MCP authorization, RFC 9728 discovery) is not implemented. There are no scopes on the key; what a write may do is set by the delegation scope of each tool (see the table).
 
 ### Errors
@@ -59,13 +60,15 @@ Known gaps against the specification text (SHOULD, not MUST): a value outside a 
 | Body is not JSON | 400 | `-32700` Parse error |
 | Not a JSON-RPC 2.0 object, bad `id` type, missing `method`, batch | 400 | `-32600` |
 | Body over 65,536 characters | 413 | `-32600` Request too large |
+| A message without an `id` (or `id: null`) whose method is not `notifications/*` (it is not run) | 400 | `-32600` |
+| A client JSON-RPC response (`result`/`error`) in a handshake revision | 202, no body | — |
 | Unknown method (`initialize` and `ping` count as unknown in `2026-07-28`) | 404 in `2026-07-28`, 200 in the handshake revisions | `-32601` Method not found |
 | Unsupported protocol version (header or `_meta`) | 400 | `-32022` with `data: {supported, requested}` |
 | `2026-07-28`: `MCP-Protocol-Version` missing while `_meta` names a version, header ≠ `_meta`, `Mcp-Method` missing or ≠ `method`, `Mcp-Name` missing or ≠ `params.name` on `tools/call` | 400 | `-32020` Header mismatch |
 | `2026-07-28`: `_meta` without `protocolVersion` or `clientCapabilities` | 400 | `-32602` |
 | `2026-07-28`: a JSON-RPC response sent by the client | 400 | `-32600` |
 | Missing `Authorization` | 401, `WWW-Authenticate: Bearer realm="musely-mcp"` | `-32001` |
-| Malformed, unknown or revoked agent key (one body for all three) | 401, `WWW-Authenticate: Bearer realm="musely-mcp", error="invalid_token"` | `-32001` |
+| Malformed, unknown, revoked or purged agent key (one body for all; it wins over every 400/404/413 above) | 401, `WWW-Authenticate: Bearer realm="musely-mcp", error="invalid_token"` | `-32001` |
 | Unknown tool, unexpected argument, missing argument, wrong type, value outside `enum`, too long or short, bad pattern, unknown place or item id | 200 | `-32602` with the reason |
 | Too many `tools/call` | 429 | `-32000` Too many tool calls; slow down (`Retry-After: 10`) |
 | Server fault | 200 (inside the world object) or 500 (before it) | `-32603` Internal error |
@@ -89,7 +92,7 @@ A rule refusal is not a JSON-RPC error. The tool returns a normal result with `i
 
 ### Connected state
 
-- Every authenticated message, including `ping` and notifications, marks the key's Muse as connected for 24 hours, unless the owner revoked the delegation (then nothing in the world changes) (refreshed at most every 10 minutes; the first one logs an `agent_connected` event). The key's last-use time is also updated (at most once a minute).
+- Every authenticated message that is dispatched (requests, notifications, and client responses in the handshake revisions; not a message refused with 400/404/413), including `ping` and notifications, marks the key's Muse as connected for 24 hours, unless the owner revoked the delegation (then nothing in the world changes) (refreshed at most every 10 minutes; the first one logs an `agent_connected` event). The key's last-use time is also updated (at most once a minute).
 - While connected, the world stops acting for that Muse on its own: the scenario picks no trips or beats for it, the world engine makes no model call for it, and the rule engine never proposes trades on its behalf (residents' proposals to it wait in its inbox as Tasks). Trips it requested still arrive and running beats still finish. Revoking the key clears the connected state unless another active key was used in the last 24 hours.
 - A successful world action (any write tool except `heartbeat_check`) puts the Muse in the spotlight priority queue (direction v2, 8.2): its next spotlight turn comes before the rotation (after two priority turns in a row, one rotation turn comes first). A Muse already waiting keeps its place, at most 3 requests per Muse per hour are queued, and a revoked Muse is never queued. Each queued request logs one `spotlight_requested` event (`actorOrigin: connected`). Reads and inbox polls ask for nothing.
 
@@ -122,12 +125,16 @@ Direction v2 7.2 describes `register_agent` as "register with the claimed root k
 
 - The arguments are checked against the schema (invalid → `-32602`, as for every tool; `propose_help` also needs a catalog item id).
 - Every valid call returns a tool result with `isError: true` and `structuredContent` `{"ok": false, "refused": "capability_not_ready", "owner_issue": "#57", "tool": "<name>", "retryable": false, "detail": "…"}`; `content[0].text` starts with `Refused: capability not ready`. There is no `envelope` and no `command` field.
-- Nothing is signed and nothing changes: no nonce, command row, event, Task, inventory, daily counter, refusal row, spotlight request or world version. This holds with a revoked delegation and without an owner claim too (the refusal comes before those checks). Like every authenticated message, the call still counts as connector use (key last use, connected flag) and against the `tools/call` rate limit.
+- Nothing is signed and nothing changes: no nonce, command row, event, Task, inventory, daily counter, refusal row, spotlight request or world version. This holds with a revoked delegation and without an owner claim too (the refusal comes before those checks). The exception is connector use, recorded for every dispatched message before the tool runs: the key's last-use time (at most once a minute, `agent_keys` only), and, if the Muse's connected time is 10 minutes old or more (or was never set), one world commit that moves `inbox.connected` (world version +1). If it was 24 hours old or more (or never set), that same commit also logs one `agent_connected` event. So a cold call makes at most one commit, and it is the connection, not the tool; a call within 10 minutes of the last refresh makes none. With a revoked delegation the connected time is not refreshed. The call also counts against the `tools/call` rate limit.
 - Retrying the same `command_id` gets the same refusal; nothing is stored under it.
 
 ### Task records (`worker/core/tasks.ts`)
 
 C06 names a version 2 Task shape. `worker/core/tasks.ts` derives it from the agent inbox Tasks (`src/engine/inbox.ts`) without storing anything or changing how the tools work (the tools and `heartbeat_check` still show the v1 `status`). I-07 and I-13 build on it.
+
+Storage migration is not done: inbox Tasks are still stored in the v1 shape, and a `TaskRecord` is computed on each read. The version 2 storage migration (C06: keep id, deadline, offer and history; same Task, item and inbox counts before and after; idempotent on restart) belongs to I-07.
+
+How `pending` is split. C06 says: "pending은 응답 전 submitted/응답 대기 input-required로" (pending becomes submitted before any answer, and input-required while an answer is awaited). Read here as: a `pending` Task whose history has only the opening `propose` is `submitted` (nobody has answered yet); a `pending` Task with any later step (a `counter`, or a meetup `answer`) is `input-required`, and the side in `awaiting` owes the next answer. Example: a trade proposed to a connected Muse is `submitted`; after the resident counters it is `input-required` with `awaiting` = the proposer.
 
 `TaskRecord`: `version: 2`, `id`, `kind` (`trade` | `meetup` | `help`; `help` arrives with I-13), `participants` (`[from, to]`), `status`, `awaiting`, `revision` (number of history steps), `contentHash` (hex SHA-256 of the JCS form of `{kind, participants, offer | candidate}`: what an approval binds to), `expiresAt` (the deadline), `payload` (trade: `offer`, `counters`; meetup: `candidate`, `answers`), `approvalRefs` (none yet; I-07), `eventIds` (world events whose `data.task_id` is the Task, when the caller passes events), `createdAt`, `updatedAt`.
 
