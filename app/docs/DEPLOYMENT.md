@@ -37,6 +37,7 @@ Set with `npx wrangler secret put <NAME>` from `app/`. Values never go into the 
 | `JUDGE_TOKEN` | random, generated for this Worker (kept in the owner's `~/.config/musely/app-judge-token`) |
 | `OWNER_CONTROL_TOKEN` | random (at least 32 characters; production uses 48), set by the owner. A token under 32 characters, or equal to `JUDGE_TOKEN`, makes owner control answer `503 not_configured`. Exchanged at `POST /api/owner/session` for the owner session. Not the judge link |
 | `DEMO_PEER_CONTROL_TOKEN` | random, different from `OWNER_CONTROL_TOKEN`. The team-controlled demo peer principal for the two-owner checks |
+| `REVIEWER_CONTROL_TOKEN` | random (at least 32 characters), different from the other control tokens and `JUDGE_TOKEN`. The connector directory reviewer principal. Unset or invalid (under 32 characters, equal to `JUDGE_TOKEN`, or equal to another control token): only the reviewer is off (`POST /api/owner/reset` answers `503 not_configured`, the token opens no session) and the owner and demo peer work as before. The owner and demo-peer tokens keep their own rule: if one of them is invalid, owner control as a whole answers `503 not_configured` |
 | `TURNSTILE_SECRET` | the shared Turnstile widget; its hostnames now include `musely.net` and `www.musely.net` |
 | `THREADS_APP_ID`, `THREADS_APP_SECRET` | Meta app for Threads claims; the redirect `https://musely.net/api/threads/callback` must be added to that app. A claim post made for the preview is not reused here: reuse needs this deployment's full claim text, so the owner posts once for musely.net |
 
@@ -45,7 +46,7 @@ Set with `npx wrangler secret put <NAME>` from `app/`. Values never go into the 
 Owner actions need an owner session, not the judge link: agent key issue/list/revoke, owner location writes, owner notification details, the owner-direct claim permalink, the owner's recorded ritual, `POST /api/owner/revoke` and `POST /api/owner/redelegate`. The judge link keeps the public reads and `POST /api/p0/run`.
 
 - `POST /api/owner/session` with `{"token": "<control token>"}` from `https://musely.net` sets the `musely_o` cookie (`Path=/api`, 1 hour, `HttpOnly; Secure; SameSite=Strict`). `GET` reads it, `DELETE` ends it. Every owner write must carry `Origin: https://musely.net`. Rotating a control token ends every session issued with the old one.
-- Principals: `owner` (`owner:kim-sejun`, Muse `00-jolly`) and `demo-peer` (`system:demo-peer`, Muse `09-copper`). The demo peer is a system principal the team controls. It is not a second real Meta account or person. Each session can act only on its own Muse; the other's revoke, re-delegate, approval or key revocation answers `403 not_your_muse`.
+- Principals: `owner` (`owner:kim-sejun`, Muse `00-jolly`), `demo-peer` (`system:demo-peer`, Muse `09-copper`) and `reviewer` (`system:reviewer`, Muse `04-ember`). The demo peer and the reviewer are system principals the team controls. They are not real Meta accounts or people. Each session can act only on its own Muse; another's revoke, re-delegate, approval or key revocation answers `403 not_your_muse`.
 - Two independent sessions for the checks: keep one cookie jar per principal, and do not put the tokens in a URL, a chat or a log. Read each token from a file the owner keeps outside the repository:
 
 ```sh
@@ -57,6 +58,28 @@ curl -sS -b peer.jar -H 'Origin: https://musely.net' -H 'content-type: applicati
 - Revocation closes the Muse's pending Tasks as `cancelled` and pauses it (no spotlight turn, beat, trip or meeting). Nothing delegates it again by itself: P0 after a revocation is refused with `delegation_revoked` on every run until the owner calls `POST /api/owner/redelegate`. To reset a demo, the owner re-delegates explicitly.
 - Limit: signing out (`DELETE /api/owner/session`) only clears the cookie. There is no server-side session list, so a copied cookie stays valid until its 1-hour expiry or until the control token is rotated.
 - `POST /api/owner/approvals` checks the session and the Task's Muse, then answers `501 capability_not_ready`: the approval workflow is I-07.
+
+## Connector directory reviewer (G-08)
+
+The reviewer key is a production key for Ember (`04-ember`), a resident kept for the review. The operators issue it; the reviewer only receives the key, through the form's secure channel.
+
+```sh
+# once: set the secret (prompted, not echoed); keep the value in ~/.config/musely/app-reviewer-control-token
+npx wrangler secret put REVIEWER_CONTROL_TOKEN
+curl -sS -c reviewer.jar -H 'Origin: https://musely.net' -H 'content-type: application/json' --data @- https://musely.net/api/owner/session <<< "{\"token\":\"$(cat ~/.config/musely/app-reviewer-control-token)\"}"
+curl -sS -b reviewer.jar -H 'Origin: https://musely.net' -H 'content-type: application/json' -d '{}' https://musely.net/api/owner/reset        # start state
+curl -sS -b reviewer.jar -H 'Origin: https://musely.net' -H 'content-type: application/json' -d '{}' https://musely.net/api/agent-keys         # the key, shown once
+```
+
+- Reset on request or before the review: `POST /api/owner/reset` (reviewer session only). It restores Ember's place, inventory and wants, cancels its pending Tasks and clears its share of today's counters; see `docs/MCP_TOOLS.md`, "Reviewer access". It is refused while Ember is revoked.
+- The start inventory has one time-limited item, the Garden Pass. It works for 24 hours from the reset and then expires like any pass, so reset again before a review session that starts more than a day later.
+- End of review: `DELETE /api/agent-keys/{id}?purge=1` with the reviewer session revokes the key and anonymizes what was made with it.
+
+## Data deletion (G-09)
+
+- Key purge: `DELETE /api/agent-keys/{id}?purge=1` with the owner session of the key's Muse. What it anonymizes and what it keeps is in `docs/MCP_TOOLS.md`, "Data retention and deletion", and `static/privacy.html` section 7. Record the response (counts only) in the request's reply.
+- Email requests to privacy@musely.net still go by hand: find the key id (the requester's message or `GET /api/agent-keys`), purge it, and tell the requester what was removed and what could not be (records with no key link).
+- Retention runs by itself: command result rows older than 7 days are deleted from the heartbeat alarm, at most once an hour.
 
 ## Rollback
 

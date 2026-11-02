@@ -22,6 +22,7 @@ import {mountReplay, replayPlayer, type ReplayEvent} from './replay';
 import {computeAutonomy} from './autonomy';
 import {EMPTY_FILTER, matchFilter, type Filter} from './replay-core';
 import {sourceLabel, modelNote} from './source-label';
+import {taskCancelledText, envelopeFacts} from './evidence-text';
 export {sourceLabel};
 
 type Ev = {seq: number; id: string; tick: number; at: number; source: 'live' | 'rule' | 'scripted' | 'replay'; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data: any; tags: string[]};
@@ -70,7 +71,7 @@ export function describe(e: Ev): string {
     case 'delegation_issued': return `Owner delegated ${a} again`;
     case 'muse_paused': return `${a} is paused until the owner delegates again`;
     case 'muse_resumed': return `${a} resumed: the owner's delegation is current again`;
-    case 'task_cancelled': return `A pending ${d.task ?? 'Task'} with ${b} was cancelled: the owner revoked ${a}'s delegation`;
+    case 'task_cancelled': return taskCancelledText(d, a, b);
     case 'impostor_rejected': return `A look-alike ${a} was refused before greeting`;
     case 'injection_blocked': return `An instruction from ${b} to ${a} was blocked`;
     case 'welcome_gift': return `${a} received a welcome gift`;
@@ -251,7 +252,7 @@ export function mountWorldPanel(map: LibreMap) {
     if (ev) { fact('Model', ev.model ?? rec?.model); fact('Request id', ev.requestId); fact('Response id', ev.responseId); fact('Latency', ev.latencyMs ? ev.latencyMs + ' ms' : null); fact('Reservation', ev.reservationId); if (orig) fact('Replayed from', `request ${orig}${rec?.responseId ? ' · response ' + rec.responseId : ''}${rec?.recordedAt ? ' · recorded ' + new Date(rec.recordedAt).toISOString() : ''}`); }
     if (!ev?.requestId && !orig) fact('Model call', modelNote(e)); // never invent an id: either it does not apply or the evidence is missing
     const env = e.data?.envelope;
-    if (env) { fact('Message id', env.message_id); fact('Signer', env.signer_kind); fact('Delegation ref', env.delegation_ref); fact('Scope', env.scope + ' · ' + env.scope_hash); fact('Content hash', env.content_hash); fact('Owner claimed', String(env.owner_claimed)); }
+    for (const [k, v] of envelopeFacts(env)) fact(k, v);
     if (e.data?.steps) fact('Verified steps', (e.data.steps as string[]).join(' → '));
     if (e.kind === 'a2a_refused') fact('Refused at', `${e.data.step}: ${e.data.reason}`);
     if (e.data?.aVerifiesB) fact('Card checks', `${shortName(e.muse)} → ${shortName(e.other)}: ${e.data.aVerifiesB.ok ? 'ok' : e.data.aVerifiesB.reason} · reverse: ${e.data.bVerifiesA.ok ? 'ok' : e.data.bVerifiesA.reason}`);

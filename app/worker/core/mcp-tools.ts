@@ -28,11 +28,18 @@ import {envelopeEvidence, peerCheck} from './a2a.ts';
 import {executeCommand, signCommand, worldHandler, quietRefusal} from './commands.ts';
 
 export type ToolCtx = {
-  trust: Trust; runtime: WorldRuntime; hooks: Hooks; ownerRoot: JsonWebKey | null; ownerClaimed: boolean; baseUrl: string;
+  trust: Trust; runtime: WorldRuntime; hooks: Hooks; ownerRoot: JsonWebKey | null;
+  /** The owner's real Threads claim (Agent Cards and credential checks use this). */
+  ownerClaimed: boolean;
+  /** The key's Muse is not gated by the owner claim (the reviewer's resident Muse): claim gate, envelope and register_agent only. */
+  claimExempt?: boolean;
+  baseUrl: string;
   key: AgentKeyRow; now: () => number;
 };
 export type ToolResult = {content: {type: 'text'; text: string}[]; structuredContent: Record<string, unknown>; isError: boolean};
 export class InvalidParams extends Error {}
+/** Whether this key's Muse counts as claimed for its own actions (never for another Muse's Agent Card). */
+const claimedFor = (c: ToolCtx) => !!c.claimExempt || c.ownerClaimed;
 
 // ---------- strict input schemas (JSON Schema subset; the same object is published in tools/list) ----------
 type Prop = {type: 'string'; enum?: readonly string[]; pattern?: string; minLength?: number; maxLength?: number; description?: string}
@@ -158,7 +165,7 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
     });
     return refused('delegation_revoked', {step: 'delegation', retryable: false, envelope: null, command: {command_id: opts.commandId ?? null, expected_version: opts.expectedVersion ?? null, world_version: c.runtime.state().version, duplicate: false}});
   }
-  const cmd = await signCommand(exec, {worldId, expectedVersion: opts.expectedVersion ?? null, action: tool.name, payload: content, recipient, scope: tool.write!.scope, ownerClaimed: c.ownerClaimed, now: at, commandId: opts.commandId});
+  const cmd = await signCommand(exec, {worldId, expectedVersion: opts.expectedVersion ?? null, action: tool.name, payload: content, recipient, scope: tool.write!.scope, ownerClaimed: claimedFor(c), now: at, commandId: opts.commandId});
   const envelope = envelopeEvidence(cmd.signed);
   const out = await executeCommand(c, cmd, {
     recipient,
@@ -267,7 +274,8 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
   switch (tool.name) {
     case 'register_agent': {
       const agent = c.trust.agentByMuse(me)!;
-      return ok({agent_id: agent.agentId, muse: me, name: name(me), label: agent.label, signer_kind: 'server_custodial', claim: {status: c.ownerClaimed ? 'claimed' : 'pending_claim', owner_claimed: c.ownerClaimed, note: c.ownerClaimed ? null : 'pending_claim: you can look around but cannot trade, gift or meet until the owner claim is verified'}, delegation: {version: c.trust.delegationVersion(agent.agentId), status: c.trust.suspended(me) ? 'revoked' : 'active'}, key: {id: c.key.id, created_at: c.key.createdAt}, agent_card_url: `${c.baseUrl}/api/agents/${me}/card`, jwks_url: `${c.baseUrl}/.well-known/jwks/${agent.agentId}.json`, tools: TOOL_NAMES});
+      const claimed = claimedFor(c);
+      return ok({agent_id: agent.agentId, muse: me, name: name(me), label: agent.label, signer_kind: 'server_custodial', claim: {status: claimed ? 'claimed' : 'pending_claim', owner_claimed: claimed, note: claimed ? null : 'pending_claim: you can look around but cannot trade, gift or meet until the owner claim is verified'}, delegation: {version: c.trust.delegationVersion(agent.agentId), status: c.trust.suspended(me) ? 'revoked' : 'active'}, key: {id: c.key.id, created_at: c.key.createdAt}, agent_card_url: `${c.baseUrl}/api/agents/${me}/card`, jwks_url: `${c.baseUrl}/.well-known/jwks/${agent.agentId}.json`, tools: TOOL_NAMES});
     }
     case 'get_agent_card': {
       const target = (args.muse as string | undefined) ?? me;
@@ -316,7 +324,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
 
   // ---------- write tools ----------
   const needsClaim = ['propose_trade', 'counter_trade', 'accept_trade', 'send_postcard', 'give_gift', 'propose_meetup', 'answer_candidate'];
-  const claimGate = (): Outcome | null => (needsClaim.includes(tool.name) && !c.ownerClaimed ? {ok: false, reason: 'pending_claim'} : null);
+  const claimGate = (): Outcome | null => (needsClaim.includes(tool.name) && !claimedFor(c) ? {ok: false, reason: 'pending_claim'} : null);
   const write_ = (recipientMuse: string | null, content: Record<string, unknown>, apply: Apply) => signedWrite(c, tool, recipientMuse, content, apply, {commandId: args.command_id as string | undefined, expectedVersion: args.expected_version as number | undefined});
   const ownerMuse = me;
 

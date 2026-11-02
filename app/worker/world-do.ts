@@ -12,6 +12,8 @@ import {runP0, impostorCheck, injectionCheck, MeetingCheck, type Ctx} from './co
 import {ConnectedHost} from './core/connected.ts';
 import {RitualStore, type RitualRecord} from './core/ritual.ts';
 import {revokeMuse, redelegateMuse, reconcilePaused, delegationStatus} from './core/owner-control.ts';
+import {resetMuse} from './core/muse-reset.ts';
+import {initRetention, pruneCommands, RETENTION_CHECK_MS} from './core/data-retention.ts';
 
 export class WorldDO extends DurableObject<Env> {
   private ledger: Ledger;
@@ -22,6 +24,7 @@ export class WorldDO extends DurableObject<Env> {
   private connected: ConnectedHost;
   private origin: string;
   private meetings = new MeetingCheck(() => this.ctx_());
+  private retentionAt = 0;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.origin = env.PUBLIC_ORIGIN;
@@ -47,6 +50,7 @@ export class WorldDO extends DurableObject<Env> {
     ctx.blockConcurrencyWhile(async () => {
       this.ledger.init();
       this.runtime.init(Date.now());
+      initRetention(ctx.storage.sql);
       // The heartbeat (direction v2, 8.7): one alarm per minute keeps the shared world running.
       if ((await ctx.storage.getAlarm()) === null) await ctx.storage.setAlarm(Date.now() + 5_000);
       // Owner claims. The Threads token stays inside this object; no method returns it over HTTP.
@@ -71,6 +75,8 @@ export class WorldDO extends DurableObject<Env> {
       const r = await this.runtime.heartbeat(Date.now());
       if (r.status === 'committed') console.log('heartbeat', r.tick, r.spotlight?.muse, r.spotlight?.source, r.spotlight?.reason ?? '', 'replies', r.replies?.live ?? 0, 'live', r.replies?.rule ?? 0, 'rule');
     } finally {
+      // Retention (G-09): command result rows older than 7 days go, checked at most once an hour.
+      try { const now = Date.now(); if (now - this.retentionAt >= RETENTION_CHECK_MS) { this.retentionAt = now; pruneCommands(this.ctx.storage.sql, now); } } catch (e) { console.error('retention failed', e); }
       // Always schedule the next beat, even if this one threw (the runtime is idempotent per tick).
       await this.ctx.storage.setAlarm(Date.now() + TICK_MS);
     }
@@ -114,6 +120,9 @@ export class WorldDO extends DurableObject<Env> {
   listAgentKeys(muse: string) { return this.connected.listKeys(muse); }
   agentKeyMuse(id: string) { return this.connected.keyMuse(id); }
   revokeAgentKey(id: string) { return this.connected.revokeKey(id); }
+  purgeAgentKey(id: string, by: string) { return this.connected.purgeKey(id, by); }
+  // Reviewer Muse reset (G-08); the Worker route checks the reviewer session.
+  resetMuse(muse: string, by: string) { return resetMuse({trust: this.trust, runtime: this.runtime}, muse, by); }
   // Owner control (C06, I-02): revocation and the separate re-delegation; the Worker route checks the owner session.
   ownerRevoke(muse: string, by: string) { return revokeMuse({trust: this.trust, runtime: this.runtime}, muse, by); }
   ownerRedelegate(muse: string, by: string) { return redelegateMuse({trust: this.trust, runtime: this.runtime}, muse, by); }

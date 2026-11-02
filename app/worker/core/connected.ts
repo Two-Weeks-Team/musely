@@ -12,6 +12,8 @@ import {dispatch, type McpOutcome} from './mcp-server.ts';
 import {defaultOwner, nextOwnerLocation, ownerLabel, tagLocation, PRESETS} from '../../src/engine/location.ts';
 import {followOwner} from '../../src/engine/travel.ts';
 import {emptyInbox, notificationMuse, CONNECTED_MS} from '../../src/engine/inbox.ts';
+import {REVIEWER_MUSE} from './owner-session.ts';
+import {purgeKeyData} from './data-retention.ts';
 
 export type ConnectedDeps = {
   sql: Sql; trust: Trust; runtime: WorldRuntime; hooks: Hooks; baseUrl: string;
@@ -73,6 +75,19 @@ export class ConnectedHost {
     return {id: after.id, revoked_at: after.revokedAt, muse: after.muse};
   }
 
+  /**
+   * Revokes the key (if not yet) and anonymizes what was made under it (G-09, data-retention.ts). The owner route has
+   * checked that the session owns the key's Muse. Repeating it is safe: nothing linked is left the second time.
+   */
+  purgeKey(id: string, by: string) {
+    const row = this.keys.byId(id);
+    if (!row) return null;
+    if (row.revokedAt === null) this.revokeKey(id);
+    const report = purgeKeyData({sql: this.d.sql, runtime: this.d.runtime, trust: this.d.trust, keys: this.keys}, {id, muse: row.muse, createdAt: row.createdAt}, by, this.now());
+    const after = this.keys.byId(id)!;
+    return {id, muse: row.muse, revoked_at: after.revokedAt, purged: true, ...report};
+  }
+
   /** The Muse a key belongs to (for the owner route's ownership check), or null. */
   keyMuse(id: string) { return this.keys.byId(id)?.muse ?? null; }
 
@@ -97,7 +112,10 @@ export class ConnectedHost {
     // A revoked Muse may still read, but its calls do not change the world (not even the connected flag).
     if (!this.d.trust.suspended(key.muse)) this.markConnected(key.muse, now);
     if (!method) return {status: 'ok', result: {}};
-    const ctx: ToolCtx = {trust: this.d.trust, runtime: this.d.runtime, hooks: this.d.hooks, ownerRoot: this.d.ownerRoot(), ownerClaimed: this.d.ownerClaimed(), baseUrl: this.d.baseUrl, key, now: () => this.now()};
+    // The Threads claim proves the real owner's Muse. The reviewer's Muse is a team-controlled resident whose Agent Card
+    // already says owner_claimed (like every resident), so its own actions do not wait on the owner's claim. The real
+    // claim value stays in ownerClaimed for Agent Cards and credential checks.
+    const ctx: ToolCtx = {trust: this.d.trust, runtime: this.d.runtime, hooks: this.d.hooks, ownerRoot: this.d.ownerRoot(), ownerClaimed: this.d.ownerClaimed(), claimExempt: key.muse === REVIEWER_MUSE, baseUrl: this.d.baseUrl, key, now: () => this.now()};
     try {
       const out = await dispatch(method, params, {list: toolList, call: (n, a) => runTool(ctx, n, a), isInvalidParams: e => e instanceof InvalidParams});
       // A successful world action puts the Muse in the priority queue (deduplicated, 3 per hour); a revoked Muse never.
