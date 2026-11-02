@@ -6,6 +6,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {verifyControlledPair,controlledBinding,DEMO_TOOL_VERSION} from './controlled-p1.mjs';
 import {controlledLabelFor} from './controlled-label.mjs';
+import {verifyStoredMcp,storedMcpBinding,storedMcpLabelFor} from './stored-mcp.mjs';
 export const run=promisify(execFile), sha=b=>createHash('sha256').update(b).digest('hex');
 export const SHOTS=[
  ['s01',12,'A living place','World overview: people delegate; Muses meet and act.'],
@@ -114,8 +115,9 @@ export async function verifyBundle(p,dir){
  const errors=validatePlan(p);
  for(const c of p.cuts??[]){
   let controlled=false;if(c.controlledPair){try{await verifyControlledPair(p,c,dir);controlled=true;}catch(e){errors.push(c.id+':'+e.message);}}
-  if(!controlled&&!(c.refs??[]).some(r=>r.requestId||r.signedVerdict))errors.push(c.id+':missing_evidence_anchor');
-  for(const r of c.refs??[]){try{const raw=await readFile(inside(dir,r.file));if(sha(raw)!==r.sha256)throw Error('raw_hash_mismatch');for(const x of(controlled?referenceJoin:validateReference)(r,JSON.parse(raw)))errors.push(c.id+':'+x);}catch(e){errors.push(c.id+':'+e.message);}}
+  let stored=false;if(c.storedMcpVerifier){try{await verifyStoredMcp(p,c,dir);stored=true;}catch(e){errors.push(c.id+':'+e.message);}}
+  if(!controlled&&!stored&&!(c.refs??[]).some(r=>r.requestId||r.signedVerdict))errors.push(c.id+':missing_evidence_anchor');
+  for(const r of c.refs??[]){try{const raw=await readFile(inside(dir,r.file));if(sha(raw)!==r.sha256)throw Error('raw_hash_mismatch');for(const x of(controlled||stored&&r.role==='stored-original-mcp'?referenceJoin:validateReference)(r,JSON.parse(raw)))errors.push(c.id+':'+x);}catch(e){errors.push(c.id+':'+e.message);}}
  }
  return errors;
 }
@@ -144,6 +146,7 @@ export async function verifyMedia(p,dir){
    if(receipt.schema!=='musely-demo-capture-2'||receipt.kind!=='recorded_public_capture'||receipt.cutId!==c.id||receipt.viewId!==view.id||receipt.takeId!==segment.takeId||receipt.runId!==view.runId||receipt.durationSeconds!==view.duration||canonical(receipt.release)!==canonical(p.release)||!Number.isFinite(receipt.startOffsetSec)||receipt.startOffsetSec<0||receipt.blockedRequests!==0||receipt.label!=='REPLAY'||receipt.virtual!==true||canonical(receipt.originalSources)!==canonical(sources(refs))||receipt.observed?.runId!==view.runId||receipt.observed?.label!==true||receipt.observed?.hash!==view.snapshotHash||receipt.seekSec!==view.seekSec)throw Error(c.id+':capture_receipt_mismatch');
    if(p.tooling&&(receipt.tooling?.version!==DEMO_TOOL_VERSION||canonical(receipt.tooling)!==canonical(p.tooling)))throw Error(c.id+':tooling_capture_binding_mismatch');
    if(c.controlledPair){const label=controlledLabelFor(p,view),observed=receipt.controlledLabel;if(receipt.tooling?.version!==DEMO_TOOL_VERSION||canonical(receipt.tooling)!==canonical(p.tooling)||canonical(receipt.controlledPair)!==canonical(controlledBinding(c))||observed?.valid!==true||observed.visible!==true||observed.text!==label.text||observed.sourceSha!==label.sourceSha||observed.variant!==label.variant)throw Error(c.id+':controlled_capture_binding_mismatch');}
+   if(c.storedMcpVerifier){const label=storedMcpLabelFor(p),observed=receipt.storedMcpLabel;if(receipt.tooling?.version!==DEMO_TOOL_VERSION||canonical(receipt.tooling)!==canonical(p.tooling)||canonical(receipt.storedMcpVerifier)!==canonical(storedMcpBinding(c))||observed?.valid!==true||observed.visible!==true||observed.text!==label.text||observed.sourceSha!==label.sourceSha||observed.variant!==label.variant)throw Error(c.id+':stored_mcp_capture_binding_mismatch');}
    const bootstrap=receipt.bootstrapDeniedReads??[],telemetry=receipt.deniedTelemetry??[];
    if(!validDeniedRows(bootstrap,'bootstrap-denied-read',p.origin)||!validDeniedRows(telemetry,'denied-telemetry',p.origin)||(bootstrap.length||telemetry.length)&&(receipt.denialsAreAccessReceipts!==false||receipt.continuedWriteRequests!==0)||(receipt.continuedWriteRequests??0)!==0)throw Error(c.id+':denied_request_audit_mismatch');
    if(!Array.isArray(receipt.refs)||!Array.isArray(segment.refs)||canonical(refKeys(receipt.refs))!==canonical(refKeys(refs))||canonical(refKeys(segment.refs))!==canonical(refKeys(refs)))throw Error(c.id+':captured_refs_mismatch');
@@ -152,12 +155,16 @@ export async function verifyMedia(p,dir){
  }
  return rows;
 }
+export function captionFor(p,c,receipt){
+ if(c.storedMcpVerifier)return `${c.title} | REPLAY | original: ${receipt.originalSources.join(', ')} | VIRTUAL WORLD\nSTORED ORIGINAL SERVER VERIFICATION | OPERATOR MCP\nNO MODEL CALL | NOT INDEPENDENT CRYPTO VERIFICATION | build ${p.release.sourceSha.slice(0,12)}`;
+ return `REPLAY${c.id==='s05'?' | CONTROLLED COMPARISON (SIMULATION)':''} | original: ${receipt.originalSources.join(', ')} | VIRTUAL LOCATION (DEMO)\n${c.title} | ${c.controlledPair?'controlled input, no model call':'Meta Muse Spark'} | build ${p.release.sourceSha.slice(0,12)}`;
+}
 export async function render(p,dir,ffmpeg,font){
  const errors=await verifyBundle(p,dir);if(errors.length)throw Error(errors.join('\n'));
  const rows=await verifyMedia(p,dir),parts=[];await mkdir(resolve(dir,'render'),{recursive:true});
  for(const [index,{cut:c,segment,receipt,clip}] of rows.entries()){
  const target=resolve(dir,'render',c.id+'-'+index+'.mp4'),text=resolve(dir,'render',c.id+'-'+index+'.txt');
- await writeNew(text,`REPLAY${c.id==='s05'?' | CONTROLLED COMPARISON (SIMULATION)':''} | original: ${receipt.originalSources.join(', ')} | VIRTUAL LOCATION (DEMO)\n${c.title} | ${c.controlledPair?'controlled input, no model call':'Meta Muse Spark'} | build ${p.release.sourceSha.slice(0,12)}`);
+ await writeNew(text,captionFor(p,c,receipt));
  const esc=s=>s.replaceAll('\\','\\\\').replaceAll(':','\\:').replaceAll("'","'\\''");
  const vf=`scale=1920:960:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:0:color=black,drawtext=fontfile='${esc(resolve(font))}':textfile='${esc(text)}':fontcolor=white:fontsize=28:x=24:y=978:line_spacing=8`;
  await run(ffmpeg,['-hide_banner','-loglevel','error','-n','-ss',String(receipt.startOffsetSec),'-i',clip,'-t',String(segment.duration),'-an','-vf',vf,'-r','30','-c:v','libx264','-pix_fmt','yuv420p','-movflags','+faststart',target]);parts.push(target);
