@@ -1,8 +1,8 @@
 {
  "info": {
   "url": "https://preview.musely.net/",
-  "startedAt": "2026-11-01T15:58:03.966Z",
-  "finishedAt": "2026-11-01T16:01:03.153Z",
+  "startedAt": "2026-11-02T03:06:26.605Z",
+  "finishedAt": "2026-11-02T03:09:17.845Z",
   "browser": "156.0.8078.76",
   "node": "v24.22.2",
   "platform": "darwin arm64"
@@ -91,19 +91,19 @@
    "vp": "D",
    "name": "EXP-WORLD/action · spotlight turn",
    "ok": true,
-   "detail": "Spotlight · Bloom next · where · last: LIVE · 18 spotlight rows"
+   "detail": "Spotlight · Tempo next · offer · last: SCRIPTED · 12 spotlight rows"
   },
   {
    "vp": "D",
    "name": "EXP-WORLD/success · decision shown LIVE with its model (live world)",
    "ok": true,
-   "detail": "×EVIDENCEEmber decides (where): walk to The Campfire to gather and share stories → The CampfireLIVE "
+   "detail": "×EVIDENCECare for a snack-box plot twist with your campfire chapter?LIVE · Muse SparkWhen (your time"
   },
   {
    "vp": "D",
    "name": "EXP-WORLD/reject · out-of-scope decision refused (scripted fixture)",
    "ok": true,
-   "detail": "×EVIDENCECopper's decision was refused: out_of_scopeRULERecordPreview fixture (SCRIPTED) — not a live recordWhen (Menlo "
+   "detail": "×EVIDENCECopper's decision was refused: out_of_scopeRULERecordPreview fixture (SCRIPTED) — not a live recordWhen (your t"
   },
   {
    "vp": "D",
@@ -115,7 +115,7 @@
    "vp": "D",
    "name": "EXP-WORLD/retry · resume the world",
    "ok": true,
-   "detail": "{\"paused\":false,\"label\":\"Pause world\",\"chip\":\"Spotlight · Bloom next · where · last: LIVE\"}"
+   "detail": "{\"paused\":false,\"label\":\"Pause world\",\"chip\":\"Spotlight · Tempo next · offer · last: SCRIPTED\"}"
   },
   {
    "vp": "D",
@@ -445,7 +445,7 @@
    "vp": "D",
    "name": "EXP-REPLAY/entry · the replay says what it is",
    "ok": true,
-   "detail": "0:00 / 30:00 · 1× · 09:00 Menlo Park"
+   "detail": "0:00 / 30:00 · 1× · 09:00 your time"
   },
   {
    "vp": "D",
@@ -673,19 +673,19 @@
    "vp": "M",
    "name": "EXP-WORLD/action · spotlight turn",
    "ok": true,
-   "detail": "Spotlight · Ink next · where · last: LIVE · 15 spotlight rows"
+   "detail": "Spotlight · Orbit next · offer · last: SCRIPTED · 12 spotlight rows"
   },
   {
    "vp": "M",
    "name": "EXP-WORLD/success · decision shown LIVE with its model (live world)",
    "ok": true,
-   "detail": "×EVIDENCEBloom decides (where): walk_and_greet → Commons CafeLIVE · Muse SparkWhen (Menlo Park)07:59"
+   "detail": "×EVIDENCEHey Moss! Feel the beat? These headphones got your groove on repeat!LIVE · Muse SparkWhen ("
   },
   {
    "vp": "M",
    "name": "EXP-WORLD/reject · out-of-scope decision refused (scripted fixture)",
    "ok": true,
-   "detail": "×EVIDENCECopper's decision was refused: out_of_scopeRULERecordPreview fixture (SCRIPTED) — not a live recordWhen (Menlo "
+   "detail": "×EVIDENCECopper's decision was refused: out_of_scopeRULERecordPreview fixture (SCRIPTED) — not a live recordWhen (your t"
   },
   {
    "vp": "M",
@@ -697,7 +697,7 @@
    "vp": "M",
    "name": "EXP-WORLD/retry · resume the world",
    "ok": true,
-   "detail": "{\"paused\":false,\"label\":\"Pause world\",\"chip\":\"Spotlight · Ink next · where · last: LIVE\"}"
+   "detail": "{\"paused\":false,\"label\":\"Pause world\",\"chip\":\"Spotlight · Orbit next · offer · last: SCRIPTED\"}"
   },
   {
    "vp": "M",
@@ -1027,7 +1027,7 @@
    "vp": "M",
    "name": "EXP-REPLAY/entry · the replay says what it is",
    "ok": true,
-   "detail": "0:00 / 30:00 · 1× · 09:00 Menlo Park"
+   "detail": "0:00 / 30:00 · 1× · 09:00 your time"
   },
   {
    "vp": "M",

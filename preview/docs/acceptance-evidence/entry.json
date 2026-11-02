@@ -1,8 +1,8 @@
 {
  "info": {
   "url": "https://preview.musely.net/",
-  "startedAt": "2026-11-01T16:22:47.517Z",
-  "finishedAt": "2026-11-01T16:23:52.183Z",
+  "startedAt": "2026-11-02T03:14:47.560Z",
+  "finishedAt": "2026-11-02T03:15:49.348Z",
   "browser": "156.0.8078.76",
   "node": "v24.22.2",
   "platform": "darwin arm64"
@@ -12,30 +12,30 @@
    "viewport": "1440x900",
    "early": {
     "ready": true,
-    "time": 5176.399999856949,
+    "time": 1889.2000000476837,
     "startup": {
-     "sceneReadyAtMs": 5133.200000047684,
+     "sceneReadyAtMs": 1810.0999999046326,
      "onlineMapReadyAtMs": 0,
-     "onlineMapAddedAtMs": 4985.299999952316,
+     "onlineMapAddedAtMs": 1645.2999999523163,
      "detailReadyAtMs": 0,
      "overviewVisible": true
     },
     "features": 657
    },
    "arrived": {
-    "elapsed": 8.686099999904641,
+    "elapsed": 8.677000000000001,
     "zoom": 21.45,
     "height": 73.08577271421393,
-    "sceneId": "9860a07e-25b6-4e01-960b-c839022354b4",
+    "sceneId": "c3a46bba-57c9-4188-a791-f16bc145d47f",
     "museIds": [
-     "75a70c7a-6044-4428-8a4e-620b265322af",
-     "320ddf49-fcb2-4391-ab8e-f9d15cb636c6",
-     "27061916-e0ee-49e5-aa4b-16e33b186a73",
-     "16cbafbc-96e2-46a4-8986-cd63f110de7b",
-     "b6cc4d00-e1ce-43fa-982f-405d9eef5915",
-     "40e08969-9c73-457b-beef-3ff3a4a7d386",
-     "cb4cd446-4bce-4a03-8a09-4c672923e28e",
-     "bdb643a5-1b1d-499d-91d1-11932ddbfe93"
+     "51668d39-d276-41f2-96ab-df86338799fa",
+     "0767a3be-aa04-46cb-af42-e480bd6cf48a",
+     "e06bc678-e18d-43f8-9313-a66d384efe67",
+     "0f6dff6c-99e6-4fff-9417-760a54b5aab8",
+     "0d732bf5-61b7-48b4-8a82-2346b0681b5f",
+     "30f9e5dd-ed07-4376-804b-ba2fb5907823",
+     "1f166764-c6a1-410d-96fd-36b90b1ff587",
+     "8ae4c713-fe20-45b9-adf8-b5efddd1cdbd"
     ]
    },
    "returned": {
@@ -48,30 +48,30 @@
    "viewport": "390x844 touch emulation",
    "early": {
     "ready": true,
-    "time": 1800.6000001430511,
+    "time": 1858.0999999046326,
     "startup": {
-     "sceneReadyAtMs": 1769.5,
+     "sceneReadyAtMs": 1825.5999999046326,
      "onlineMapReadyAtMs": 0,
-     "onlineMapAddedAtMs": 1613.6000001430511,
+     "onlineMapAddedAtMs": 1676.5,
      "detailReadyAtMs": 0,
      "overviewVisible": true
     },
     "features": 223
    },
    "arrived": {
-    "elapsed": 8.658799999952315,
+    "elapsed": 8.76790000009537,
     "zoom": 20.8,
     "height": 45.09049077249938,
-    "sceneId": "e5c14847-f857-4e99-a970-11a7de1f0a01",
+    "sceneId": "325bfb2f-a848-4974-9044-fa59dd9fd44c",
     "museIds": [
-     "053f6a87-61ee-4048-9c41-7b407faaefc8",
-     "da9e2a1d-37ed-4727-b3c6-2ebdf80fa6ff",
-     "db56607b-5867-488e-a881-3da1536317e4",
-     "7bdf9528-6dff-4907-a275-3325730398e0",
-     "d9dd2ff4-456e-4068-bea5-ca67a4660c92",
-     "6d8fe9b1-3682-4ed8-846f-f9ddf7f2ab29",
-     "8d379a5a-a5cc-4ae9-a165-a355eae181c5",
-     "3b3ea42b-5695-4a9d-a1ca-2e9076e87446"
+     "24707b2c-a4d1-4fb7-b3c7-037c612d15ea",
+     "15f5ebc1-11a1-4a92-9d1b-222050eeef03",
+     "cd88e796-162d-4e82-b96d-c9527159957b",
+     "d98a96b7-160a-46c4-bc4d-4a9fca4a26d0",
+     "9b76ac6f-0180-4ab1-8e48-059415509be9",
+     "e321ed20-263f-40fd-a0c7-88efbd262c7e",
+     "73c012fd-9aa1-499e-8b1a-c1678517401c",
+     "dcd10316-1a7e-49d6-b791-51b206faa92d"
     ]
    },
    "returned": {

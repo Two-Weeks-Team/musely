@@ -1,8 +1,8 @@
 {
  "info": {
   "url": "https://preview.musely.net/",
-  "startedAt": "2026-11-01T16:19:56.083Z",
-  "finishedAt": "2026-11-01T16:22:45.025Z",
+  "startedAt": "2026-11-02T03:12:09.457Z",
+  "finishedAt": "2026-11-02T03:14:44.980Z",
   "browser": "156.0.8078.76",
   "node": "v24.22.2",
   "platform": "darwin arm64"
@@ -13,7 +13,7 @@
    "vp": "desktop",
    "name": "spotlight chip names who is next and which freedom",
    "ok": true,
-   "detail": "Spotlight · Ink next · where · last: LIVE"
+   "detail": "Spotlight · Moss next · plan · last: LIVE"
   },
   {
    "vp": "desktop",
@@ -43,7 +43,7 @@
    "vp": "desktop",
    "name": "live model evidence shows a request id",
    "ok": true,
-   "detail": "×EVIDENCEBloom decides (where): walk_and_greet → Commons CafeLIVE · Muse SparkWhen (Menlo Park)08:19 · tick 485 · event "
+   "detail": "×EVIDENCESunny decides (plan): stay and host introductions at the campfire → The CampfireLIVE · Muse SparkWhen (your tim"
   },
   {
    "vp": "desktop",
@@ -115,13 +115,13 @@
    "vp": "desktop",
    "name": "highlights: a tag chip narrows the list and is pressed",
    "ok": true,
-   "detail": "200 -> 5"
+   "detail": "200 -> 95"
   },
   {
    "vp": "desktop",
    "name": "highlights: Muse filter keeps only that Muse's moments (by tag or by Muse)",
    "ok": true,
-   "detail": "200 -> 0"
+   "detail": "200 -> 95"
   },
   {
    "vp": "desktop",
@@ -133,13 +133,13 @@
    "vp": "desktop",
    "name": "replay runs at 1×, 10× and 60× of real time (±40%)",
    "ok": true,
-   "detail": "1×: 1.00 s · 10×: 10.0 s · 60×: 66.0 s per second"
+   "detail": "1×: 1.00 s · 10×: 11.0 s · 60×: 60.0 s per second"
   },
   {
    "vp": "desktop",
    "name": "the chosen speed is pressed, shown in the time line and announced",
    "ok": true,
-   "detail": "{\"pressed\":[\"10×\",\"all\"],\"time\":\"1:40 / 30:00 · 10× · 09:01 Menlo Park\",\"status\":\"Paused at 1:40 · 10×\"}"
+   "detail": "{\"pressed\":[\"10×\",\"all\"],\"time\":\"1:40 / 30:00 · 10× · 09:01 your time\",\"status\":\"Paused at 1:40 · 10×\"}"
   },
   {
    "vp": "desktop",
@@ -235,7 +235,7 @@
    "vp": "desktop",
    "name": "an answer that arrives while the replay is open changes nothing: no new request, header not \"not updating\"",
    "ok": true,
-   "detail": "[[],\"Spotlight · Ink next · where · last: LIVE\"]"
+   "detail": "[[],\"Spotlight · Moss next · plan · last: LIVE\"]"
   },
   {
    "vp": "desktop",
@@ -336,7 +336,7 @@
   {
    "vp": "desktop",
    "viewport": "1440x900",
-   "chip": "Spotlight · Ink next · where · last: LIVE",
+   "chip": "Spotlight · Moss next · plan · last: LIVE",
    "errors": []
   },
   {
@@ -373,13 +373,13 @@
    "vp": "desktop",
    "name": "A2 success then failure: \"Not responding\", last data kept, Retry offered, header says not updating",
    "ok": true,
-   "detail": "{\"text\":\"Not responding (HTTP 503) · showing the last data we received · last good answer 08:21\",\"retry\":true,\"chip\":\"Spotlight · Tempo next · where · last: LIVE · not updating\",\"rows\":80,\"badges\":\"LIVE · verified|RULE|RULE|SCRIPTED|RULE|RULE|SCRIPTED|LIVE · verified|LIVE · Muse Spark|RULE|RULE|LIVE"
+   "detail": "{\"text\":\"Not responding (HTTP 503) · showing the last data we received · last good answer 19:13\",\"retry\":true,\"chip\":\"Spotlight · Ripple next · plan · last: LIVE · not updating\",\"rows\":80,\"badges\":\"RULE|SCRIPTED|SCRIPTED|LIVE · verified|LIVE · Muse Spark|LIVE · verified|RULE|RULE|RULE|SCRIPTED|LIVE "
   },
   {
    "vp": "desktop",
    "name": "A3 a failing connection does not change any event's source badge",
    "ok": true,
-   "detail": "LIVE · verified|RULE|RULE|SCRIPTED|RULE|RULE|SCRIPTED|LIVE · → LIVE · verified|RULE|RULE|SCRIPTED|RULE|RULE|SCRIPTED|LIVE ·"
+   "detail": "RULE|SCRIPTED|SCRIPTED|LIVE · verified|LIVE · Muse Spark|LIV → RULE|SCRIPTED|SCRIPTED|LIVE · verified|LIVE · Muse Spark|LIV"
   },
   {
    "vp": "desktop",
@@ -409,7 +409,7 @@
    "vp": "mobile",
    "name": "spotlight chip names who is next and which freedom",
    "ok": true,
-   "detail": "Spotlight · Tempo next · where · last: LIVE"
+   "detail": "Spotlight · Ember next · plan · last: LIVE"
   },
   {
    "vp": "mobile",
@@ -439,7 +439,7 @@
    "vp": "mobile",
    "name": "live model evidence shows a request id",
    "ok": true,
-   "detail": "×EVIDENCEInk decides (where): walk to Commons Cafe to read and recommend → Commons CafeLIVE · Muse SparkWhen (Menlo Park"
+   "detail": "×EVIDENCERipple decides (plan): Walk to Belle Haven Community Library via Womenhi Park to chart the long scenic route → "
   },
   {
    "vp": "mobile",
@@ -511,13 +511,13 @@
    "vp": "mobile",
    "name": "highlights: a tag chip narrows the list and is pressed",
    "ok": true,
-   "detail": "200 -> 5"
+   "detail": "200 -> 94"
   },
   {
    "vp": "mobile",
    "name": "highlights: Muse filter keeps only that Muse's moments (by tag or by Muse)",
    "ok": true,
-   "detail": "200 -> 0"
+   "detail": "200 -> 94"
   },
   {
    "vp": "mobile",
@@ -529,13 +529,13 @@
    "vp": "mobile",
    "name": "replay runs at 1×, 10× and 60× of real time (±40%)",
    "ok": true,
-   "detail": "1×: 1.00 s · 10×: 11.0 s · 60×: 60.0 s per second"
+   "detail": "1×: 1.00 s · 10×: 10.0 s · 60×: 60.0 s per second"
   },
   {
    "vp": "mobile",
    "name": "the chosen speed is pressed, shown in the time line and announced",
    "ok": true,
-   "detail": "{\"pressed\":[\"10×\",\"all\"],\"time\":\"1:40 / 30:00 · 10× · 09:01 Menlo Park\",\"status\":\"Paused at 1:40 · 10×\"}"
+   "detail": "{\"pressed\":[\"10×\",\"all\"],\"time\":\"1:40 / 30:00 · 10× · 09:01 your time\",\"status\":\"Paused at 1:40 · 10×\"}"
   },
   {
    "vp": "mobile",
@@ -631,7 +631,7 @@
    "vp": "mobile",
    "name": "an answer that arrives while the replay is open changes nothing: no new request, header not \"not updating\"",
    "ok": true,
-   "detail": "[[],\"Spotlight · Tempo next · where · last: LIVE\"]"
+   "detail": "[[],\"Spotlight · Ember next · plan · last: LIVE\"]"
   },
   {
    "vp": "mobile",
@@ -780,7 +780,7 @@
   {
    "vp": "mobile",
    "viewport": "390x844 touch emulation",
-   "chip": "Spotlight · Tempo next · where · last: LIVE",
+   "chip": "Spotlight · Ember next · plan · last: LIVE",
    "errors": []
   },
   {
@@ -817,13 +817,13 @@
    "vp": "mobile",
    "name": "A2 success then failure: \"Not responding\", last data kept, Retry offered, header says not updating",
    "ok": true,
-   "detail": "{\"text\":\"Not responding (HTTP 503) · showing the last data we received · last good answer 08:22\",\"retry\":true,\"chip\":\"Spotlight · Orbit next · where · last: LIVE · not updating\",\"rows\":80,\"badges\":\"LIVE · verified|RULE|RULE|RULE|RULE|RULE|RULE|LIVE · verified|LIVE · Muse Spark|LIVE · verified|RULE|R"
+   "detail": "{\"text\":\"Not responding (HTTP 503) · showing the last data we received · last good answer 19:14\",\"retry\":true,\"chip\":\"Spotlight · Ember next · plan · last: LIVE · not updating\",\"rows\":80,\"badges\":\"RULE|SCRIPTED|SCRIPTED|LIVE · verified|LIVE · Muse Spark|RULE|SCRIPTED|SCRIPTED|LIVE · verified|LIVE · "
   },
   {
    "vp": "mobile",
    "name": "A3 a failing connection does not change any event's source badge",
    "ok": true,
-   "detail": "LIVE · verified|RULE|RULE|RULE|RULE|RULE|RULE|LIVE · verifie → LIVE · verified|RULE|RULE|RULE|RULE|RULE|RULE|LIVE · verifie"
+   "detail": "RULE|SCRIPTED|SCRIPTED|LIVE · verified|LIVE · Muse Spark|RUL → RULE|SCRIPTED|SCRIPTED|LIVE · verified|LIVE · Muse Spark|RUL"
   },
   {
    "vp": "mobile",

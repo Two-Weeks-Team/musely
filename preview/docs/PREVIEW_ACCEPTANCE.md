@@ -1,6 +1,6 @@
 # Preview acceptance — S1 gate (P-07, issue #46)
 
-Status: **evidence ready for criteria 1, 2 and 4 on one build; a person's product experience review and the fallback acceptance are pending (§8).** Records the walkthrough of the whole preview on one build (8 experiences × 6 states × desktop and mobile), the allowed fallbacks, the review and the S1 → S2 decision (DEC-01). Everything here is a **preview**: scenes are SCRIPTED fixtures unless a cell says it reads the live world. Nothing here claims a real connector, the webcam ritual, real-phone performance, S2/S3 completion or a submission.
+Status: **evidence ready for criteria 1, 2 and 4 on one build (re-run on production after the real-device layout and time-zone fix, PR #81); a person's product experience review and the fallback acceptance are pending (§8).** Records the walkthrough of the whole preview on one build (8 experiences × 6 states × desktop and mobile), the allowed fallbacks, the review and the S1 → S2 decision (DEC-01). Everything here is a **preview**: scenes are SCRIPTED fixtures unless a cell says it reads the live world. Nothing here claims a real connector, the webcam ritual, real-phone performance, S2/S3 completion or a submission.
 
 ## 1. Identification
 
@@ -8,13 +8,13 @@ Status: **evidence ready for criteria 1, 2 and 4 on one build; a person's produc
 |---|---|
 | issueId | #46 (P-07, epic #33) |
 | owner | @ComBba (implementation and walkthrough by the preview's coding agent; the walkthrough plan and the reviews by separate agent sessions) |
-| build under test | main `5546113` (merge of PR #79; includes #76, #77, #78 and the matrix at that commit) |
-| deployment | Workers Builds `musely-preview` success, build `ef3a2abb-ec56-47a4-a3e4-8dca7b873518`, finished 2026-11-01 15:54 UTC |
+| build under test | main `8ccb2b3` (merge of PR #81; includes #76, #77, #78, #79, #80 (the first version of this record) and the matrix at that commit). The first walkthrough ran on `5546113`; a phone and tablet check on real devices then found layout problems and Menlo Park times, PR #81 fixed them, and every check below was run again on this build |
+| deployment | Workers Builds `musely-preview` success, build `aedcac64-3293-4c82-97fe-8b219ba17c84`, finished 2026-11-02 03:05 UTC (the earlier build `ef3a2abb-ec56-47a4-a3e4-8dca7b873518` of `5546113` no longer serves) |
 | URL | https://preview.musely.net/ (`?autoplay=0`; Story · scripted, Live world, Preview flows, Replay tabs) |
-| configVersion | `wrangler.jsonc` unchanged by #76–#79; client bundle and fixtures only. `wrangler deploy --dry-run` passed (231.55 KiB, gzip 63.96 KiB) |
-| walkthrough run | 2026-11-01T15:58:03.966Z → 2026-11-01T16:01:03.153Z (UTC), one `walkthrough.browser.js` run on production |
-| environment | Chrome 156.0.8078.76 headless via Playwright 1.56, Node 24.22.2, darwin arm64, a fresh browser context (empty cache) per experience page, network = this machine to Cloudflare |
-| devices | **D** desktop 1440×900, DPR 1, no touch. **M** mobile 390×844, DPR 2, touch emulation. Both are browser emulation, **not a real phone** (DEC-04 stays open) |
+| configVersion | `wrangler.jsonc` unchanged by #76–#79 and #81; client bundle, fixtures and scripts only. `wrangler deploy --dry-run` passed (231.55 KiB, gzip 63.96 KiB) |
+| walkthrough run | 2026-11-02T03:06:26.605Z → 2026-11-02T03:09:17.845Z (UTC), one `walkthrough.browser.js` run on production |
+| environment | Chrome 156.0.8078.76 headless via Playwright 1.56, Node 24.22.2, darwin arm64, a fresh browser context (empty cache) per experience page, network = this machine to Cloudflare. Times are shown in the viewer's zone, so `walkthrough.browser.js` and `world-ui.browser.js` fix the browser zone to `America/Los_Angeles` (the replay fixture then reads 09:00 "your time", and the walkthrough observations below are those values); `layout.browser.js` sets Seoul, London and Los Angeles itself |
+| devices | **D** desktop 1440×900, DPR 1, no touch. **M** mobile 390×844, DPR 2, touch emulation. Both are browser emulation, **not a real phone** (DEC-04 stays open). `layout.browser.js` also runs 30 screen sizes from 320×568 to 1440×900, landscape phones and low windows included, and a phone sweep (§3) |
 | modes | fixtures (Preview flows, Replay) are SCRIPTED; the Live world feed, header chip and evidence for LIVE rows are real GETs from the deployed Worker; failures are injected in the browser only, never in the service |
 | secrets | none used or recorded; no judge token, no agent key, no camera |
 
@@ -22,9 +22,10 @@ Status: **evidence ready for criteria 1, 2 and 4 on one build; a person's produc
 
 | issue | task | state | C10 record | accepted at | relation to the tested build |
 |---|---|---|---|---|---|
-| #43 | P-04 traceability | CLOSED | https://github.com/Two-Weeks-Team/musely/issues/43#issuecomment-6557524062 | `c93b314` (PR #73) | an earlier change to docs and the matrix checker; the matrix has been edited in 6 commits since, and this walkthrough exercised the matrix as of `5546113` |
-| #44 | P-05 one continuous scene | CLOSED | https://github.com/Two-Weeks-Team/musely/issues/44#issuecomment-6558746164 | `0a60183` (PR #76 `6641d22`, PR #77) | an ancestor of `5546113`; exercised again by this walkthrough |
-| #45 | P-06 source, replay, evidence UI | CLOSED | https://github.com/Two-Weeks-Team/musely/issues/45#issuecomment-6559785434 | `d918e0d` (PR #78) | an ancestor of `5546113`; exercised again by this walkthrough |
+| #43 | P-04 traceability | CLOSED | https://github.com/Two-Weeks-Team/musely/issues/43#issuecomment-6557524062 | `c93b314` (PR #73) | an earlier change to docs and the matrix checker; the matrix has been edited several times since (#76–#80), and this walkthrough exercised the matrix as of `8ccb2b3` |
+| #44 | P-05 one continuous scene | CLOSED | https://github.com/Two-Weeks-Team/musely/issues/44#issuecomment-6558746164 | `0a60183` (PR #76 `6641d22`, PR #77) | an ancestor of `8ccb2b3`; exercised again by this walkthrough |
+| #45 | P-06 source, replay, evidence UI | CLOSED | https://github.com/Two-Weeks-Team/musely/issues/45#issuecomment-6559785434 | `d918e0d` (PR #78) | an ancestor of `8ccb2b3`; exercised again by this walkthrough |
+| (no issue) | PR #81 real-device layout and time zone fix | MERGED | PR #81 body | `8ccb2b3` | the tested build itself; read-only reviews by a separate Claude session (three rounds) and one independent subagent, plus bot summaries, see §6 |
 
 Evidence files for this record are in `preview/docs/acceptance-evidence/` (§3). A closed issue does not by itself pass its content here: each criterion below was observed again on the tested build.
 
@@ -32,25 +33,26 @@ Evidence files for this record are in `preview/docs/acceptance-evidence/` (§3).
 
 | criterion (issue #46) | result | where |
 |---|---|---|
-| Every experience: entry, action, success, reject, cancel, retry on desktop and mobile | **PASS** (browser emulation, scripted fixtures) | §4: 8 experiences × 6 states, 81 cells per viewport, D 81/81 and M 81/81 |
+| Every experience: entry, action, success, reject, cancel, retry on desktop and mobile | **PASS** (browser emulation, scripted fixtures) | §4: 8 experiences × 6 states, 81 cells per viewport, D 81/81 and M 81/81 (production, `8ccb2b3`) |
 | Blocked paths and missing visual items resolved or an allowed, labelled fallback | **evidence ready; owner acceptance pending (§8)** | §5: 0 missing items (2 promoted to labelled fallback, pending acceptance), every fallback has an on-screen label and an owner task |
 | Product experience review and agreed changes recorded; undecided core experiences = 0 | **not done: a person's product review is pending (§8)** | §6 records what the walkthrough and the reviews found; §7 lists 0 undecided core experiences and 6 decisions, subject to that review |
 | `npm run check` and the related browser regressions on the same build | **PASS** (browser emulation, scripted fixtures) | §3 |
 
-**Decision DEC-01 (S1 → S2).** On build `5546113` the evidence criteria 1 and 4 are met, criterion 2 is ready for the owner's acceptance, and criterion 3 (a person's product experience review, which code review and test counts cannot replace) is not done. The gate opens when the owner records the review and the fallback acceptance in §8. Until then S2 does not start. This is an S1 scope and experience gate only: real connector (DEC-02, DEC-11), webcam ritual (DEC-03), real phones (DEC-04) and the later stages stay with their own tasks and decisions.
+**Decision DEC-01 (S1 → S2).** On build `8ccb2b3` the evidence criteria 1 and 4 are met, criterion 2 is ready for the owner's acceptance, and criterion 3 (a person's product experience review, which code review and test counts cannot replace) is not done. The gate opens when the owner records the review and the fallback acceptance in §8. Until then S2 does not start. This is an S1 scope and experience gate only: real connector (DEC-02, DEC-11), webcam ritual (DEC-03), real phones (DEC-04) and the later stages stay with their own tasks and decisions.
 
 ## 3. Same-build checks
 
 | check | command | result | artifact |
 |---|---|---|---|
-| unit, types, build, deploy dry-run | `npm run check` (cwd `preview/`, main `5546113`) | **171/171 tests**, typecheck, build, dry-run pass (231.55 KiB, gzip 63.96 KiB) | executor's command output (not stored as a file) |
+| unit, types, build, deploy dry-run | `npm run check` (cwd `preview/`, main `8ccb2b3`) | **172/172 tests**, typecheck, build, dry-run pass (231.55 KiB, gzip 63.96 KiB) | executor's command output (not stored as a file) |
 | experience matrix | `node scripts/experience-matrix-check.mjs` | PASS: ids match the catalogs; 10 requirements, S2 14/14, S3 6/6, gates 4, decisions 11, problems 0 | executor's command output |
 | walkthrough | `scripts/walkthrough.browser.js` on production | **194/194** (97 per viewport: 81 walkthrough cells + 16 isolation cases) | `acceptance-evidence/walkthrough.json` |
 | flows and cues | `scripts/preview-flows.browser.js` on production | **66/66** | `acceptance-evidence/preview-flows.json` |
 | live world, replay, evidence, failures, accessibility | `scripts/world-ui.browser.js` on production | **138/138 checks** (the runner prints 140: two more entries are per-viewport summary records without a result) | `acceptance-evidence/world-ui.json` |
 | entry and first paint | `scripts/entry.browser.js` on production | **2 viewport records, no page errors** (the script throws on any failure) | `acceptance-evidence/entry.json` |
+| layout on phones and tablets, and times in the viewer's zone | `scripts/layout.browser.js` on production | **120/120**: 30 screen sizes × (story, world mode, no page errors) + compact-strip cases + one phone sweep over 78 sizes (60 from 320–420 × 520–700 plus 18 either side of each media-query edge; the card text never under 49 px) + Seoul, London and Los Angeles (rows, evidence time and day, replay clock and filter, Feed and Highlights day headings, Highlights filter) | `acceptance-evidence/layout.json` |
 
-The saved result files keep every case with its viewport and detail (the walkthrough, preview-flows and world-ui checks also have a name and a result), plus the run's start and end time, URL, browser and Node versions. The header comment of `walkthrough.browser.js` changed after the run (comment only). The 162 screenshots of the walkthrough (45 MB) are not stored in the repository; the script writes them to `output/wt-<viewport>-<experience>-<state>.png`. The deploy build id was read from the GitHub check run of `5546113`.
+The saved result files keep every case with its viewport and detail (the walkthrough, preview-flows, world-ui and layout checks also have a name and a result), plus the run's start and end time, URL, browser and Node versions. The scripts are those of `8ccb2b3`; none changed after these runs. The 162 screenshots of this walkthrough run (45 MB) are not stored in the repository; the script writes them to `output/wt-<viewport>-<experience>-<state>.png`. The deploy build id was read from the GitHub check run of `8ccb2b3`.
 
 The isolation cases in the walkthrough (one pair per experience page) require **no `/api` write, no page error, and no request for the browser's position**.
 
@@ -80,11 +82,11 @@ Isolation checks: the browser was never asked for a position — D PASS, M PASS;
 | state | cell (what is walked and asserted) | D 1440×900 | M 390×844 | observed (desktop run) |
 |---|---|---|---|---|
 | entry | map to the commons | PASS | PASS | {"zoom":21.7,"muses":8,"h":89} |
-| action | spotlight turn | PASS | PASS | Spotlight · Bloom next · where · last: LIVE · 18 spotlight rows |
-| success | decision shown LIVE with its model (live world) | PASS | PASS | Ember decides (where): walk to The Campfire to gather and share stories → The CampfireLIVE  |
-| reject | out-of-scope decision refused (scripted fixture) | PASS | PASS | Copper's decision was refused: out_of_scopeRULERecordPreview fixture (SCRIPTED) — not a live recordWhen (Menlo  |
+| action | spotlight turn | PASS | PASS | Spotlight · Tempo next · offer · last: SCRIPTED · 12 spotlight rows |
+| success | decision shown LIVE with its model (live world) | PASS | PASS | ×EVIDENCECare for a snack-box plot twist with your campfire chapter?LIVE · Muse SparkWhen (your time |
+| reject | out-of-scope decision refused (scripted fixture) | PASS | PASS | ×EVIDENCECopper's decision was refused: out_of_scopeRULERecordPreview fixture (SCRIPTED) — not a live recordWhen (your t |
 | cancel | pause, leave follow | PASS | PASS | {"a":{"paused":true,"label":"Resume world"},"f1":true,"f2":false} · real drag |
-| retry | resume the world | PASS | PASS | {"paused":false,"label":"Pause world","chip":"Spotlight · Bloom next · where · last: LIVE"} |
+| retry | resume the world | PASS | PASS | {"paused":false,"label":"Pause world","chip":"Spotlight · Tempo next · offer · last: SCRIPTED"} |
 
 Isolation checks: the browser was never asked for a position — D PASS, M PASS; no /api writes, no page errors — D PASS, M PASS
 
@@ -164,10 +166,10 @@ Isolation checks: the browser was never asked for a position — D PASS, M PASS;
 | state | cell (what is walked and asserted) | D 1440×900 | M 390×844 | observed (desktop run) |
 |---|---|---|---|---|
 | entry | open highlights | PASS | PASS | 200 moments |
-| entry | the replay says what it is | PASS | PASS | 0:00 / 30:00 · 1× · 09:00 Menlo Park |
+| entry | the replay says what it is | PASS | PASS | 0:00 / 30:00 · 1× · 09:00 your time |
 | action | play at 1×, 10×, 60× | PASS | PASS | 1.0 / 10.0 / 60.1 virtual s per real s |
 | action | find a moment with the filters | PASS | PASS | 26 → 1 → none |
-| success | evidence shows signer and verified steps | PASS | PASS | Jolly's signed request passed every checkLIVE · verifiedRecordPreview fixture (SCRIPTED) —  |
+| success | evidence shows signer and verified steps | PASS | PASS | ×EVIDENCEJolly's signed request passed every checkLIVE · verifiedRecordPreview fixture (SCRIPTED) —  |
 | reject | missing evidence shown as such | PASS | PASS | 3 replay rows: 1 missing, 2 replayed from a recorded request (no /api request: see the no-writes case) |
 | cancel | close evidence by button and by Escape, focus returns | PASS | PASS | opened fx-0024, focus after button fx-0024, after Escape fx-0024 |
 | retry | restart the replay | PASS | PASS | end 1800 → restart 0 |
@@ -196,7 +198,6 @@ Isolation checks: the browser was never asked for a position — D PASS, M PASS;
 Isolation checks: the browser was never asked for a position — D PASS, M PASS; no /api writes, no page errors — D PASS, M PASS
 
 **Totals.** Walkthrough cells: D 81/81, M 81/81; every case including the isolation checks: 194/194.
-
 
 ## 5. Allowed fallback register
 
@@ -227,6 +228,8 @@ This log is the record of what the walkthrough and the reviews found, what was c
 | found while fixing #78 | a real replayed event has no top-level request id, so the evidence dialog called a good replay "Missing evidence" | fixed; fixture uses the Worker's shape | #45 |
 | walkthrough plan | EXP-REWARD had no refused, withdrawn, expired or next-try screens; EXP-COMMS had no declined, out-of-scope, expired or next-encounter screens; EXP-MEETUP had no approval-target-changed or next-candidate screens | new scenarios `reward-trade-limits`, `comms-task-expiry` and two `meetup-agree` steps | #79 |
 | PR #79 reviews (two Claude passes, one Codex bot) | the reward example "Coffee for a Fruit refused for no ability change" contradicted the engine (`checkTrade` approves it); withdraw is not an engine action; the matrix claimed a daily cap with no screen; "next candidate" showed the same candidate; walkthrough cells read the whole panel | Spark for a Snack Box (engine-verified by a unit test), withdraw labelled as planned, daily-cap step, `candidate-2`, cells read only the current step | #79 |
+| real-device report, 2026-11-02 (screenshots of a phone in portrait and of a tablet or foldable) | on a phone the selected-Muse card grew over the header chips; on tablets (701–886 px) the header folded into three rows and an element overflowed to x=886, so mobile Chrome widened the layout viewport and shrank the page; the story heading sat on the character; times were Menlo Park times. The 390×844 emulation had shown none of it | PR #81: the header wraps; the card is anchored to the measured header and footer heights and its text scrolls while the two buttons stay; map buttons follow the footer; on short screens the card becomes a compact strip; every shown time is the viewer's own (the world keeps Menlo Park time for its day) | #81 |
+| PR #81 reviews (a separate Claude session in three rounds on heads `1c14b10`, `a82d2a9` and `133ab71`: 6 important + 11 minor, then 1 + 10, then 8 minor; one independent subagent on `67433a2`: 2 important, 6 minor, 1 uncertain; the last commit `4f2e9d1` was checked by the layout check and the regression only. The Codex bot reviewed the first commit only and found nothing; CodeRabbit left a summary and no review comments) | map buttons over the footer; buttons pushed out of a scrolled card; Follow and the meet-up plan unreachable when the card was hidden on short screens; meet-up line lost on small phones; card text squeezed to 3 px (320×568, world mode) and 12–46 px just outside the first strip edges; map buttons jumping 30 px (phone) / 18 px (desktop) when the zoom crossed 20.35; heading over the strip at 932×430; meet-up line cut off at 568×320; formatters keeping the zone they were built in; weak or flaky checks | each finding was checked by reading the code or by measuring, then fixed. Not reproduced by measurement and left unchanged: tablet landscape 1024×768 … 1194×834 and headers at 1181 px and wider (kept as regression sizes). The layout check grew from 17 sizes to 30 sizes plus a phone sweep | #81 |
 
 ## 7. Undecided core experiences: 0
 
@@ -241,11 +244,11 @@ Questions that were open during S1 and how each was settled. "Decided by" is the
 | What does the viewer see for actions without a built effect? | a labelled fallback clip or card | §5 |
 | Where does a stage-one claim stop? | at a SCRIPTED fixture or a labelled live read; no hidden S2 prerequisite is added | §1, §2 |
 
-Known gaps that are **not** core experiences and are not hidden by this document: the header label "Muse Spark · not connected" is still read once at load (only its tooltip was made honest); EXP-WORLD success reads the live feed and fails if the world has no LIVE row at that moment; accessibility is checked by emulation and attributes, not with a real screen reader or phone.
+Known gaps that are **not** core experiences and are not hidden by this document: the header label "Muse Spark · not connected" is still read once at load (only its tooltip was made honest); EXP-WORLD success reads the live feed and fails if the world has no LIVE row at that moment; accessibility is checked by emulation and attributes, not with a real screen reader or phone; on screens under 530 px tall (and phones up to 380 × 610 px) the selected-Muse card is a compact strip, so its activity line and "Wants" note are not shown there; layout is measured in emulation on 30 sizes and a sweep, not on the owner's phone, tablet or foldable (browser toolbar shown or hidden, rotation, system font size and notch are not covered).
 
 ## 8. Owner review and sign-off (required before S2)
 
-Review the same build at https://preview.musely.net/ (build `ef3a2abb-ec56-47a4-a3e4-8dca7b873518`, commit `5546113`) on a desktop and a phone, using §4 as the path list, then record:
+Review the same build at https://preview.musely.net/ (build `aedcac64-3293-4c82-97fe-8b219ba17c84`, commit `8ccb2b3`) on a desktop and a phone, using §4 as the path list. Please also open it on the phone and the tablet or foldable from the 2026-11-02 report and confirm the card, the header and the times now look right there (§6, PR #81). Then record:
 
 - [ ] I walked the preview on desktop and on a phone and found no core experience undecided.
 - [ ] I accept the allowed fallbacks in §5, including the two promoted from missing (teleport arrival card, help card).
@@ -259,7 +262,8 @@ Not closed by this document (see `EXPERIENCE_MATRIX.md` §9 for the per-experien
 
 - S2 builds the real connection, claim and ritual, rewards, meet-ups, location, replay record player and communication tools (I-* tasks). DEC-02 and DEC-11 (real connector, unattended calls), DEC-03 (webcam ritual), DEC-08 (printed agent key to rotate) must be resolved with the owner's real account.
 - S3 integrates and verifies on one deployment (D-* tasks), including DEC-04 (target phones, memory, DPR), DEC-05 (judges are not Threads testers), DEC-06 (submission authority) and DEC-07 (public-switch cleanup).
-- **DEC-10** (390 px header overlap): the release condition (no overlap at 390×844) is met on this build by the mobile header and Live-world layout cases in `preview-flows.browser.js` (66/66, `acceptance-evidence/preview-flows.json`); the owner closes it with the sign-off in §8.
+- **DEC-10** (390 px header overlap): the release condition (no overlap at 390×844) is met on this build by the mobile header and Live-world layout cases in `preview-flows.browser.js` (66/66, `acceptance-evidence/preview-flows.json`) and by `layout.browser.js` (120/120, 30 screen sizes and a phone sweep, `acceptance-evidence/layout.json`); the owner closes it with the sign-off in §8.
+- **Real-device re-check** (owner, after the fix in PR #81): the layout and the viewer's-zone times on the phone and tablet or foldable that showed the problems, with the browser toolbar shown and hidden, in both orientations and at a larger system font size. Emulation cannot show these.
 
 ## 10. Repeat the checks
 
@@ -267,5 +271,5 @@ Not closed by this document (see `EXPERIENCE_MATRIX.md` §9 for the per-experien
 cd preview && npm run check
 node scripts/serve-dist.mjs 8788 --api https://preview.musely.net     # or open the production URL
 # with Playwright CLI run-code, one script at a time (never two Chrome runs together):
-#   scripts/walkthrough.browser.js, preview-flows.browser.js, world-ui.browser.js, entry.browser.js
+#   scripts/walkthrough.browser.js, preview-flows.browser.js, world-ui.browser.js, entry.browser.js, layout.browser.js
 ```
