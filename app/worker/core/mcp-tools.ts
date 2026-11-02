@@ -45,7 +45,7 @@ const claimedFor = (c: ToolCtx) => !!c.claimExempt || c.ownerClaimed;
 type Prop = {type: 'string'; enum?: readonly string[]; pattern?: string; minLength?: number; maxLength?: number; description?: string}
   | {type: 'boolean'; description?: string}
   | {type: 'integer'; minimum?: number; description?: string}
-  | {type: 'array'; items: {type: 'string'; pattern?: string; maxLength?: number}; maxItems: number; description?: string};
+  | {type: 'array'; items: {type: 'string'; enum?: readonly string[]; pattern?: string; maxLength?: number}; minItems?: number; maxItems: number; uniqueItems?: boolean; description?: string};
 type Schema = {type: 'object'; properties: Record<string, Prop>; required: string[]; additionalProperties: false};
 const obj = (properties: Record<string, Prop>, required: string[] = []): Schema => ({type: 'object', properties, required, additionalProperties: false});
 
@@ -72,7 +72,9 @@ function checkArgs(schema: Schema, raw: unknown): Record<string, unknown> {
     if (p.type === 'integer') { if (!Number.isSafeInteger(v) || (p.minimum !== undefined && (v as number) < p.minimum)) throw new InvalidParams(`${k} must be an integer`); continue; }
     if (p.type === 'array') {
       if (!Array.isArray(v) || v.length > p.maxItems) throw new InvalidParams(`${k} must be a list of at most ${p.maxItems}`);
-      for (const x of v) if (typeof x !== 'string' || (p.items.maxLength && x.length > p.items.maxLength) || (p.items.pattern && !new RegExp(p.items.pattern).test(x))) throw new InvalidParams(`${k} has an invalid entry`);
+      if (p.minItems !== undefined && v.length < p.minItems) throw new InvalidParams(`${k} must have at least ${p.minItems}`);
+      if (p.uniqueItems && new Set(v).size !== v.length) throw new InvalidParams(`${k} has a repeated entry`);
+      for (const x of v) if (typeof x !== 'string' || (p.items.enum && !p.items.enum.includes(x)) || (p.items.maxLength && x.length > p.items.maxLength) || (p.items.pattern && !new RegExp(p.items.pattern).test(x))) throw new InvalidParams(`${k} has an invalid entry`);
       continue;
     }
     if (typeof v !== 'string') throw new InvalidParams(`${k} must be a string`);
@@ -87,12 +89,18 @@ function checkArgs(schema: Schema, raw: unknown): Record<string, unknown> {
 const cleanText = (t: string) => t.replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim();
 const knownItem = (id: string) => { if (!itemSpec(id) || (id.startsWith('postcard:') && !resolvePlace(id.slice(9)))) throw new InvalidParams(`unknown item: ${id.slice(0, 40)}`); return id; };
 
-type ToolDef = {name: string; title: string; description: string; inputSchema: Schema; annotations: {readOnlyHint: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint: boolean}; write?: {scope: ScopeId}};
+/** notReady: the schema is fixed but the backend is not built yet; every call is refused as capability_not_ready (C06). */
+type ToolDef = {name: string; title: string; description: string; inputSchema: Schema; annotations: {readOnlyHint: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint: boolean}; write?: {scope: ScopeId}; notReady?: {ownerIssue: string; task: string}};
 const read = (name: string, title: string, description: string, inputSchema: Schema): ToolDef => ({name, title, description, inputSchema, annotations: {readOnlyHint: true, openWorldHint: false}});
 const write = (name: string, title: string, description: string, inputSchema: Schema, scope: ScopeId): ToolDef => ({name, title, description, inputSchema, annotations: {readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false}, write: {scope}});
+/** Communication tools whose backend is I-13 (#57): same write contract (scope, command_id, expected_version), refused until then. */
+const I13 = {ownerIssue: '#57', task: 'I-13'};
+const NOT_READY = ' Not available yet: every call is refused as capability_not_ready (its backend arrives with I-13, #57); nothing is signed, changed or logged.';
+const notReady = (t: ToolDef): ToolDef => ({...t, description: t.description + NOT_READY, notReady: I13});
 
 export const TOOLS: ToolDef[] = [
-  read('register_agent', 'Register agent', 'Your Muse\'s Musely registration for this agent key: agent id (kid), claim status, signer kind (server_custodial) and delegation status.', obj({})),
+  // Read only by decision (I-03A): issuing a key from an MCP call would let a key holder mint more keys. Keys are issued and revoked only in the owner session (POST/DELETE /api/agent-keys).
+  read('register_agent', 'Register agent', 'Your Muse\'s Musely registration for this agent key: agent id (kid), claim status, signer kind (server_custodial), delegation status and Agent Card URL. Read only: it never issues or rotates keys; your owner issues and revokes agent keys in the Musely owner session.', obj({})),
   read('get_agent_card', 'Get Agent Card', 'A signed A2A Agent Card (yours by default) and the result of verifying it against the trusted root key.', obj({muse: {type: 'string', enum: HARNESS_IDS, description: 'Muse id; defaults to your Muse'}})),
   read('get_world_state', 'Get world state', 'Your Muse\'s current place and cell, trip ETA, inventory, wants and memory, nearby Muses with their public signals, nearby places, the owner location (virtual in the demo) and world_version (pass it as expected_version to a write).', obj({})),
   write('move', 'Move', 'Walk to a place (a Transit Pass makes it a bus ride). mode "teleport" works only into your owner\'s verified neighborhood cell and spends a Taxi Token.', obj({to: {type: 'string', minLength: 1, maxLength: 80, description: 'Place id from get_world_state, or a preset: hq, stanford, san-francisco, oakland, san-mateo, mountain-view, redwood-city, san-jose'}, mode: {type: 'string', enum: ['walk', 'teleport']}}, ['to']), 'walk_and_greet'),
@@ -107,6 +115,9 @@ export const TOOLS: ToolDef[] = [
   write('give_gift', 'Give gift', 'Give an item you hold to a nearby Muse (within 100 m). Up to 3 a day.', obj({to: museProp('Nearby Muse'), item: itemProp('Item to give')}, ['to', 'item']), 'world_item_gift'),
   write('propose_meetup', 'Propose meetup', 'Ask Musely for a meetup candidate with another Muse, built only from public information. Each side answers accept or reject.', obj({to: museProp('Muse to meet')}, ['to']), 'propose_public_candidate'),
   write('answer_candidate', 'Answer candidate', 'Answer a meetup candidate waiting for you: accept or reject only (no reasons).', obj({task_id: taskProp, answer: {type: 'string', enum: ['accept', 'reject']}}, ['task_id', 'answer']), 'answer_yes_no'),
+  notReady(write('invite_campfire', 'Invite to campfire', 'Invite Muses to a campfire talk in the commons: an in-world gathering, never a real-world invitation. Spends one Invite Token; three or more Muses at the campfire make a highlight.', obj({to: {type: 'array', items: {type: 'string', enum: OTHER_MUSES}, minItems: 1, maxItems: 8, uniqueItems: true, description: 'Muses to invite (1 to 8, no repeats)'}, text: textProp(140, 'Optional short public invitation line')}, ['to']), 'world_invite')),
+  notReady(write('propose_help', 'Propose help', 'Ask a nearby Muse for help with an item you hold (for example Copper repairing a gadget). Opens a help Task with a deadline; the other side answers accept or reject.', obj({to: museProp('Nearby Muse to ask'), item: itemProp('Item you hold that the help is about'), text: textProp(140, 'Optional short public request line')}, ['to', 'item']), 'world_item_trade')),
+  notReady(write('answer_help', 'Answer help', 'Answer a help Task waiting for you: accept or reject only (no reasons).', obj({task_id: taskProp, answer: {type: 'string', enum: ['accept', 'reject']}}, ['task_id', 'answer']), 'world_item_trade')),
   write('update_wants', 'Update wants', 'Update your Muse\'s public wants: a goal line (max 120 chars) and up to 4 catalog item ids. Everyone can see this.', obj({goal: textProp(120, 'Public goal'), items: {type: 'array', items: {type: 'string', pattern: ITEM_PATTERN, maxLength: 90}, maxItems: 4}}), 'propose_public_candidate'),
   write('heartbeat_check', 'Heartbeat check', 'Your agent inbox: pending Tasks (trade proposals, counters, meetup candidates) and received messages, each Task with a deadline. Expired Tasks are marked expired. Poll this to keep negotiating.', obj({}), 'walk_and_greet'),
 ];
@@ -119,7 +130,9 @@ const COMMAND_PROPS: Record<string, Prop> = {
 };
 for (const t of TOOLS) if (t.write) Object.assign(t.inputSchema.properties, COMMAND_PROPS);
 export const TOOL_NAMES = TOOLS.map(t => t.name);
-export const toolList = () => TOOLS.map(({write: _w, ...t}) => t);
+export const toolList = () => TOOLS.map(({write: _w, notReady: _n, ...t}) => t);
+/** Tools that are listed with a fixed schema but refused as capability_not_ready (and the issue that builds them). */
+export const NOT_READY_TOOLS = Object.fromEntries(TOOLS.filter(t => t.notReady).map(t => [t.name, t.notReady!.ownerIssue]));
 
 // ---------- helpers ----------
 const ok = (data: Record<string, unknown>, text?: string): ToolResult => ({content: [{type: 'text', text: (text ? text + '\n' : '') + JSON.stringify(data)}], structuredContent: data, isError: false});
@@ -267,6 +280,12 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
   const tool = TOOLS.find(t => t.name === name_);
   if (!tool) throw new InvalidParams(`Unknown tool: ${String(name_).slice(0, 40)}`);
   const args = checkArgs(tool.inputSchema, rawArgs);
+  if (tool.notReady) {
+    // The arguments are checked against the fixed schema (an unknown item is -32602 like everywhere), then the call is refused
+    // before anything is signed, read for writing or logged: no envelope, nonce, event, Task, counter or world version change.
+    if (tool.name === 'propose_help') knownItem(String(args.item));
+    return refused('capability_not_ready', {owner_issue: tool.notReady.ownerIssue, tool: tool.name, retryable: false, detail: `${tool.name} is not available yet (${tool.notReady.task}, ${tool.notReady.ownerIssue}). Nothing was signed, changed or logged.`});
+  }
   const me = c.key.muse;
   const s = c.runtime.state(), now = c.now();
   const meState = museOf(s, me);

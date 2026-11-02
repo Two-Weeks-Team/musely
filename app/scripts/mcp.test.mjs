@@ -13,7 +13,9 @@ import {connectedRoutes} from '../worker/core/owner-api.ts';
 import {issueSession, readSession} from '../worker/core/session.ts';
 import {issueOwnerSession, readOwnerSession} from '../worker/core/owner-session.ts';
 import {revokeMuse, redelegateMuse, delegationStatus} from '../worker/core/owner-control.ts';
-import {TOOL_NAMES} from '../worker/core/mcp-tools.ts';
+import {TOOL_NAMES, NOT_READY_TOOLS} from '../worker/core/mcp-tools.ts';
+import {SUPPORTED_PROTOCOLS, LIST_TTL_MS} from '../worker/core/mcp-server.ts';
+import {statusOf, v1Status, taskRecord, getTaskRecord, tasksFor, awaitingAnswerFrom, transitionTask, canTransition, TASK_STATUSES, TERMINAL_STATUSES} from '../worker/core/tasks.ts';
 import {makeHooks, resolveMeeting} from '../src/engine/rules.ts';
 import {placeById} from '../src/engine/places.ts';
 import {placeCell} from '../src/engine/location.ts';
@@ -69,7 +71,7 @@ async function setup({claimed = true} = {}) {
   const muse = id_ => state().muses.find(m => m.id === id_);
   const edit = fn => runtime.commitExternal(clock.now, 'test-' + Math.random(), st => fn(st));
   const events = kind => runtime.events(0, 500).filter(e => !kind || e.kind === kind);
-  return {ownerRoot, clock, trust, runtime, host, stub, route, key, keyId: issued.body.id, http, rpc, call, state, muse, edit, events, judge, visitor, owner, peer};
+  return {sql, ownerRoot, clock, trust, runtime, host, stub, route, key, keyId: issued.body.id, http, rpc, call, state, muse, edit, events, judge, visitor, owner, peer};
 }
 async function sessionFor(tier) { const {token} = await issueSession(SECRET, tier); return readSession(SECRET, token); }
 async function ownerFor(principal) { const {token} = await issueOwnerSession(SECRET, TOKENS, principal); return readOwnerSession(SECRET, token, TOKENS); }
@@ -85,7 +87,7 @@ test('MCP handshake: initialize → notifications/initialized → tools/list →
   assert.equal(init.body.result.serverInfo.name, 'musely');
   assert.equal(init.headers.get('mcp-session-id'), null, 'stateless: no session id');
   const old = await t.rpc('initialize', {protocolVersion: '2024-11-05', capabilities: {}, clientInfo: {name: 'old', version: '1'}});
-  assert.equal(old.body.result.protocolVersion, '2025-06-18', 'unsupported version → server latest');
+  assert.equal(old.body.result.protocolVersion, '2025-11-25', 'unsupported version → our latest handshake revision (2026-07-28 has no initialize)');
   const note = await t.http({jsonrpc: '2.0', method: 'notifications/initialized'}, {headers: {'mcp-protocol-version': '2025-06-18'}});
   assert.equal(note.status, 202);
   assert.equal(await note.text(), '');
@@ -581,4 +583,379 @@ test('I-05 #1 a connected Muse that acts gets a priority spotlight turn (dedupli
   await t.call('greet', {text: 'Am I still here?'});
   assert.deepEqual(t.state().spotlight.visitorQueue, []);
   assert.equal(t.events('spotlight_requested').length, 3);
+});
+
+// ---------- I-03A (#49): MCP transport, credentials and tool schemas ----------
+// Revision check (2026-11-02): modelcontextprotocol.io/specification/versioning names 2026-07-28 as current. It drops the
+// initialize handshake for per-request _meta, adds server/discover and the Mcp-Method/Mcp-Name headers, and renumbers the
+// protocol errors (-32020 header mismatch, -32022 unsupported version). Earlier revisions stay served with initialize.
+const MODERN = '2026-07-28';
+const META = (v = MODERN, extra = {}) => ({'io.modelcontextprotocol/protocolVersion': v, 'io.modelcontextprotocol/clientCapabilities': {}, 'io.modelcontextprotocol/clientInfo': {name: 'i03a', version: '1'}, ...extra});
+let modernId = 1000;
+/** A 2026-07-28 request: _meta in the body and the mirrored headers. `meta: null` drops _meta; headers override. */
+async function modern(t, method, params = {}, {headers = {}, token, meta} = {}) {
+  const body = {jsonrpc: '2.0', id: ++modernId, method, params: meta === null ? params : {...params, _meta: meta ?? META()}};
+  // A header set to undefined is not sent (Headers would turn undefined into the string "undefined").
+  const all = Object.fromEntries(Object.entries({'mcp-protocol-version': MODERN, 'mcp-method': method, ...(typeof params.name === 'string' ? {'mcp-name': params.name} : {}), ...headers}).filter(([, v]) => v !== undefined));
+  const res = await t.http(body, {token, headers: all});
+  const text = await res.text();
+  return {status: res.status, body: text ? JSON.parse(text) : null, headers: res.headers, id: body.id};
+}
+/** Every row of every table: a refusal that "changes nothing" must leave this identical. */
+const dbSnapshot = sql => Object.fromEntries(sql.exec("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name").toArray().map(({name}) => [name, sql.exec(`SELECT * FROM ${name}`).toArray()]));
+const b64 = s => '=?base64?' + Buffer.from(s, 'utf8').toString('base64') + '?=';
+
+test('I-03A negotiation: 2026-07-28 works without initialize (server/discover, tools/list, tools/call); results carry resultType, serverInfo and cache hints', async () => {
+  const t = await setup();
+  const d = await modern(t, 'server/discover');
+  assert.equal(d.status, 200);
+  assert.equal(d.body.id, d.id);
+  assert.equal(d.body.result.resultType, 'complete');
+  assert.deepEqual(d.body.result.supportedVersions, ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26']);
+  assert.deepEqual(d.body.result.supportedVersions, SUPPORTED_PROTOCOLS);
+  assert.deepEqual(d.body.result.capabilities, {tools: {listChanged: false}});
+  assert.equal(d.body.result._meta['io.modelcontextprotocol/serverInfo'].name, 'musely');
+  assert.equal(typeof d.body.result.instructions, 'string');
+  assert.equal(d.body.result.ttlMs, LIST_TTL_MS); assert.ok(Number.isInteger(d.body.result.ttlMs) && d.body.result.ttlMs >= 0);
+  assert.equal(d.body.result.cacheScope, 'public', 'the same for every key');
+  assert.equal(d.headers.get('mcp-session-id'), null);
+
+  const l1 = await modern(t, 'tools/list'), l2 = await modern(t, 'tools/list', {}, {headers: {'mcp-session-id': 'legacy-session-123'}});
+  assert.equal(l1.status, 200); assert.equal(l1.body.result.resultType, 'complete');
+  assert.equal(l1.body.result.ttlMs, LIST_TTL_MS); assert.equal(l1.body.result.cacheScope, 'public');
+  assert.deepEqual(l1.body.result.tools.map(x => x.name), TOOL_NAMES, 'deterministic order');
+  assert.deepEqual(l2.body.result.tools, l1.body.result.tools, 'a sent Mcp-Session-Id is ignored and the list does not vary');
+  assert.equal(l2.headers.get('mcp-session-id'), null, 'no session id is minted or echoed');
+
+  const ws = await modern(t, 'tools/call', {name: 'get_world_state', arguments: {}});
+  assert.equal(ws.status, 200);
+  assert.equal(ws.body.result.resultType, 'complete'); assert.equal(ws.body.result.isError, false);
+  assert.equal(ws.body.result.structuredContent.muse.id, OWNER_SLOT);
+  assert.equal(ws.body.result._meta['io.modelcontextprotocol/serverInfo'].version, '0.2.0');
+  assert.equal(ws.body.result.ttlMs, undefined, 'tools/call is not cacheable');
+  const enc = await modern(t, 'tools/call', {name: 'get_world_state', arguments: {}}, {headers: {'mcp-name': b64('get_world_state')}});
+  assert.equal(enc.status, 200, 'Mcp-Name in the Base64 sentinel form is decoded'); assert.equal(enc.body.result.isError, false);
+  const w = await modern(t, 'tools/call', {name: 'greet', arguments: {text: 'Hello in 2026-07-28'}});
+  assert.equal(w.body.result.isError, false); assert.equal(w.body.result.structuredContent.envelope.signer_kind, 'server_custodial');
+  const note = await t.http({jsonrpc: '2.0', method: 'notifications/anything', params: {_meta: META()}}, {headers: {'mcp-protocol-version': MODERN}});
+  assert.equal(note.status, 202); assert.equal(await note.text(), '');
+
+  // Handshake methods do not exist in 2026-07-28: 404 with -32601 (the body tells a modern server from a legacy 404).
+  for (const m of ['initialize', 'ping', 'subscriptions/listen', 'nope/method']) {
+    const r = await modern(t, m, m === 'initialize' ? {protocolVersion: MODERN, capabilities: {}, clientInfo: {name: 'x', version: '1'}} : {});
+    assert.equal(r.status, 404, m); assert.equal(r.body.error.code, -32601, m); assert.equal(r.body.id, r.id);
+  }
+  // A protocol error stays a JSON-RPC error: unknown tool -32602 (HTTP 200).
+  const unknown = await modern(t, 'tools/call', {name: 'pay_now', arguments: {}});
+  assert.equal(unknown.status, 200); assert.equal(unknown.body.error.code, -32602);
+});
+
+test('I-03A negotiation: legacy handshake revisions keep working; an unknown version gets -32022 with the supported list', async () => {
+  const t = await setup();
+  for (const v of ['2025-11-25', '2025-06-18', '2025-03-26']) {
+    const init = await t.rpc('initialize', {protocolVersion: v, capabilities: {}, clientInfo: {name: 'legacy', version: '1'}});
+    assert.equal(init.status, 200); assert.equal(init.body.result.protocolVersion, v, `echoes ${v}`);
+    assert.equal(init.body.result.resultType, undefined, 'legacy results keep their shape');
+    const list = await t.rpc('tools/list', {}, {headers: {'mcp-protocol-version': v}});
+    assert.deepEqual(list.body.result.tools.map(x => x.name), TOOL_NAMES);
+    assert.equal(list.body.result.ttlMs, undefined);
+    assert.equal((await t.rpc('ping', {}, {headers: {'mcp-protocol-version': v}})).status, 200);
+  }
+  // A handshake asking for the modern revision (or an unknown one) gets our latest handshake revision.
+  assert.equal((await t.rpc('initialize', {protocolVersion: MODERN, capabilities: {}, clientInfo: {name: 'x', version: '1'}})).body.result.protocolVersion, '2025-11-25');
+  assert.equal((await t.rpc('initialize', {protocolVersion: '2024-11-05', capabilities: {}, clientInfo: {name: 'x', version: '1'}})).body.result.protocolVersion, '2025-11-25');
+  // No header and no modern _meta: 2025-03-26 (server/discover is a 2026-07-28 method).
+  const legacyDiscover = await t.rpc('server/discover', {});
+  assert.equal(legacyDiscover.status, 200); assert.equal(legacyDiscover.body.error.code, -32601);
+
+  for (const [label, run] of [
+    ['legacy request', () => t.rpc('tools/list', {}, {headers: {'mcp-protocol-version': '1999-01-01'}})],
+    ['modern request', () => modern(t, 'tools/list', {}, {headers: {'mcp-protocol-version': '1999-01-01'}, meta: META('1999-01-01')})],
+  ]) {
+    const r = await run();
+    assert.equal(r.status, 400, label); assert.equal(r.body.error.code, -32022, label);
+    assert.deepEqual(r.body.error.data, {supported: SUPPORTED_PROTOCOLS, requested: '1999-01-01'}, label);
+  }
+  // The body names a version we do not serve while the header names one we do: still -32022 (the body version is checked first).
+  const bodyOnly = await modern(t, 'tools/list', {}, {meta: META('2099-12-31')});
+  assert.equal(bodyOnly.status, 400); assert.equal(bodyOnly.body.error.code, -32022); assert.equal(bodyOnly.body.error.data.requested, '2099-12-31');
+  assert.equal(bodyOnly.body.id, bodyOnly.id);
+});
+
+test('I-03A errors: 2026-07-28 header and _meta validation (400 -32020 / -32602 / -32600) and none of them runs the tool', async () => {
+  const t = await setup();
+  const before = t.events().length;
+  const greet = {name: 'greet', arguments: {text: 'must not be said'}};
+  const cases = [
+    ['header missing while _meta names 2026-07-28', () => modern(t, 'tools/call', greet, {headers: {'mcp-protocol-version': undefined}}), -32020, /MCP-Protocol-Version header is required/],
+    ['header and _meta differ', () => modern(t, 'tools/call', greet, {headers: {'mcp-protocol-version': '2025-06-18'}}), -32020],
+    ['Mcp-Method missing', () => modern(t, 'tools/call', greet, {headers: {'mcp-method': undefined}}), -32020],
+    ['Mcp-Method differs', () => modern(t, 'tools/call', greet, {headers: {'mcp-method': 'tools/list'}}), -32020],
+    ['Mcp-Name missing', () => modern(t, 'tools/call', greet, {headers: {'mcp-name': undefined}}), -32020],
+    ['Mcp-Name differs', () => modern(t, 'tools/call', greet, {headers: {'mcp-name': 'get_world_state'}}), -32020],
+    ['Mcp-Name Base64 differs', () => modern(t, 'tools/call', greet, {headers: {'mcp-name': b64('discover')}}), -32020],
+    ['Mcp-Name Base64 broken', () => modern(t, 'tools/call', greet, {headers: {'mcp-name': '=?base64?***?='}}), -32020],
+    ['_meta missing with a 2026-07-28 header', () => modern(t, 'tools/call', greet, {meta: null}), -32602],
+    ['clientCapabilities missing', () => modern(t, 'tools/call', greet, {meta: {'io.modelcontextprotocol/protocolVersion': MODERN}}), -32602],
+    ['protocolVersion not a string', () => modern(t, 'tools/call', greet, {meta: {...META(), 'io.modelcontextprotocol/protocolVersion': 20260728}}), -32602],
+  ];
+  for (const [label, run, code, message] of cases) {
+    const r = await run();
+    assert.equal(r.status, 400, label); assert.equal(r.body.error.code, code, label); assert.equal(r.body.id, r.id, label);
+    if (message) assert.match(r.body.error.message, message, label);
+  }
+  // A modern client never sends JSON-RPC responses.
+  const resp = await t.http({jsonrpc: '2.0', id: 77, result: {}}, {headers: {'mcp-protocol-version': MODERN}});
+  assert.equal(resp.status, 400); assert.equal((await resp.json()).error.code, -32600);
+  assert.equal(t.events().length, before, 'no rejected request reached the tool');
+  assert.ok(!t.events().some(e => e.line === 'must not be said'));
+});
+
+test('I-03A auth: missing, malformed, unknown and revoked keys get 401 with a Bearer challenge; rotation keeps the new key; keys never appear in responses, events, storage or logs', async () => {
+  const seen = [], logged = [];
+  const orig = Object.fromEntries(['log', 'info', 'warn', 'error', 'debug'].map(k => [k, console[k]]));
+  for (const k of Object.keys(orig)) console[k] = (...a) => { logged.push(a.map(x => x instanceof Error ? x.stack : typeof x === 'string' ? x : JSON.stringify(x)).join(' ')); };
+  try {
+    const t = await setup();
+    // The world object (where logs and storage live) receives only the key hash.
+    const backendArgs = [], realMcp = t.stub.mcp;
+    t.stub.mcp = (...a) => { backendArgs.push(a); return realMcp(...a); };
+    const keep = async res => { const text = await res.text(); seen.push(text, JSON.stringify([...res.headers])); return {status: res.status, body: text ? JSON.parse(text) : null, headers: res.headers}; };
+    const keyA = t.key;
+    assert.equal((await keep(await t.http({jsonrpc: '2.0', id: 1, method: 'tools/list'}))).status, 200);
+
+    // Missing credential: a challenge without an error code (RFC 6750 3.1).
+    const none = await keep(await t.http({jsonrpc: '2.0', id: 2, method: 'tools/list'}, {token: null}));
+    assert.equal(none.status, 401); assert.equal(none.headers.get('www-authenticate'), 'Bearer realm="musely-mcp"');
+    assert.deepEqual(none.body, {jsonrpc: '2.0', id: 2, error: {code: -32001, message: 'Unauthorized: send Authorization: Bearer <Musely agent key>'}});
+    // Malformed, unknown and (below) revoked credentials: invalid_token, the same body.
+    const invalid = async (token, headers = {}) => keep(await t.http({jsonrpc: '2.0', id: 3, method: 'tools/list'}, {token, headers}));
+    const malformed = await invalid('not-a-key'), unknown = await invalid('msly_' + 'B'.repeat(43));
+    const basic = await keep(await t.http({jsonrpc: '2.0', id: 3, method: 'tools/list'}, {token: null, headers: {authorization: 'Basic ' + btoa('a:b')}}));
+    for (const r of [malformed, unknown, basic]) {
+      assert.equal(r.status, 401); assert.equal(r.headers.get('www-authenticate'), 'Bearer realm="musely-mcp", error="invalid_token"');
+      assert.deepEqual(r.body, {jsonrpc: '2.0', id: 3, error: {code: -32001, message: 'Unauthorized: send Authorization: Bearer <Musely agent key>'}});
+    }
+
+    // Rotation: issue B → the connector switches to B → revoke A.
+    const issuedB = await t.route('POST', '/api/agent-keys');
+    assert.equal(issuedB.status, 201); assert.equal(issuedB.body.shown_once, true);
+    const keyB = issuedB.body.key, idB = issuedB.body.id;
+    seen.push(JSON.stringify(t.events()));
+    assert.notEqual(keyB, keyA);
+    assert.equal((await keep(await t.http({jsonrpc: '2.0', id: 4, method: 'tools/list'}, {token: keyB}))).status, 200, 'B works before A is revoked');
+    assert.equal((await keep(await t.http({jsonrpc: '2.0', id: 5, method: 'tools/list'}, {token: keyA}))).status, 200, 'A still works until it is revoked');
+    const revokeA = await t.route('DELETE', '/api/agent-keys/' + t.keyId);
+    assert.equal(revokeA.status, 200); assert.ok(revokeA.body.revoked_at);
+    seen.push(JSON.stringify(revokeA.body));
+    const revokedLegacy = await invalid(keyA);
+    const revokedModern = await keep(await t.http({jsonrpc: '2.0', id: 3, method: 'tools/list', params: {_meta: META()}}, {token: keyA, headers: {'mcp-protocol-version': MODERN, 'mcp-method': 'tools/list'}}));
+    const revokedCall = await keep(await t.http({jsonrpc: '2.0', id: 3, method: 'tools/call', params: {name: 'greet', arguments: {text: 'revoked hello'}}}, {token: keyA}));
+    const revokedNote = await keep(await t.http({jsonrpc: '2.0', method: 'notifications/initialized'}, {token: keyA}));
+    for (const r of [revokedLegacy, revokedModern, revokedCall]) {
+      assert.equal(r.status, 401); assert.equal(r.headers.get('www-authenticate'), 'Bearer realm="musely-mcp", error="invalid_token"');
+      assert.deepEqual(r.body, unknown.body, 'a revoked key looks exactly like an unknown one');
+    }
+    assert.equal(revokedNote.status, 401, 'notifications are authenticated too');
+    assert.ok(!t.events().some(e => e.line === 'revoked hello'), 'a revoked key acts on nothing');
+    const afterB = await keep(await t.http({jsonrpc: '2.0', id: 6, method: 'tools/call', params: {name: 'register_agent', arguments: {}}}, {token: keyB}));
+    assert.equal(afterB.status, 200); assert.equal(afterB.body.result.structuredContent.key.id, idB, 'B keeps working after A is revoked');
+    assert.equal(typeof t.state().inbox.connected[OWNER_SLOT], 'number', 'B was used: the Muse stays connected');
+    // Plain revocation of the last key: B is refused as well, and the Muse is no longer connected.
+    assert.equal((await t.route('DELETE', '/api/agent-keys/' + idB)).status, 200);
+    assert.equal((await invalid(keyB)).status, 401);
+    assert.equal(t.state().inbox.connected[OWNER_SLOT], undefined);
+
+    const listed = await t.route('GET', '/api/agent-keys');
+    seen.push(JSON.stringify(listed.body));
+    assert.deepEqual(listed.body.keys.map(k => k.id).sort(), [t.keyId, idB].sort());
+    assert.ok(listed.body.keys.every(k => k.revoked_at));
+    // Where the raw keys must not be: any response body or header, the world log, any table, any log line, the world object's arguments.
+    const storage = JSON.stringify(dbSnapshot(t.sql)), events = JSON.stringify(t.events());
+    for (const key of [keyA, keyB]) {
+      for (const [where, text] of [['responses', seen.join('\n')], ['events', events], ['storage', storage], ['logs', logged.join('\n')], ['world object arguments', JSON.stringify(backendArgs)]]) assert.ok(!text.includes(key), `${where} contain a raw key`);
+    }
+    assert.ok(!/msly_[A-Za-z0-9_-]{43}/.test(storage + events + logged.join('\n')), 'no key-shaped string is stored or logged');
+    assert.ok(backendArgs.length > 0 && backendArgs.every(a => /^[0-9a-f]{64}$/.test(a[0])), 'only the SHA-256 reaches the world object');
+  } finally { Object.assign(console, orig); }
+});
+
+test('I-03A tools: invite_campfire, propose_help and answer_help are listed with fixed schemas and refused as capability_not_ready with zero side effects', async () => {
+  const t = await setup();
+  const list = (await t.rpc('tools/list')).body.result.tools;
+  const byName = Object.fromEntries(list.map(x => [x.name, x]));
+  assert.deepEqual(NOT_READY_TOOLS, {invite_campfire: '#57', propose_help: '#57', answer_help: '#57'});
+  const writeAnnotations = {readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false};
+  const command = {
+    command_id: {type: 'string', pattern: '^[A-Za-z0-9_-]{8,64}$', description: byName.greet.inputSchema.properties.command_id.description},
+    expected_version: {type: 'integer', minimum: 0, description: byName.greet.inputSchema.properties.expected_version.description},
+  };
+  const residents = ['01-sunny', '02-moss', '03-ripple', '04-ember', '05-bloom', '06-ink', '07-tempo', '08-orbit', '09-copper'];
+  assert.deepEqual(byName.invite_campfire.inputSchema, {type: 'object', additionalProperties: false, required: ['to'], properties: {
+    to: {type: 'array', items: {type: 'string', enum: residents}, minItems: 1, maxItems: 8, uniqueItems: true, description: 'Muses to invite (1 to 8, no repeats)'},
+    text: {type: 'string', minLength: 1, maxLength: 140, description: 'Optional short public invitation line'}, ...command}});
+  assert.deepEqual(byName.propose_help.inputSchema, {type: 'object', additionalProperties: false, required: ['to', 'item'], properties: {
+    to: {type: 'string', enum: residents, description: 'Nearby Muse to ask'},
+    item: {type: 'string', pattern: '^([a-z0-9_]{1,40}|postcard:[A-Za-z0-9:/_.-]{1,80})$', maxLength: 90, description: 'Item you hold that the help is about'},
+    text: {type: 'string', minLength: 1, maxLength: 140, description: 'Optional short public request line'}, ...command}});
+  assert.deepEqual(byName.answer_help.inputSchema, {type: 'object', additionalProperties: false, required: ['task_id', 'answer'], properties: {
+    task_id: {type: 'string', pattern: '^task_[0-9a-z]{1,10}$', description: 'Task id from heartbeat_check'},
+    answer: {type: 'string', enum: ['accept', 'reject']}, ...command}});
+  for (const n of Object.keys(NOT_READY_TOOLS)) {
+    assert.deepEqual(byName[n].annotations, writeAnnotations, n);
+    assert.match(byName[n].description, /capability_not_ready/, `${n} says it is not ready`);
+    assert.equal(byName[n].notReady, undefined, 'internal fields are not published');
+  }
+
+  // The Muse holds an Invite Token and a Task waits for it, so "nothing changed" is checked against a world with something to change.
+  const taskId = 'task_h1';
+  t.edit(st => {
+    st.muses.find(m => m.id === OWNER_SLOT).inventory.push('invite_token');
+    st.inbox.tasks.push({id: taskId, kind: 'meetup', from: '09-copper', to: OWNER_SLOT, status: 'pending', awaiting: OWNER_SLOT, createdAt: t.clock.now, deadline: t.clock.now + 30 * 60_000, updatedAt: t.clock.now, round: 0, candidate: {time: '18:00', place: 'Campfire', public_basis: 'test'}, answers: {}, history: [{by: '09-copper', action: 'propose', at: t.clock.now}]});
+  });
+  await t.call('get_world_state'); // connector use (connected flag, last use) happens before the snapshot
+  const before = dbSnapshot(t.sql);
+  const calls = [
+    ['invite_campfire', {to: ['01-sunny', '02-moss', '04-ember'], text: 'Campfire at dusk?'}],
+    ['invite_campfire', {to: ['09-copper'], command_id: 'campfire-cmd-0001', expected_version: t.state().version}],
+    ['invite_campfire', {to: ['09-copper'], command_id: 'campfire-cmd-0001', expected_version: t.state().version}],
+    ['propose_help', {to: '09-copper', item: 'coffee', text: 'Could you fix my map?'}],
+    ['answer_help', {task_id: taskId, answer: 'accept'}],
+    ['answer_help', {task_id: 'task_zz', answer: 'reject'}],
+  ];
+  for (const [name, args] of calls) {
+    for (const r of [await t.call(name, args), (await modern(t, 'tools/call', {name, arguments: args})).body.result]) {
+      assert.equal(r.isError, true, name);
+      assert.deepEqual(r.structuredContent, {ok: false, refused: 'capability_not_ready', owner_issue: '#57', tool: name, retryable: false, detail: `${name} is not available yet (I-13, #57). Nothing was signed, changed or logged.`}, name);
+      assert.match(r.content[0].text, /^Refused: capability not ready\n/, name);
+      assert.equal(JSON.parse(r.content[0].text.split('\n')[1]).refused, 'capability_not_ready');
+      assert.ok(!('envelope' in r.structuredContent) && !('command' in r.structuredContent), 'nothing was signed or committed');
+    }
+  }
+  // Invalid arguments are still -32602 against the fixed schema.
+  for (const [name, args] of [
+    ['invite_campfire', {}], ['invite_campfire', {to: []}], ['invite_campfire', {to: ['01-sunny', '01-sunny']}], ['invite_campfire', {to: ['nobody']}],
+    ['invite_campfire', {to: residents}], ['invite_campfire', {to: ['01-sunny'], place: 'commons:campfire'}], ['invite_campfire', {to: '01-sunny'}],
+    ['propose_help', {to: '09-copper'}], ['propose_help', {to: '09-copper', item: 'not_an_item'}], ['propose_help', {to: '09-copper', item: 'coffee', text: ''}],
+    ['answer_help', {task_id: taskId, answer: 'maybe'}], ['answer_help', {task_id: 'bad', answer: 'accept'}],
+  ]) {
+    const r = await t.rpc('tools/call', {name, arguments: args});
+    assert.equal(r.body.error?.code, -32602, `${name} ${JSON.stringify(args)}`);
+  }
+  // No spotlight request, event, Task, inventory change, daily counter, nonce, command row, refusal row or world version bump:
+  // every row of every table equals the snapshot taken after the warm-up read.
+  assert.deepEqual(dbSnapshot(t.sql), before);
+  assert.ok(t.muse(OWNER_SLOT).inventory.includes('invite_token'), 'the Invite Token was not spent');
+  assert.equal(t.state().inbox.tasks.find(x => x.id === taskId).status, 'pending', 'answer_help did not touch the Task');
+
+  // Under a revoked delegation the answer is the same and still changes nothing: nothing is signed, so there is no
+  // delegation_revoked event or Blocked notice for a tool that is not built.
+  await t.trust.revoke(OWNER_SLOT);
+  const revokedBefore = dbSnapshot(t.sql);
+  for (const [name, args] of calls) assert.equal((await t.call(name, args)).structuredContent.refused, 'capability_not_ready', name);
+  assert.deepEqual(dbSnapshot(t.sql), revokedBefore);
+});
+
+test('I-03A tools: capability_not_ready also holds without an owner claim (no pending_claim, no event)', async () => {
+  const t = await setup({claimed: false});
+  await t.call('get_world_state');
+  const before = dbSnapshot(t.sql);
+  const r = await t.call('propose_help', {to: '09-copper', item: 'coffee'});
+  assert.equal(r.structuredContent.refused, 'capability_not_ready');
+  assert.deepEqual(dbSnapshot(t.sql), before);
+});
+
+test('I-03A register_agent stays read only: no arguments, no key issued, no secret returned (keys come only from the owner session)', async () => {
+  const t = await setup();
+  const tool = (await t.rpc('tools/list')).body.result.tools.find(x => x.name === 'register_agent');
+  assert.deepEqual(tool.annotations, {readOnlyHint: true, openWorldHint: false});
+  assert.deepEqual(tool.inputSchema, {type: 'object', properties: {}, required: [], additionalProperties: false}, 'nothing to ask for: no Muse, no new key');
+  assert.match(tool.description, /never issues or rotates keys/);
+  await t.call('get_world_state');
+  const before = dbSnapshot(t.sql);
+  const reg = await t.call('register_agent');
+  assert.equal(reg.isError, false);
+  assert.deepEqual(Object.keys(reg.structuredContent.key), ['id', 'created_at'], 'only the id and time of the key in use');
+  assert.equal(reg.structuredContent.key.id, t.keyId);
+  assert.ok(!/msly_/.test(JSON.stringify(reg)), 'no key material in the result');
+  assert.deepEqual(dbSnapshot(t.sql), before, 'no agent_keys row, no agent_key_issued event');
+  for (const args of [{muse: '01-sunny'}, {issue: true}, {rotate: true}]) assert.equal((await t.rpc('tools/call', {name: 'register_agent', arguments: args})).body.error.code, -32602, JSON.stringify(args));
+  assert.equal((await t.route('GET', '/api/agent-keys')).body.keys.length, 1);
+  // No MCP tool can mint a key: across every tool, the agent_keys table only changes through the owner route.
+  const rows = () => t.sql.exec('SELECT COUNT(*) AS n FROM agent_keys').toArray()[0].n;
+  for (const name of TOOL_NAMES) await t.rpc('tools/call', {name, arguments: {}});
+  assert.equal(rows(), 1);
+  assert.equal((await t.route('POST', '/api/agent-keys')).status, 201);
+  assert.equal(rows(), 2);
+});
+
+test('I-03A tasks.ts: v1 Task statuses map to the C06 names; records and transitions follow the state machine without changing inbox behavior', async () => {
+  const base = {id: 'task_1', kind: 'trade', from: '00-jolly', to: '02-moss', awaiting: '02-moss', createdAt: 1, deadline: 100, updatedAt: 1, offer: {by: '00-jolly', give: 'coffee', want: 'tea'}, round: 0};
+  const at = (status, history) => ({...base, status, history});
+  const propose = [{by: '00-jolly', action: 'propose', at: 1}];
+  const table = [
+    [at('pending', propose), 'submitted'],
+    [at('pending', [...propose, {by: '02-moss', action: 'counter', at: 2}]), 'input-required'],
+    [{...at('pending', [...propose, {by: '02-moss', action: 'answer', at: 2}]), kind: 'meetup', offer: undefined, candidate: {time: '18:00', place: 'Cafe', public_basis: 'x'}, answers: {'02-moss': 'accept'}}, 'input-required'],
+    [at('completed', propose), 'completed'], [at('rejected', propose), 'rejected'], [at('expired', propose), 'expired'],
+    [at('cancelled', propose), 'cancelled'], [at('failed', propose), 'cancelled'],
+  ];
+  for (const [task, want] of table) assert.equal(statusOf(task), want, `${task.status} ${task.history.map(h => h.action)}`);
+  assert.deepEqual(TASK_STATUSES, ['submitted', 'input-required', 'completed', 'rejected', 'expired', 'cancelled']);
+  assert.deepEqual(TASK_STATUSES.map(v1Status), ['pending', 'pending', 'completed', 'rejected', 'expired', 'cancelled']);
+  for (const s of TERMINAL_STATUSES) for (const to of TASK_STATUSES) assert.equal(canTransition(s, to), false, `${s} → ${to}`);
+  assert.equal(canTransition('submitted', 'submitted'), false, 'a Task is created submitted, never moved back to it');
+
+  // A record over a real MCP-made Task: proposals to a connected Muse wait in its inbox (submitted).
+  const t = await setup();
+  t.edit(st => { st.inbox.connected['02-moss'] = t.clock.now; place(st, '02-moss', 'commons:benches'); st.muses.find(m => m.id === '02-moss').inventory.push('tea'); });
+  const p = await t.call('propose_trade', {to: '02-moss', give: 'coffee', want: 'tea'});
+  assert.equal(p.isError, false, JSON.stringify(p.structuredContent));
+  const id = p.structuredContent.task.id, inbox = () => t.state().inbox;
+  const v1Before = JSON.stringify(inbox().tasks);
+  const r = getTaskRecord(inbox(), id, {events: t.events()});
+  assert.deepEqual(Object.keys(r).sort(), ['approvalRefs', 'awaiting', 'contentHash', 'createdAt', 'eventIds', 'expiresAt', 'id', 'kind', 'participants', 'payload', 'revision', 'status', 'updatedAt', 'version'].sort());
+  assert.equal(r.version, 2); assert.equal(r.kind, 'trade'); assert.deepEqual(r.participants, [OWNER_SLOT, '02-moss']);
+  assert.equal(r.status, 'submitted'); assert.equal(r.awaiting, '02-moss'); assert.equal(r.revision, 1);
+  assert.match(r.contentHash, /^[0-9a-f]{64}$/); assert.equal(r.expiresAt, inbox().tasks.find(x => x.id === id).deadline);
+  assert.deepEqual(r.payload, {kind: 'trade', offer: {by: OWNER_SLOT, give: 'coffee', want: 'tea'}, counters: 0});
+  assert.deepEqual(r.approvalRefs, []);
+  assert.deepEqual(r.eventIds, t.events('trade_proposed').filter(e => e.data.task_id === id).map(e => e.id));
+  assert.equal(r.eventIds.length, 1);
+  assert.equal(JSON.stringify(inbox().tasks), v1Before, 'building a record changes nothing');
+  assert.deepEqual(tasksFor(inbox(), '02-moss').map(x => x.id), [id]);
+  assert.deepEqual(awaitingAnswerFrom(inbox(), '02-moss').map(x => x.id), [id]);
+  assert.deepEqual(awaitingAnswerFrom(inbox(), OWNER_SLOT), []);
+  assert.deepEqual(tasksFor(inbox(), OWNER_SLOT, {status: ['completed']}), []);
+  assert.equal(getTaskRecord(inbox(), 'task_missing'), null);
+
+  // The same inbox Task moved through the facade, step by step (on a copy: the world is not touched).
+  const task = structuredClone(inbox().tasks.find(x => x.id === id));
+  const hash0 = taskRecord(task).contentHash;
+  assert.deepEqual(transitionTask(task, 'input-required', {by: '02-moss', at: 5, action: 'counter'}), {ok: false, from: 'submitted', reason: 'awaiting_required'});
+  assert.deepEqual(transitionTask(task, 'input-required', {by: '02-moss', at: 5, action: 'counter', awaiting: OWNER_SLOT}), {ok: false, from: 'submitted', reason: 'awaiting_required'}, 'a deadline is required too');
+  assert.deepEqual(transitionTask(task, 'input-required', {by: '02-moss', at: 5, action: 'counter', awaiting: '05-bloom', deadline: 50}), {ok: false, from: 'submitted', reason: 'awaiting_required'}, 'only a participant can be next');
+  assert.deepEqual(transitionTask(task, 'completed', {by: '02-moss', at: 5, action: 'expire'}), {ok: false, from: 'submitted', reason: 'wrong_action'});
+  assert.deepEqual(transitionTask(task, 'rejected', {by: '05-bloom', at: 5, action: 'reject'}), {ok: false, from: 'submitted', reason: 'not_a_participant'});
+  assert.deepEqual(transitionTask(task, 'submitted', {by: '02-moss', at: 5, action: 'counter'}), {ok: false, from: 'submitted', reason: 'not_allowed'});
+  assert.equal(task.history.length, 1, 'refused moves change nothing');
+  task.offer = {by: '02-moss', give: 'tea', want: 'postage_stamp'}; task.round = 1;
+  const c = transitionTask(task, 'input-required', {by: '02-moss', at: 6, action: 'counter', awaiting: OWNER_SLOT, deadline: 999});
+  assert.equal(c.ok, true); assert.equal(c.from, 'submitted');
+  assert.equal(c.record.status, 'input-required'); assert.equal(c.record.awaiting, OWNER_SLOT); assert.equal(c.record.expiresAt, 999); assert.equal(c.record.revision, 2);
+  assert.notEqual(c.record.contentHash, hash0, 'a new offer is new content: earlier approvals no longer match');
+  assert.equal(task.status, 'pending', 'stored in the v1 shape');
+  const done = transitionTask(task, 'completed', {by: OWNER_SLOT, at: 7, action: 'accept', via: 'live'});
+  assert.equal(done.ok, true); assert.equal(done.record.status, 'completed'); assert.equal(done.record.awaiting, null);
+  assert.deepEqual(task.history.at(-1), {by: OWNER_SLOT, action: 'accept', at: 7, via: 'live'});
+  const frozen = JSON.stringify(task);
+  for (const to of TASK_STATUSES) assert.deepEqual(transitionTask(task, to, {by: OWNER_SLOT, at: 8, action: 'cancel'}), {ok: false, from: 'completed', reason: 'terminal'}, to);
+  assert.equal(JSON.stringify(task), frozen);
+  const expired = structuredClone(inbox().tasks.find(x => x.id === id));
+  assert.equal(transitionTask(expired, 'expired', {by: 'musely', at: 9, action: 'expire'}).record.status, 'expired');
+  const cancelled = structuredClone(inbox().tasks.find(x => x.id === id));
+  assert.equal(transitionTask(cancelled, 'cancelled', {by: OWNER_SLOT, at: 9, action: 'cancel'}).record.status, 'cancelled');
+  // The live inbox Task is still the one MCP made: the facade did not take over any existing path.
+  assert.equal(JSON.stringify(inbox().tasks), v1Before);
+  assert.equal((await t.call('heartbeat_check')).structuredContent.your_open_tasks[0].status, 'pending', 'MCP still speaks the v1 status');
 });

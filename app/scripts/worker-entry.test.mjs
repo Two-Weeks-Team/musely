@@ -50,7 +50,7 @@ test('Worker entry: /api/agent-keys → /mcp handshake and tools → owner locat
   const init = await go('POST', '/mcp', {jsonrpc: '2.0', id: 1, method: 'initialize', params: {protocolVersion: '2025-06-18', capabilities: {}, clientInfo: {name: 'e2e', version: '1'}}}, auth);
   assert.equal(init.body.result.protocolVersion, '2025-06-18');
   assert.equal((await go('POST', '/mcp', {jsonrpc: '2.0', method: 'notifications/initialized'}, v)).status, 202);
-  assert.equal((await go('POST', '/mcp', {jsonrpc: '2.0', id: 2, method: 'tools/list'}, v)).body.result.tools.length, 17);
+  assert.equal((await go('POST', '/mcp', {jsonrpc: '2.0', id: 2, method: 'tools/list'}, v)).body.result.tools.length, 20, 'the 7.2 tools including invite_campfire, propose_help and answer_help');
   const g = await go('POST', '/mcp', {jsonrpc: '2.0', id: 3, method: 'tools/call', params: {name: 'greet', arguments: {text: 'Hello from the Worker entry'}}}, v);
   assert.equal(g.body.result.isError, false); assert.equal(g.body.result.structuredContent.envelope.signer_kind, 'server_custodial');
   assert.equal((await go('GET', '/mcp', null, auth)).status, 405);

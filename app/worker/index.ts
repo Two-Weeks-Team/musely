@@ -217,7 +217,7 @@ export default {
     if (moved) return moved;
     const jwks = /^\/\.well-known\/jwks\/([A-Za-z0-9_-]{20,64})\.json$/.exec(url.pathname);
     if (jwks) { const set = await world(env).jwks(jwks[1]); return set ? json(set, 200, {'cache-control': 'public, max-age=300'}) : json({error: 'unknown_key'}, 404); }
-    // Musely MCP server (Streamable HTTP, 2025-06-18) for custom connectors; auth is a Musely agent key.
+    // Musely MCP server (Streamable HTTP: 2026-07-28, and 2025-11-25/2025-06-18/2025-03-26 with initialize) for custom connectors; auth is a Musely agent key.
     if (url.pathname === '/mcp') {
       try {
         return await handleMcpHttp(request, world(env), {allowedHosts: [...env.ALLOWED_HOSTS.split(','), ...(env.MCP_ALLOWED_ORIGINS ?? '').split(',').filter(Boolean)], rateLimit: env.BURST ? async key => (await env.BURST!.limit({key})).success : undefined});
