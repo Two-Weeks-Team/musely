@@ -47,17 +47,67 @@ export function eightPayload(files){const byPath=new Map(files.map(x=>[x.path,x]
 const CONTEXT_KEYS=['model','android','chrome','viewport','dpr','route','cachePolicy'];
 /** Recorded values stay separate from operator declarations; missing historical evidence is not inferred. */
 export function compareBaselineContext(b,declared){
- const recorded={...b.context},conflicts=[];
- for(const [k,v] of Object.entries({model:b.model??b.device?.model,android:b.android,chrome:b.chrome,viewport:b.device?.viewport,dpr:typeof b.device?.dpr==='number'?b.device.dpr:b.device?.dpr?.applied,route:b.route??b.conditions?.route,cachePolicy:b.cachePolicy})){if(recorded[k]!=null&&v!=null&&JSON.stringify(recorded[k])!==JSON.stringify(v))conflicts.push(k);if(recorded[k]==null&&v!=null)recorded[k]=v;}
+ const recorded={},sources={},conflicts=[];
+ for(const key of CONTEXT_KEYS){
+  const values=[];
+  for(const [name,source] of [['context',b?.context],['top',b],['device',b?.device],['conditions',b?.conditions]]){
+   let value=source?.[key];if(key==='dpr'&&value!==null&&typeof value==='object')value=value.applied;
+   if(value!=null)values.push({source:name,value});
+  }
+  sources[key]=values;
+  if(values.length){recorded[key]=values[0].value;if(new Set(values.map(v=>JSON.stringify(v.value))).size>1)conflicts.push(key);}
+ }
  const missing=CONTEXT_KEYS.filter(k=>recorded[k]==null),mismatches=CONTEXT_KEYS.filter(k=>conflicts.includes(k)||recorded[k]!=null&&(declared?.[k]==null||JSON.stringify(recorded[k])!==JSON.stringify(declared[k])));
- return {recorded,declared,missing,mismatches,conflicts,complete:!missing.length&&!mismatches.length,limitations:missing.map(k=>'Baseline artifact did not record '+k+'; declaration is not measurement evidence')};
+ return {recorded,declared,sources,missing,mismatches,conflicts,complete:!missing.length&&!mismatches.length,limitations:[...missing.map(k=>'Baseline artifact did not record '+k+'; declaration is not measurement evidence'),...conflicts.map(k=>'Baseline artifact records conflicting '+k+' values')]};
 }
-/** Static HTML script/style references must be included in the same-origin served manifest. */
+// Small start-tag tokenizer: quotes may contain >; comments and raw-text bodies are not tags.
+// No HTML is executed, and no dependency or DOM/browser is needed.
+function htmlStartTags(html){
+ const tags=[];let cursor=0;
+ while(cursor<html.length){
+  const start=html.indexOf('<',cursor);if(start<0)break;
+  if(html.startsWith('<!--',start)){const end=html.indexOf('-->',start+4);cursor=end<0?html.length:end+3;continue;}
+  const name=/^<([a-z][a-z0-9:-]*)\b/i.exec(html.slice(start));if(!name){cursor=start+1;continue;}
+  let end=start+name[0].length,quote=null;
+  for(;end<html.length;end++){const ch=html[end];if(quote){if(ch===quote)quote=null;}else if(ch==='"'||ch==="'")quote=ch;else if(ch==='>')break;}
+  if(end===html.length)throw Error('unsupported_html_tag');
+  const attrs={};let at=start+name[0].length;
+  while(at<end){
+   while(at<end&&/[\s/]/.test(html[at]))at++;if(at>=end)break;
+   const first=at;while(at<end&&!/[\s=/>]/.test(html[at]))at++;
+   if(at===first)throw Error('unsupported_html_attribute');
+   const key=html.slice(first,at).toLowerCase();while(at<end&&/\s/.test(html[at]))at++;let value='';
+   if(html[at]==='='){at++;while(at<end&&/\s/.test(html[at]))at++;const q=html[at];
+    if(q==='"'||q==="'"){const from=++at;while(at<end&&html[at]!==q)at++;value=html.slice(from,at);at++;}
+    else{const from=at;while(at<end&&!/\s/.test(html[at]))at++;value=html.slice(from,at);}
+   }
+   if(!Object.hasOwn(attrs,key))attrs[key]=value;
+  }
+  const tag=name[1].toLowerCase();tags.push({name:tag,attrs});cursor=end+1;
+  if(['script','style','textarea','title','xmp','iframe','noembed','noframes'].includes(tag)){
+   const close=new RegExp('</'+tag+'\\b[^>]*>','ig');close.lastIndex=cursor;const match=close.exec(html);cursor=match?close.lastIndex:html.length;
+  }else if(tag==='plaintext')cursor=html.length;
+ }
+ return tags;
+}
+function codeAttribute(value){
+ const decoded=value.replace(/&(#x[0-9a-f]+|#[0-9]+|amp|quot|apos|lt|gt);/gi,(_,name)=>{
+  if(name[0]==='#'){const n=name[1].toLowerCase()==='x'?parseInt(name.slice(2),16):parseInt(name.slice(1),10);if(n<=0||n>0x10ffff||n>=0xd800&&n<=0xdfff)throw Error('unsupported_html_code_attribute');return String.fromCodePoint(n);}
+  return {amp:'&',quot:'"',apos:"'",lt:'<',gt:'>'}[name.toLowerCase()];
+ });
+ if(decoded.includes('&'))throw Error('unsupported_html_code_attribute');return decoded;
+}
+/** Static code URLs use the first base[href], as the measured document does. */
 export function externalCodePaths(html,origin){
- const paths=new Set();
- const tags=html.replace(/<!--[\s\S]*?-->/g,'').replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,m=>m.slice(0,m.indexOf('>')+1)).match(/<(?:script|link)\b[^>]*>/gi)??[];
- for(const tag of tags){const attrs=Object.fromEntries([...tag.matchAll(/([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)].map(m=>[m[1].toLowerCase(),m[2]??m[3]??m[4]]));
-  const script=/^<script\b/i.test(tag),rel=attrs.rel??'',codeLink=/\b(?:stylesheet|modulepreload)\b/i.test(rel)||/\bpreload\b/i.test(rel)&&['script','style'].includes(attrs.as);
-  const href=script?attrs.src:(codeLink?attrs.href:null);if(!href)continue;const u=new URL(href,origin+'/');if(u.origin!==origin||u.username||u.password||u.search)throw Error('external_code_origin_or_query_not_pinned');paths.add(decodeURIComponent(u.pathname).replace(/^\//,''));}
+ const paths=new Set(),tags=htmlStartTags(html),firstBase=tags.find(t=>t.name==='base'&&Object.hasOwn(t.attrs,'href'));
+ const base=new URL(firstBase?codeAttribute(firstBase.attrs.href):'/',origin+'/');
+ if(base.origin!==origin||base.username||base.password)throw Error('external_code_origin_or_query_not_pinned');
+ for(const {name,attrs} of tags){
+  const rel=(attrs.rel??'').toLowerCase().split(/\s+/),as=(attrs.as??'').toLowerCase();
+  const codeLink=rel.includes('stylesheet')||rel.includes('modulepreload')||rel.includes('preload')&&['script','style'].includes(as);
+  const href=name==='script'?attrs.src:name==='link'&&codeLink?attrs.href:undefined;if(href===undefined)continue;
+  const u=new URL(codeAttribute(href),base);if(u.origin!==origin||u.username||u.password||u.search)throw Error('external_code_origin_or_query_not_pinned');
+  paths.add(decodeURIComponent(u.pathname).replace(/^\//,''));
+ }
  return [...paths];
 }

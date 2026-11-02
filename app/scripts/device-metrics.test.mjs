@@ -101,3 +101,22 @@ test('runtime script omitted from manifest fails source audit before CDP opens',
  globalThis.fetch=async url=>new Response(new URL(url).pathname==='/json/list'?JSON.stringify([{id:'target',type:'page',url:pin.origin,webSocketDebuggerUrl:'ws://127.0.0.1:1/mock'}]):new URL(url).pathname==='/'?html:'{}');TargetCDP.connect=async()=>{opened=true;throw Error('must not connect');};
  try{const result=await runMeasurement({...opts,kind:'first-load',execute:true,out:join(dir,'out')},pin);assert.match(result.error,/runtime code missing from manifest/);assert.equal(result.measuredChecksPass,false);assert.equal(opened,false);}finally{globalThis.fetch=prior;TargetCDP.connect=connect;}
 });
+
+test('every recorded baseline alias participates in conflict detection without filling missing history',async()=>{
+ const {compareBaselineContext}=await import('./device-metrics.mjs');
+ for(const key of Object.keys(context))for(const location of ['context','top','device','conditions']){
+  const bad=key==='viewport'?[390,844]:key==='dpr'?3:'different',b={context:{...context},[key]:context[key],device:{[key]:context[key]},conditions:{[key]:context[key]}};
+  if(location==='top')b[key]=bad;else b[location][key]=bad;
+  const r=compareBaselineContext(b,context);assert.ok(r.conflicts.includes(key),`${key}/${location}`);assert.equal(r.complete,false);
+ }
+ const good=compareBaselineContext({context,device:{dpr:{applied:1.5,device:2.625}},conditions:context},context);assert.equal(good.complete,true);
+ const missing=compareBaselineContext({device:{dpr:{device:2.625}}},context);assert.ok(missing.missing.includes('dpr'));assert.equal(missing.complete,false);
+});
+test('runtime tag tokens retain quoted angles, skip raw text and honor only the first base href',async()=>{
+ const {externalCodePaths}=await import('./device-metrics.mjs'),origin='https://musely.net';
+ assert.deepEqual(externalCodePaths('<script data-label="a>b" src="/runtime.js"></script>',origin),['runtime.js']);
+ assert.deepEqual(externalCodePaths('<base href="/code/"><base href="/ignored/"><script src="runtime.js"></script><link title=\'a>b\' rel="stylesheet" href="style.css">',origin),['code/runtime.js','code/style.css']);
+ assert.deepEqual(externalCodePaths('<base href><base href="/ignored/"><script src="runtime.js"></script>',origin),['runtime.js']);
+ assert.deepEqual(externalCodePaths('<script>const x=\'<base href="/fake/"><script src="fake.js">\';</script><!-- <base href="/comment/"> --><script src="runtime.js"></script>',origin),['runtime.js']);
+ for(const html of ['<base href="https://foreign.invalid/"><script src="runtime.js"></script>','<base href="/code/"><script src="runtime.js?v=1"></script>'])assert.throws(()=>externalCodePaths(html,origin),/not_pinned/);
+});
