@@ -8,6 +8,7 @@ const requireProof=(ok,why)=>{if(!ok)throw Error('invalid_evidence: '+why);};
 export function verifyP0(p) {
  const {verified,revoked,refused}=p;
  requireProof(verified.kind==='a2a_verified' && revoked.kind==='delegation_revoked' && refused.kind==='a2a_refused','P0 ordered verification/revoke/refusal');
+ requireProof(typeof verified.muse==='string' && verified.muse && typeof verified.runId==='string' && verified.runId && [p.trade,revoked,refused].every(e=>e?.muse===verified.muse&&e?.runId===verified.runId),'P0 actor or run mismatch');
  requireProof(verified.seq < revoked.seq && revoked.seq < refused.seq,'P0 log order');
  requireProof(refused.data.reason==='delegation_revoked' && refused.data.step==='delegation','P0 revocation must be the refusal cause');
  requireProof(hash(verified.data.content)===hash(refused.data.content),'P0 business content changed');
@@ -35,6 +36,7 @@ export function correlateP2(scene, record) {
  requireProof(scene.worldId===run.worldId && input?.runId===runId && scene.version===input?.versionAfter && event.inputSeq===input?.seq,'P2 world/version/commit mismatch');
  requireProof(input.beforeHash && input.afterHash && scene.snapshotHash===input.afterHash,'P2 snapshot/commit hash mismatch');
  requireProof(['live','replay','simulation'].includes(scene.classification),'P2 scene classification');
+ requireProof(!(scene.classification==='live'&&event.source==='replay'),'P2 replay source cannot have live scene classification');
  const ev=event.data?.evidence;
  const requestId=event.source==='replay' ? (typeof ev?.replayOf==='string'?ev.replayOf:ev?.replayOf?.requestId) : ev?.requestId;
  let evidence;

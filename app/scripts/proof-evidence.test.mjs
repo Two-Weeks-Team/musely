@@ -123,3 +123,13 @@ test('D02 retains whole raw pages outside selected interval and rejects scenes o
  assert.equal(raw.length,t.events.length);assert.ok(raw.length>r.events.length);assert.deepEqual(page.cohort.eventIds,raw.map(e=>e.id));
  await assert.rejects(()=>collectPublicProof({base:t.meta.URL,...t,from,scenes:[t.b.p2.scene]},reader),/frozen event cohort/);
 });
+
+test('D02 replay-sourced events cannot support a live-labelled scene',async()=>{
+ const b=await buildControlledProof(),r=structuredClone(b.p2.record);r.event.source='replay';r.event.data.evidence={replayOf:'original-recorded-request'};
+ assert.throws(()=>correlateP2({...b.p2.scene,classification:'live'},r),/classification/);
+ assert.equal(correlateP2({...b.p2.scene,classification:'replay'},r).evidence.requestId,'original-recorded-request');
+});
+test('D02 P0 revocation and all surrounding actions belong to one actor and run',async()=>{
+ const {p0}=await buildControlledProof();assert.equal(verifyP0(p0).status,'verified');
+ for(const key of ['verified','trade','revoked','refused'])for(const field of ['muse','runId']){const p=structuredClone(p0);p[key][field]='foreign';assert.throws(()=>verifyP0(p),/actor|run/);}
+});
