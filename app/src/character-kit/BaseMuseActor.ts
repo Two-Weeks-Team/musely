@@ -9,9 +9,9 @@ export class BaseMuseActor{
  readonly root:T.Group;
  readonly mixer:T.AnimationMixer;
  readonly meshes:T.SkinnedMesh[]=[];
- private actions=new Map<string,T.AnimationAction>();
+ protected actions=new Map<string,T.AnimationAction>();
  protected current='idle_breathe';
- private expression='Neutral';
+ protected expression='Neutral';
  /** `clips` defaults to the source's own animations; the light first view passes clips from base/clips.glb. */
  constructor(source:GLTF,clips:readonly T.AnimationClip[]=source.animations){
   this.root=clone(source.scene) as T.Group;this.root.name='Jolly_actor';this.mixer=new T.AnimationMixer(this.root);

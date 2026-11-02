@@ -1,6 +1,6 @@
 // Playwright CLI run-code callback. Open the local dist world first (node scripts/serve-dist.mjs 8790).
 // Plays every chapter-10 action clip (window.__world.actionClips, i.e. catalog ACTION_CLIPS) on real world
-// residents, whose clips come from the build-derived base/clips.glb, at LOD2 and LOD0. Each clip runs
+// residents in explicit Story mode (live projection is verified by live-scene.browser.js), whose clips come from the build-derived base/clips.glb, at LOD2 and LOD0. Each clip runs
 // synchronously inside one evaluate so the story loop cannot interleave. Checks:
 //   every clip: bones move, no NaN in any bone matrix, Root stays in place, lowest vertex >= -20 mm
 //   locomotion clips (stride): Root stays in place (the route owns translation) and the feet slide no more than the
@@ -20,6 +20,8 @@ async (page) => {
   await p.goto(target.href, {waitUntil: 'domcontentloaded'});
   await p.waitForFunction(() => window.__world?.getMetrics().ready && window.__world.getMetrics().characterKit, null, {timeout: 60000});
   await p.waitForFunction(() => window.__world.getMetrics().characterUpgrade?.props, null, {timeout: 120000});
+  await p.evaluate(() => window.__world.setMode('story'));
+  await p.waitForTimeout(100);
   if (await p.locator('#pause').isVisible()) await p.locator('#pause').click();
   const {results, CLIPS} = await p.evaluate(() => {
    const W = window.__world, A = W.actor(0), B = W.actor(1), CLIPS = W.actionClips, PARTNER = .9;

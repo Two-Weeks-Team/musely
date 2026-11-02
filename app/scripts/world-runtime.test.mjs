@@ -449,3 +449,18 @@ test('I-05 review 8: three meeting-answer timeouts in a row open a 10-minute bre
   assert.equal(slow.stats.calls.encounter, before + 1);
 });
 
+
+
+test('stored events retain their logical time and carry the actual publication time after asynchronous processing', async () => {
+  const original = Date.now;
+  let published = T0;
+  Date.now = () => published;
+  try {
+    const s = setup({fetcher: (...args) => goodModel(null)(...args), beforeCommit: () => {published = T0 + 16_000;}});
+    await s.rt.heartbeat(T0);
+    const events = s.rt.events();
+    assert.ok(events.length > 0);
+    assert.ok(events.every(e => e.at === T0));
+    assert.ok(events.every(e => e.data.publishedAt === T0 + 16_000));
+  } finally {Date.now = original;}
+});
