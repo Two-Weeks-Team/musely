@@ -1012,7 +1012,8 @@ test('I-03A #94 cold call: a not-ready tool after more than 24 h refreshes the c
   await t.call('get_world_state');
   const norm = st => { const c = structuredClone(st); delete c.version; delete c.inbox.connected[OWNER_SLOT]; return c; };
   // sqlite_sequence holds the events AUTOINCREMENT counter: it moves with the one agent_connected event.
-  const rest = snap => { const {events: _e, sqlite_sequence: _q, world: _w, agent_keys: _k, ...others} = snap; return others; };
+  // The run log (I-10) records that one connection commit: one run_inputs row and the run counters move with it.
+  const rest = snap => { const {events: _e, sqlite_sequence: _q, world: _w, agent_keys: _k, run_inputs: _i, run_counts: _c, ...others} = snap; return others; };
   t.clock.now += 25 * 3_600_000;
   const before = dbSnapshot(t.sql), state0 = t.state(), events0 = t.events().length;
   const r = await t.call('invite_campfire', {to: ['01-sunny']});
@@ -1026,6 +1027,10 @@ test('I-03A #94 cold call: a not-ready tool after more than 24 h refreshes the c
   assert.deepEqual(after.agent_keys.map(({last_used_at: _l, ...k}) => k), before.agent_keys.map(({last_used_at: _l, ...k}) => k), 'only the key last-use time moved');
   assert.deepEqual(rest(after), rest(before), 'no nonce, command row, refusal row or other table changed');
   assert.deepEqual(after.sqlite_sequence.find(r => r.name === 'events').seq - before.sqlite_sequence.find(r => r.name === 'events').seq, 1);
+  const newInputs = after.run_inputs.slice(before.run_inputs.length);
+  assert.deepEqual(newInputs.map(r => [r.kind, r.events, r.input]), [['external', 1, null]], 'the run log holds exactly that one connection commit, with no tool input');
+  assert.deepEqual(after.run_inputs.slice(0, before.run_inputs.length), before.run_inputs, 'earlier run log rows are untouched');
+  assert.deepEqual(after.run_counts.map(r => [r.events, r.inputs]), before.run_counts.map(r => [r.events + 1, r.inputs + 1]));
   // Warm right after: nothing at all.
   const warm = dbSnapshot(t.sql);
   await t.call('propose_help', {to: '09-copper', item: 'coffee'});
