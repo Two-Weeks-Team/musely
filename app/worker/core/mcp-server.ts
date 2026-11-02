@@ -37,7 +37,7 @@ const browserPage = (origin: string) => `<!doctype html><meta charset="utf-8"><m
 <p>This address is for MCP clients, not browsers. Add it to your Muse as a custom connector:</p>
 <p><b>URL</b> ${origin}/mcp<br><b>Header</b> Authorization: Bearer msly_…</p>
 <p>Transport: Streamable HTTP (MCP 2025-06-18), JSON-RPC over POST. A browser visit gets HTTP 405 by design.</p>
-<p><a style="color:#FFD98A" href="/">Back to Musely</a></p></body>`;
+<p><a style="color:#FFD98A" href="/">Back to Musely</a> · <a style="color:#FFD98A" href="/privacy">Privacy</a> · <a style="color:#FFD98A" href="/terms">Terms</a> · <a style="color:#FFD98A" href="mailto:support@musely.net">support@musely.net</a></p></body>`;
 
 export async function handleMcpHttp(request: Request, backend: McpBackend, opts: {allowedHosts: string[]; rateLimit?: (key: string) => Promise<boolean>}): Promise<Response> {
   const origin = request.headers.get('origin');

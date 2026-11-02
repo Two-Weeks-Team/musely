@@ -8,6 +8,8 @@ const css=await readFile('node_modules/maplibre-gl/dist/maplibre-gl.css','utf8')
 const html=renderTemplate(await readFile('src/index.html','utf8'),css,bundle.outputFiles[0].text);
 new Script(html.split('<script>')[1].split('</script>')[0]);
 await mkdir('dist',{recursive:true});await writeFile('dist/index.html',html);await writeFile('dist/_headers',await readFile('static/_headers'));
+// Public policy pages and the Musely icon (served at /privacy, /terms, /icon.svg, /icon-512.png).
+for(const f of['privacy.html','terms.html','icon.svg','icon-512.png'])await copyFile('static/'+f,'dist/'+f);
 console.log(JSON.stringify({bytes:Buffer.byteLength(html),sha256:createHash('sha256').update(html).digest('hex'),sourceAssets:manifest},null,2));
 
 // In-demo character viewer (ten Muses) at /characters/, loading the same runtime files as the world.
