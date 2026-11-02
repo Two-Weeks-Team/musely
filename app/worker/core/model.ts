@@ -1,8 +1,11 @@
 // Meta Model API call (OpenAI-compatible Chat Completions) with an 8-second deadline.
 // After the deadline the request is aborted and any later answer is never used (direction v2, 8.7).
+// The Worker calls the Meta Model API directly (MODEL_BASE https://api.meta.ai/v1); there is no AI Gateway in
+// between, so no gateway headers are sent. Using a gateway is a separate decision: challenge and personal-signal
+// bodies would first need gateway logging and caching turned off (docs/V2_VERIFICATION.md, section 5).
 import {ACTION_LIMITS, OUTPUT_SCHEMAS, type Action} from './actions.ts';
 
-export type ModelConfig = {base: string; key: string; model: string; timeoutMs: number; fetcher?: typeof fetch; noBodyLogging?: boolean};
+export type ModelConfig = {base: string; key: string; model: string; timeoutMs: number; fetcher?: typeof fetch};
 export type Usage = {prompt_tokens?: number; completion_tokens?: number; completion_tokens_details?: {reasoning_tokens?: number}};
 export type ModelResult =
   | {ok: true; output: unknown; responseId: string | null; requestId: string | null; latencyMs: number; usage: Usage | undefined}
@@ -12,8 +15,6 @@ export async function callModel(cfg: ModelConfig, action: Action, messages: unkn
   const started = Date.now(), controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), cfg.timeoutMs);
   const headers: Record<string, string> = {authorization: 'Bearer ' + cfg.key, 'content-type': 'application/json'};
-  // AI Gateway: keep bodies of challenge/personal-signal requests out of logs (metadata only).
-  if (cfg.noBodyLogging) headers['cf-aig-collect-log-payload'] = 'false';
   // The deadline holds even if a fetch implementation ignores the abort signal: the wait itself is cut off.
   const deadline = new Promise<never>((_, reject) => controller.signal.addEventListener('abort', () => reject(new Error('deadline')), {once: true}));
   deadline.catch(() => {});

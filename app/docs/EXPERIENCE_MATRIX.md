@@ -453,7 +453,7 @@ One primary S2 owner per requirement; contributing tasks build parts of it. "Out
 | EXP-REPLAY | P-06 replay and evidence (#45); evidence panel (#25) | I-11 | I-10 | D-02, D-05 | Editing or re-running a recorded world |
 | EXP-COMMS | P-03 `comms-day` (#42); greet, gift, postcard (#26) | I-13 | I-01, I-02, I-03B, I-07, I-09 | D-01 | Messages outside Musely |
 | AUTONOMY | P-06 autonomy view (#45); section 2 definitions (C09) | I-10 | I-05, I-07, I-13 | D-02 | Calling it autonomy without the six numbers beside it |
-| OPS-BOUNDARY | Trial proxy, quota and budget (#13) | I-12 | — | D-03 | Fault injection on the production demo URL |
+| OPS-BOUNDARY | Trial proxy, quota and budget (#13); I-12 limits, Gateway decision and secret checks (`V2_VERIFICATION.md` sections 5 and 7) | I-12 | — | D-03 | Fault injection on the production demo URL; the general-user 24-hour probation and per-owner limits (G-01, S4); an AI Gateway (not used) |
 
 ## 10. Stage gates and open decisions (P-04)
 

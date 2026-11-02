@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {DatabaseSync} from 'node:sqlite';
 import {readFile, readdir} from 'node:fs/promises';
-import {Ledger, HOURLY_LIMITS, STALE_RESERVATION_MS} from '../worker/core/ledger.ts';
+import {Ledger, HOURLY_LIMITS, IP_HOURLY_LIMIT, CHALLENGE_HOURLY_LIMIT, STALE_RESERVATION_MS} from '../worker/core/ledger.ts';
 import {handleMuse} from '../worker/core/proxy.ts';
 import {issueSession, readSession, timingSafeEqual, verifyTurnstile} from '../worker/core/session.ts';
 import {validate, buildMessages, maxCostUsd} from '../worker/core/actions.ts';
@@ -212,4 +212,30 @@ test('failures with unknown usage keep the full reservation; refusals before gen
   const l2 = ledger();
   await call(l2, modelFetch(429, {}));
   assert.equal(l2.status().spentUsd, 0);
+});
+
+test('I-12 quota boundaries: visitor 3/h and judge 120/h per session, 40 visitor calls/h per IP, the world unlimited; a late settle never charges twice', () => {
+  const l = ledger(1000);
+  const r = (id, tier, session, ip, action = 'spotlight') => l.reserve({id, tier, session, ip, action, maxCostUsd: 0.001});
+  assert.deepEqual([HOURLY_LIMITS.visitor, HOURLY_LIMITS.judge, IP_HOURLY_LIMIT, CHALLENGE_HOURLY_LIMIT], [3, 120, 40, 3], 'the published demo limits (terms.html "Limits in this demo")');
+  for (let i = 0; i < 120; i++) assert.equal(r('j' + i, 'judge', 'judge-1', 'ip-j').ok, true, 'judge call ' + (i + 1));
+  assert.deepEqual(r('j120', 'judge', 'judge-1', 'ip-j'), {ok: false, reason: 'session_quota'}, 'the judge link has its own, larger hourly quota');
+  assert.equal(r('j-other', 'judge', 'judge-2', 'ip-j').ok, true, 'per session, not per IP, for judges');
+  // Visitor sessions behind one IP: 3 each, and 40 in total for the IP.
+  let ok = 0;
+  for (let s = 0; s < 20; s++) for (let i = 0; i < 3; i++) if (r(`v${s}-${i}`, 'visitor', 'visitor-' + s, 'ip-shared').ok) ok++;
+  assert.equal(ok, 40);
+  assert.deepEqual(r('v-new', 'visitor', 'visitor-new', 'ip-shared'), {ok: false, reason: 'ip_quota'});
+  assert.equal(r('v-elsewhere', 'visitor', 'visitor-new', 'ip-other').ok, true, 'another IP is not affected');
+  for (let i = 0; i < 300; i++) assert.equal(r('w' + i, 'world', 'world', '').ok, true, 'the world heartbeat is limited only by the budget');
+  // Late settle: a reservation charged in full as stale is not charged again (nor counted live) when its answer arrives.
+  const late = ledger(1);
+  late.reserve({id: 'slow', tier: 'judge', session: 'j', ip: 'i', action: 'spotlight', maxCostUsd: 0.004});
+  late.clock.t += STALE_RESERVATION_MS + 1;
+  late.reserve({id: 'next', tier: 'judge', session: 'j', ip: 'i', action: 'spotlight', maxCostUsd: 0.001});
+  const before = late.status();
+  assert.ok(Math.abs(before.spentUsd - 0.004) < 1e-9, 'stale reservation charged at its full amount');
+  assert.deepEqual(late.settle('slow', 0.0005, 'live'), {ok: true, already: true});
+  assert.deepEqual(late.status(), before, 'the late answer changes neither spend nor live calls');
+  assert.deepEqual(late.settle('missing', 0.001, 'live'), {ok: false});
 });
