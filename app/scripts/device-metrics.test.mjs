@@ -201,3 +201,62 @@ test('first-load attests actual browser response bytes, status and final URL, no
  for(const change of [{html:html+' changed'},{code:code+' changed'},{status:503},{url:origin+'/'},{missing:true}]){const audit=await build(change);await assert.rejects(()=>audit.verify(0),/actual browser/);}
  const error=await build({missing:true});await error.finished('s',async()=>{throw Error('unavailable');});await assert.rejects(()=>error.verify(0),/actual browser/);
 });
+
+test('a missing interception job for a public map GET is recorded without permitting writes or masking application errors',async()=>{
+ const {stalePublicMapRead,createMeasurementReport,measurementPassed}=await import('./device-benchmark.mjs');const request={method:'GET',url:'https://tiles.openfreemap.org/planet/20261025_080012_pt/14/2633/6350.pbf'},error=Error('Invalid InterceptionId.');
+ assert.equal(stalePublicMapRead(request,error),true);
+ for(const changed of [{method:'POST'},{url:request.url+'?token=x'},{url:request.url+'#x'},{url:request.url.replace('tiles.openfreemap.org','foreign.invalid')},{url:'https://musely.net/api/muse'},{url:request.url.replace('https://','https://user:pass@')},{url:request.url.replace('.pbf','.js')}])assert.equal(stalePublicMapRead({...request,...changed},error),false);
+ assert.equal(stalePublicMapRead(request,Error('Failed to continue request')),false);
+ const report=createMeasurementReport({kind:'first-load'},{origin:'https://musely.net'});Object.assign(report,{complete:true,gate:{arrival:true},metrics:{errors:['actual MapLibre failure']},interceptionErrors:[{classification:'stale-public-map-read'}]});assert.equal(measurementPassed(report),false);
+});
+
+test('final verdict rejects fatal interception and sticky protocol errors even with otherwise passing metrics',async()=>{
+ const {createMeasurementReport,measurementPassed}=await import('./device-benchmark.mjs');const passing=()=>Object.assign(createMeasurementReport({kind:'first-load'},{origin:'https://musely.net'}),{complete:true,gate:{arrival:true},metrics:{errors:[]}});
+ assert.equal(measurementPassed(passing()),true);
+ for(const detail of [{interceptionErrors:[{classification:'fatal'}]},{interceptionErrors:[{}]},{protocolError:'late handler failed'}])assert.equal(measurementPassed(Object.assign(passing(),detail)),false);
+ assert.equal(measurementPassed(Object.assign(passing(),{interceptionErrors:[{classification:'stale-public-map-read'}]})),true);
+});
+
+test('stale tile exception excludes bare query and fragment separators and malformed URLs',async()=>{
+ const {stalePublicMapRead}=await import('./device-benchmark.mjs');const url='https://tiles.openfreemap.org/planet/20261025_080012_pt/14/2633/6350.pbf';
+ for(const value of [url+'?',url+'#',url+'?#','not a URL'])assert.equal(stalePublicMapRead({method:'GET',url:value},Error('Invalid InterceptionId.')),false);
+});
+
+test('TargetCDP drains asynchronous handlers through close and preserves the first failure',async()=>{
+ const {TargetCDP}=await import('./device-benchmark.mjs');class Socket extends EventTarget{send(){}close(){this.dispatchEvent(new Event('close'));}emit(){this.dispatchEvent(new MessageEvent('message',{data:JSON.stringify({method:'Late.event',params:{}})}));}}
+ const socket=new Socket(),c=new TargetCDP(socket);let release;const gate=new Promise(resolve=>release=resolve);c.on('Late.event',async()=>{await gate;throw Error('after cleanup');});socket.emit();let closed=false;const close=c.close().then(()=>closed=true);await new Promise(resolve=>setTimeout(resolve,0));assert.equal(closed,false);release();await close;assert.equal(c.eventError,'Error: after cleanup');assert.equal(c.eventTasks.size,0);
+ c.on('Other.event',()=>{throw Error('second');});socket.dispatchEvent(new MessageEvent('message',{data:JSON.stringify({method:'Other.event',params:{}})}));await c.settleEvents();assert.equal(c.eventError,'Error: after cleanup');
+});
+
+async function offlineFirstLoad(t,{stage='sourceAfter',url='https://foreign.invalid/private',method='GET',error='Failed to continue request'}={}){
+ const {TargetCDP,runMeasurement}=await import('./device-benchmark.mjs'),{EIGHT_KIT_PATHS}=await import('./device-metrics.mjs'),{mkdtemp,rm}=await import('node:fs/promises'),{tmpdir}=await import('node:os'),{join}=await import('node:path'),{createHash}=await import('node:crypto'),{default:childProcess}=await import('node:child_process'),{syncBuiltinESMExports}=await import('node:module');
+ const dir=await mkdtemp(join(tmpdir(),'d04-late-'));t.after(()=>rm(dir,{recursive:true,force:true}));const origin='https://musely.net',html='<html>offline fixture</html>',bytes=Buffer.byteLength(html),digest=createHash('sha256').update(html).digest('hex');
+ const pin={...await freezeFixture(),referenceDevice:'MacBookPro18,2',htmlSHA256:digest,files:['index.html',...EIGHT_KIT_PATHS].map(path=>({path,sha256:digest,bytes}))};
+ class Socket extends EventTarget{
+  reply(id,result={},failure){this.dispatchEvent(new MessageEvent('message',{data:JSON.stringify(failure?{id,error:{message:failure}}:{id,result})}));}
+  event(name,params){this.dispatchEvent(new MessageEvent('message',{data:JSON.stringify({method:name,params})}));}
+  fault(){this.event('Fetch.requestPaused',{request:{method,url},requestId:'late-request'});}
+  send(text){const {id,method:command,params}=JSON.parse(text);
+   if(command==='Page.navigate'){this.event('Network.responseReceived',{requestId:'doc',type:'Document',response:{url:origin+'/?dpr=1.5',status:200}});this.event('Network.loadingFinished',{requestId:'doc',encodedDataLength:bytes});this.event('Page.lifecycleEvent',{loaderId:'nav',name:'DOMContentLoaded'});return this.reply(id,{loaderId:'nav'});}
+   if(command==='Network.getResponseBody')return this.reply(id,{body:html,base64Encoded:false});
+   if(command==='Page.captureScreenshot')return this.reply(id,{data:Buffer.from('offline placeholder').toString('base64')});
+   if(command==='Runtime.evaluate'){let value={visibility:'visible',ua:'Chrome fixture',viewport:[1440,1000],dpr:{cap:1.5,applied:1.5}};if(params.expression.includes('const t={}'))value={scene:4000,readable:7000,actorCount:8,visibility:'visible',dpr:{cap:1.5,applied:1.5}};else if(params.expression.includes('getMetrics?.() ?? null'))value={errors:[]};return this.reply(id,{result:{value}});}
+   if(command==='Fetch.continueRequest')return setTimeout(()=>this.reply(id,{},error),5);
+   if(command==='Fetch.disable'&&stage==='cleanup')this.fault();
+   this.reply(id,{});
+  }
+  close(){this.dispatchEvent(new Event('close'));}
+ }
+ const socket=new Socket(),c=new TargetCDP(socket),oldFetch=globalThis.fetch,oldConnect=TargetCDP.connect,oldExec=childProcess.execFileSync;let rootReads=0;const commands=[];const send=socket.send.bind(socket);socket.send=text=>{commands.push(JSON.parse(text));return send(text);};
+ globalThis.fetch=async target=>{const u=new URL(target);if(u.pathname==='/json/list')return new Response(JSON.stringify([{id:'target',type:'page',url:origin+'/',webSocketDebuggerUrl:'ws://offline.invalid'}]));if(u.pathname==='/api/status')return new Response('{}');if(u.href===origin+'/'&&++rootReads===2&&stage==='sourceAfter')socket.fault();return new Response(html);};TargetCDP.connect=async()=>c;childProcess.execFileSync=()=> 'MacBookPro18,2';syncBuiltinESMExports();
+ try{const report=await runMeasurement({kind:'first-load',endpoint:'http://127.0.0.1:1',targetId:'target',execute:true,out:dir},pin);return {report,commands,c};}finally{globalThis.fetch=oldFetch;TargetCDP.connect=oldConnect;childProcess.execFileSync=oldExec;syncBuiltinESMExports();}
+}
+
+test('fatal events during sourceAfter and asynchronous cleanup fail the serialized collector verdict',async t=>{
+ for(const stage of ['sourceAfter','cleanup']){const {report,c}=await offlineFirstLoad(t,{stage});assert.equal(report.complete,true);assert.equal(report.interceptionErrors[0].classification,'fatal');assert.equal(report.measuredChecksPass,false);assert.match(report.protocolError,/Failed to continue request/);assert.equal(c.eventTasks.size,0);assert.equal(report.cleanup.ownCdpConnectionClosed,true);}
+});
+
+test('offline firstload keeps narrow stale tile reads nonfatal, strict RUM denials and inspector buffers',async t=>{
+ const {report,commands}=await offlineFirstLoad(t,{url:'https://tiles.openfreemap.org/planet/20261025_080012_pt/14/2633/6350.pbf',error:'Invalid InterceptionId.'});assert.equal(report.measuredChecksPass,true);assert.equal(report.interceptionErrors[0].classification,'stale-public-map-read');assert.deepEqual(commands.find(x=>x.method==='Network.enable').params,{maxTotalBufferSize:64*1024*1024,maxResourceBufferSize:16*1024*1024});assert.equal(commands.filter(x=>x.method==='Fetch.continueRequest').length,1,'no retry');
+ for(const separator of ['?','#']){const {report}=await offlineFirstLoad(t,{url:'https://musely.net/cdn-cgi/rum'+separator,method:'POST'});assert.equal(report.measuredChecksPass,false);assert.equal(report.writes[0][separator==='?'?'query':'fragment'],true);assert.equal(report.writes[0].action,'aborted');assert.equal(report.networkAudit.continuedWriteRequests,0);}
+});
