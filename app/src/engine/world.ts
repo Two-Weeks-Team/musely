@@ -5,7 +5,7 @@
 import {BEATS, CLIP_FALLBACK, inHours, type Beat} from './beats.ts';
 import {PLACES, PLACE_BY_ID, placeById, distanceM, WALK_MPS, type Place} from './places.ts';
 import {HARNESSES, harnessById} from './harness.ts';
-import {ITEM_BY_ID} from './items.ts';
+import {ITEM_BY_ID, itemUpkeep, grantItem, putTimed, historyFault, spendSpotlightTickets} from './items.ts';
 import {rngFor, weightedPick, daySeed} from './rng.ts';
 import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, placeCell, type OwnerLocation} from './location.ts';
@@ -162,14 +162,21 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   s.inbox ??= emptyInbox();
   const emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => events.push({...tagLocation(s.owner, e), id: `${s.day}:${s.tick}:${events.length}`, tick: s.tick});
   for (const m of s.muses) m.wants ??= harnessWants(m.id, now);
-  if (clock.date !== s.day) {
+  const newDay = clock.date !== s.day;
+  if (newDay) {
     s.day = clock.date; s.seed = daySeed(s.worldId, s.day);
     // Daily limits reset; older counters are dropped so the state stays small.
     for (const d of Object.keys(s.items.finds)) if (d !== s.day) delete s.items.finds[d];
     for (const d of Object.keys(s.items.trades)) if (d !== s.day) delete s.items.trades[d];
     emit({at: now, source: 'rule', kind: 'new_day', muse: null, data: {day: s.day}, tags: []});
   }
-  if (s.items.history.length > 200) s.items.history = s.items.history.slice(-200);
+  // Item history check (I-06): the tail every tick, every kept entry at the day change. On a fault the item rules
+  // (upkeep, finds, trades, gifts, crafts, tickets) stop and the rest of the world keeps running; logged once a day.
+  const itemFault = historyFault(s.items, newDay, now);
+  if (itemFault && itemFault.notified !== s.day) {
+    itemFault.notified = s.day;
+    emit({at: now, source: 'rule', kind: 'history_tamper', muse: null, data: {reason: itemFault.reason, index: itemFault.index, since: itemFault.since, halted: ['item upkeep', 'discover', 'trade', 'gift', 'craft', 'spotlight ticket']}, tags: ['history_tamper']});
+  }
   // Inbox upkeep: overdue Tasks expire; postcards in transit arrive on the real clock.
   for (const t of expireTasks(s.inbox, now)) emit({at: now, source: 'rule', kind: 'task_expired', muse: t.awaiting, other: t.awaiting === t.from ? t.to : t.from, data: {task_id: t.id, task: t.kind}, tags: []});
   const paused = (id: string) => !!s.paused?.[id];
@@ -178,11 +185,13 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   const due = s.inbox.mail.filter(x => x.deliverAt <= now && !paused(x.from) && !paused(x.to));
   for (const mail of due) {
     const to = s.muses.find(m => m.id === mail.to);
-    if (to) to.inventory.push(mail.item);
+    if (to) { to.inventory.push(mail.item); if (mail.timed) putTimed(s.items, to.id, mail.item, mail.timed, now); }
     deliverMessage(s.inbox, {from: mail.from, to: mail.to, kind: 'postcard', at: now, text: mail.text, item: mail.item});
     emit({at: now, source: 'rule', kind: 'postcard_delivered', muse: mail.to, other: mail.from, data: {item: mail.item, mail_id: mail.id, sentAt: mail.sentAt}, tags: mail.crossRegion ? ['cross_region_postcard'] : []});
   }
   s.inbox.mail = s.inbox.mail.filter(x => !due.includes(x));
+  // Item upkeep (I-06): chain pending history, expire passes, spend Spotlight Tickets, trim the kept history.
+  if (!itemFault) for (const e of itemUpkeep(s, now)) emit(e);
 
   const spot = spotlightFor(s, now);
   // 1. Spotlight: a recorded live/replay decision for this turn, or the scenario's own choice. A paused Muse's turn passes silently.
@@ -210,7 +219,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     }
     if (m.travel) continue;
     if (m.beat && m.beat.endsAt > now) continue;
-    if (m.beat) finishBeat(m, now, emit);
+    if (m.beat) finishBeat(m, now, emit, s.items, !!itemFault);
     if (connected) continue;
     const place = placeById(m.place);
     const stay = eligibleBeats(m, place, clock.hour);
@@ -250,6 +259,8 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   }
 
   if (s.spotlight.visitorQueue[0] === spot.muse) s.spotlight.visitorQueue.shift(); else s.spotlight.cursor = (s.spotlight.cursor + 1) % s.muses.length;
+  // Spotlight Tickets are spent after this turn was served, so the next heartbeat's spotlightFor sees the same queue.
+  if (!itemFault) for (const e of spendSpotlightTickets(s, now, id => paused(id) || isConnected(s.inbox, id, now))) emit(e);
   s.tick += 1; s.version += 1; s.lastTickAt = now;
   return {state: s, events};
 }
@@ -285,11 +296,12 @@ function startBeat(m: MuseState, beat: Beat, place: Place, now: number, source: 
   void s;
 }
 
-function finishBeat(m: MuseState, now: number, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void) {
+function finishBeat(m: MuseState, now: number, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void, ledger: ItemLedger, itemsHalted: boolean) {
   const beat = BEATS.find(b => b.id === m.beat!.id);
-  if (beat?.result) {
+  // With the item history halted the beat still ends, but it neither consumes nor crafts.
+  if (beat?.result && !itemsHalted) {
     for (const c of beat.result.consume ?? []) { const k = m.inventory.indexOf(c); if (k >= 0) m.inventory.splice(k, 1); }
-    if (beat.result.craft) { m.inventory.push(beat.result.craft); emit({at: now, source: 'rule', kind: 'craft', muse: m.id, place: m.place, data: {item: beat.result.craft, from: beat.result.consume ?? []}, tags: ['ability_change']}); }
+    if (beat.result.craft) { grantItem(ledger, m, beat.result.craft, now, m.place, 'craft'); emit({at: now, source: 'rule', kind: 'craft', muse: m.id, place: m.place, data: {item: beat.result.craft, from: beat.result.consume ?? []}, tags: ['ability_change']}); }
   }
   // One-line reflection (#9): what the Muse takes from the last thing it did.
   m.reflection = `Last: ${beat?.id.replace(/_/g, ' ') ?? 'rest'} at ${placeById(m.place).name}`;

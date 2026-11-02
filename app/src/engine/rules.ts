@@ -2,7 +2,7 @@
 // Offline the engine resolves trades with a simple rule (accept when the item changes the receiver's
 // abilities); the world Durable Object replaces this with a live Muse Spark negotiation when budget allows.
 import type {Hooks, MuseState, WorldEvent, WorldState} from './world.ts';
-import {discover, checkTrade, commitTrade, speedFor, abilityGain, itemName, canCraftTransitPass, type Ledger} from './items.ts';
+import {discover, receiveDiscovery, grantItem, checkTrade, commitTrade, speedFor, abilityGain, itemName, canCraftTransitPass, historyFault, type Ledger} from './items.ts';
 import {harnessById, HARNESSES} from './harness.ts';
 import type {Place} from './places.ts';
 import {isConnected, nextId, deliverMessage, notifyOwner, TASK_TTL_MS, emptyInbox} from './inbox.ts';
@@ -20,14 +20,15 @@ export function makeHooks(): Hooks {
     onArrive: (s, m, place, rand, at) => {
       const out: E[] = [];
       const ledger = s.items;
+      // A tampered item history stops finds (I-06); the Muse still arrives.
+      if (historyFault(ledger, false, at)) return out;
       const d = discover(ledger, s.day, m.id, place, m.inventory, rand, at);
       if (!d.ok) return out;
-      for (const got of [d.item, d.stamp, d.postcard, d.relic]) if (got && !(m.inventory.includes(got) && !got.startsWith('postcard:') && got !== d.item)) m.inventory.push(got);
+      receiveDiscovery(ledger, m, d, at);
       const tags = [d.relic ? 'relic_found' : null, d.reward === 'curiosity' ? 'curiosity_reward' : null].filter(Boolean) as string[];
-      out.push({at, source: 'rule', kind: 'discover', muse: m.id, place: place.id, line: `Found ${itemName(d.item)} at ${place.name}`, data: {item: d.item, stamp: d.stamp, postcard: d.postcard, relic: d.relic, reward: d.reward}, tags});
+      out.push({at, source: 'rule', kind: 'discover', muse: m.id, place: place.id, line: `Found ${itemName(d.item)} at ${place.name}`, data: {item: d.item, stamp: d.stamp, postcard: d.postcard, relic: d.relic, reward: d.reward, spent: d.spent}, tags: d.spent ? [...tags, 'ability_change'] : tags});
       if (canCraftTransitPass(ledger, s.day, m.id) && !m.inventory.includes('transit_pass')) {
-        m.inventory.push('transit_pass');
-        ledger.history.push({item: 'transit_pass', from: null, to: m.id, place: place.id, at, via: 'craft'});
+        grantItem(ledger, m, 'transit_pass', at, place.id, 'craft');
         out.push({at, source: 'rule', kind: 'craft', muse: m.id, place: place.id, line: 'Three bus stops visited: Transit Pass crafted', data: {item: 'transit_pass', rule: 'three different bus stops today'}, tags: ['ability_change']});
       }
       return out;
@@ -56,7 +57,9 @@ export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: M
   if (toConnected) deliverMessage(inbox, {from: a.id, to: b.id, kind: 'greet', at, text: greeting});
   const t = a.intent?.kind === 'trade' && a.intent.target === b.id && a.intent.give && a.intent.want ? {give: a.intent.give, want: a.intent.want} : pickTrade(a, b);
   if (!t) return out;
-  const check = checkTrade(ledger, s.day, a, b, t.give, t.want);
+  // A tampered item history stops trades (I-06); the greeting above still happens.
+  if (historyFault(ledger, false, at)) return out;
+  const check = checkTrade(ledger, s.day, a, b, t.give, t.want, 0, at);
   out.push({at, source: 'rule', kind: 'trade_proposed', muse: a.id, other: b.id, place: place.id, line: `${itemName(t.give)} for your ${itemName(t.want)}?`, data: {give: t.give, want: t.want, stage: 'propose', check: check.ok ? 'ok' : check.reason}, tags: []});
   if (!check.ok) {
     out.push({at, source: 'rule', kind: 'trade_rejected', muse: b.id, other: a.id, place: place.id, line: 'Not this time.', data: {reason_public: check.reason === 'relic' ? 'relics stay with their place' : null, stage: 'negotiate'}, tags: ['trade_rejected']});
@@ -70,7 +73,7 @@ export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: M
     return out;
   }
   // The responder accepts when what it receives changes its abilities (layer 1) or serves its desire.
-  const accept = abilityGain(t.give, b.inventory) && (wantsOf(b).includes(t.give) || rand() < .55);
+  const accept = abilityGain(t.give, b.inventory, wantsOf(b)) && (wantsOf(b).includes(t.give) || rand() < .55);
   if (!accept) {
     out.push({at, source: 'rule', kind: 'trade_rejected', muse: b.id, other: a.id, place: place.id, line: 'I will keep mine for now.', data: {reason_public: null, stage: 'negotiate'}, tags: ['trade_rejected']});
     return out;
