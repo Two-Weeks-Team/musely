@@ -113,3 +113,80 @@ test('wants: harness defaults, validated updates, Spark adds a wanted item, old 
   const old = createWorld('old', T0); for (const m of old.muses) delete m.wants;
   assert.ok(tick(old, {now: T0}).state.muses.every(m => m.wants?.items.length));
 });
+
+// ---------- I-05: visitor priority and the other Muse's answer ----------
+const hold = (s, pairs) => {
+  // Every Muse at its own place, busy with a long beat (no trip, no new beat); `pairs` share a place and meet.
+  const spare = PLACES.filter(p => p.zone === 'neighborhood').map(p => p.id);
+  s.muses.forEach((m, k) => { m.place = spare[k]; m.travel = null; m.intent = null; m.beat = {id: 'hold', clip: 'idle', startedAt: T0, endsAt: T0 + 3_600_000, line: null}; });
+  for (const [a, b, place] of pairs) for (const id of [a, b]) s.muses.find(m => m.id === id).place = place;
+  return s;
+};
+
+test('I-05 visitor priority: a queued Muse takes the next spotlight ahead of the rotation, then the rotation resumes', async () => {
+  const {requestSpotlight} = await import('../src/engine/world.ts');
+  let s = createWorld('queue', T0);
+  assert.equal(spotlightFor(s, T0).muse, '00-jolly', 'rotation starts at the cursor');
+  assert.deepEqual(requestSpotlight(s, '07-tempo'), {ok: true, position: 1});
+  assert.deepEqual(spotlightFor(s, T0), {muse: '07-tempo', freedom: 'where', priority: true}, 'the queue goes first');
+  const r = tick(s, {now: T0});
+  assert.ok(r.events.some(e => e.kind === 'spotlight' && e.muse === '07-tempo'));
+  s = r.state;
+  assert.deepEqual(s.spotlight.visitorQueue, [], 'the priority turn leaves the queue');
+  assert.equal(spotlightFor(s, T0 + TICK_MS).muse, '00-jolly', 'the rotation was not skipped');
+  assert.equal(spotlightFor(s, T0 + TICK_MS).priority, false);
+  // Ten rotation turns after the priority turn still reach every Muse once.
+  const seen = [];
+  for (let i = 1; i <= 10; i++) { seen.push(spotlightFor(s, T0 + i * TICK_MS).muse); s = tick(s, {now: T0 + i * TICK_MS}).state; }
+  assert.equal(new Set(seen).size, 10);
+});
+
+test('I-05 visitor priority: duplicates keep their place, the queue is capped, a paused Muse is never queued or picked', async () => {
+  const {requestSpotlight, pauseMuse, SPOTLIGHT_QUEUE_MAX} = await import('../src/engine/world.ts');
+  const s = createWorld('queue2', T0);
+  assert.equal(requestSpotlight(s, '03-ripple').ok, true);
+  assert.deepEqual(requestSpotlight(s, '03-ripple'), {ok: false, reason: 'already_queued', position: 1});
+  assert.deepEqual(s.spotlight.visitorQueue, ['03-ripple'], 'no duplicate entry');
+  for (const id of ['04-ember', '05-bloom', '06-ink', '07-tempo']) assert.equal(requestSpotlight(s, id).ok, true);
+  assert.equal(s.spotlight.visitorQueue.length, SPOTLIGHT_QUEUE_MAX);
+  assert.deepEqual(requestSpotlight(s, '08-orbit'), {ok: false, reason: 'queue_full'});
+  assert.deepEqual(requestSpotlight(s, 'not-a-muse'), {ok: false, reason: 'unknown_muse'});
+  // Revoked while waiting: it leaves the queue, and the next queued Muse is picked instead.
+  pauseMuse(s, '03-ripple', {at: T0, version: 2, by: 'owner'});
+  assert.ok(!s.spotlight.visitorQueue.includes('03-ripple'));
+  assert.equal(spotlightFor(s, T0).muse, '04-ember');
+  assert.deepEqual(requestSpotlight(s, '03-ripple'), {ok: false, reason: 'paused'});
+  // Even a stale stored queue that still names a paused Muse never gives it a turn.
+  s.spotlight.visitorQueue.unshift('03-ripple');
+  assert.equal(spotlightFor(s, T0).muse, '04-ember');
+  const after = tick(s, {now: T0});
+  assert.ok(!after.events.some(e => e.muse === '03-ripple' && e.kind === 'spotlight'));
+  assert.ok(!after.state.spotlight.visitorQueue.includes('03-ripple'), 'the paused entry is dropped');
+});
+
+test('I-05 encounter answers: a recorded live answer keeps its source and evidence; otherwise a rule answer with its reason', async () => {
+  const {encounterId} = await import('../src/engine/world.ts');
+  const s = hold(createWorld('answers', T0), [['02-moss', '05-bloom', 'commons:garden']]);
+  const id = encounterId(s, '02-moss', '05-bloom');
+  const answer = (muse, other) => ({muse, other, place: 'commons:garden', encounterId: id, source: 'live', output: {intent: 'gift', item: '', line: 'The roses are out', public_reason: 'we both tend this garden', injection_suspected: false}, evidence: {model: 'muse-spark-1.3', requestId: 'req-enc'}});
+  // Pure scenario run: the meeting happens, with its id, and nobody answers for anyone.
+  const plain = tick(s, {now: T0});
+  const meet = plain.events.find(e => e.kind === 'encounter');
+  assert.equal(meet.data.encounterId, id);
+  assert.ok(!plain.events.some(e => e.kind === 'encounter_reply'));
+  // A live answer for this meeting: source live, model evidence, and the answering Muse's reflection.
+  const live = tick(s, {now: T0, replies: [answer('02-moss', '05-bloom'), answer('05-bloom', '02-moss')]});
+  const said = live.events.filter(e => e.kind === 'encounter_reply');
+  assert.equal(said.length, 1, 'one answer per meeting');
+  assert.equal(said[0].muse, meet.other, 'the other Muse answers');
+  assert.equal(said[0].source, 'live');
+  assert.equal(said[0].data.evidence.requestId, 'req-enc');
+  assert.match(live.state.muses.find(m => m.id === meet.other).reflection, /we both tend this garden/);
+  // No live answer: a rule answer that says why and carries no model evidence.
+  const rule = tick(s, {now: T0, replies: [{muse: meet.other, other: meet.muse, place: 'commons:garden', encounterId: id, source: 'rule', output: null, reason: 'budget'}]});
+  const r = rule.events.find(e => e.kind === 'encounter_reply');
+  assert.equal(r.source, 'rule');
+  assert.equal(r.data.reason, 'budget');
+  assert.equal(r.data.evidence, undefined);
+  assert.equal(tick(s, {now: T0, replies: []}).events.find(e => e.kind === 'encounter_reply').data.reason, 'no_answer_requested');
+});

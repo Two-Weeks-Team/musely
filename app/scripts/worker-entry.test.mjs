@@ -85,6 +85,21 @@ test('Worker entry: /api/agent-keys → /mcp handshake and tools → owner locat
   assert.equal(pub.body.cell_label, 'Stanford'); assert.ok(pub.body.muse.eta_ms > 0);
   assert.equal((await go('GET', '/api/owner/notifications')).status, 200);
 
+  // I-05 visitor priority through the Worker: a session asks for a Muse's next spotlight turn.
+  assert.equal((await go('POST', '/api/world/spotlight', {muse: '06-ink'})).status, 401, 'a session is required');
+  assert.equal((await go('POST', '/api/world/spotlight', {muse: 'nobody'}, {cookie: judgeCookie})).status, 400);
+  const asked = await go('POST', '/api/world/spotlight', {muse: '06-ink'}, {cookie: judgeCookie});
+  assert.equal(asked.status, 200); assert.equal(asked.body.queued, true);
+  // The connected Muse's own actions above already put it first in line; the visitor's Muse comes next.
+  const view = (await go('GET', '/api/world')).body;
+  assert.deepEqual(view.spotlightQueue, ['00-jolly', '06-ink']); assert.equal(asked.body.position, 2);
+  assert.equal(view.nextSpotlight.priority, true);
+  const reqEvent = dobj.worldEvents(0, 2000).find(e => e.kind === 'spotlight_requested' && e.muse === '06-ink');
+  assert.equal(reqEvent.data.actorOrigin, 'trial');
+  assert.ok(!JSON.stringify(reqEvent).includes(judgeCookie.split('=')[1].split('.')[0]), 'no session id in the public event');
+  await dobj.ownerRevoke('05-bloom', 'owner:test');
+  assert.equal((await go('POST', '/api/world/spotlight', {muse: '05-bloom'}, {cookie: judgeCookie})).status, 409, 'a revoked Muse is not queued');
+
   assert.equal((await go('DELETE', '/api/agent-keys/' + k.body.id, null, {cookie, origin})).status, 200);
   assert.equal((await go('POST', '/mcp', {jsonrpc: '2.0', id: 4, method: 'tools/list'}, v)).status, 401);
   const kinds = dobj.worldEvents(0, 500).filter(e => e.muse === '00-jolly').map(e => e.kind);
