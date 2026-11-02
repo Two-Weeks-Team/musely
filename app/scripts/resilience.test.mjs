@@ -65,3 +65,19 @@ test('D03 the real DO alarm retries do not duplicate ticks and an unexpected fai
   await assert.rejects(d.alarm(),/isolated unexpected/);assert.equal(scheduled,count+1);assert.ok(alarm>Date.now());
  }finally{sql.close();}
 });
+
+test('D03 healthy recovery matches the real serialized spotlight context for every freedom',async()=>{
+ const {buildMessages,checkOutput}=await import('../worker/core/actions.ts');
+ const {spotlightInput}=await import('../src/engine/world.ts');
+ const sql=sqlite(),clock={now:Date.parse('2026-11-03T16:00:00Z')};
+ try {
+  const {rt}=runtime(sql,clock,{key:''});
+  for(const freedom of ['where','who','offer','plan']){
+   const input=spotlightInput(rt.state(),'00-jolly',freedom,clock.now);
+   const result=await callModel({base:'https://musely-d03-stub.invalid/healthy',key:'test-only',model:'muse-spark-1.3',timeoutMs:8000,fetcher:(u,init)=>fault.fetch(new Request(u,init))},'spotlight',buildMessages('spotlight',input));
+   assert.equal(result.ok,true);
+   assert.equal(checkOutput('spotlight',input,result.output),null,freedom);
+   if(freedom==='who'||freedom==='offer')assert.ok(input.muses.some(m=>m.muse===result.output.target_agent),freedom+' selects a real peer');
+  }
+ } finally {sql.close();}
+});
