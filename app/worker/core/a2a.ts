@@ -1,15 +1,16 @@
 // A2A identity flows that change or record shared state (direction v2, 2.1 P0, 6.5–6.7, 12).
 // Every outcome goes through the world commit point and the append-only run log with its evidence.
 import {signEnvelope, verifyEnvelope, contentHash, type Signed} from '../../src/identity/envelope.ts';
-import {verifyCard, buildCard, signCard} from '../../src/identity/card.ts';
+import {verifyCard, buildCard, signCard, type CardCheck} from '../../src/identity/card.ts';
+import {verifyDelegation, delegationRef} from '../../src/identity/delegation.ts';
 import {generateKeyPair} from '../../src/identity/jws.ts';
 import {detectInjection, wrapUntrusted, INJECTION_LIMIT_NOTE} from '../../src/identity/untrusted.ts';
 import {checkTrade, commitTrade, itemName} from '../../src/engine/items.ts';
 import {harnessById, SCOPES} from '../../src/engine/harness.ts';
 import {placeById, distanceM} from '../../src/engine/places.ts';
 import type {WorldRuntime} from './world-runtime.ts';
-import {Trust, OWNER_SLOT} from './trust.ts';
-import type {WorldState} from '../../src/engine/world.ts';
+import {Trust, OWNER_SLOT, type Executor} from './trust.ts';
+import type {WorldState, Hooks} from '../../src/engine/world.ts';
 
 export type Ctx = {trust: Trust; runtime: WorldRuntime; ownerRoot: JsonWebKey | null; ownerClaimed: boolean; baseUrl: string; now?: () => number};
 const nowOf = (c: Ctx) => (c.now ? c.now() : Date.now());
@@ -70,6 +71,67 @@ export async function runP0(c: Ctx) {
   const fresh = await c.trust.executor(OWNER_SLOT, 'server_custodial', c.ownerRoot);
   c.runtime.commitExternal(nowOf(c), 'p0-redelegate', (_s, emit) => emit({at: nowOf(c), source: 'live', kind: 'delegation_issued', muse: OWNER_SLOT, line: 'Owner delegated again', data: {version: fresh.d.version, signer_kind: fresh.d.signer_kind, executor_kid: fresh.d.executor_kid}, tags: []}));
   return {ok: true, before: first.verdict, afterRevoke: 'verdict' in second ? second.verdict : second.reason};
+}
+
+// ---------- credentials before side effects (C04) ----------
+type CredCtx = Pick<Ctx, 'trust' | 'ownerRoot' | 'ownerClaimed' | 'baseUrl'>;
+export type Credential = {museId: string; agentId: string; card: CardCheck; delegation: {ok: true; ref: string; version: number; exp: number; signer_kind: string} | {ok: false; reason: string}};
+/** Scopes a meeting can exercise: the greeting and the trade that may follow. */
+const MEETING_SCOPES = ['walk_and_greet', 'world_item_trade'];
+
+/** One Muse's Agent Card against its trusted root and its server_heartbeat delegation, both checked for real. */
+export async function museCredential(c: CredCtx, museId: string, now: number): Promise<Credential | null> {
+  const agent = c.trust.agentByMuse(museId);
+  if (!agent) return null;
+  let card: CardCheck;
+  try { card = await verifyCard(await c.trust.card(museId, c.ownerRoot, {claimed: c.ownerClaimed, fingerprint: null}, c.baseUrl), agent.rootJwk); } catch { card = {ok: false, reason: 'unsigned'}; }
+  const base = {museId, agentId: agent.agentId, card};
+  // While revoked, no new delegation is issued: the stored one is checked and fails.
+  let exec: Executor | null = null;
+  try { exec = c.trust.suspended(museId) ? await c.trust.storedExecutor(museId, 'server_heartbeat') : await c.trust.executor(museId, 'server_heartbeat', c.ownerRoot); } catch { exec = null; }
+  if (!exec) return {...base, delegation: {ok: false, reason: c.trust.suspended(museId) ? 'delegation_revoked' : 'no_delegation'}};
+  const d = await verifyDelegation(exec.delegation, agent.rootJwk), ref = await delegationRef(exec.delegation);
+  const reason = !d || d.agent_id !== agent.agentId ? 'bad_delegation_signature'
+    : c.trust.isRevoked(ref) || d.version !== c.trust.delegationVersion(agent.agentId) ? 'delegation_revoked'
+    : d.exp <= now ? 'delegation_expired'
+    : !MEETING_SCOPES.every(x => (d.scopes as string[]).includes(x)) ? 'scope_not_delegated' : null;
+  return {...base, delegation: reason || !d ? {ok: false, reason: reason ?? 'bad_delegation_signature'} : {ok: true, ref, version: d.version, exp: d.exp, signer_kind: d.signer_kind}};
+}
+
+/** At the commit point (synchronous): is this checked credential still valid, or was it revoked during the await? */
+export function credentialProblem(t: Trust, cr: Credential | null | undefined, at: number): string | null {
+  if (!cr) return 'unknown_agent';
+  if (!cr.card.ok) return 'card_' + cr.card.reason;
+  if (!cr.delegation.ok) return cr.delegation.reason;
+  if (t.isRevoked(cr.delegation.ref) || t.delegationVersion(cr.agentId) !== cr.delegation.version) return 'delegation_revoked';
+  return cr.delegation.exp <= at ? 'delegation_expired' : null;
+}
+
+/**
+ * The heartbeat's meeting gate (6.5, C04). Before the tick, every Muse's card and delegation are verified
+ * (async crypto); the returned gate runs inside the tick, re-checks revocation synchronously and decides
+ * before any greeting, trade or memory. A refused pair is logged at most once per 30 minutes (process
+ * memory only, never world state).
+ */
+export class MeetingCheck {
+  private logged = new Map<string, number>();
+  private ctx: () => CredCtx;
+  constructor(ctx: () => CredCtx) { this.ctx = ctx; }
+  async prepare(s: WorldState, now: number): Promise<NonNullable<Hooks['canMeet']>> {
+    const c = this.ctx();
+    const creds = new Map(await Promise.all(s.muses.map(async m => [m.id, await museCredential(c, m.id, now)] as const)));
+    return (_st, a, b, place, at) => {
+      const ca = creds.get(a.id), cb = creds.get(b.id);
+      const pa = credentialProblem(c.trust, ca, at), pb = credentialProblem(c.trust, cb, at);
+      const view = (cr: Credential | null | undefined) => cr ? {card: cr.card, delegation: cr.delegation.ok ? {ref: cr.delegation.ref, version: cr.delegation.version, signer_kind: cr.delegation.signer_kind} : cr.delegation} : null;
+      if (!pa && !pb) return {ok: true, event: {at, source: 'live', kind: 'cards_verified', muse: a.id, other: b.id, place: place.id, line: 'Agent Cards and delegations verified both ways', data: {stage: 'verify', aVerifiesB: cb!.card, bVerifiesA: ca!.card, delegations: {[a.id]: view(ca), [b.id]: view(cb)}}, tags: []}};
+      const key = [a.id, b.id].sort().join('|'), last = this.logged.get(key);
+      if (last !== undefined && at - last < 30 * 60_000) return {ok: false, event: null};
+      this.logged.set(key, at);
+      const impostor = [pa, pb].some(p => p?.startsWith('card_'));
+      return {ok: false, event: {at, source: 'live', kind: 'meeting_refused', muse: a.id, other: b.id, place: place.id, line: 'Meeting refused before greeting: credentials did not verify', data: {stage: 'verify', refused: {[a.id]: pa, [b.id]: pb}, delegations: {[a.id]: view(ca), [b.id]: view(cb)}}, tags: impostor ? ['meeting_refused', 'impostor_rejected'] : ['meeting_refused']}};
+    };
+  }
 }
 
 /** Mutual Agent Card verification when two Muses meet (6.5). */

@@ -8,7 +8,7 @@ import {WorldRuntime} from './core/world-runtime.ts';
 import {TICK_MS} from '../src/engine/world.ts';
 import {makeHooks} from '../src/engine/rules.ts';
 import {Trust, OWNER_SLOT} from './core/trust.ts';
-import {runP0, verifyMeeting, impostorCheck, injectionCheck, type Ctx} from './core/a2a.ts';
+import {runP0, impostorCheck, injectionCheck, MeetingCheck, type Ctx} from './core/a2a.ts';
 import {ConnectedHost} from './core/connected.ts';
 import {RitualStore, type RitualRecord} from './core/ritual.ts';
 
@@ -20,6 +20,7 @@ export class WorldDO extends DurableObject<Env> {
   private ownerRoot: JsonWebKey | null;
   private connected: ConnectedHost;
   private origin: string;
+  private meetings = new MeetingCheck(() => this.ctx_());
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.origin = env.PUBLIC_ORIGIN;
@@ -32,6 +33,8 @@ export class WorldDO extends DurableObject<Env> {
     this.runtime = new WorldRuntime(ctx.storage.sql, {
       // Live decisions for a Muse whose delegation was revoked (and not re-issued) are discarded.
       delegationValid: museId => !this.trust.suspended(museId),
+      // Every meeting: both Agent Cards and delegations are verified before any greeting or trade.
+      meetingGate: (s, now) => this.meetings.prepare(s, now),
       worldId: 'musely',
       ledger: this.ledger,
       hooks,
@@ -61,12 +64,7 @@ export class WorldDO extends DurableObject<Env> {
   async alarm() {
     try {
       const r = await this.runtime.heartbeat(Date.now());
-      if (r.status === 'committed') {
-        console.log('heartbeat', r.tick, r.spotlight?.muse, r.spotlight?.source, r.spotlight?.reason ?? '');
-        // Every meeting in this tick: both Agent Cards are verified for real before anything else happens.
-        const met = this.runtime.eventsOfKind(r.tick, 'encounter').slice(0, 4);
-        for (const e of met) await verifyMeeting(this.ctx_(), String(e.muse), String(e.other), e.place ? String(e.place) : null);
-      }
+      if (r.status === 'committed') console.log('heartbeat', r.tick, r.spotlight?.muse, r.spotlight?.source, r.spotlight?.reason ?? '');
     } finally {
       // Always schedule the next beat, even if this one threw (the runtime is idempotent per tick).
       await this.ctx.storage.setAlarm(Date.now() + TICK_MS);

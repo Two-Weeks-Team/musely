@@ -21,6 +21,11 @@ export type RuntimeOptions = {
   delegationValid?: (museId: string) => boolean;
   /** Test seam: runs between the model answer and the commit (e.g. to simulate a concurrent commit). */
   beforeCommit?: () => void;
+  /**
+   * Checks Agent Cards and delegations before the tick (async crypto) and returns the synchronous gate the
+   * engine consults before each meeting. Without it (offline/tests) meetings are not credential-checked.
+   */
+  meetingGate?: (s: WorldState, now: number) => Promise<NonNullable<Hooks['canMeet']>>;
 };
 export type HeartbeatResult = {status: 'committed' | 'skipped_duplicate' | 'skipped_early'; tick: number; events: number; spotlight?: {muse: string; source: string; reason?: string}};
 
@@ -52,7 +57,7 @@ export class WorldRuntime {
     if (this.tickTaken(before)) return {status: 'skipped_duplicate', tick: before.tick, events: 0};
     try {
       const spot = spotlightFor(before, now);
-      const {decision, info} = await this.liveSpotlight(before, spot.muse, spot.freedom, now);
+      const [{decision, info}, canMeet] = await Promise.all([this.liveSpotlight(before, spot.muse, spot.freedom, now), this.meetingGate(before, now)]);
       this.opts.beforeCommit?.();
       // Commit point: everything below is synchronous, so no other request interleaves.
       const current = this.state();
@@ -61,7 +66,7 @@ export class WorldRuntime {
       const late: Omit<WorldEvent, 'id' | 'tick'>[] = [];
       if (decision && current.version !== before.version) { late.push({at: now, source: decision.source, kind: 'decision_discarded', muse: decision.muse, data: {reason: 'world changed while the model was answering', evidence: decision.evidence ?? null}, tags: []}); usable = null; }
       if (decision && this.opts.delegationValid && !this.opts.delegationValid(decision.muse)) { late.push({at: now, source: decision.source, kind: 'decision_discarded', muse: decision.muse, data: {reason: 'delegation revoked before commit', evidence: decision.evidence ?? null}, tags: []}); usable = null; }
-      const {state, events} = tick(current, {now, decision: usable}, this.opts.hooks);
+      const {state, events} = tick(current, {now, decision: usable}, canMeet ? {...this.opts.hooks, canMeet} : this.opts.hooks);
       const all = [...events, ...late.map((e, i) => ({...e, id: `${current.day}:${current.tick}:late${i}`, tick: current.tick}))];
       if (!usable && info.reason) all.push({at: now, source: info.source as WorldEvent['source'], kind: 'spotlight_fallback', muse: spot.muse, data: {reason: info.reason}, tags: [], id: `${current.day}:${current.tick}:fallback`, tick: current.tick});
       this.sql.exec('UPDATE world SET state = ?, version = ? WHERE id = 1', JSON.stringify(state), state.version);
@@ -70,6 +75,15 @@ export class WorldRuntime {
       return {status: 'committed', tick: current.tick, events: all.length, spotlight: {muse: spot.muse, ...info}};
     } finally {
       this.inFlight.delete(this.reservationId(before));
+    }
+  }
+
+  private async meetingGate(s: WorldState, now: number): Promise<Hooks['canMeet']> {
+    if (!this.opts.meetingGate) return undefined;
+    // Verification is never skipped and the world never stops: if the check cannot run, nobody meets this tick.
+    try { return await this.opts.meetingGate(s, now); } catch (e) {
+      console.error('meeting gate failed', e);
+      return (_s, a, b, place, at) => ({ok: false, event: {at, source: 'live', kind: 'meeting_refused', muse: a.id, other: b.id, place: place.id, line: 'Meeting paused: credentials could not be checked', data: {stage: 'verify', reason: 'verification_unavailable'}, tags: ['meeting_refused']}});
     }
   }
 
