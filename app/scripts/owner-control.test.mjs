@@ -418,7 +418,10 @@ test('postcards from or to a paused Muse wait in the queue and are delivered on 
   assert.ok(t.muse(OWNER).inventory.includes('postcard:commons:garden') && t.muse('02-moss').inventory.includes('postcard:commons:cafe'));
 });
 
-test('a revocation clears other Muses\' intents aimed at the paused Muse, so they go back to wandering', async () => {
+test('a revocation clears other Muses\' intents aimed at the paused Muse, so they go back to wandering', async context => {
+  // The rule scenario depends on local hours and beat duration. Keep this authorization regression on
+  // one reproducible world clock instead of requiring a random departure during any wall-clock hour.
+  context.mock.timers.enable({apis: ['Date'], now: Date.parse('2026-11-02T13:09:00Z')});
   const t = await boot();
   const h = {cookie: await t.login(OWNER_TOKEN), origin: ORIGIN};
   t.edit(st => { const m = st.muses.find(x => x.id === '02-moss'); m.intent = {kind: 'greet', target: OWNER}; m.travel = null; m.beat = null; st.muses.find(x => x.id === '05-bloom').intent = {kind: 'greet', target: '03-ripple'}; });
