@@ -1,3 +1,4 @@
+import {recordedSceneFrame} from './recorded-scene.ts';
 import type {RecordedFrame, RecordedEvidence, RecordedEvent} from '../replay/player.ts';
 // Live world surface (direction v2, task 6): shows what the shared world is really doing and lets anyone
 // open the evidence behind it. Everything is built with textContent; nothing from the server is parsed as HTML.
@@ -170,19 +171,19 @@ function museMarkers(map: LibreMap, onSelect: (id: string) => void, isLive: () =
   }
   let added = false;
   return {
-    update(w: WorldView | null, events: readonly LiveEvent[] = []) {
+    update(w: LiveWorld | null, events: readonly LiveEvent[] = [], atMs = Date.now(), replay = false) {
       if (!w) return;
       if (!added) { for (const {m} of markers.values()) m.addTo(map); added = true; }
-      const now = Date.now(), zoom = map.getZoom();
+      const now = atMs, zoom = map.getZoom();
       const frames = liveFrames(w, scheduleCues(events.filter(e => e.tick === undefined || e.tick <= w.tick)), now);
       for (const v of w.muses) {
         const k = markers.get(v.id); if (!k) continue;
         const f = frames.get(v.id), pos = f ? sceneToLngLat(f.x, f.z) : null; if (!pos) {k.m.getElement().style.display = 'none'; continue;}
         k.m.setLngLat(pos);
-        const node = k.m.getElement(); node.style.display = !isLive() || zoom > 20.2 ? 'none' : '';
-        node.dataset.projectedAt = String(now); node.dataset.lnglat = JSON.stringify(pos); node.dataset.version = String(w.version ?? w.tick); node.dataset.owner = ownerOf(v.id).kind;
+        const node = k.m.getElement(); node.style.display = (!isLive() && !replay) || zoom > 20.2 ? 'none' : '';
+        node.dataset.replay = String(replay); node.dataset.projectedAt = String(now); node.dataset.lnglat = JSON.stringify(pos); node.dataset.version = String(w.version ?? w.tick); node.dataset.owner = ownerOf(v.id).kind;
         node.dataset.inventory = JSON.stringify(v.inventory);
-        node.title = `${museName(v.id)} · ${ownerOf(v.id).label} · ${inventorySummary(v.inventory).text}`;
+        node.title = `${replay ? 'REPLAY · ' : ''}${museName(v.id)} · ${ownerOf(v.id).label} · ${inventorySummary(v.inventory).text}`;
         k.label.textContent = harnessById(v.id).name + (v.travel ? ` → ${placeName(v.travel.to)}` : '');
       }
     },
@@ -341,9 +342,10 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   // Fixture replay (P-06): mounted only on its tab; while it is on screen every background poll to /api waits.
   let replayView: {destroy(): void} | null = null;
   function leaveReplay() { if (replayView) { replayView.destroy(); replayView = null; } if (isolation.replay) { isolation.replay = false; paintConn(); } }
+  let currentRecorded: RecordedFrame | null = null;
   const replayFrames = new Set<(frame: RecordedFrame | null) => void>();
   const replayCtx = {
-    onFrame: (frame: RecordedFrame | null) => { for (const listener of replayFrames) listener(frame); },
+    onFrame: (frame: RecordedFrame | null) => { currentRecorded = frame; if (frame) {const view = recordedSceneFrame(frame); pins.update(view.world, view.events, frame.recordedAt, true);} else {pins.update(world, events);} for (const listener of replayFrames) listener(frame); },
     returnLive: () => { tab = 'feed'; void render().then(() => refresh()); },
     showEvidence: (e: ReplayEvent | RecordedEvent, trigger: HTMLElement) => openEvidence(e, trigger),
     sourceLabel: (e: ReplayEvent | RecordedEvent) => sourceLabel(e), describe: (e: ReplayEvent | RecordedEvent) => describe(e), museName, placeName, at,
@@ -601,6 +603,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   paintConn();
   void refresh();
   setInterval(refresh, 10_000);
+  map.on('zoom', () => {if (currentRecorded) {const view = recordedSceneFrame(currentRecorded); pins.update(view.world, view.events, currentRecorded.recordedAt, true);}});
   setInterval(() => {if (!isolation.replay && !live.paused?.()) pins.update(world, events);}, 1000);
   return {refresh, onReplayFrame(listener: (frame: RecordedFrame | null) => void) { replayFrames.add(listener); return () => replayFrames.delete(listener); }, get events() { return events; }, get world() { return world; }, showEvidence: openEvidence, flows: flowState, replay: replayPlayer, health, openTab(id: string) { tab = id; if (!panel.matches(':popover-open')) panel.showPopover(); void render(); }};
 }

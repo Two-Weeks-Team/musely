@@ -11,6 +11,7 @@ import assetData from '../assets/embedded.json';
 import {MaterialLibrary,clipsUrl} from './character-kit/MaterialLibrary';
 import {lodUrl,ACTION_CLIPS,propsUrl} from './character-kit/catalog';
 import {sparkStatus,statusLabel,type SparkStatus} from './live';
+import type {RecordedFrame} from './replay/player';
 import {mountWorldPanel} from './ui/world-panel';
 import {isolation} from './ui/isolation';
 import {mountOnboarding} from './ui/onboarding';
@@ -40,9 +41,11 @@ if(autoplay)document.body.classList.add('story-mode');
 const kitLibrary=useKit?new MaterialLibrary('/character-kit/runtime/'):undefined;if(kitLibrary){kitLibrary.load(lodUrl(2,kitLibrary.base)).catch(()=>{});kitLibrary.load(clipsUrl(kitLibrary.base)).catch(()=>{});}
 let clock=makeClock(),lifeTime=0,last=performance.now(),selected=0,follow=false,tour=false,tourCamera=false,ownerDecision='pending',ready=false,lastUI=0;
 let mode:'story'|'world'=autoplay?'story':'world',storyResume=0,liveSelected='00-jolly';
-let liveViewAt:number|null=null;
+let liveViewAt:number|null=null,recordedFrame:RecordedFrame|null=null;
 let liveScene:ReturnType<typeof makeLiveScene>|null=null,pendingLive:{world:LiveWorld;events:readonly LiveEvent[]}|null=null;
 const showingLive=()=>mode==='world'&&!cues.length&&!isolation.replay;
+const showingRecorded=()=>isolation.replay&&recordedFrame!==null;
+const showingScene=()=>showingLive()||showingRecorded();
 // Preview cues (P-05) live with the other playback state so any control can end one before it changes the world.
 let cues:Cue[]=[],cueRestore:{paused:boolean;tour:boolean;tourCamera:boolean}|null=null;
 const statuses:string[]=[],errors:string[]=[];let frame=0,drawCalls=0,triangles=0,fps=0,fpsFrames=0,fpsStart=performance.now();
@@ -69,7 +72,7 @@ const marker=new Marker({element:pin,anchor:'bottom',offset:[0,-8]}).setLngLat(a
 function visit(zoom=21.7){manual();map.flyTo({center:anchor,zoom,pitch:54,bearing:BEARING,duration:4500,essential:true});}
 $('visit').onclick=()=>visit();$('bay').onclick=()=>{manual();map.flyTo({center:anchor,zoom:10.25,pitch:42,bearing:BEARING,duration:5000,essential:true});};
 $('plus').onclick=()=>{manual();map.zoomIn({duration:500});};$('minus').onclick=()=>{manual();map.zoomOut({duration:500});};
-$('follow').onclick=()=>{manual();follow=true;$('follow').classList.add('active');const p=showingLive()?(liveScene?.frames.get(liveSelected)??positionAt(selected,lifeTime)):positionAt(selected,lifeTime);map.flyTo({center:toGeo(p.x,p.z),zoom:22.7,pitch:55,bearing:BEARING,duration:2300,essential:true});};
+$('follow').onclick=()=>{manual();follow=true;$('follow').classList.add('active');const p=showingScene()?(liveScene?.frames.get(liveSelected)??positionAt(selected,lifeTime)):positionAt(selected,lifeTime);map.flyTo({center:toGeo(p.x,p.z),zoom:22.7,pitch:55,bearing:BEARING,duration:2300,essential:true});};
 // The button always matches what the world is doing: a preview cue holds the world ("Paused for preview"), and pressing the
 // button then ends the cue and resumes; otherwise it toggles the user's own pause.
 function syncPause(){const held=cues.length>0;$('pause').textContent=held?'Paused for preview':clock.paused?(mode==='world'?'Resume view':'Resume world'):(mode==='world'?'Pause view':'Pause world');$('pause').setAttribute('aria-pressed',String(held||clock.paused));}
@@ -105,19 +108,19 @@ let bubbles:ReturnType<typeof makeBubbles>;
 let world:Awaited<ReturnType<typeof makeWorld>>,renderer:T.WebGLRenderer,camera:T.Camera,projection=new T.Matrix4();
 const localMatrix=new T.Matrix4().makeTranslation(origin.x,origin.y,origin.z).multiply(new T.Matrix4().makeScale(unit,-unit,unit)).multiply(new T.Matrix4().makeRotationX(Math.PI/2)).multiply(new T.Matrix4().makeRotationY(-gridYaw));
 const layer:CustomLayerInterface={id:'musely-world',type:'custom',renderingMode:'3d',onAdd(_map,gl){renderer=new T.WebGLRenderer({canvas:map.getCanvas(),context:gl as WebGL2RenderingContext,antialias:true});renderer.autoClear=false;renderer.outputColorSpace=T.SRGBColorSpace;renderer.toneMapping=T.NoToneMapping;renderer.toneMappingExposure=1.15;camera=new T.Camera();if(world?.actors){const pmrem=new T.PMREMGenerator(renderer),room=new RoomEnvironment();world.scene.environment=pmrem.fromScene(room,.04).texture;world.scene.environmentIntensity=.12;room.dispose();pmrem.dispose();renderer.resetState();}},render(gl,args){
- const now=performance.now(),rawDt=(now-last)/1000,dt=Math.min(rawDt,.1);last=now;if(!clock.paused){if(tour){clock=advance(clock,rawDt);lifeTime=clock.elapsed;}else lifeTime+=dt;}
- if(tourCamera){const c=tourCameraAt(clock.elapsed,selected,innerWidth<700),g=toGeo(c.x,c.z);
+ const now=performance.now(),rawDt=(now-last)/1000,dt=Math.min(rawDt,.1);last=now;if(!clock.paused&&!showingRecorded()){if(tour){clock=advance(clock,rawDt);lifeTime=clock.elapsed;}else lifeTime+=dt;}
+ if(tourCamera&&!showingRecorded()){const c=tourCameraAt(clock.elapsed,selected,innerWidth<700),g=toGeo(c.x,c.z);
   const center:[number,number]=[g.lng,g.lat];
   map.jumpTo({center,zoom:c.zoom,pitch:54,bearing:BEARING});
- }else if(follow&&!map.isMoving()){const p=showingLive()?(liveScene?.frames.get(liveSelected)??positionAt(selected,lifeTime)):positionAt(selected,lifeTime);map.setCenter(toGeo(p.x,p.z));}
+ }else if(follow&&!map.isMoving()){const p=showingScene()?(liveScene?.frames.get(liveSelected)??positionAt(selected,lifeTime)):positionAt(selected,lifeTime);map.setCenter(toGeo(p.x,p.z));}
  if(tour&&clock.tourFinished){tour=false;tourCamera=false;$('tour').textContent='Replay story · 3:30';$('tour').classList.remove('active');}
- if(liveScene){liveScene.setActive(showingLive());if(showingLive()){const at=clock.paused?(liveViewAt??=Date.now()):(liveViewAt=null,Date.now());liveScene.update(at,liveSelected);}else world.update(lifeTime,selected);}else world.update(lifeTime,selected);
+ if(liveScene){liveScene.setActive(showingScene());if(showingScene()){const at=recordedFrame?.recordedAt??(clock.paused?(liveViewAt??=Date.now()):(liveViewAt=null,Date.now()));liveScene.update(at,liveSelected);}else world.update(lifeTime,selected);}else world.update(lifeTime,selected);
  const matrix=args.defaultProjectionData.mainMatrix;projection.fromArray(matrix as number[]).multiply(localMatrix);camera.projectionMatrix.copy(projection);camera.projectionMatrixInverse.copy(projection).invert();
- if(world.actors&&!showingLive()){const turn=conversationAt(Math.min(lifeTime,DURATION));world.setLods(world.muses.map((_,i)=>museBounds(i).height),[selected,...(turn?[turn.person,turn.listener]:[])]);}
+ if(world.actors&&!showingScene()){const turn=conversationAt(Math.min(lifeTime,DURATION));world.setLods(world.muses.map((_,i)=>museBounds(i).height),[selected,...(turn?[turn.person,turn.listener]:[])]);}
  renderer.resetState();renderer.setViewport(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);renderer.render(world.scene,camera);drawCalls=renderer.info.render.calls;triangles=renderer.info.render.triangles;renderer.resetState();frame++;fpsFrames++;
  if(now-fpsStart>=1000){fps=Math.round(fpsFrames*1000/(now-fpsStart));fpsFrames=0;fpsStart=now;}
- if(now-lastUI>200){updateUI();bubbles?.invalidate();$('time-label').textContent=clock.paused?(mode==='world'?'VIEW PAUSED · SHARED WORLD STILL RUNNING':'A quiet pause'):tour?`STORY ${Math.floor(clock.elapsed/60)}:${String(Math.floor(clock.elapsed%60)).padStart(2,'0')} / 3:30`:'A LITTLE LIFE, IN MOTION';if(tour)$('tour').textContent=`Story · ${Math.floor(clock.elapsed/60)}:${String(Math.floor(clock.elapsed%60)).padStart(2,'0')} / 3:30`;lastUI=now;}
- bubbles?.update(lifeTime);const storyBubbles=document.getElementById('world-bubbles');if(storyBubbles)storyBubbles.hidden=showingLive();updateCues(now);
+ if(now-lastUI>200){updateUI();bubbles?.invalidate();$('time-label').textContent=showingRecorded()?'REPLAY · RECORDED WORLD':clock.paused?(mode==='world'?'VIEW PAUSED · SHARED WORLD STILL RUNNING':'A quiet pause'):tour?`STORY ${Math.floor(clock.elapsed/60)}:${String(Math.floor(clock.elapsed%60)).padStart(2,'0')} / 3:30`:'A LITTLE LIFE, IN MOTION';if(tour)$('tour').textContent=`Story · ${Math.floor(clock.elapsed/60)}:${String(Math.floor(clock.elapsed%60)).padStart(2,'0')} / 3:30`;lastUI=now;}
+ bubbles?.update(lifeTime);const storyBubbles=document.getElementById('world-bubbles');if(storyBubbles)storyBubbles.hidden=showingScene();updateCues(now);
  if(!ready){ready=true;sceneReadyAtMs=performance.now();if(autoplay)startStory();$('loading').hidden=true;statuses.push('world rendered');}
  if(!detailReadyAtMs&&map.getZoom()>=20.35)detailReadyAtMs=performance.now();
  map.triggerRepaint();
@@ -125,17 +128,18 @@ const layer:CustomLayerInterface={id:'musely-world',type:'custom',renderingMode:
 function projected(point:T.Vector3){const p=point.clone().applyMatrix4(projection);return {x:(p.x+1)*map.getCanvas().clientWidth/2,y:(1-p.y)*map.getCanvas().clientHeight/2};}
 function museBounds(i:number){const p=world.muses[i].position,b=world.actorBounds(i)??new T.Box3().setFromObject(world.muses[i]),points=[];for(const x of [b.min.x,b.max.x])for(const y of [b.min.y,b.max.y])for(const z of [b.min.z,b.max.z])points.push(projected(new T.Vector3(x,y,z)));return {footY:b.min.y,center:projected(p.clone().add(new T.Vector3(0,.5,0))),width:Math.max(...points.map(p=>p.x))-Math.min(...points.map(p=>p.x)),height:Math.max(...points.map(p=>p.y))-Math.min(...points.map(p=>p.y))};}
 function pickLive(point:{x:number;y:number}){let id:string|null=null,d=Infinity;for(const f of liveScene?.frames.values()??[]){const foot=projected(new T.Vector3(f.x,surfaceHeightAt(f.x,f.z),f.z)),head=projected(new T.Vector3(f.x,surfaceHeightAt(f.x,f.z)+.95,f.z)),center=projected(new T.Vector3(f.x,surfaceHeightAt(f.x,f.z)+.5,f.z)),height=Math.abs(head.y-foot.y),dist=Math.hypot(point.x-center.x,point.y-center.y);if(dist<Math.max(20,height*.6)&&dist<d){id=f.id;d=dist;}}return id;}
-map.on('click',e=>{if(!ready||map.getZoom()<20)return;if(showingLive()){const id=pickLive(e.point);if(id)selectLive(id);return;}let nearest=-1,d=Infinity;for(let i=0;i<PEOPLE.length;i++){const b=museBounds(i),dist=Math.hypot(e.point.x-b.center.x,e.point.y-b.center.y);if(dist<Math.max(25,b.height*.6)&&dist<d){d=dist;nearest=i;}}if(nearest>=0)select(nearest);});
-map.on('mousemove',e=>{if(!ready)return;if(showingLive()){map.getCanvas().style.cursor=map.getZoom()>20&&pickLive(e.point)?'pointer':'';return;}let hit=false;if(map.getZoom()>20)for(let i=0;i<PEOPLE.length;i++){const b=museBounds(i);if(Math.hypot(e.point.x-b.center.x,e.point.y-b.center.y)<Math.max(20,b.height*.5))hit=true;}map.getCanvas().style.cursor=hit?'pointer':'';});
+map.on('click',e=>{if(!ready||map.getZoom()<20)return;if(showingScene()){const id=pickLive(e.point);if(id)selectLive(id);return;}let nearest=-1,d=Infinity;for(let i=0;i<PEOPLE.length;i++){const b=museBounds(i),dist=Math.hypot(e.point.x-b.center.x,e.point.y-b.center.y);if(dist<Math.max(25,b.height*.6)&&dist<d){d=dist;nearest=i;}}if(nearest>=0)select(nearest);});
+map.on('mousemove',e=>{if(!ready)return;if(showingScene()){map.getCanvas().style.cursor=map.getZoom()>20&&pickLive(e.point)?'pointer':'';return;}let hit=false;if(map.getZoom()>20)for(let i=0;i<PEOPLE.length;i++){const b=museBounds(i);if(Math.hypot(e.point.x-b.center.x,e.point.y-b.center.y)<Math.max(20,b.height*.5))hit=true;}map.getCanvas().style.cursor=hit?'pointer':'';});
 bubbles=makeBubbles(map,i=>world?projected(world.muses[i].position.clone().add(new T.Vector3(0,.93,0))):{x:-100,y:-100});
 map.on('render',()=>{if(!ready)bubbles.update(0);if(!onlineMapReadyAtMs&&map.getSource('openmaptiles')&&map.isSourceLoaded('openmaptiles')&&map.queryRenderedFeatures().some(f=>f.source==='openmaptiles')){onlineMapReadyAtMs=performance.now();}});
 map.once('style.load',()=>{void Promise.race([kitLight,new Promise(r=>setTimeout(r,4000))]).then(addOnlineMap);});
-map.once('style.load',async()=>{try{world=await makeWorld(assetData.glb,assetData.sigils,useKit?'/character-kit/runtime/':null,kitLibrary);liveScene=makeLiveScene(world,projected);if(pendingLive)liveScene.accept(pendingLive.world,pendingLive.events);map.addLayer(layer);statuses.push('assets parsed');void world.upgradeCharacters().then(()=>statuses.push('characters full detail'));}catch(e){console.error(e);errors.push(String(e));$('loading').textContent='The commons could not load. Please reopen this preview.';}});
+map.once('style.load',async()=>{try{world=await makeWorld(assetData.glb,assetData.sigils,useKit?'/character-kit/runtime/':null,kitLibrary);liveScene=makeLiveScene(world,projected);if(pendingLive)liveScene.accept(pendingLive.world,pendingLive.events);if(recordedFrame)liveScene.setRecordedFrame(recordedFrame);map.addLayer(layer);statuses.push('assets parsed');void world.upgradeCharacters().then(()=>statuses.push('characters full detail'));}catch(e){console.error(e);errors.push(String(e));$('loading').textContent='The commons could not load. Please reopen this preview.';}});
 setTimeout(()=>{if(!ready){$('loading').innerHTML='Your Muse is taking a little longer…<small>Please reopen this preview if the scene does not appear.</small>'; }},12000);
 // ?perf=1: on-device frame rate and render cost; ?dpr= compares pixel-ratio caps on one phone.
 const perf=mountPerf(()=>({drawCalls,triangles,canvas:map.getCanvas()}),ratio);
 // Live world surface (task 6): map pins, spotlight chip, feed, highlights, evidence, P1, autonomy, identity, location.
 const worldPanel=mountWorldPanel(map,{onWorld:(w,events)=>{pendingLive={world:w,events};liveWants=Object.fromEntries(w.muses.filter(m=>m.wants?.goal).map(m=>[m.id,{goal:m.wants!.goal,source:String(m.wants!.source)}]));liveScene?.accept(w,events);},onSelect:selectLive,isLive:()=>mode==='world',paused:()=>mode==='world'&&clock.paused&&!cues.length});
+worldPanel.onReplayFrame(frame=>{recordedFrame=frame;liveScene?.setRecordedFrame(frame);updateUI();});
 // P-05: one continuous scene. Story (scripted) and live world are explicit modes you can switch between and back;
 // the selected Muse, its state and its source stay visible at every zoom; preview-flow item changes play on the
 // commons character with its clip and prop, or say plainly that a fallback is shown.
@@ -159,14 +163,14 @@ const museSource=document.createElement('span');museSource.id='muse-source';muse
 function updateContinuity(){
  // updateUI first runs before this block is evaluated; the continuity UI joins from the next refresh.
  if(!museSource||!selectedLine||!cues)return;
- if(showingLive()){
+ if(showingScene()){
   const m=liveScene?.projection.world?.muses.find(m=>m.id===liveSelected),f=liveScene?.frames.get(liveSelected),v=MUSE_VARIANTS.find(v=>v.id===liveSelected)!;
   const source=liveScene?.getMetrics().muses.find(m=>m.id===liveSelected)?.source?.toUpperCase()??'CONNECTING';
-  museSource.textContent='SHARED WORLD · '+source;museSource.className='src src-'+source.toLowerCase();
+  museSource.textContent=(showingRecorded()?'REPLAY · originally ':'SHARED WORLD · ')+source;museSource.className='src src-'+(showingRecorded()?'replay':source.toLowerCase());
   $('muse-name').textContent=museName(liveSelected);$('muse-role').textContent=ownerOf(liveSelected).label;$('avatar-large').style.setProperty('--muse',v.body);
   $('activity-title').textContent=f?.status??'Waiting for the shared world';$('activity-detail').textContent=f?.line??(m?inventorySummary(m.inventory).text:'The world has not answered yet.');
-  $('muse-want-text').textContent='Wants: '+(m?.wants?.goal??harnessById(liveSelected).wants.goal);
-  $('meetup').hidden=true;$('card-candidate').hidden=true;$('decision-state').textContent=f?.fallback??(liveScene?.getMetrics().muses.find(row=>row.id===liveSelected)?.rendered===false?'3D characters are unavailable or loading. The map and card still show shared state.':'Actions follow the shared world. Commitments still need the owners.');
+  $('muse-want-text').textContent=showingRecorded()?'Private or hashed goal unavailable in recording':'Wants: '+(m?.wants?.goal??harnessById(liveSelected).wants.goal);
+  $('meetup').hidden=true;$('card-candidate').hidden=true;$('decision-state').textContent=f?.fallback??(liveScene?.getMetrics().muses.find(row=>row.id===liveSelected)?.rendered===false?'3D characters are unavailable or loading. The map and card still show shared state.':showingRecorded()?'Recorded public state only. No action or reward is re-executed.':'Actions follow the shared world. Commitments still need the owners.');
   $('muse-card').dataset.museId=liveSelected;$('muse-card').dataset.version=String(liveScene?.projection.world?.version??'');$('muse-card').dataset.inventory=JSON.stringify(m?.inventory??[]);
   selectedLine.textContent=`${museName(liveSelected)} · ${f?.status??'waiting for world'} · ${source.toLowerCase()}`;selectedLine.hidden=map.getZoom()>=20.35;
   portraits.querySelectorAll<HTMLButtonElement>('button').forEach(b=>{const chosen=b.dataset.museId===liveSelected;b.classList.toggle('selected',chosen);b.setAttribute('aria-pressed',String(chosen));});

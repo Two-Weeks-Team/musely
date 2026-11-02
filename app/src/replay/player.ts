@@ -1,4 +1,5 @@
 // I-11: exact public checkpoint projection. There is no engine tick, command executor, model or transport here.
+import {scheduleCues} from '../ui/live-scene-core.ts';
 import {createPlayer, type Speed} from '../ui/replay-core.ts';
 import type {AutoEvent} from '../ui/autonomy.ts';
 import {sha256Hex} from '../engine/sha256.ts';
@@ -13,7 +14,7 @@ export type RunEvent = AutoEvent & {seq: number; tick: number; runId: string; in
 export type LoadedRun = RunRecord & {readThrough: RunBoundary; inputs: RunInput[]; events: RunEvent[]};
 export type RecordedEvidence = {runId: string; versions: RunVersions; input: Pick<RunInput, 'seq' | 'kind' | 'label' | 'beforeHash' | 'afterHash' | 'itemsHead'>};
 export type RecordedEvent = RunEvent & {recorded: RecordedEvidence};
-export type RecordedFrame = {replay: true; runId: string; worldId: string; recordedAt: number; snapshotAt: number; snapshotHash: string; publicState: Record<string, any>; events: RecordedEvent[]; inputs: Omit<RunInput, 'afterSnapshot'>[]; empty: boolean; timeOrderAdjusted: boolean};
+export type RecordedFrame = {replay: true; runId: string; worldId: string; recordedAt: number; snapshotAt: number; snapshotHash: string; publicState: Record<string, any>; events: RecordedEvent[]; inputs: Omit<RunInput, 'afterSnapshot'>[]; empty: boolean; playout: boolean; timeOrderAdjusted: boolean};
 function bad(detail: string): never { throw new ReplayRecordError('invalid_record', detail); }
 const obj = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
 const integer = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
@@ -30,9 +31,13 @@ function readSnapshot(s: unknown, worldId: string): Record<string, any> {
   if (new TextEncoder().encode(s.body).byteLength > MAX_REPLAY_SNAPSHOT_BYTES) throw new ReplayRecordError('record_too_large', 'snapshot exceeds supported size');
   if (recordedStateHash(s.body) !== s.hash) bad('snapshot hash mismatch');
   let state: any; try { state = JSON.parse(s.body); } catch { bad('snapshot is not JSON'); }
-  if (!obj(state) || state.worldId !== worldId || !Array.isArray(state.muses) || !integer(state.version)) bad('snapshot is not this world public state');
+  if (!obj(state) || state.worldId !== worldId || typeof state.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(state.day) || !integer(state.tick) || !integer(state.lastTickAt) || !Array.isArray(state.muses) || !integer(state.version)) bad('snapshot is not this world public state');
   const ids = state.muses.map((m: any) => obj(m) && typeof m.id === 'string' && typeof m.place === 'string' && Array.isArray(m.inventory) && m.inventory.every((i: unknown) => typeof i === 'string') ? m.id : bad('invalid Muse in snapshot'));
   if (new Set(ids).size !== ids.length) bad('duplicate Muse in snapshot');
+  for (const m of state.muses) {
+    if (m.travel !== null && m.travel !== undefined && (!obj(m.travel) || typeof m.travel.to !== 'string' || !integer(m.travel.departAt) || !integer(m.travel.arriveAt) || m.travel.arriveAt < m.travel.departAt || typeof m.travel.speed !== 'string')) bad('invalid travel in snapshot');
+    if (m.beat !== null && m.beat !== undefined && (!obj(m.beat) || typeof m.beat.id !== 'string' || !integer(m.beat.startedAt) || !integer(m.beat.endsAt) || (m.beat.clip != null && typeof m.beat.clip !== 'string'))) bad('invalid beat in snapshot');
+  }
   return state;
 }
 export function loadRun(raw: unknown, expected: RunVersions = currentVersions()) {
@@ -70,7 +75,11 @@ export function loadRun(raw: unknown, expected: RunVersions = currentVersions())
   }
   if (seq !== boundary.eventSeq) throw new ReplayRecordError('incomplete_record', 'event boundary not reached');
   for (const i of r.inputs) if ((eventCounts.get(i.seq) ?? 0) !== i.events) throw new ReplayRecordError('incomplete_record', `events for commit #${i.seq} are incomplete`);
-  const duration = (checkpoints.at(-1)!.time - r.startedAt) / 1000, clock = createPlayer(duration);
+  const lastCommitAt = checkpoints.at(-1)!.time;
+  // Public cues may begin after the final commit (the shared renderer delays their display for polling).
+  // Hold the exact last checkpoint through that visual tail; never tick the world to fill it.
+  const endAt = scheduleCues(r.events).reduce((end, cue) => Math.max(end, cue.end), lastCommitAt);
+  const duration = (endAt - r.startedAt) / 1000, clock = createPlayer(duration);
   const versions = Object.fromEntries(['schemaVersion', 'engineVersion', 'harnessVersion', 'catalogVersion'].map(k => [k, r[k as keyof LoadedRun]])) as RunVersions;
   return {
     getState: clock.getState, play: clock.play, pause: clock.pause, seek: clock.seek, setSpeed: clock.setSpeed, restart: clock.restart, advance: clock.advance,
@@ -82,7 +91,7 @@ export function loadRun(raw: unknown, expected: RunVersions = currentVersions())
         const i = checkpoints[bySeq.get(e.inputSeq)!].input!;
         return {...e, recorded: {runId: r.runId, versions, input: {seq: i.seq, kind: i.kind, label: i.label, beforeHash: i.beforeHash, afterHash: i.afterHash, itemsHead: i.itemsHead}}};
       });
-      return structuredClone({replay: true, runId: r.runId, worldId: r.worldId, recordedAt: time, snapshotAt: c.at, snapshotHash: c.hash, publicState: c.state, events, inputs, empty: !r.inputs.length && !r.events.length, timeOrderAdjusted: adjusted});
+      return structuredClone({replay: true, runId: r.runId, worldId: r.worldId, recordedAt: time, snapshotAt: c.at, snapshotHash: c.hash, publicState: c.state, events, inputs, empty: !r.inputs.length && !r.events.length, playout: time > lastCommitAt, timeOrderAdjusted: adjusted});
     },
   };
 }

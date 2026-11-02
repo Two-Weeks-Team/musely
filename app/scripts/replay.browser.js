@@ -30,12 +30,13 @@ async (page) => {
    }
    if (path === '/api/world/run/inputs') return send(200, record(id).inputs.filter(i => i.seq > Number(u.searchParams.get('since') ?? 0)));
    if (path === '/api/world/events') return send(200, u.searchParams.has('runId') ? record(id).events.filter(i => i.seq > Number(u.searchParams.get('since') ?? 0)) : []);
-   if (path === '/api/world') return send(200, {worldId: 'live-browser-fixture', day: '2026-11-02', tick: 1, lastTickAt: Date.now(), nextSpotlight: {muse: '00-jolly', freedom: 'goal'}, muses: []});
+   if (path === '/api/world') return send(200, {...JSON.parse(template.initialSnapshot.body), worldId: 'live-browser-fixture', tick: 100, version: 100, lastTickAt: Date.now(), nextSpotlight: {muse: '00-jolly', freedom: 'goal'}});
    if (path === '/api/status') return send(200, {model: {id: 'fixture', connected: false, live: false}, budget: {remainingUsd: 0}, turnstile: {configured: false}, session: null});
    return send(404, {error: 'read_fixture_not_implemented'});
   });
   try {
-   await p.goto(base.href, {waitUntil: 'domcontentloaded'}); await p.waitForFunction(() => !!window.__world?.worldPanel, null, {timeout: 40000});
+   await p.goto(base.href, {waitUntil: 'domcontentloaded'}); await p.waitForFunction(() => window.__world?.getMetrics().ready && window.__world.getMetrics().live?.version === 100 && window.__world.getMetrics().live.muses.every(m => m.rootId), null, {timeout: 90000});
+   const liveRoots = await p.evaluate(() => window.__world.getMetrics().live.muses.map(m => m.rootId));
    await p.evaluate(() => { window.__replayFrames = []; window.__world.worldPanel.onReplayFrame(f => window.__replayFrames.push(f ? {hash: f.snapshotHash, replay: f.replay, runId: f.runId} : null)); window.__world.worldPanel.openTab('replay'); });
    await p.locator('.replay-view').waitFor(); await p.waitForTimeout(200);
    const root = p.locator('.recorded-replay'), beforeFixture = requests.length;
@@ -44,17 +45,27 @@ async (page) => {
    await root.getByRole('button', {name: 'Find recorded runs', exact: true}).click();
    await root.locator('select[aria-label="Recorded run"] option[value=normal]').waitFor({state: 'attached'});
    await root.getByRole('button', {name: 'Load recorded run', exact: true}).click(); await p.waitForFunction(() => document.querySelector('.recorded-replay').dataset.status === 'ready');
+   await p.waitForFunction(() => window.__world.getMetrics().live?.replay === true);
    check(vp, 'actual recorded run is explicitly replay and the fixture is hidden', (await root.textContent()).includes('REPLAY · RECORDED WORLD') && await p.locator('.fixture-replay').evaluate(e => e.hidden));
    const afterLoad = requests.length, expected = template.inputs.at(-1).afterHash;
    for (const speed of [1, 10, 60]) {
     await root.getByRole('button', {name: 'Restart recorded run', exact: true}).click();
     await root.locator(`[data-recorded-speed="${speed}"]`).click(); await root.getByRole('button', {name: 'Play recorded run', exact: true}).click();
-    await p.waitForFunction(() => document.querySelector('.recorded-replay [role=status]')?.textContent.includes('Reached the recorded end') || document.querySelector('.recorded-replay').textContent.includes('Reached the recorded end'), null, {timeout: 10000});
+    await p.waitForFunction(() => document.querySelector('.recorded-replay [role=status]')?.textContent.includes('Reached the recorded end') || document.querySelector('.recorded-replay').textContent.includes('Reached the recorded end'), null, {timeout: 45000});
+    await p.waitForFunction(() => window.__world.getMetrics().live.at === Number(document.querySelector('.recorded-replay').dataset.recordedAt));
     check(vp, `${speed}x reaches the exact stored public end hash without new rewards`, await root.getAttribute('data-snapshot-hash') === expected);
    }
+   const endMetrics = await p.evaluate(() => window.__world.getMetrics().live), endState = JSON.parse(template.inputs.at(-1).afterSnapshot.body);
+   check(vp, 'recorded end drives the existing ten 3D actor roots at the recorded timestamp', endMetrics.active && endMetrics.replay && endMetrics.version === endState.version && endMetrics.at === Number(await root.getAttribute('data-recorded-at')) && JSON.stringify(endMetrics.muses.map(m => m.rootId)) === JSON.stringify(liveRoots) && endMetrics.muses.every(m => m.rendered && JSON.stringify(m.inventory) === JSON.stringify(endState.muses.find(v => v.id === m.id).inventory)), JSON.stringify(endMetrics));
+   check(vp, 'live cache remains untouched while the recorded projection is active', endMetrics.liveVersion === 100);
    const position = root.getByLabel('Recorded replay position');
    await position.fill('0'); await position.dispatchEvent('input'); check(vp, 'backward seek restores the initial public hash', await root.getAttribute('data-snapshot-hash') === template.initialSnapshot.hash);
+   await p.waitForFunction(() => window.__world.getMetrics().live.version === 0);
+   check(vp, 'backward seek rewinds 3D independently of the live monotonic guard', await p.evaluate(() => window.__world.getMetrics().live.replay && window.__world.getMetrics().live.version === 0));
    await position.fill('1'); await position.dispatchEvent('input'); check(vp, 'seek restores the first committed public hash', await root.getAttribute('data-snapshot-hash') === template.inputs[0].afterHash);
+   await p.waitForFunction(() => window.__world.getMetrics().live.version === 1);
+   const alignment = await p.evaluate(() => {const W=window.__world,pin=document.querySelector('.muse-pin[data-muse-id="00-jolly"]'),f=W.liveScene.projection.frames(Number(pin.dataset.projectedAt)).get('00-jolly');return {pin:JSON.parse(pin.dataset.lnglat),actor:W.alignmentAt(f.x,f.z).geo,replay:pin.dataset.replay,at:Number(pin.dataset.projectedAt),clock:W.getMetrics().live.at,source:document.getElementById('muse-source').textContent,want:document.getElementById('muse-want-text').textContent};});
+   check(vp, 'recorded pin, actor and card use one public projection and recorded clock', alignment.replay === 'true' && alignment.at === alignment.clock && alignment.pin.every((v,i) => Math.abs(v-alignment.actor[i]) < 1e-8) && alignment.source.includes('REPLAY') && !alignment.want.includes('text-sha256:'), JSON.stringify(alignment));
    await root.locator('[data-recorded-speed="1"]').click(); await root.getByRole('button', {name: 'Play recorded run', exact: true}).click();
    await root.locator('[data-event-id]').first().click(); await p.locator('#evidence').waitFor();
    const evidence = await p.locator('#evidence').textContent();
@@ -67,6 +78,12 @@ async (page) => {
    await p.evaluate(() => Promise.all([fetch('/api/muse', {method: 'POST'}).catch(() => null), fetch('/mcp', {method: 'POST'}).catch(() => null)]));
    check(vp, 'replay barrier refuses explicit model and MCP writes before they reach the network', requests.length === afterLoad);
    check(vp, 'frame callback carries read-only recorded projections', await p.evaluate(() => window.__replayFrames.some(f => f?.replay && f.runId === 'normal')));
+   await position.fill('13.5'); await position.dispatchEvent('input');
+   await p.waitForFunction(() => window.__world.getMetrics().live.at === Number(document.querySelector('.recorded-replay').dataset.recordedAt));
+   const spoken = await p.evaluate(() => {const m=window.__world.getMetrics().live.muses.find(m=>m.id==='00-jolly');return {line:m.frame.line,at:window.__world.getMetrics().live.at};});
+   check(vp, 'the final read-only playout displays the recorded public line rather than a checkpoint text hash', spoken.line === template.events[0].line && !spoken.line.includes('text-sha256:'), JSON.stringify(spoken));
+   await p.evaluate(() => {const W=window.__world,f=W.liveScene.frames.get('00-jolly');W.map.stop();W.map.jumpTo({center:W.alignmentAt(f.x,f.z).geo,zoom:21.7,pitch:54});}); await p.waitForTimeout(300);
+   check(vp, 'recorded scene and toolbar fit the viewport', await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
    await p.screenshot({path: `output/run-replay-${vp}.png`});
    for (const [id, error] of [['old-v1', 'incompatible_record'], ['bad-hash', 'invalid_record'], ['missing', 'incomplete_record'], ['failed', 'load_failed']]) {
     await root.getByLabel('Recorded run', {exact: true}).selectOption(id); await root.getByRole('button', {name: 'Load recorded run', exact: true}).click();
@@ -78,6 +95,8 @@ async (page) => {
    check(vp, 'a genuinely empty record keeps its initial public scene and says snapshot-only', await root.locator('.recorded-state tbody tr').count() === 10 && (await root.textContent()).includes('initial public snapshot'));
    const beforeLive = requests.length; await root.getByRole('button', {name: 'Return to live world', exact: true}).click();
    await p.waitForFunction(() => !!document.querySelector('.world-tabs [data-tab=feed].active')); await p.waitForTimeout(200);
+   await p.waitForFunction(() => window.__world.getMetrics().live?.active && !window.__world.getMetrics().live.replay && window.__world.getMetrics().live.version === 100);
+   check(vp, 'null frame restores the same actor roots and latest live projection', await p.evaluate(roots => JSON.stringify(window.__world.getMetrics().live.muses.map(m=>m.rootId)) === JSON.stringify(roots) && document.getElementById('muse-source').textContent.includes('SHARED WORLD'), liveRoots));
    check(vp, 'return to live clears recorded projection and starts fresh live GETs', requests.length > beforeLive && await p.evaluate(() => window.__replayFrames.at(-1) === null));
    check(vp, 'all recorded loading/playing/evidence operations made zero writes, model or MCP calls', requests.every(r => r.method === 'GET' && !['/api/muse', '/mcp', '/api/owner/approvals', '/api/session'].includes(r.path)) && allRequests.every(r => r.method === 'GET' && !/api\.meta\.ai|\/mcp(?:\?|$)/.test(r.url)));
    check(vp, 'no page exception', errors.length === 0, errors.join('; '));

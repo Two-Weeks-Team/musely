@@ -75,8 +75,8 @@ export function mountRecordedReplay(host: HTMLElement, ctx: Ctx, onActive: (acti
         load.disabled = browse.disabled = state.playing;
         toggle.textContent = state.playing ? 'Pause recorded run' : 'Play recorded run'; toggle.setAttribute('aria-pressed', String(state.playing)); range.value = String(state.cursor);
         for (const [speed, b] of speedButtons) b.setAttribute('aria-pressed', String(state.speed === speed));
-        clock.textContent = `${formatT(state.cursor)} / ${formatT(state.durationSec)} · ${state.speed}× · recorded ${new Date(frame.recordedAt).toLocaleString()} your time`;
-        status.textContent = frame.empty ? 'Empty run: the initial public snapshot exists; no committed inputs or events were recorded.' : state.ended ? 'Reached the recorded end. No new action or reward was issued.' : `${state.playing ? 'Playing' : 'Paused'} recorded history.${frame.timeOrderAdjusted ? ' Source timestamps moved backwards; commit order is retained without changing the original timestamps.' : ''}`;
+        clock.textContent = `${formatT(state.cursor)} / ${formatT(state.durationSec)} · ${state.speed}× · playback ${new Date(frame.recordedAt).toLocaleString()} · stored commit ${new Date(frame.snapshotAt).toLocaleString()} your time`;
+        status.textContent = frame.empty ? 'Empty run: the initial public snapshot exists; no committed inputs or events were recorded.' : state.ended ? 'Reached the recorded end. No new action or reward was issued.' : frame.playout ? 'Finishing recorded public event animation; the final stored public state is held. No world tick is executed.' : `${state.playing ? 'Playing' : 'Paused'} recorded history.${frame.timeOrderAdjusted ? ' Source timestamps moved backwards; commit order is retained without changing the original timestamps.' : ''}`;
         root.dataset.status = frame.empty ? 'empty' : 'ready'; root.dataset.runId = record.runId; root.dataset.snapshotHash = frame.snapshotHash; root.dataset.recordedAt = String(frame.recordedAt);
         ctx.onFrame?.(frame);
         const signature = frame.snapshotHash + ':' + frame.events.length + ':' + countLimit + ':' + JSON.stringify(filter);

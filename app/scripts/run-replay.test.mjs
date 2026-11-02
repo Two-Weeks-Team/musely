@@ -98,3 +98,18 @@ test('the replay loading channel permits only same-origin public log GETs; globa
   assert.equal(calls.length, 3); assert.ok(calls.every(c => c.method === 'GET' && !c.body));
  } finally { m.isolation.replay = false; globalThis.fetch = old.fetch; if (old.window === undefined) delete globalThis.window; else globalThis.window = old.window; if (old.location === undefined) delete globalThis.location; else globalThis.location = old.location; }
 });
+
+test('recorded final public dialogue has a read-only playout tail instead of ending before its cue starts', () => {
+ const r = record(); r.events[0].kind = 'greet'; r.events[0].line = 'The final stored hello';
+ const p = loadRun(r), end = JSON.parse(r.inputs.at(-1).afterSnapshot.body);
+ assert.equal(p.getState().durationSec,17,'legacy event.at +12s delay +4s greeting');
+ p.seek(13.5); assert.equal(p.getFrame().playout,true); assert.equal(p.getFrame().recordedAt,T0+13500);
+ assert.equal(p.getFrame().snapshotAt,T0+2000); assert.deepEqual(p.getFrame().publicState,end);
+ p.play();p.advance(10000);assert.equal(p.getState().ended,true);assert.deepEqual(p.getFrame().publicState,end);
+});
+
+test('a hashed snapshot with malformed renderer clock or Muse travel is invalid_record before it reaches 3D', () => {
+ for (const change of [s=>delete s.day, s=>s.tick='one', s=>s.lastTickAt=null, s=>s.muses[0].travel={to:'commons:cafe',departAt:'yesterday',arriveAt:T0+1000,speed:'walk'}]) {
+  const r=record(), state=JSON.parse(r.initialSnapshot.body); change(state); r.initialSnapshot=snapshot(state); r.inputs[0].beforeHash=r.initialSnapshot.hash; rejects(r,'invalid_record');
+ }
+});
