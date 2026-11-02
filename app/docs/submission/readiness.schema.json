@@ -1,0 +1,461 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "D06 prepared package readiness",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "issueId",
+    "owner",
+    "packageSourceBaseline",
+    "preparationState",
+    "submissionReady",
+    "selectedDirection",
+    "deadline",
+    "formEvidence",
+    "repository",
+    "release",
+    "video",
+    "runtimeModel",
+    "externalIntegration",
+    "gates",
+    "humanAnswers",
+    "mediaConsent",
+    "externalExecution",
+    "limitations",
+    "documents"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "d06-readiness-1"
+    },
+    "issueId": {
+      "type": "integer"
+    },
+    "owner": {
+      "type": "string"
+    },
+    "packageSourceBaseline": {
+      "type": "string"
+    },
+    "preparationState": {
+      "type": "string"
+    },
+    "submissionReady": {
+      "type": "boolean"
+    },
+    "selectedDirection": {
+      "type": "object",
+      "required": [
+        "track",
+        "theme",
+        "formSelectionPerformed"
+      ]
+    },
+    "deadline": {
+      "type": "object",
+      "required": [
+        "eventLocal",
+        "utc",
+        "kst",
+        "sourceURL",
+        "recheckBeforeExecution"
+      ]
+    },
+    "formEvidence": {
+      "type": "object",
+      "required": [
+        "URL",
+        "observedAt",
+        "sha256",
+        "controls",
+        "publicGitHubRequired",
+        "threeMinuteVideoRequired",
+        "coverage"
+      ]
+    },
+    "repository": {
+      "type": "object",
+      "required": [
+        "URL",
+        "visibility",
+        "loggedOutAccess"
+      ]
+    },
+    "release": {
+      "type": "object",
+      "required": [
+        "commitSha",
+        "deployId",
+        "configVersion",
+        "URL",
+        "testedAt"
+      ]
+    },
+    "video": {
+      "type": "object",
+      "required": [
+        "URL",
+        "durationSeconds",
+        "sha256",
+        "anonymousPlayback"
+      ]
+    },
+    "runtimeModel": {
+      "type": "object",
+      "required": [
+        "id",
+        "base",
+        "sourceConfigVerified",
+        "sameReleaseCallVerified"
+      ]
+    },
+    "externalIntegration": {
+      "type": "object",
+      "required": [
+        "accountVerification",
+        "oauth",
+        "customConnectorAddUI",
+        "platformAdditionApprovalPath",
+        "actualMuseToolCall",
+        "unattendedSchedule",
+        "directoryApproval"
+      ]
+    },
+    "gates": {
+      "type": "object",
+      "required": [
+        "finalRelease",
+        "publicRepository",
+        "video",
+        "sameReleaseRuntime",
+        "judgeEntry",
+        "recordedReplay",
+        "actualMuseConnection",
+        "webcamAcceptance",
+        "physicalDevice",
+        "operationalRun",
+        "p0p1p2",
+        "autonomyRecount",
+        "assetSubmissionScope",
+        "teamRepresentative",
+        "formValidation",
+        "draftConsistency"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "finalRelease": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        },
+        "publicRepository": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        },
+        "video": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        },
+        "sameReleaseRuntime": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        },
+        "judgeEntry": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        },
+        "recordedReplay": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        },
+        "actualMuseConnection": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        },
+        "webcamAcceptance": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        },
+        "physicalDevice": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        },
+        "operationalRun": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        },
+        "p0p1p2": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        },
+        "autonomyRecount": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        },
+        "assetSubmissionScope": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        },
+        "teamRepresentative": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        },
+        "formValidation": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        },
+        "draftConsistency": {
+          "enum": [
+            "unverified",
+            "verified",
+            "blocked"
+          ]
+        }
+      }
+    },
+    "humanAnswers": {
+      "type": "object",
+      "required": [
+        "partnerFeedback",
+        "buildLikelihood",
+        "overallOpinion",
+        "recommendMeta",
+        "recommendMuseCode",
+        "biggestObstacle",
+        "comparison",
+        "choosingPriorities",
+        "choosingFreeText",
+        "switchingDifficulty",
+        "productionBlockers"
+      ]
+    },
+    "mediaConsent": {
+      "type": "object",
+      "required": [
+        "status",
+        "decision",
+        "acceptedByThisTask"
+      ]
+    },
+    "externalExecution": {
+      "type": "object",
+      "required": [
+        "scope",
+        "state",
+        "repositoryVisibilityChanged",
+        "formDataEntered",
+        "videoUploaded",
+        "submitted",
+        "confirmed",
+        "submissionReceipt",
+        "approvalReceipt"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "not-authorized",
+            "authorized",
+            "submitted",
+            "confirmed"
+          ]
+        }
+      }
+    },
+    "limitations": {
+      "type": "array"
+    },
+    "documents": {
+      "type": "array"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "submissionReady": {
+            "const": true
+          }
+        },
+        "required": [
+          "submissionReady"
+        ]
+      },
+      "then": {
+        "properties": {
+          "gates": {
+            "properties": {
+              "finalRelease": {
+                "const": "verified"
+              },
+              "publicRepository": {
+                "const": "verified"
+              },
+              "video": {
+                "const": "verified"
+              },
+              "sameReleaseRuntime": {
+                "const": "verified"
+              },
+              "judgeEntry": {
+                "const": "verified"
+              },
+              "recordedReplay": {
+                "const": "verified"
+              },
+              "actualMuseConnection": {
+                "const": "verified"
+              },
+              "webcamAcceptance": {
+                "const": "verified"
+              },
+              "physicalDevice": {
+                "const": "verified"
+              },
+              "operationalRun": {
+                "const": "verified"
+              },
+              "p0p1p2": {
+                "const": "verified"
+              },
+              "autonomyRecount": {
+                "const": "verified"
+              },
+              "assetSubmissionScope": {
+                "const": "verified"
+              },
+              "teamRepresentative": {
+                "const": "verified"
+              },
+              "formValidation": {
+                "const": "verified"
+              },
+              "draftConsistency": {
+                "const": "verified"
+              }
+            }
+          },
+          "release": {
+            "properties": {
+              "commitSha": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$"
+              },
+              "deployId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "configVersion": {
+                "type": [
+                  "string",
+                  "object"
+                ]
+              },
+              "testedAt": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "video": {
+            "properties": {
+              "URL": {
+                "type": "string",
+                "pattern": "^https://"
+              },
+              "durationSeconds": {
+                "type": "number",
+                "const": 180,
+                "description": "Our submission package requires exactly 180 seconds when submissionReady is true; this does not establish the platform's duration tolerance."
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "anonymousPlayback": {
+                "const": "verified"
+              }
+            }
+          },
+          "repository": {
+            "properties": {
+              "visibility": {
+                "const": "public"
+              },
+              "loggedOutAccess": {
+                "const": "verified"
+              }
+            }
+          },
+          "humanAnswers": {
+            "properties": {
+              "buildLikelihood": {
+                "type": "string",
+                "minLength": 1
+              },
+              "overallOpinion": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "mediaConsent": {
+            "properties": {
+              "decision": {
+                "enum": [
+                  "granted",
+                  "declined"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
