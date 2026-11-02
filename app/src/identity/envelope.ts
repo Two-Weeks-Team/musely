@@ -1,5 +1,5 @@
 // Musely A2A extension profile: the signed message envelope (direction v2, 12.1).
-// Verification order: signature → delegation valid/unrevoked/in scope → expiry → replay (nonce,
+// Verification order: signature → recipient → delegation valid/unrevoked/in scope → expiry → replay (nonce,
 // message_id) → approval_ref/content_hash → process. The first failure is returned and logged; a
 // refusal never includes private reasons.
 import {canonicalize, sha256, base64url, utf8} from './jcs.ts';
@@ -34,11 +34,11 @@ export const contentHash = async (content: unknown) => base64url(await sha256(ca
 const random = () => base64url(crypto.getRandomValues(new Uint8Array(16)));
 const signingBytes = (e: Envelope) => { const {signature: _s, ...rest} = e; return utf8(canonicalize(rest)); };
 
-export async function signEnvelope(executor: KeyPair, delegationToken: string, d: Delegation, m: {recipient: string; action: string; scope: ScopeId | string; content: unknown; taskId?: string | null; approvalRef?: string | null; ownerClaimed: boolean; ttlMs?: number; now?: number}): Promise<Signed> {
+export async function signEnvelope(executor: KeyPair, delegationToken: string, d: Delegation, m: {recipient: string; action: string; scope: ScopeId | string; content: unknown; taskId?: string | null; approvalRef?: string | null; ownerClaimed: boolean; ttlMs?: number; now?: number; messageId?: string}): Promise<Signed> {
   const now = m.now ?? Date.now();
   const envelope: Envelope = {
     v: 'musely-a2a-v1', agent_id: d.agent_id, owner_claimed: m.ownerClaimed, scope_hash: await scopeHash(d.scopes), content_hash: await contentHash(m.content),
-    approval_ref: m.approvalRef ?? null, timestamp: now, message_id: random(), recipient: m.recipient, task_id: m.taskId ?? null,
+    approval_ref: m.approvalRef ?? null, timestamp: now, message_id: m.messageId ?? random(), recipient: m.recipient, task_id: m.taskId ?? null,
     expires_at: now + (m.ttlMs ?? 120_000), nonce: random(), delegation_ref: await delegationRef(delegationToken), signer_kind: d.signer_kind,
     action: m.action, scope: m.scope, executor_kid: executor.kid,
   };
@@ -59,10 +59,13 @@ export interface TrustRegistry {
 export type Refusal =
   | 'malformed' | 'unknown_agent' | 'bad_delegation_signature' | 'bad_signature' | 'delegation_mismatch'
   | 'delegation_revoked' | 'delegation_expired' | 'scope_forbidden' | 'scope_not_delegated'
-  | 'expired' | 'replay' | 'content_mismatch' | 'approval_required' | 'approval_mismatch';
+  | 'expired' | 'replay' | 'content_mismatch' | 'approval_required' | 'approval_mismatch' | 'wrong_recipient';
 export type Verdict = {ok: true; delegation: Delegation; step: 'process'} | {ok: false; reason: Refusal; step: string};
+/** What the verifier expects independently of the envelope: the agent this message must be addressed to. */
+export type Expect = {recipient?: string};
 
-export async function verifyEnvelope(s: Signed, reg: TrustRegistry, now = Date.now()): Promise<Verdict> {
+/** Step 1 only (no registry writes): who signed it, under which delegation. Safe to run before a result lookup. */
+export async function verifySignature(s: Signed, reg: TrustRegistry): Promise<{ok: true; delegation: Delegation} | {ok: false; reason: Refusal; step: string}> {
   const e = s?.envelope;
   if (!e || e.v !== 'musely-a2a-v1' || typeof e.signature !== 'string' || typeof s.delegation !== 'string') return {ok: false, reason: 'malformed', step: 'parse'};
   // 1. Signature: the root key signed the delegation; the delegated executor key signed the envelope.
@@ -72,6 +75,15 @@ export async function verifyEnvelope(s: Signed, reg: TrustRegistry, now = Date.n
   if (!d || d.agent_id !== e.agent_id) return {ok: false, reason: 'bad_delegation_signature', step: 'signature'};
   if (d.executor_kid !== e.executor_kid || (await delegationRef(s.delegation)) !== e.delegation_ref || d.signer_kind !== e.signer_kind) return {ok: false, reason: 'delegation_mismatch', step: 'signature'};
   if (!(await verifyBytes(d.executor_jwk, signingBytes(e), e.signature))) return {ok: false, reason: 'bad_signature', step: 'signature'};
+  return {ok: true, delegation: d};
+}
+
+export async function verifyEnvelope(s: Signed, reg: TrustRegistry, now = Date.now(), expect: Expect = {}): Promise<Verdict> {
+  const sig = await verifySignature(s, reg);
+  if (!sig.ok) return sig;
+  const e = s.envelope, d = sig.delegation;
+  // A validly signed message for someone else must not act here (and must not burn its nonce here).
+  if (expect.recipient !== undefined && e.recipient !== expect.recipient) return {ok: false, reason: 'wrong_recipient', step: 'recipient'};
   // 2. Delegation valid, unrevoked, current version, and in scope.
   if (reg.isRevoked(e.delegation_ref) || d.version !== reg.delegationVersion(e.agent_id)) return {ok: false, reason: 'delegation_revoked', step: 'delegation'};
   if (d.exp <= now) return {ok: false, reason: 'delegation_expired', step: 'delegation'};
