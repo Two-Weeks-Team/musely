@@ -10,7 +10,7 @@ The visual preview lives at **https://preview.musely.net**. Its application, ass
 
 The first Blender diorama renders that the concept started from (2026-10-30) are kept in [`museion-renders/`](museion-renders/README.md).
 
-`musely.net` and `www.musely.net` are reserved for the main product.
+The main product lives at **https://musely.net** (and `www.musely.net`). Its application and deployment configuration are in [`app/`](app/README.md), which started from the preview on 2026-11-02 and deploys as a separate Worker.
 
 ## Attribution and license
 

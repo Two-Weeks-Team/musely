@@ -271,12 +271,12 @@
       12
     ],
     "files": [
-      "preview/worker/core/commands.ts",
-      "preview/worker/core/world-runtime.ts",
-      "preview/worker/world-do.ts",
-      "preview/worker/core/a2a.ts",
-      "preview/src/identity/envelope.ts",
-      "preview/scripts/command-runtime.test.mjs"
+      "app/worker/core/commands.ts",
+      "app/worker/core/world-runtime.ts",
+      "app/worker/world-do.ts",
+      "app/worker/core/a2a.ts",
+      "app/src/identity/envelope.ts",
+      "app/scripts/command-runtime.test.mjs"
     ],
     "inputs": "WorldCommand·Signed·현재 world version",
     "outputs": "C03 executeCommand/CommandResult와 영속 중복 방지",
@@ -310,12 +310,12 @@
       17
     ],
     "files": [
-      "preview/worker/core/threads.ts",
-      "preview/worker/core/trust.ts",
-      "preview/worker/index.ts",
-      "preview/src/ui/identity.ts",
-      "preview/scripts/identity-flow.test.mjs",
-      "preview/worker/core/owner-api.ts"
+      "app/worker/core/threads.ts",
+      "app/worker/core/trust.ts",
+      "app/worker/index.ts",
+      "app/src/ui/identity.ts",
+      "app/scripts/identity-flow.test.mjs",
+      "app/worker/core/owner-api.ts"
     ],
     "inputs": "주인 계정 claim·3개 challenge 원본 프레임·현재 위임",
     "outputs": "claim/ritual 판정·별도 주인 철회 경로·권한 상태 UI",
@@ -349,16 +349,16 @@
       20
     ],
     "files": [
-      "preview/worker/core/tasks.ts",
-      "preview/worker/core/commands.ts",
-      "preview/worker/index.ts",
-      "preview/wrangler.jsonc",
-      "preview/docs/MCP_TOOLS.md",
-      "preview/scripts/mcp.test.mjs",
-      "preview/worker/core/mcp-server.ts",
-      "preview/worker/core/mcp-tools.ts",
-      "preview/worker/core/connected.ts",
-      "preview/worker/core/agent-keys.ts"
+      "app/worker/core/tasks.ts",
+      "app/worker/core/commands.ts",
+      "app/worker/index.ts",
+      "app/wrangler.jsonc",
+      "app/docs/MCP_TOOLS.md",
+      "app/scripts/mcp.test.mjs",
+      "app/worker/core/mcp-server.ts",
+      "app/worker/core/mcp-tools.ts",
+      "app/worker/core/connected.ts",
+      "app/worker/core/agent-keys.ts"
     ],
     "inputs": "실행자 bearer 자격, 방향 v2 7.2 전체 tool 목록",
     "outputs": "공개 HTTPS MCP endpoint·정확한 JSON schemas·쓰기 adapter",
@@ -395,13 +395,13 @@
       13
     ],
     "files": [
-      "preview/worker/core/tasks.ts",
-      "preview/docs/MCP_TOOLS.md",
-      "preview/scripts/mcp.test.mjs",
-      "preview/worker/core/mcp-server.ts",
-      "preview/worker/core/mcp-tools.ts",
-      "preview/worker/core/connected.ts",
-      "preview/worker/core/agent-keys.ts"
+      "app/worker/core/tasks.ts",
+      "app/docs/MCP_TOOLS.md",
+      "app/scripts/mcp.test.mjs",
+      "app/worker/core/mcp-server.ts",
+      "app/worker/core/mcp-tools.ts",
+      "app/worker/core/connected.ts",
+      "app/worker/core/agent-keys.ts"
     ],
     "inputs": "완료된 Task/아이템/위치 backend와 I-03A schemas",
     "outputs": "모든 7.2 tools의 실제 결과·인박스 응답/기한",
@@ -434,8 +434,8 @@
       17
     ],
     "files": [
-      "preview/docs/CONNECTOR_VERIFICATION.md",
-      "preview/docs/MCP_TOOLS.md"
+      "app/docs/CONNECTOR_VERIFICATION.md",
+      "app/docs/MCP_TOOLS.md"
     ],
     "inputs": "주인 Muse 계정·보안 자격 입력·HTTPS MCP",
     "outputs": "실제 Muse tool call→world event의 상관 증거",
@@ -466,12 +466,12 @@
       8
     ],
     "files": [
-      "preview/src/engine/world.ts",
-      "preview/src/engine/harness.ts",
-      "preview/worker/core/world-runtime.ts",
-      "preview/worker/core/actions.ts",
-      "preview/scripts/engine.test.mjs",
-      "preview/scripts/world-runtime.test.mjs"
+      "app/src/engine/world.ts",
+      "app/src/engine/harness.ts",
+      "app/worker/core/world-runtime.ts",
+      "app/worker/core/actions.ts",
+      "app/scripts/engine.test.mjs",
+      "app/scripts/world-runtime.test.mjs"
     ],
     "inputs": "현재 world state/seed·공개 wants/memory·모델 Decision",
     "outputs": "검증된 순환 spotlight와 실제 encounter 응답·성찰",
@@ -501,11 +501,11 @@
       11
     ],
     "files": [
-      "preview/src/engine/items.ts",
-      "preview/src/engine/rules.ts",
-      "preview/src/engine/places.ts",
-      "preview/scripts/items.test.mjs",
-      "preview/docs/EXPERIENCE_MATRIX.md"
+      "app/src/engine/items.ts",
+      "app/src/engine/rules.ts",
+      "app/src/engine/places.ts",
+      "app/scripts/items.test.mjs",
+      "app/docs/EXPERIENCE_MATRIX.md"
     ],
     "inputs": "P-01 전체 ItemSpec/장소 표·인벤토리/시간/ledger",
     "outputs": "각 item의 effectRule·명시적 만료/소모·보상/이력",
@@ -540,12 +540,12 @@
       12
     ],
     "files": [
-      "preview/worker/core/tasks.ts",
-      "preview/worker/core/commands.ts",
-      "preview/worker/index.ts",
-      "preview/src/ui/owner-inbox.ts",
-      "preview/scripts/tasks.test.mjs",
-      "preview/src/engine/inbox.ts"
+      "app/worker/core/tasks.ts",
+      "app/worker/core/commands.ts",
+      "app/worker/index.ts",
+      "app/src/ui/owner-inbox.ts",
+      "app/scripts/tasks.test.mjs",
+      "app/src/engine/inbox.ts"
     ],
     "inputs": "TaskRecord·공개 신호·local accept/reject·주인 approval",
     "outputs": "거래/만남 Task 상태 기계와 영수증/Meetup Ember",
@@ -577,13 +577,13 @@
       13
     ],
     "files": [
-      "preview/src/engine/world.ts",
-      "preview/src/engine/places.ts",
-      "preview/src/ui/world-panel.ts",
-      "preview/scripts/location.test.mjs",
-      "preview/src/engine/location.ts",
-      "preview/src/engine/travel.ts",
-      "preview/worker/core/owner-api.ts"
+      "app/src/engine/world.ts",
+      "app/src/engine/places.ts",
+      "app/src/ui/world-panel.ts",
+      "app/scripts/location.test.mjs",
+      "app/src/engine/location.ts",
+      "app/src/engine/travel.ts",
+      "app/worker/core/owner-api.ts"
     ],
     "inputs": "가상 위치 프리셋/주인 목적지·현재 Muse 셀/아이템",
     "outputs": "검증된 travel/ETA·버스·토큰 소비 순간이동",
@@ -621,11 +621,11 @@
       14
     ],
     "files": [
-      "preview/src/ui/live-scene.ts",
-      "preview/src/main.ts",
-      "preview/src/scene.ts",
-      "preview/src/character-kit/MuseActor.ts",
-      "preview/scripts/actions.browser.js"
+      "app/src/ui/live-scene.ts",
+      "app/src/main.ts",
+      "app/src/scene.ts",
+      "app/src/character-kit/MuseActor.ts",
+      "app/scripts/actions.browser.js"
     ],
     "inputs": "world snapshot/event·ActionSpec·동일 Muse ID",
     "outputs": "라이브 장면 투영·LOD/소품/상대 동기화",
@@ -660,10 +660,10 @@
       12
     ],
     "files": [
-      "preview/worker/core/tasks.ts",
-      "preview/worker/core/messages.ts",
-      "preview/src/engine/rules.ts",
-      "preview/scripts/messages.test.mjs"
+      "app/worker/core/tasks.ts",
+      "app/worker/core/messages.ts",
+      "app/src/engine/rules.ts",
+      "app/scripts/messages.test.mjs"
     ],
     "inputs": "인벤토리/수신자/거리/Task·서버 시간",
     "outputs": "지연 메시지·선물 기록·모임·help 결과/성찰",
@@ -696,10 +696,10 @@
       8
     ],
     "files": [
-      "preview/worker/core/run-log.ts",
-      "preview/worker/core/world-runtime.ts",
-      "preview/src/ui/world-panel.ts",
-      "preview/scripts/run-log.test.mjs"
+      "app/worker/core/run-log.ts",
+      "app/worker/core/world-runtime.ts",
+      "app/src/ui/world-panel.ts",
+      "app/scripts/run-log.test.mjs"
     ],
     "inputs": "RunRecord·입력/이벤트 순서·source/actorOrigin",
     "outputs": "append-only 원기록·highlight filter·6항목 집계",
@@ -732,10 +732,10 @@
       16
     ],
     "files": [
-      "preview/src/replay/player.ts",
-      "preview/src/ui/world-panel.ts",
-      "preview/scripts/replay.test.mjs",
-      "preview/scripts/replay.browser.js"
+      "app/src/replay/player.ts",
+      "app/src/ui/world-panel.ts",
+      "app/scripts/replay.test.mjs",
+      "app/scripts/replay.browser.js"
     ],
     "inputs": "버전 호환 RunRecord·시각·배속",
     "outputs": "loadRun/seek/setSpeed와 장면/증거 투영",
@@ -769,12 +769,12 @@
       17
     ],
     "files": [
-      "preview/worker/core/proxy.ts",
-      "preview/worker/core/ledger.ts",
-      "preview/worker/core/session.ts",
-      "preview/wrangler.jsonc",
-      "preview/scripts/proxy.test.mjs",
-      "preview/docs/V2_VERIFICATION.md"
+      "app/worker/core/proxy.ts",
+      "app/worker/core/ledger.ts",
+      "app/worker/core/session.ts",
+      "app/wrangler.jsonc",
+      "app/scripts/proxy.test.mjs",
+      "app/docs/V2_VERIFICATION.md"
     ],
     "inputs": "허용 Action·session/IP quota·예산 설정·provider/Gateway",
     "outputs": "실패/상한에서 정직한 replay/scenario 및 사용량",
@@ -817,8 +817,8 @@
       20
     ],
     "files": [
-      "preview/docs/RELEASE_ACCEPTANCE.md",
-      "preview/scripts/product-e2e.browser.js"
+      "app/docs/RELEASE_ACCEPTANCE.md",
+      "app/scripts/product-e2e.browser.js"
     ],
     "inputs": "S2 done 이슈·release SHA/URL/deployId/configVersion",
     "outputs": "실제 계정·서버의 통합 경로 증거",
@@ -851,9 +851,9 @@
       20
     ],
     "files": [
-      "preview/docs/RELEASE_ACCEPTANCE.md",
-      "preview/docs/evidence/INDEX.md",
-      "preview/scripts/proof-evidence.test.mjs"
+      "app/docs/RELEASE_ACCEPTANCE.md",
+      "app/docs/evidence/INDEX.md",
+      "app/scripts/proof-evidence.test.mjs"
     ],
     "inputs": "동일 배포 world/run과 control snapshot·request/event ID",
     "outputs": "P0/P1/P2 evidence bundle와 6항목 재집계",
@@ -892,9 +892,9 @@
       20
     ],
     "files": [
-      "preview/docs/RELEASE_ACCEPTANCE.md",
-      "preview/scripts/resilience.test.mjs",
-      "preview/docs/evidence/INDEX.md"
+      "app/docs/RELEASE_ACCEPTANCE.md",
+      "app/scripts/resilience.test.mjs",
+      "app/docs/evidence/INDEX.md"
     ],
     "inputs": "동일 release build와 격리 fault 환경·운영 demo URL",
     "outputs": "4시간 이상 연속 run 및 장애/보안 증거",
@@ -926,9 +926,9 @@
       20
     ],
     "files": [
-      "preview/docs/DEVICE_ACCEPTANCE.md",
-      "preview/scripts/first-load.browser.js",
-      "preview/scripts/world-ui.browser.js"
+      "app/docs/DEVICE_ACCEPTANCE.md",
+      "app/scripts/first-load.browser.js",
+      "app/scripts/world-ui.browser.js"
     ],
     "inputs": "C11 수치 기준·시험 전 기기/메모리 예산 표·release build",
     "outputs": "실기기/에뮬레이션 별 측정·DPR 결정 기록",
@@ -963,8 +963,8 @@
       20
     ],
     "files": [
-      "preview/docs/DEMO_SHOTLIST.md",
-      "preview/docs/evidence/INDEX.md"
+      "app/docs/DEMO_SHOTLIST.md",
+      "app/docs/evidence/INDEX.md"
     ],
     "inputs": "검증한 release/run highlights와 두 핵심 축",
     "outputs": "3분 shotlist·최종 영상·컷별 증거 링크",
@@ -996,9 +996,9 @@
     ],
     "files": [
       "README.md",
-      "preview/README.md",
-      "preview/docs/SUBMISSION_CHECKLIST.md",
-      "preview/character-kit/NOTICE.md"
+      "app/README.md",
+      "app/docs/SUBMISSION_CHECKLIST.md",
+      "app/character-kit/NOTICE.md"
     ],
     "inputs": "실제 공식 요건·로그인 폼·검증 빌드/영상",
     "outputs": "제출 준비 완료 패키지; 실제 제출/확인은 별도 실행 상태와 receipt",
@@ -1033,7 +1033,7 @@
     ],
     "files": [
       "docs/roadmap/GTM_READINESS.md",
-      "preview/docs/OPERATIONS.md"
+      "app/docs/OPERATIONS.md"
     ],
     "inputs": "개발 완료 release와 실제 파일럿 운영 조건",
     "outputs": "일반 인증/연결/복구·지원·비용·운영 게이트",
@@ -1064,7 +1064,7 @@
     ],
     "files": [
       "docs/roadmap/GTM_READINESS.md",
-      "preview/docs/CONNECTOR_VERIFICATION.md"
+      "app/docs/CONNECTOR_VERIFICATION.md"
     ],
     "inputs": "실제 Muse 연결 증거·공식 directory 신청 요구",
     "outputs": "요건 대응표·준비/신청/심사/승인 별 상태",

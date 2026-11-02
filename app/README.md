@@ -1,4 +1,6 @@
-# Musely preview
+# Musely (main product)
+
+This is the main product at **https://musely.net** (and `www.musely.net`). It started as a copy of [`preview/`](../preview/README.md) at `0d85957` (2026-11-02). S2 implementation and S3 completion work happen here. The preview keeps evolving separately with the demo team, and this directory never edits `preview/`.
 
 Project delivery follows **preview → implementation → demo (development complete) → GTM**. See the [four-stage roadmap](../docs/roadmap/2026-11-01-four-stage-roadmap.md). This directory contains both the visual preview and working product components; its name does not make live integrations a preview completion requirement. The existing 3:30 story below is the scripted mode, separate from the shared-world implementation.
 
@@ -18,11 +20,7 @@ npm run dev
 
 ## Deploy
 
-`npm run deploy` deploys only `dist/` to the `musely-preview` Cloudflare Worker and its custom domain `preview.musely.net`. The account and domain configuration are in `wrangler.jsonc`. Authenticate as the Cloudflare account owner (Kim Sejun); the selected account owns the `musely.net` zone.
-
-Cloudflare Workers Builds connects `two-weeks-team/musely`, branch `main`, with root directory `preview`. Build command: `npm ci && npm run check`; deploy command: `npx wrangler deploy`; Node version: `24.22.2`. Watch path: `preview/**`. Changes deploy after tests, type checking, and the asset integrity build pass.
-
-The apex and `www` are reserved for the main product. No routes or redirects target them.
+`npm run deploy` deploys `dist/` and the Worker to the `musely` Cloudflare Worker with the custom domains `musely.net` and `www.musely.net`. The Worker name, the Durable Object namespace and the rate-limit namespace are separate from `musely-preview`. Details, secrets and rollback are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Contents
 
