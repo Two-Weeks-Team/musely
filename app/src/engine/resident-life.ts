@@ -16,7 +16,7 @@ export type ActorAuthority = {id: string; connected: boolean; paused: boolean};
 export type ProposalContext = {now:number;hour:number;worldVersion:number;
   authorities:readonly ActorAuthority[];allowedPlaceIds:readonly string[];residentTurnAllowed:boolean;
   /** Caller-selected planning horizon, milliseconds; default 0 = due now only. */
-  promiseLeadMs?:number};
+  promiseLeadMs?:number;promiseGraceMs?:number};
 export type LifeProposal = {residentId: string; placeId: string; reason: 'promise' | 'routine';
   promiseId?: string; source: 'rule'; expectedWorldVersion: number};
 const MAX_RESIDENTS = 100, MAX_MEMORIES = 64, MAX_PROMISES = 32;
@@ -89,13 +89,15 @@ export function proposeLifeTurn(state:LifeState, input:ProposalContext):LifeProp
   if(!finite(input.now)||!Number.isInteger(input.hour)||input.hour<0||input.hour>23||!Number.isSafeInteger(input.worldVersion)||input.worldVersion<0) throw new Error('invalid clock/version');
   const lead=input.promiseLeadMs ?? 0;
   if(!finite(lead)||lead>86_400_000) throw new Error('invalid promise planning horizon');
+  const grace=input.promiseGraceMs ?? 0;
+  if(!finite(grace)||grace>86_400_000) throw new Error('invalid promise grace');
   if(input.residentTurnAllowed!==true) return null;
   if(!unique(input.authorities.map(a=>a.id))) throw new Error('duplicate actor authority');
   const valid=restoreLife(saveLife(state)).residents.filter(r=>{
     const a=input.authorities.find(a=>a.id===r.id); return a && a.connected===false && a.paused===false;
   }).sort((a,b)=>a.lastServedAt-b.lastServedAt || a.served-b.served || a.id.localeCompare(b.id));
   for(const r of valid){
-    const p=r.promises.filter(p=>p.status==='pending' && p.dueAt>=input.now && p.dueAt-input.now<=lead && input.allowedPlaceIds.includes(p.place)).sort((a,b)=>a.dueAt-b.dueAt)[0];
+    const p=r.promises.filter(p=>p.status==='pending' && p.dueAt>=input.now-grace && p.dueAt-input.now<=lead && input.allowedPlaceIds.includes(p.place)).sort((a,b)=>a.dueAt-b.dueAt)[0];
     const routine=[...r.routine].sort((a,b)=>a.hour-b.hour);
     const slot=routine.filter(x=>x.hour<=input.hour).at(-1) ?? routine.at(-1);
     const place=p?.place ?? slot?.place;
