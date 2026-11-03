@@ -17,3 +17,5 @@ The surrounding code, the Sigil textures, the map work and the scenario remain u
 ## Submission context
 
 This notice preserves the Meta attribution and the distinction between repository code and excluded character-derived assets. It does not itself establish permission for a separate submission or media-use grant. The current disclosure and verification gates are in [the submission checklist](../docs/SUBMISSION_CHECKLIST.md). No ownership or reuse right is added by that checklist.
+
+The later private technical review of a180-second demonstration does not establish an asset, distribution, competition-submission or media-use permission. Those unverified rights remain UNKNOWN for team review. Publication, upload, legal consent and final competition submission are outside the current engineering work; the original ownership, exclusion and no-reuse-right statements above remain unchanged.

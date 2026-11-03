@@ -161,3 +161,44 @@ Account isolation requires the operator-attested account subdomain (verified aga
 `sourcePath` may identify the attested repository root or its `app/` directory. Every CLI observation round now obtains HEAD and dirty state through `gitSourceState` in `scripts/lib/resilience-io.mjs`. Git status uses `--porcelain --untracked-files=all -- :(top)app/`, so the scope is always the repository-root **entire app/**, including Git-visible tracked and untracked changes. Ignored files are not covered by this Git-status predicate. It must not become `app/app/` when the command cwd is app. The deployed configuration read/hash and served HTML/deployment pin checks remain independent and unchanged.
 
 This source-clean check does **not** attest repository-wide cleanliness, safety of paths outside app, deployment provenance or actual resilience. Real temporary-Git regressions cover tracked `app/worker/index.ts` changes and untracked app worker files from both root and app cwd. These are local filesystem tests, not an actual production observation, isolated fault deployment or four-hour wall-clock run. Earlier local/isolated/operating-demo evidence retains its original environment and limitations.
+
+
+## D02 final technical-evidence handoff (2026-11-03)
+
+**D02's four technical criteria are supported; overall acceptance/closure remains pending the full original D01 #61 prerequisite.** The earlier D02 preparation/pending statements above retain their original checkpoint. This appended record does not rewrite them, accept D01, or close D02/S3. The original criteria and [C04/C08/C09/C10](../../docs/roadmap/execution-contract.md) remain unchanged.
+
+| Original criterion | Retained evidence and exact scope |
+|---|---|
+| P0: same job, fresh nonce/ID, revocation-cause refusal, unchanged state | Original8b13 operator-owner trade verified4012/completed4013/input349/version800→801; separate revoke4014/4015/input350; fresh refusal4016/input351/version802→802, delegation_revoked and public beforeHash=afterHash. Same trade/actor/target/scope/delegation; each signed-content hash binds its own current expectedVersion, while the stable business payload hash agrees. Server stateUnchanged=true is retained separately from public hash reconstruction; private full state/signature bytes were not exported. |
+| P1: controlled initial state/seed/clock/inputs, item-only delta | Two actual WorldRuntime/RunLog-2 records in a separate local virtual world differ only by one Ripple transit_pass. Without: actual decision_rejected; with: actual bus depart. Exact full initial-state comparison, pure loadRun1/10/60x end-state/hash, reverse seek and65-second recorded projection agree. All seven selected JSON files equal an independent regeneration. This is CONTROLLED COMPARISON (SIMULATION), not a production/model action; no provider ID or signature is invented. |
+| P2: scene→event→real request or authority verdict | Original8b13 captured REPLAY10/10 and current494 production REPLAY11/11 join original event4012/run-3-mvzc8169-f1e07139/input349/version801/checkpoint1e829885f31537cf9c5c7ebbf2dde6fa8be6b03dd762b6159e89d61e3a6da51a. Exact response bytes, parsed record and snapshot hash agree. The visible evidence is the original server-custodial signature/authority verdict for message XoEzltTmZ9cr7RmLOUa3pQ, with no model call; it is not independent raw-signature crypto or new authentication. |
+| Six measures: same-period original-record recount | Three actual public GET response bodies are retained with Base64/byte counts/SHA. Raw289-event cohort and full server-oracle/UI recount agree, including sample, denominators, missing evidence, source/origin and run scope. Complete=true; no missing denominator is promoted to zero. |
+
+### Exact retained C09 interval
+
+World musely, run-3-mvzc8169-f1e07139, **2026-11-02T16:12:08.719Z inclusive to17:00:00Z exclusive**. These are interval statistics, not whole-product lifetime autonomy or personal-Muse behavior.
+
+| Measure | Original-record result |
+|---|---|
+| Intent-initiated encounters |0/13=0%;13 system/rule encounters. Connected-origin denominator0 remains Not measured.|
+| Owner interventions |12 request events;6 candidates|
+| Signature verdicts |27 passed;1 refused;0 unrecorded|
+| Model requests and scenario events |44 unique live request IDs;0 replay request IDs;10 scripted spotlight events; missing live/replay IDs0|
+| Ability changes |1 tagged/hashed/actually changed|
+| Blocks |0 instruction blocks;0 out-of-scope decisions|
+
+Sample received/unique289, duplicate event/encounter/verification IDs0. Original sources139live/111rule/39scripted/0replay; actor origins246system/30connected/0trial/13unrecorded. Connected includes operator-controlled MCP; it is not proof of a personal Muse's autonomous initiation.
+
+### Release, custody and remaining handoff
+
+Original P0/P2/C09 operating receipts retain source8b13a776b5a0a76558efee8c8c8bb6efb1408438, ROWba0508d2-9870-43da-8aee-f633594eddb0 and Workerb5e18f5e-96b7-4198-a14c-dc3775c40174. Current replay client retains source4946517bbad0ec7677edd73205d7b4390dbdc4e5, ROW359cb5c5-dff3-4153-ae58-b36412e0cdd9 and Workere10feb65-a7a2-463e-8537-7b1a876ed182. Both use configSHA256893a8e4ffd2857d25032a6454363134a2329a00a3e71f4e83c56413233df9e10 and unchanged Worker bundlebf4d985ce91a6f861b047d8a526a64f5de3bf2470fe9db4b488316dee0908b5a. Worker/engine/player/oracle/proof source is unchanged8b13→494; changed read-only loader/UI has its own actual494 replay verification. No original business execution is retagged as a new494 action. P1 remains a distinct local controlled world, not that operational run.
+
+Custody paths below are external tasks/s3-execution-20261102/, not bundled public/private credentials: production-owner-flows/REPORT_P0.md and its original/corrected receipts; d05-controlled-p1/records-final; final-p2-captured-replay-v4; final-c09-raw-recount-v2; final494-production-replay; d02-final-acceptance-review-1103. The final independent audit recorded133/133 offline receipt/hash/pure-projection checks over78 retained files, manifestSHA256d0d9c200c93230528a0795372a084553638c74f502eeb6b65f241d0ad80427a3. These are not133 new operating tests. The original [D02 C10](https://github.com/Two-Weeks-Team/musely/issues/62#issuecomment-6583852395) remains an earlier operating checkpoint, not a full D01/S3 acceptance.
+
+Preserve original P0 harness exit2/equal-signed-hash mistake, corrected offline judgment and separately authorized restoration; P2 selector/framing/UNKNOWN-load failures; earlier C09 freeze-crossing collection; and the old wall-clock-dependent full-check failure. Later3/3 original reproductions,26/26 corrected proof/regression checks and470/470+type/build/dry-run belong to their own pins. The actual494 scene/evidence retains blocked analytics POST and owner-location bootstrap attempts; neither is an owner access success or an absence of all attempted network traffic. Body annotations behind the evidence popover do not establish D05's continuous film provenance.
+
+P2 results inherit C09 collection meta.command/artifact. Preserve that raw metadata, but use the actual capture source/time when writing final C10: capture-final-p2.mjs / scene2026-11-02T17:26:12.591Z for v4; capture-production-replay-494.mjs --run / actual2026-11-02T20:26–20:28Z for494. Do not describe collect-final-c09.mjs as the capture command. No replacement capture is required by this metadata clarification.
+
+I11's [original technical C10](https://github.com/Two-Weeks-Team/musely/issues/59#issuecomment-6588006084) remains technical evidence; its earlier partial-predecessor interpretation was withdrawn. The [later C01 handoff](https://github.com/Two-Weeks-Team/musely/issues/59#issuecomment-6591330425) records root's actual #57 closure23:39:44Z→#56 reclosure23:40:41Z→#59 reclosure23:41:10Z without rewriting histories. It supplies read-only RunRecord/seek/source/evidence output, not a substitute for D01.
+
+**D01's full original actual Muse/inbox/world, webcam and whole-path acceptance remains pending.** Keep D02 open/awaiting that prerequisite, preserve its unchecked overall completion boundary, and only after D01's full handoff record the final D02 C10/checklist/dependent handoff at the actual time. Visitor quota, four-hour, physical-device, movie and whole-S3 records remain separate where applicable; this D02 record neither completes them nor adds them as new D02 experiments. Hackathon Submit/terms/competition-publication is the team's decision/action and remains excluded from our execution scope, not a new technical gate. No product494/collector3105/export235 or runtime/deployment changes are made here. See the [updated D02 index](evidence/INDEX.md#d02-final-operating-evidence-and-prerequisite-status-2026-11-03).

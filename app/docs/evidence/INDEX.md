@@ -34,3 +34,19 @@ D-03 #63: **prepared / not accepted**. No four-hour run has started on a frozen 
 | personal account/privacy/approval/replay proof | final integrated D01/I11 build | retain separate receipts, pending |
 
 Every receipt must name issueId, owner, commitSha, PR, environment, deployId, URL, configVersion, testedAt, command, result, artifact and limitations. Empty, skipped, interrupted or recovered-but-failed evidence is not PASS. Public deployment receipts must never contain credentials or private input. Preserve earlier failures next to their later reruns rather than overwriting them.
+
+
+## D02 final operating evidence and prerequisite status (2026-11-03)
+
+**The four D02 technical criteria are supported; D02 overall acceptance remains pending full original D01 #61 acceptance/handoff.** Earlier D02 pending/local-only rows retain their historical checkpoint. No existing row, failure or source identity is overwritten. The [D02 technical handoff](../RELEASE_ACCEPTANCE.md#d02-final-technical-evidence-handoff-2026-11-03) records exact criteria, C09 figures, release mapping, inherited-meta clarification and limits.
+
+| Retained external artifact under tasks/s3-execution-20261102/ | Environment / state |
+|---|---|
+| production-owner-flows/REPORT_P0.md and original/corrected P0 receipts | Actual8b13 operator-owner trade→separate revoke→fresh same-job delegation_revoked/state unchanged; original harness FAIL and separate restoration retained; not personal Muse/two people. |
+| d05-controlled-p1/records-final | Two actual Runtime/RunLog-2 local CONTROLLED COMPARISON(SIMULATION) runs; one Transit Pass delta/identical seed-clock-inputs; no invented provider/signature; separate from production. |
+| final-p2-captured-replay-v4; final494-production-replay | Original8b13 REPLAY10/10 and actual494 REPLAY11/11 of the same event4012/input349/v801/checkpoint1e829885…; original server verdict/no model call. Original capture failures remain. Inherited C09 meta is not the actual capture command. |
+| final-c09-raw-recount-v2 | Original8b13 run3,16:12:08.719≤at<17:00Z,289 events; full sample/source/origin/denominators and six-value oracle/UI match.0/13 intent;12 requests/6 candidates;27 passed/1 refused;44 unique live request IDs/0 replay request IDs/10 scripted spotlight events;1 ability change;0 instruction/0 scope blocks. Connected denominator0 remains Not measured. |
+| d02-final-acceptance-review-1103 |133/133 offline existing-receipt/hash/pure-replay checks,78 retained files, manifestSHA256d0d9c200c93230528a0795372a084553638c74f502eeb6b65f241d0ad80427a3. No new operating execution. |
+| s2-final-closeout-1103 / original6588006084 and later6591330425 I11 C10 | I11 technical data reused after actual root #57→#56→#59 full C01 handoff/reclosure; earlier premature closure/reopening retained. Does not replace D01's prerequisite. |
+
+Original8b13 operating receipts and current494 replay identities stay distinct, with unchanged backend/config and separately checked changed read-only loader/UI. Their exact hashes/times are in the handoff. No actual Muse/webcam/visitor/four-hour/physical/movie/whole-S3 acceptance is granted by this index, and no extra D02 operating test is invented. Final D02 C10/checklist/closure remains unexecuted until D01's full original acceptance. Hackathon Submit/terms/competition-publication remains a team handoff decision outside our execution scope; product494/collector3105/export235 and existing evidence stay frozen.
