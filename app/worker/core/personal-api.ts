@@ -1,6 +1,5 @@
 // Personal authentication route adapter only. A valid login never creates an actor or inherits legacy owner powers.
 import {originAllowed} from './owner-session.ts';
-import {PersonalRegistryError} from './personal-owners.ts';
 import type {PersonalBinding} from './personal-registration.ts';
 import type {ActorProfile} from '../../src/identity/participant.ts';
 import {personalAuthorizeUrl, personalThreadsIdentity, type PersonalThreadsConfig} from './threads.ts';
@@ -89,11 +88,11 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
         const profile = url.pathname === BASE + '/draft' ? await stub.personalDraftRegister(binding, input) : profileWrite ? await stub.personalProfilePatch(binding, input) : await stub.personalProfileRead(binding);
         return json({profile, entry: {state: profile ? 'registered' : 'viewing'}});
       } catch (e) {
-        if (e instanceof PersonalRegistryError) {
-          if (e.code === 'personal_session_required') return failure(e.code, 401);
-          if (e.code === 'invalid_registration') return failure(e.code, 400);
-          if (['operation_conflict', 'actor_exists', 'binding_conflict', 'draft_required', 'revision_conflict'].includes(e.code)) return failure(e.code, 409);
-        }
+        // RPC preserves serializable name/code, not a custom Error's prototype (compat >=2026-04-21).
+        const code = e && typeof e === 'object' && 'name' in e && e.name === 'PersonalRegistryError' && 'code' in e && typeof e.code === 'string' ? e.code : null;
+        if (code === 'personal_session_required') return failure(code, 401);
+        if (code === 'invalid_registration') return failure(code, 400);
+        if (code && ['operation_conflict', 'actor_exists', 'binding_conflict', 'draft_required', 'revision_conflict'].includes(code)) return failure(code, 409);
         return failure('registration_unavailable', 503);
       }
     }

@@ -52,3 +52,16 @@ test('authentication/Origin/bounded body failures produce no registrations or pr
 test('registration configuration failures and SQL failures are safe503 rather than anonymous401 or free-text errors',async t=>{
  const a=await boot(t),u=await a.login();delete a.env.SESSION_SECRET;assert.equal((await a.go('GET',P,undefined,u.cookie)).status,503);a.env.SESSION_SECRET='synthetic-session-secret';const original=a.do_.personalDraftRegister;a.do_.personalDraftRegister=async()=>{throw Error('SYNTHETIC_PRIVATE_SQL_FAILURE');};const r=await a.go('POST',D,intent(),u.cookie);assert.equal(r.status,503);assert.deepEqual(r.body,{error:'registration_unavailable'});a.do_.personalDraftRegister=original;
 });
+
+test('serialized RPC registry errors preserve only allowlisted public status codes without custom prototypes',async t=>{
+ const a=await boot(t),u=await a.login();
+ for(const [name,method,path,body] of [['personalDraftRegister','POST',D,intent()],['personalProfileRead','GET',P,undefined],['personalProfilePatch','PATCH',P,{expectedRevision:1,displayName:'Name'}]]){
+  const original=a.do_[name];
+  for(const [code,status]of [['personal_session_required',401],['invalid_registration',400],['operation_conflict',409],['actor_exists',409],['binding_conflict',409],['draft_required',409],['revision_conflict',409],['registration_incomplete',503],['PRIVATE_RPC_CANARY',503]]){
+   a.do_[name]=async()=>{throw Object.assign(new Error('PRIVATE_RPC_CANARY'),{name:'PersonalRegistryError',code});};
+   const r=await a.go(method,path,body,u.cookie);assert.equal(r.status,status,code);assert.equal(r.body.error,status===503?'registration_unavailable':code);assert.doesNotMatch(JSON.stringify(r.body),/PRIVATE_RPC_CANARY/);
+  }
+  a.do_[name]=async()=>{throw Object.assign(new Error('PRIVATE_RPC_CANARY'),{code:'invalid_registration'});};
+  const unexpected=await a.go(method,path,body,u.cookie);assert.deepEqual(unexpected.body,{error:'registration_unavailable'});assert.equal(unexpected.status,503);a.do_[name]=original;
+ }
+});
