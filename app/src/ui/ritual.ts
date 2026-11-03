@@ -104,11 +104,18 @@ export function ritualCard(onDone: () => void) {
       prompt.textContent = '세 동작을 준비하고 있어요 · Preparing your three moves…';
       const st = await wait(sparkStatus()); if (st) await wait(ensureSession(st));
       guard();
+      const requestedAt = performance.now();
       const ch = await wait(fetch('/api/ritual/start', {method: 'POST', signal: abort.signal}));
       if (!ch.ok) throw new Error(ch.status === 401 ? 'a session is required' : 'could not start (' + ch.status + ')');
       const {id, steps, expiresAt} = await wait(ch.json()) as {id: string; steps: {id: string; text: string}[]; expiresAt: number};
       if (steps.length !== 3 || !Number.isFinite(expiresAt)) throw new Error('could not read the three moves');
-      expiry = setTimeout(() => cancelRun(new Error('The three-minute ritual expired. No frames were sent')), Math.max(0, expiresAt - Date.now()));
+      // HTTP Date and expiresAt share the server clock. Subtract the full request elapsed time
+      // conservatively and then use a monotonic clock, so an incorrect device clock cannot cancel
+      // a fresh challenge. Without Date, the server's three-minute TTL is still an upper bound.
+      const serverDate = Date.parse(ch.headers.get('date') ?? '');
+      const remaining = Math.max(0, Math.min(180000, Number.isFinite(serverDate) ? expiresAt - serverDate - 1000 : 180000) - (performance.now() - requestedAt));
+      const deadline = performance.now() + remaining;
+      expiry = setTimeout(() => cancelRun(new Error('The three-minute ritual expired. No frames were sent')), remaining);
       for (let i = 0; i < steps.length; i++) {
         count.textContent = '';
         prompt.textContent = `${i + 1}/3 · ${poses[steps[i].id] ?? steps[i].text}. 미리보기를 보며 준비한 뒤 눌러 주세요. 3분 안에 마쳐 주세요. · Prepare in the preview, then press Ready. Finish within three minutes.`;
@@ -117,7 +124,7 @@ export function ritualCard(onDone: () => void) {
         guard(); count.textContent = '●'; frames.push(capture(video));
       }
       guard();
-      if (Date.now() >= expiresAt) throw new Error('The three-minute ritual expired. No frames were sent');
+      if (performance.now() >= deadline) throw new Error('The three-minute ritual expired. No frames were sent');
       clearTimeout(expiry); expiry = undefined;
       stopCamera(); prompt.textContent = '결과를 확인하고 있어요 · Checking your moves…'; count.textContent = ''; controls.replaceChildren(cancel);
       sent = true;

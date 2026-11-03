@@ -16,7 +16,7 @@ class Node {
 }
 const walk=n=>[n,...n.childNodes.flatMap(walk)];
 const button=(card,text)=>walk(card).find(n=>n.tagName==='button'&&n.textContent===text&&!n.removed);
-const response=(data,status=200)=>({ok:status<300,status,json:async()=>data});
+const response=(data,status=200,serverNow=Date.now())=>({ok:status<300,status,headers:{get:name=>name==='date'?new Date(serverNow).toUTCString():null},json:async()=>data});
 async function fixture(t,{pendingCamera=false,cameraError=null,ttl=180000}={}){
  const originals={document:globalThis.document,navigator:globalThis.navigator,fetch:globalThis.fetch,MutationObserver:globalThis.MutationObserver,setTimeout:globalThis.setTimeout,clearTimeout:globalThis.clearTimeout};
  const timers=new Map();let next=0;const observers=[];const listeners=new Map();
@@ -27,7 +27,7 @@ async function fixture(t,{pendingCamera=false,cameraError=null,ttl=180000}={}){
  globalThis.setTimeout=(f,ms)=>{timers.set(++next,{f,ms});return next;};globalThis.clearTimeout=id=>timers.delete(id);
  const camera=deferred(),stream={getTracks:()=>[{stop(){state.stopped++;}}]};
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia:()=>cameraError?Promise.reject(Object.assign(new Error('camera fixture'),{name:cameraError})):pendingCamera?camera.promise:Promise.resolve(stream)}}});
- globalThis.fetch=async(url,init)=>{if(url==='/api/ritual/record')return response({record:null});if(url==='/api/ritual/start'){state.starts++;return response({id:'fixture',steps:[{id:'a',text:'raise one hand'},{id:'b',text:'turn your head'},{id:'c',text:'show three fingers'}],expiresAt:Date.now()+ttl});}if(url==='/api/muse'){state.posts.push(JSON.parse(init.body));return response({source:'live',output:{results:[]}});}throw Error('Unexpected offline request');};
+ globalThis.fetch=async(url,init)=>{if(url==='/api/ritual/record')return response({record:null});if(url==='/api/ritual/start'){state.starts++;return response({id:'fixture',steps:[{id:'a',text:'raise one hand'},{id:'b',text:'turn your head'},{id:'c',text:'show three fingers'}],expiresAt:state.now+ttl},200,state.now);}if(url==='/api/muse'){state.posts.push(JSON.parse(init.body));return response({source:'live',output:{results:[]}});}throw Error('Unexpected offline request');};
  const card=ritualCard(()=>state.done++);await flush();
  const start=button(card,'카메라로 시작 · Try the ritual');start.onclick();await flush();
  const tick=async()=>{const timer=[...timers].find(([,v])=>v.ms===1000);assert.ok(timer,'countdown timer');timers.delete(timer[0]);timer[1].f();await flush();};
@@ -75,4 +75,11 @@ for(const kind of ['hidden','removed','closed'])test(`${kind} during permission 
 test('repeated start and readiness clicks do not duplicate a challenge or capture',async t=>{
  const f=await fixture(t);f.start.onclick();await flush();const initial=button(f.card,'준비됐어요 · Ready');initial.onclick();initial.onclick();await flush();await f.countdown();assert.equal(f.state.starts,1);
  const move=button(f.card,'동작 준비됐어요 · Ready for this move');move.onclick();move.onclick();await flush();await f.countdown();assert.equal(f.state.captures,1);assert.equal(f.state.posts.length,0);await f.dismiss('closed');
+});
+
+for(const offset of [600000,-600000])test(`device clock offset ${offset} does not consume a fresh server challenge`,async t=>{
+ const f=await fixture(t);const now=Date.now;Date.now=()=>f.state.now+offset;t.after(()=>{Date.now=now;});
+ await f.click('준비됐어요 · Ready');await f.countdown();
+ assert.equal(f.state.starts,1);const expiry=[...f.timers.values()].find(v=>v.ms>30000);assert.ok(expiry,'a fresh challenge must keep time to prepare');assert.ok(expiry.ms<=180000);
+ await f.click('동작 준비됐어요 · Ready for this move');await f.countdown();assert.equal(f.state.captures,1);await f.dismiss('closed');
 });
