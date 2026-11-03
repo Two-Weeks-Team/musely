@@ -4,6 +4,7 @@
 // enter only as recorded inputs (`decision`) and are stored in the run log; replays feed them back.
 import {BEATS, CLIP_FALLBACK, inHours, type Beat} from './beats.ts';
 import {PLACES, PLACE_BY_ID, placeById, distanceM, WALK_MPS, type Place} from './places.ts';
+import {actorLabel, knownActorNamed} from './actor-display.ts';
 import {HARNESSES, harnessById} from './harness.ts';
 import {ITEM_BY_ID, itemUpkeep, grantItem, putTimed, historyFault, spendSpotlightTickets} from './items.ts';
 import {rngFor, weightedPick, daySeed} from './rng.ts';
@@ -219,7 +220,10 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   s.owner ??= defaultOwner(OWNER_MUSE, now);
   s.inbox ??= emptyInbox();
   const emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => events.push({...tagLocation(s.owner, e), id: `${s.day}:${s.tick}:${events.length}`, tick: s.tick});
-  for (const m of s.muses) m.wants ??= harnessWants(m.id, now);
+  for (const m of s.muses) {
+    if(!m.wants && !HARNESSES.some(h=>h.id===m.id)) throw new Error('Personal actor requires explicit public Wants before world entry');
+    m.wants ??= harnessWants(m.id, now);
+  }
   const newDay = clock.date !== s.day;
   if (newDay) {
     s.day = clock.date; s.seed = daySeed(s.worldId, s.day);
@@ -254,8 +258,8 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   const computed = spotlightFor(s, now);
   const spot = input.spot && s.muses.some(m => m.id === input.spot!.muse) ? {muse: input.spot.muse, priority: input.spot.priority, freedom: computed.freedom} : computed;
   // 1. Spotlight: a recorded live/replay decision for this turn, or the scenario's own choice. A paused Muse's turn passes silently.
-  const d = input.decision && input.decision.muse === spot.muse && !paused(spot.muse) ? input.decision : null;
-  if (input.decision && !d) emit({at: now, source: input.decision.source, kind: 'decision_rejected', muse: input.decision.muse, data: {reason: paused(input.decision.muse) ? 'paused: the owner revoked this Muse\'s delegation' : 'not this Muse\'s spotlight turn'}, tags: []});
+  const d = input.decision && input.decision.muse === spot.muse && !paused(spot.muse) && !isRuntimeControlled(s,spot.muse,now) ? input.decision : null;
+  if (input.decision && !d) emit({at: now, source: input.decision.source, kind: 'decision_rejected', muse: input.decision.muse, data: {reason: paused(input.decision.muse) ? 'paused: the owner revoked this Muse\'s delegation' : isRuntimeControlled(s,input.decision.muse,now) ? 'personal or connected control' : 'not this Muse\'s spotlight turn'}, tags: []});
   if (d) applyDecision(s, d, spot.freedom, now, emit, hooks);
   else if (!paused(spot.muse)) emit({at: now, source: 'scripted', kind: 'spotlight', muse: spot.muse, data: {freedom: spot.freedom, live: false}, tags: []});
 
@@ -281,7 +285,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     if (m.beat && m.beat.endsAt > now) continue;
     if (m.beat) finishBeat(m, now, emit, s.items, !!itemFault);
     if (connected) {
-      if (m.controlMode === 'personal') continue;
+      if (m.controlMode === 'personal' || !HARNESSES.some(h=>h.id===m.id)) continue;
       // Ambient owner-area walking is world physics, not a connected command or a team-model decision.
       // A real command, an incoming approach, any pending commitment, or an existing trip/beat takes priority.
       const area = s.owner?.muse === m.id ? ownerArea(s.owner) : null;
@@ -361,8 +365,8 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       // The other Muse answers (8.3). A connected Muse answers from its owner's runtime, so nothing is said for it here.
       if (input.replies && !isRuntimeControlled(s, other.id, now)) replyTo(other, initiator, placeId, meeting, input.replies.find(r => r.encounterId === meeting && r.muse === other.id && r.other === initiator.id), now, emit);
       if (initiator.intent?.target === other.id) initiator.intent = null;
-      remember(a, `Met ${harnessById(b.id).name} at ${placeById(placeId).name}`);
-      remember(b, `Met ${harnessById(a.id).name} at ${placeById(placeId).name}`);
+      remember(a, `Met ${actorLabel(b.id)} at ${placeById(placeId).name}`);
+      remember(b, `Met ${actorLabel(a.id)} at ${placeById(placeId).name}`);
     }
     const place = placeById(placeId);
     if (place.kind === 'campfire' && group.length >= 3 && clock.hour >= 17) emit({at: now, source: 'rule', kind: 'gathering', muse: group[0].id, place: placeId, data: {count: group.length, muses: group.map(m => m.id)}, tags: ['campfire_gathering_3plus']});
@@ -410,7 +414,7 @@ function remember(m: MuseState, line: string) { m.memory = [line, ...m.memory.fi
  * A rule answer never carries model evidence.
  */
 function replyTo(m: MuseState, to: MuseState, placeId: string, meeting: string, r: EncounterReply | undefined, now: number, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void) {
-  const toName = harnessById(to.id).name;
+  const toName = actorLabel(to.id);
   if (r && r.source !== 'rule' && r.output) {
     const o = r.output;
     emit({at: now, source: r.source, kind: 'encounter_reply', muse: m.id, other: to.id, place: placeId, line: o.line || null, data: {encounterId: meeting, intent: o.intent, item: o.item || null, public_reason: o.public_reason, injection_suspected: o.injection_suspected, evidence: r.evidence ?? null}, tags: []});
@@ -457,7 +461,7 @@ function findPlaceByName(name: string): Place | null {
 }
 function findMuse(s: WorldState, ref: string): MuseState | null {
   const r = ref.trim().toLowerCase();
-  return s.muses.find(m => m.id === r || harnessById(m.id).name.toLowerCase() === r) ?? null;
+  return s.muses.find(m=>m.id===r) ?? s.muses.find(m=>m.id===knownActorNamed(r)) ?? null;
 }
 
 /** Validates a live/replayed spotlight decision against the world and the Muse's scope, then applies it. */
