@@ -169,3 +169,28 @@ body[data-mode="world"] #story-heading,body[data-mode="world"] #story-scrubber{d
 #welcome{--welcome-top:max(150px,calc(var(--header-h,100px) + 10px));top:var(--welcome-top);max-height:calc(100dvh - var(--welcome-top) - var(--footer-h,118px) - 42px);overflow-y:auto;overscroll-behavior:contain}
 @media(max-width:1180px){#welcome{--welcome-top:calc(var(--header-h,125px) + 10px)}}
 @media(max-width:700px){#welcome{max-height:calc(100dvh - var(--welcome-top) - var(--footer-h,134px) - 39px)}}
+
+/* The ordinary entry is a small invitation. Only current validated own-Muse entry may retire it. */
+.entry-door{width:44px;height:44px;min-width:44px;min-height:44px;flex:0 0 44px;justify-content:center;align-items:center;gap:0;padding:10px;border:1px solid #ffb36b80;border-radius:14px;color:#ffd5a3;background:#151f32f2;animation:entry-invitation 4s ease-in-out infinite}
+.entry-door svg{display:block;width:24px;height:24px}
+.entry-door .entry-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.entry-setup-text{display:block;width:100%;box-sizing:border-box;min-height:130px;max-height:220px;resize:vertical;border:1px solid #53607b;border-radius:10px;background:#101623;color:#f5efe3;padding:12px;font:11px/1.6 system-ui}
+@keyframes entry-invitation{0%,100%{box-shadow:0 0 0 1px #ffb36b35,0 0 9px #ffb36b12}50%{box-shadow:0 0 0 2px #ffb36b65,0 0 18px #ffb36b32}}
+@media(prefers-reduced-motion:reduce){.entry-door{animation:none;box-shadow:0 0 0 2px #ffb36b55,0 0 10px #ffb36b20}}
+
+/* Personal setup stays in the small, scrollable door panel. No overlay covers the live commons. */
+.entry-door[data-invitation="complete"]{animation:none;box-shadow:none;border-color:#789c89;color:#c4ebd4}
+.personal-entry,.personal-connection{min-width:0;padding:12px 0;border-top:1px solid #35415a}
+.personal-entry h2,.personal-connection h3{font:400 20px Georgia,serif;margin:8px 0}
+.personal-entry form,.personal-connection fieldset{display:grid;gap:8px;margin:10px 0;min-width:0}
+.personal-entry label,.personal-connection label{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-height:44px}
+.personal-entry input,.personal-entry select,.personal-connection input:not([type="checkbox"]),.personal-connection select{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;min-height:44px;border:1px solid #53607b;border-radius:9px;padding:9px;background:#101623;color:#f5efe3;font:14px system-ui}
+.personal-connection input[type="checkbox"]{width:20px;height:20px;flex:0 0 20px}
+.personal-connection fieldset{padding:10px;border:1px solid #53607b;border-radius:10px}
+.personal-connection fieldset label{flex-wrap:nowrap}.personal-connection legend{padding:0 4px}
+.personal-entry button,.personal-connection button{min-height:44px;max-width:100%;margin:4px 6px 4px 0;white-space:normal}
+.personal-connection li{overflow-wrap:anywhere;margin:8px 0}.personal-connection textarea{min-height:160px}
+.personal-entry :focus-visible,.personal-connection :focus-visible{outline:2px solid #ffb36b;outline-offset:3px}
+@media(prefers-reduced-motion:reduce){.entry-door[data-invitation="complete"]{animation:none;box-shadow:none}}
+
+.entry-panel .close{min-width:44px;min-height:44px}

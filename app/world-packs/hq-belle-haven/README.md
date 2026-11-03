@@ -1,11 +1,16 @@
 > Integration status: keep the regional GLB OFF in the live native-building scene.
 > Actual product A/B reported duplicate-building depth interference. A feature-OFF
-> native-preserving color alternative is implemented under integration/native-preserving/;
-> its real product/mobile appearance is not yet validated. No native layer is hidden by it.
+> native-preserving color alternative and raised rooftop experiment are under
+> integration/native-preserving/. No native layer is hidden by either.
+> The roof experiment failed the Mac 6c11419/main18df check (zero details); the
+> current revision fixes actual MapLibre child-tile and degenerate-ring handling.
+> [Source-byte tests and remaining GPU gates](integration/native-preserving/ROOF_DETAILS.md).
+> Keep the PR Draft and features OFF. No merge or deployment is authorized.
 
 # HQ / Belle Haven regional authoring pack (World-01)
 
-Related: #130. Source main: `a31c9c9fb0d364f8e7ab8ec0fff2cfb647647620`, rechecked 2026-11-03.
+Related: #130. Original authoring source main: `a31c9c9fb0d364f8e7ab8ec0fff2cfb647647620`.
+The rooftop correction follows main151 `d4521aa70467fb2e18705dcd26816ba482ec3892`.
 
 An isolated, reproducible geographic **asset pack**, not imported by the production application.
 Real mapped footprints, roads and green cover are included with estimated heights.

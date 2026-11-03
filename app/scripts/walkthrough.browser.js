@@ -11,7 +11,7 @@
 // Each experience starts in a fresh page; screenshots go to output/wt-<vp>-<exp>-<state>.png.
 // Fixture scenes are SCRIPTED fixtures. EXP-WORLD success reads the live world and says so; it fails when the feed has no live row.
 async (page) => {
- const base = new URL(page.url()); base.search = '?autoplay=0';
+ const base = new URL(page.url()); base.search = '?autoplay=0&entryPreview=1';
  const browser = page.context().browser(), cases = [];
  const has = (t, ...res) => res.every(r => r.test(t));
  for (const mobile of [false, true]) {

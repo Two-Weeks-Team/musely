@@ -3,6 +3,12 @@ on:
   pull_request:
     paths:
       - 'app/world-packs/hq-belle-haven/**'
+      - 'app/src/main.ts'
+      - 'app/src/engine/places.ts'
+      - 'app/assets/map-style.json'
+      - 'app/assets/geography.json'
+      - 'app/package.json'
+      - 'app/package-lock.json'
       - '.github/workflows/world-pack.yml'
 permissions:
   contents: read

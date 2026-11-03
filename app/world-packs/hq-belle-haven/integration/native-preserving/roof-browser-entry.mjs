@@ -4,9 +4,11 @@ import {centerLngLat} from './region.mjs';
 import {createNativeRoofDetails,ROOF_LAYER_ID} from './roof-controller.mjs';
 setWorkerUrl(new URL('./maplibre-gl-worker.mjs',import.meta.url).href);
 const status=document.querySelector('#status'),errors=[];
-const map=new Map({container:'map',style,center:centerLngLat,zoom:18,pitch:54,bearing:12,canvasContextAttributes:{antialias:true,preserveDrawingBuffer:true}});
+// Match product maxZoom as well as its entry camera. In v6, maxZoom affects
+// canonical tile subdivision, so the library default is not equivalent.
+const map=new Map({container:'map',style,center:centerLngLat,zoom:21.2,pitch:54,bearing:12,minZoom:8,maxZoom:23.8,maxPitch:65,canvasContextAttributes:{antialias:true,preserveDrawingBuffer:true}});
 let controller;const buttons=[...document.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
-function state(){return {roof:controller?.status(),zoom:map.getZoom(),center:map.getCenter(),errors:[...errors],renderedDetails:map.getLayer(ROOF_LAYER_ID)?map.queryRenderedFeatures({layers:[ROOF_LAYER_ID]}).length:0};}
+function state(){const source=map.getSource('openmaptiles');return {roof:controller?.status(),zoom:map.getZoom(),center:map.getCenter(),source:source?{maxzoom:source.maxzoom,tiles:source.tiles}:null,errors:[...errors],renderedDetails:map.getLayer(ROOF_LAYER_ID)?map.queryRenderedFeatures({layers:[ROOF_LAYER_ID]}).length:0};}
 map.on('error',e=>{errors.push(String(e.error));status.textContent=String(e.error)});
 map.on('styleimagemissing',e=>{if(!map.hasImage(e.id))map.addImage(e.id,{width:1,height:1,data:new Uint8Array(4)})});
 map.once('load',()=>{controller=createNativeRoofDetails(map);buttons.forEach(b=>b.disabled=false);status.textContent='Native map unchanged. Roof detail OFF.';});
@@ -16,5 +18,8 @@ document.querySelector('#on').onclick=()=>controller.enable();
 document.querySelector('#entry').onclick=()=>map.jumpTo({center:centerLngLat,zoom:21.2,pitch:54,bearing:12});
 document.querySelector('#near').onclick=()=>map.jumpTo({center:centerLngLat,zoom:18,pitch:54,bearing:12});
 document.querySelector('#wide').onclick=()=>map.jumpTo({center:centerLngLat,zoom:16,pitch:54,bearing:12});
+// This coordinate is a verified complete roof in the immutable PBF and its
+// canonical z20 child, independent of whatever roofs are currently on screen.
+document.querySelector('#verified').onclick=()=>map.jumpTo({center:[-122.14889690747935,37.48346800272857],zoom:21,pitch:60,bearing:12});
 document.querySelector('#inspect').onclick=()=>{const roof=controller.status().report?.accepted[0];if(roof)map.jumpTo({center:roof.centerLngLat,zoom:21,pitch:60,bearing:12})};
 window.nativeRoofProof={map,getState:state,enable:()=>controller.enable(),disable:()=>controller.disable(),dispose:()=>controller.dispose()};

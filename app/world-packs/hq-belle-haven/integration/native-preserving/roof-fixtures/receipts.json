@@ -13,5 +13,13 @@
     }
   ],
   "provenance": "Actual immutable OpenFreeMap PBF downloaded 2026-11-03; not fabricated geometry. Offline fixtures do not prove current browser/GPU state.",
-  "attribution": "OpenFreeMap \u00a9 OpenMapTiles Data from OpenStreetMap contributors (ODbL-1.0)"
+  "attribution": "OpenFreeMap © OpenMapTiles Data from OpenStreetMap contributors (ODbL-1.0)",
+  "reverifiedAt": "2026-11-03T15:10:13.686Z",
+  "tileJSON": {
+    "url": "https://tiles.openfreemap.org/planet",
+    "capturedAt": "2026-11-03T15:10:13.686Z",
+    "bytes": 19254,
+    "sha256": "3339dd4706556bf88d514cb54b10647dbe1f8306381f739f2a2e52341147040c",
+    "file": "tilejson.json"
+  }
 }

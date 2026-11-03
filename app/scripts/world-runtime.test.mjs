@@ -152,6 +152,23 @@ function fakeModel({delayMs = 0, answer, hold = false} = {}) {
 }
 const reservations = sql => sql.exec('SELECT id, action, settled, outcome, amount, cost FROM reservations ORDER BY id').toArray();
 
+test('a personal Muse with stale presence never falls back to the team model or scripted roaming', async () => {
+  const model = fakeModel(), {rt} = setup({fetcher: model.fetcher, hooks: makeHooks()});
+  rt.commitExternal(T0, 'personal-offline-fixture', state => {
+    state.muses[0].controlMode = 'personal';
+    state.inbox.connected['00-jolly'] = T0 - 25 * 3600000;
+    state.paused = Object.fromEntries(state.muses.slice(1).map(m => [m.id, {at: T0, by: 'fixture'}]));
+  });
+  const before = structuredClone(rt.state().muses[0]);
+  await rt.heartbeat(T0 + TICK_MS);
+  assert.equal(model.stats.calls.spotlight, 0, 'the team model must not think for an offline personal Muse');
+  assert.equal(model.stats.calls.encounter, 0);
+  assert.equal(rt.state().muses[0].place, before.place);
+  assert.equal(rt.state().muses[0].travel, null);
+  assert.equal(rt.state().muses[0].beat, null);
+  assert.equal(rt.events().filter(event => ['depart', 'greet', 'encounter_reply'].includes(event.kind) && event.muse === '00-jolly').length, 0);
+});
+
 test('I-05 #1 visitor priority: a requested Muse holds the next spotlight (live) ahead of the rotation; duplicates, the hourly limit and paused Muses', async () => {
   const m = fakeModel();
   const s = setup({fetcher: m.fetcher}); const rt = s.rt;

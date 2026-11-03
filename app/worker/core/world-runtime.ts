@@ -1,3 +1,4 @@
+import {actorProfile} from '../../src/engine/participants.ts';
 // Shared-world heartbeat inside the world Durable Object (direction v2, 8.7).
 // - Commit point: state, events and the tick record are written in one synchronous block; a tick that
 //   is already recorded is never committed again (alarms are at-least-once and may retry).
@@ -19,7 +20,7 @@ import {createWorld, tick, spotlightFor, spotlightInput, encounterInput, request
 import {validate, buildMessages, maxCostUsd, actualCostUsd, failureCostUsd, checkOutput} from './actions.ts';
 import {callModel, type ModelConfig} from './model.ts';
 import {replayFor} from './replay.ts';
-import {isConnected} from '../../src/engine/inbox.ts';
+import {isRuntimeControlled} from '../../src/engine/inbox.ts';
 import {COMMANDS_TABLE, type CommandResult} from './commands.ts';
 import {syncTasks} from './tasks.ts';
 import {withMessageHooks} from './messages.ts';
@@ -269,6 +270,8 @@ export class WorldRuntime {
 
   private async liveSpotlight(s: WorldState, muse: string, freedom: Decision['freedom'], now: number): Promise<{decision: Decision | null; info: {source: string; reason?: string; requestId?: string | null}}> {
     // A paused Muse (owner revoked its delegation) has no turn: no model call, no fallback, no event.
+    // Personal actors do not use the resident model/schema, even when presence is stale.
+    if (isRuntimeControlled(s, muse, now)) return {decision: null, info: {source: 'scripted', reason: s.muses.find(m => m.id === muse)?.controlMode === 'personal' ? 'personal_muse' : 'connected_muse'}};
     if (s.paused?.[muse]) return {decision: null, info: {source: 'scripted'}};
     // The world must never stop on one bad input: if the spotlight input cannot be built, the scenario continues.
     let input;
@@ -282,7 +285,6 @@ export class WorldRuntime {
       return {decision: null, info: {source: 'scripted', reason}};
     };
     // A connected Muse thinks in its owner's runtime (8.8): the team key never decides for it.
-    if (isConnected(s.inbox, muse, now)) return {decision: null, info: {source: 'scripted', reason: 'connected_muse'}};
     if (!this.opts.model?.key) return fallback('not_connected');
     const call = await this.modelCall('spotlight', input, this.reservationId(s));
     if (!call.ok) return fallback(call.reason);
@@ -327,7 +329,7 @@ export class WorldRuntime {
       console.error('encounter dry run failed', e);
       return [];
     }
-    const meetings = dry.filter(e => e.kind === 'encounter' && e.other && e.muse && !isConnected(s.inbox, e.other, now));
+    const meetings = dry.filter(e => e.kind === 'encounter' && e.other && e.muse && !isRuntimeControlled(s, e.other, now));
     // Budget kept for visitors, and a breaker after repeated timeouts: both answer by rule without a call.
     const budget = meetings.length ? this.opts.ledger.status() : null;
     const held = budget && budget.remainingUsd < ENCOUNTER_BUDGET_FLOOR * budget.capUsd ? 'budget_reserved_for_visitors' : now < this.circuitOpenUntil ? 'circuit_open' : null;
@@ -396,7 +398,7 @@ export class WorldRuntime {
    * may abort with a code before anything is written; then the mutation, the version (a refused rule bumps it
    * only when the state really changed), the events and the stored result row.
    */
-  commitCommand(now: number, label: string, c: {guard: () => string | null; mutate: (s: WorldState, emit: Emit) => {ok: boolean}; record: (version: number, events: WorldEvent[]) => {actorId: string; commandId: string; action: string; payload?: unknown; row: CommandRow}}): {aborted: string} | {aborted: null; events: WorldEvent[]; row: CommandRow} {
+  commitCommand(now: number, label: string, c: {guard: () => string | null; mutate: (s: WorldState, emit: Emit) => {ok: boolean}; record: (version: number, events: WorldEvent[]) => {actorId: string; commandId: string; action: string; payload?: unknown; row: CommandRow}; afterLog?: (done: {events: WorldEvent[]; row: CommandRow}) => void}): {aborted: string} | {aborted: null; events: WorldEvent[]; row: CommandRow} {
     return this.sql.transactionSync(() => {
       const aborted = c.guard();
       if (aborted) return {aborted};
@@ -409,6 +411,8 @@ export class WorldRuntime {
         // are commands) and its result. The signed envelope stays in the events' evidence.
         input = {actorId: rec.actorId, commandId: rec.commandId, action: rec.action, payloadHash: rec.row.payloadHash, ...commandFields(rec.action, rec.payload), ok: rec.row.result.ok, code: rec.row.result.error?.code ?? null, worldVersion: rec.row.result.worldVersion};
       });
+      // Entry receipts depend on actual stored event/input/checkpoint ids. Still inside this transaction.
+      if(c.afterLog)synchronous(c.afterLog({events:done.events,row:row!}));
       return {aborted: null, events: done.events, row: row!};
     });
   }
@@ -509,6 +513,6 @@ export class WorldRuntime {
   /** Compact public view for clients: positions, current beats, inventories, spotlight. */
   view(now: number) {
     const s = this.state();
-    return {worldId: s.worldId, day: s.day, tick: s.tick, version: s.version, lastTickAt: s.lastTickAt, nextSpotlight: spotlightFor(s, now), spotlightQueue: s.spotlight.visitorQueue.filter(id => !s.paused?.[id]), muses: s.muses.map(m => ({id: m.id, place: m.place, travel: m.travel, beat: m.beat, inventory: m.inventory, reflection: m.reflection, wants: m.wants, paused: s.paused?.[m.id] ?? null}))};
+    return {worldId: s.worldId, day: s.day, tick: s.tick, version: s.version, lastTickAt: s.lastTickAt, nextSpotlight: spotlightFor(s, now), spotlightQueue: s.spotlight.visitorQueue.filter(id => !s.paused?.[id]), muses: s.muses.map(m => ({id: m.id,...(m.profile?{profile:actorProfile(m.profile,m.id)}:{}), place: m.place, travel: m.travel, beat: m.beat, inventory: m.inventory, reflection: m.reflection, wants: m.wants, paused: s.paused?.[m.id] ?? null}))};
   }
 }

@@ -1,6 +1,9 @@
 # Native-preserving regional mode (feature OFF)
 
-Current verified upstream main: e8060f13b08142758aaa0ef0fb27a736bf3d7c3d.
+This page describes the older color-only variant and its pinned e8060f13 fixtures.
+The actual raised roof experiment and current-main tests are documented in
+[ROOF_DETAILS.md](ROOF_DETAILS.md). Its Mac zero-detail failure and v6 subdivision
+correction are separate from the color variant. Both remain OFF pending acceptance.
 This module keeps MapLibre buildings, roads, water and ground and adds no regional GLB.
 The color variant is a bounded alternative to duplicated buildings, not a finished world.
 

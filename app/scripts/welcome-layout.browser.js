@@ -1,7 +1,7 @@
 // D-04 layout regression only: local deterministic GET fixtures, no device/FPS/memory acceptance measurement.
 // Run with the repository's Playwright callback runner against built local dist. It owns only fresh contexts.
 async(page)=>{
- const base=new URL(page.url());base.search='?autoplay=0&dpr=1.5';
+ const base=new URL(page.url());base.search='?autoplay=0&entryPreview=1&dpr=1.5';
  const browser=page.context().browser(),cases=[],writes=[],errors=[];
  const check=(vp,name,ok,detail)=>cases.push({vp,name,pass:!!ok,detail});
  for(const size of [{width:360,height:640},{width:390,height:844},{width:1440,height:1000}]){

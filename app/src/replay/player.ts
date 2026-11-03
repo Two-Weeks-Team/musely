@@ -1,3 +1,4 @@
+import {actorProfile} from '../engine/participants.ts';
 // I-11: exact public checkpoint projection. There is no engine tick, command executor, model or transport here.
 import {scheduleCues} from '../ui/live-scene-core.ts';
 import {createPlayer, type Speed} from '../ui/replay-core.ts';
@@ -23,11 +24,15 @@ const arrivalTime = (v: unknown) => typeof v === 'number' && Number.isFinite(v) 
 export const recordedStateHash = (body: string) => sha256Hex('musely-run-state-v1\n' + body);
 // Exact known predecessor tuple: checkpoint projection only, with its original versions and hashes intact.
 // No old engine is executed and arbitrary/mixed catalog versions remain incompatible.
-const PRE_AREA_VERSIONS: RunVersions = {schemaVersion: 'run-log-2', engineVersion: 'engine-2', harnessVersion: 'harness-c0c69e98b5e8', catalogVersion: 'catalog-d69858ec160f'};
+const HISTORICAL_VERSIONS: readonly RunVersions[] = [
+  {schemaVersion:'run-log-2',engineVersion:'engine-4',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-c7068bfa0238'},
+  {schemaVersion: 'run-log-2', engineVersion: 'engine-2', harnessVersion: 'harness-c0c69e98b5e8', catalogVersion: 'catalog-d69858ec160f'},
+  {schemaVersion: 'run-log-2', engineVersion: 'engine-3', harnessVersion: 'harness-c0c69e98b5e8', catalogVersion: 'catalog-c7068bfa0238'},
+];
 export function assertCompatible(r: unknown, expected?: RunVersions): asserts r is RunRecord {
   if (!obj(r)) bad('run header is not an object');
   const keys = ['schemaVersion', 'engineVersion', 'harnessVersion', 'catalogVersion'] as const;
-  const target = expected ?? (keys.every(k => r[k] === PRE_AREA_VERSIONS[k]) ? PRE_AREA_VERSIONS : currentVersions());
+  const target = expected ?? HISTORICAL_VERSIONS.find(version => keys.every(k => r[k] === version[k])) ?? currentVersions();
   for (const key of ['schemaVersion', 'engineVersion', 'harnessVersion', 'catalogVersion'] as const) {
     if (typeof r[key] !== 'string') bad(`missing ${key}`);
     if (r[key] !== target[key]) throw new ReplayRecordError('incompatible_record', `${key} ${r[key]} (player ${target[key]})`);
@@ -42,6 +47,7 @@ function readSnapshot(s: unknown, worldId: string): Record<string, any> {
   const ids = state.muses.map((m: any) => obj(m) && typeof m.id === 'string' && typeof m.place === 'string' && Array.isArray(m.inventory) && m.inventory.every((i: unknown) => typeof i === 'string') ? m.id : bad('invalid Muse in snapshot'));
   if (new Set(ids).size !== ids.length) bad('duplicate Muse in snapshot');
   for (const m of state.muses) {
+    if(m.profile!==undefined){try{if(!obj(m.profile)||Object.keys(m.profile).sort().join(',')!=='actorId,appearanceId,displayName,revision')bad('invalid public profile fields');actorProfile(m.profile,m.id);}catch{bad('invalid public actor profile');}}
     if (m.travel !== null && m.travel !== undefined && (!obj(m.travel) || typeof m.travel.to !== 'string' || !integer(m.travel.departAt) || !arrivalTime(m.travel.arriveAt) || m.travel.arriveAt < m.travel.departAt || typeof m.travel.speed !== 'string')) bad('invalid travel in snapshot');
     if (m.beat !== null && m.beat !== undefined && (!obj(m.beat) || typeof m.beat.id !== 'string' || !integer(m.beat.startedAt) || !integer(m.beat.endsAt) || (m.beat.clip != null && typeof m.beat.clip !== 'string'))) bad('invalid beat in snapshot');
   }

@@ -1,3 +1,4 @@
+import {participantName} from '../../src/engine/participants.ts';
 // Communication between Muses (direction v2, 9 and 12.2; contracts C06, C07; I-13): postcards, gifts, campfire invites
 // and help requests. The MCP tools (mcp-tools.ts) call these inside their signed command (commands.ts executeCommand):
 // the envelope, delegation, scope, expiry, nonce and expected_version are checked before, and every function here runs
@@ -22,7 +23,7 @@ import {itemSpec, itemName, appendHistory, takeTimed, transferItem, grantItem, R
 import {placeCell} from '../../src/engine/location.ts';
 import {beginTrip} from '../../src/engine/travel.ts';
 import {rngFor} from '../../src/engine/rng.ts';
-import {emptyInbox, nextId, deliverMessage, sentToday, isConnected, taskView, TASK_TTL_MS, DAILY, type Inbox, type Task, type CampfireInvite} from '../../src/engine/inbox.ts';
+import {emptyInbox, nextId, deliverMessage, sentToday, isRuntimeControlled, taskView, TASK_TTL_MS, DAILY, type Inbox, type Task, type CampfireInvite} from '../../src/engine/inbox.ts';
 import type {WorldState, MuseState, WorldEvent, Hooks} from '../../src/engine/world.ts';
 import {findTask, statusOf, transitionTask, registerTaskKind} from './tasks.ts';
 
@@ -63,7 +64,7 @@ export function sendPostcard(st: WorldState, me: string, a: {to: string; item: s
   const timed = takeTimed(st.items, me, item);
   inbox.mail.push({id: nextId(inbox, 'mail'), from: me, to, item, text, sentAt: at, deliverAt: at + travelMs, crossRegion, ...(timed ? {timed} : {})});
   appendHistory(st.items, {item, from: me, to, place: from.id, at, via: 'gift'});
-  live({at, source: 'live', kind: 'postcard_sent', muse: me, other: to, place: from.id, line: `Mailed ${itemName(item)} to ${name(to)}`, data: {item, eta_ms: travelMs, cross_region: crossRegion, note: text}, tags: []});
+  live({at, source: 'live', kind: 'postcard_sent', muse: me, other: to, place: from.id, line: `Mailed ${itemName(item)} to ${participantName(st,to)}`, data: {item, eta_ms: travelMs, cross_region: crossRegion, note: text}, tags: []});
   return {ok: true, data: {item, eta_ms: travelMs, deliver_at: at + travelMs, cross_region: crossRegion, sent_today: count.postcards}};
 }
 
@@ -79,8 +80,8 @@ export function giveGift(st: WorldState, me: string, a: {to: string; item: strin
   const count = sentToday(inbox, st.day, me);
   if (count.gifts >= DAILY.gifts) return {ok: false, reason: 'daily_limit'};
   transferItem(st.items, m, r, item, at); count.gifts += 1;
-  live({at, source: 'live', kind: 'gift', muse: me, other: to, place: m.place, line: `A ${itemName(item)} for ${name(to)}`, data: {item}, tags: []});
-  if (isConnected(inbox, to, at)) deliverMessage(inbox, {from: me, to, kind: 'gift', at, text: null, item});
+  live({at, source: 'live', kind: 'gift', muse: me, other: to, place: m.place, line: `A ${itemName(item)} for ${participantName(st,to)}`, data: {item}, tags: []});
+  if (isRuntimeControlled(st, to, at)) deliverMessage(inbox, {from: me, to, kind: 'gift', at, text: null, item});
   return {ok: true, data: {gave: item, to, gifts_today: count.gifts}};
 }
 
@@ -118,12 +119,12 @@ export function inviteCampfire(st: WorldState, me: string, a: {to: string[]; tex
   if (unavailable.length === a.to.length) return {ok: false, reason: 'no_invitee_available'};
   m.inventory.splice(m.inventory.indexOf('invite_token'), 1);
   const inv: CampfireInvite = {id: nextId(inbox, 'invite'), from: me, to: [...a.to], place: CAMPFIRE, note: a.text, at, expiresAt: at + INVITE_TTL_MS, status: 'open', answers: {}};
-  live({at, source: 'live', kind: 'campfire_invite', muse: me, other: a.to.length === 1 ? a.to[0] : null, place: m.place, line: `Invited ${a.to.map(name).join(', ')} to a campfire talk`, data: {invite_id: inv.id, to: inv.to, place: CAMPFIRE, spent: 'invite_token', note: a.text, deadline: inv.expiresAt, stage: 'invite'}, tags: ['campfire_invite']});
+  live({at, source: 'live', kind: 'campfire_invite', muse: me, other: a.to.length === 1 ? a.to[0] : null, place: m.place, line: `Invited ${a.to.map(id=>participantName(st,id)).join(', ')} to a campfire talk`, data: {invite_id: inv.id, to: inv.to, place: CAMPFIRE, spent: 'invite_token', note: a.text, deadline: inv.expiresAt, stage: 'invite'}, tags: ['campfire_invite']});
   const campfire = placeById(CAMPFIRE);
   for (const id of a.to) {
     if (unavailable.includes(id)) { inv.answers[id] = {answer: 'unavailable', via: 'rule', at}; continue; }
     // A connected Muse decides in its owner's runtime: the invite waits in its inbox, and coming to the campfire is its answer.
-    if (isConnected(inbox, id, at)) { inv.answers[id] = {answer: 'pending', via: null, at}; deliverMessage(inbox, {from: me, to: id, kind: 'invite', at, text: a.text, item: 'invite_token'}); continue; }
+    if (isRuntimeControlled(st, id, at)) { inv.answers[id] = {answer: 'pending', via: null, at}; deliverMessage(inbox, {from: me, to: id, kind: 'invite', at, text: a.text, item: 'invite_token'}); continue; }
     const yes = residentAccepts(st, id, inv.id), r = museOf(st, id);
     inv.answers[id] = {answer: yes ? 'accept' : 'decline', via: 'rule', at};
     rule({at, source: 'rule', kind: 'campfire_invite_answer', muse: id, other: me, place: r.place, line: yes ? 'See you at the campfire.' : 'Not tonight.', data: {invite_id: inv.id, answer: yes ? 'accept' : 'decline'}, tags: []});
@@ -142,9 +143,34 @@ function present(st: WorldState, inv: CampfireInvite, now: number) {
     const m = st.muses.find(x => x.id === id);
     if (!m || st.paused?.[id] || m.travel || m.place !== inv.place) return false;
     if (id === inv.from) return true;
-    const answer = inv.answers[id]?.answer;
-    return answer === 'accept' || (answer === 'pending' && isConnected(st.inbox, id, now));
+    const answer = inv.answers[id];
+    return answer?.answer === 'accept' || (answer?.answer === 'pending' && isRuntimeControlled(st, id, now) && answer.comingAt !== undefined && answer.comingAt >= inv.at);
   });
+}
+
+/** A signed move may express coming to an existing invitation; presence alone never does. No answer yet. */
+export function recordCampfireApproach(st: WorldState, me: string, place: string, at: number): string[] {
+  const ids: string[] = [];
+  for (const inv of st.inbox?.invites ?? []) {
+    const answer = inv.answers[me];
+    if (inv.status !== 'open' || inv.expiresAt <= at || inv.at > at || inv.place !== place || !inv.to.includes(me) || answer?.answer !== 'pending') continue;
+    answer.comingAt = at; ids.push(inv.id);
+  }
+  return ids;
+}
+
+/** An invitee already at the fire can choose explicitly; this never moves it or acts for another participant. */
+export function answerCampfire(st: WorldState, me: string, id: string, answer: 'accept' | 'decline', live: Emit, rule: Emit, at: number): Outcome {
+  const inv = st.inbox?.invites?.find(invite => invite.id === id);
+  if (!inv) return {ok: false, reason: 'unknown_invite'};
+  if (!inv.to.includes(me)) return {ok: false, reason: 'not_your_invite'};
+  if (inv.status !== 'open') return {ok: false, reason: 'invite_closed'};
+  if (inv.expiresAt <= at) return {ok: false, reason: 'invite_expired'};
+  if (inv.answers[me]?.answer !== 'pending') return {ok: false, reason: 'already_answered'};
+  inv.answers[me] = {answer, via: 'live', at};
+  live({at, source: 'live', kind: 'campfire_invite_answer', muse: me, other: inv.from, place: museOf(st, me).place, line: answer === 'accept' ? 'I will join the campfire talk.' : 'I will pass this time.', data: {invite_id: id, answer, via: 'live'}, tags: []});
+  const gathered = gatherIf(st, inv, at, rule);
+  return {ok: true, data: {answer, invite: inviteView(inv, me), gathered}};
 }
 
 /** Closes the invite as gathered when three or more are there (one highlight); a connected invitee who came is recorded as a live accept. */
@@ -154,8 +180,8 @@ export function gatherIf(st: WorldState, inv: CampfireInvite, now: number, emit:
   for (const id of here) if (inv.answers[id]?.answer === 'pending') inv.answers[id] = {answer: 'accept', via: 'live', at: now};
   if (here.length < GATHERING_MIN) return false;
   inv.status = 'gathered'; inv.closedAt = now; inv.gathered = here;
-  for (const id of here) museOf(st, id).reflection = `Campfire talk with ${here.filter(x => x !== id).map(name).join(', ')}`.slice(0, 100);
-  emit({at: now, source: 'rule', kind: 'campfire_gathering', muse: inv.from, place: inv.place, line: `${here.length} Muses gathered at the campfire for ${name(inv.from)}'s invite`, data: {invite_id: inv.id, from: inv.from, count: here.length, muses: here, answers_via: Object.fromEntries(here.filter(id => id !== inv.from).map(id => [id, inv.answers[id].via]))}, tags: ['campfire_gathering_3plus', 'invite_gathering']});
+  for (const id of here) museOf(st, id).reflection = `Campfire talk with ${here.filter(x => x !== id).map(other=>participantName(st,other)).join(', ')}`.slice(0, 100);
+  emit({at: now, source: 'rule', kind: 'campfire_gathering', muse: inv.from, place: inv.place, line: `${here.length} Muses gathered at the campfire for ${participantName(st,inv.from)}'s invite`, data: {invite_id: inv.id, from: inv.from, count: here.length, muses: here, answers_via: Object.fromEntries(here.filter(id => id !== inv.from).map(id => [id, inv.answers[id].via]))}, tags: ['campfire_gathering_3plus', 'invite_gathering']});
   return true;
 }
 
@@ -261,9 +287,9 @@ export function proposeHelp(st: WorldState, me: string, a: {to: string; item: st
   const t: Task = {id: nextId(inbox, 'task'), kind: 'help', from: me, to: a.to, status: 'pending', awaiting: a.to, createdAt: at, deadline: at + TASK_TTL_MS, updatedAt: at, round: 0,
     help: {service: svc.service, item: a.item, part: a.needs, asked: null, result: null, note: a.text}, history: [{by: me, action: 'propose', at}]};
   inbox.tasks.push(t);
-  live({at, source: 'live', kind: 'help_requested', muse: me, other: a.to, place: m.place, line: `Asked ${name(a.to)} for help with ${itemName(a.item)}`, data: {task_id: t.id, service: svc.service, item: a.item, part: a.needs, note: a.text, deadline: t.deadline, stage: 'propose'}, tags: []});
+  live({at, source: 'live', kind: 'help_requested', muse: me, other: a.to, place: m.place, line: `Asked ${participantName(st,a.to)} for help with ${itemName(a.item)}`, data: {task_id: t.id, service: svc.service, item: a.item, part: a.needs, note: a.text, deadline: t.deadline, stage: 'propose'}, tags: []});
   // A resident answers by rule at once; a connected helper sees the Task in its own inbox and answers with answer_help.
-  const result = isConnected(inbox, a.to, at) ? 'pending' : residentHelps(st, t, rule, at);
+  const result = isRuntimeControlled(st, a.to, at) ? 'pending' : residentHelps(st, t, rule, at);
   return {ok: true, data: {task: taskView(t, me), status: statusOf(t), result}};
 }
 
@@ -292,7 +318,7 @@ function completeHelp(st: WorldState, t: Task, via: 'live' | 'rule', emit: Emit,
   takeTimed(st.items, req.id, part);
   help.result = svc.result;
   transitionTask(t, 'completed', {by: helper.id, action: 'accept', at, via});
-  const reflections = {[req.id]: `${name(helper.id)} helped with my ${itemName(help.item)}: got ${itemName(svc.result)}`.slice(0, 100), [helper.id]: `Helped ${name(req.id)} with ${itemName(help.item)} (${svc.service})`.slice(0, 100)};
+  const reflections = {[req.id]: `${participantName(st,helper.id)} helped with my ${itemName(help.item)}: got ${itemName(svc.result)}`.slice(0, 100), [helper.id]: `Helped ${participantName(st,req.id)} with ${itemName(help.item)} (${svc.service})`.slice(0, 100)};
   req.reflection = reflections[req.id]; helper.reflection = reflections[helper.id];
   emit({at, source: via, kind: 'help_completed', muse: helper.id, other: req.id, place: helper.place, line: svc.line, data: {task_id: t.id, service: svc.service, item: help.item, part, result: svc.result, accepted_by: helper.id, accepted_via: via, reflections, stage: 'complete'}, tags: ['help_completed']});
   return true;
@@ -334,7 +360,7 @@ export function answerHelp(st: WorldState, me: string, a: {taskId: string; answe
     help.part = part;
     transitionTask(t, 'input-required', {by: me, action: 'answer', at, via: 'live', awaiting: t.to, deadline: at + TASK_TTL_MS});
     live({at, source: 'live', kind: 'help_input_provided', muse: me, other, place: req.place, line: `Here is the ${itemName(part)}.`, data: {task_id: t.id, part, deadline: t.deadline, stage: 'negotiate'}, tags: []});
-    return done({result: isConnected(st.inbox, t.to, at) ? 'pending' : residentHelps(st, t, rule, at)});
+    return done({result: isRuntimeControlled(st, t.to, at) ? 'pending' : residentHelps(st, t, rule, at)});
   }
   if (a.answer === 'need_item') {
     const need = a.item!;

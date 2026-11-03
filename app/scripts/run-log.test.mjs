@@ -484,7 +484,7 @@ test('review 2: a meeting is connected only when the connected Muse headed for t
   st = scene([['00-jolly', '01-sunny', 'commons:cafe']]);
   st.muses.find(m => m.id === '00-jolly').intent = {kind: 'greet', target: '01-sunny'};
   assert.equal(meetingOf(st, '00-jolly').data.actorOrigin, 'system');
-  assert.equal(ENGINE_VERSION, 'engine-3', 'the tick output changed, so the engine version moved');
+  assert.equal(ENGINE_VERSION, 'engine-5', 'personal admission/public profiles change the engine content version; exact historical checkpoints remain readable');
 });
 
 test('review 1: the recount is bounded: 48 hours at most, 20,000 events at most, both answered partial', () => {
@@ -624,7 +624,7 @@ test('review 6: init completes from a half-migrated events table (one of the two
   }
 });
 
-test('review 3: greet, postcard and wants text from a connected Muse never reach run_inputs or the run snapshot', async () => {
+test('review 3: greet, say_hello, postcard and wants text from a connected Muse never reach run_inputs or the run snapshot', async () => {
   const {runTool} = await import('../worker/core/mcp-tools.ts');
   const {makeHooks} = await import('../src/engine/rules.ts');
   const now = Math.floor(Date.now() / 60_000) * 60_000; // delegations carry a real 24-hour expiry
@@ -635,19 +635,22 @@ test('review 3: greet, postcard and wants text from a connected Muse never reach
   const s = setup({sql, key: undefined, now, hooks: makeHooks(), delegationValid: id => !trust.suspended(id)}), rt = s.rt;
   rt.commitExternal(now, 'ready', st => { const m = st.muses.find(x => x.id === '00-jolly'); m.place = 'commons:cafe'; m.inventory.push('postage_stamp', 'postcard:commons:cafe', 'coffee'); st.muses.find(x => x.id === '01-sunny').place = 'commons:cafe'; });
   const ctx = {trust, runtime: rt, hooks: makeHooks(), ownerRoot, ownerClaimed: true, baseUrl: 'https://musely.net', key: {id: 'key-1', muse: '00-jolly', signerKind: 'server_custodial', createdAt: now, lastUsedAt: null, revokedAt: null}, now: () => now};
-  const TEXTS = {greet: 'Lovely morning at the cafe 4417', postcard: 'Wish you were here 4417', goal: 'Collect every Bay postcard 4417'};
+  const TEXTS = {greet: 'Lovely morning at the cafe 4417', hello: 'Hello! What are you reading today 4417?', postcard: 'Wish you were here 4417', goal: 'Collect every Bay postcard 4417'};
   const results = [
     await runTool(ctx, 'greet', {text: TEXTS.greet, to: '01-sunny'}),
+    await runTool(ctx, 'say_hello', {text: TEXTS.hello, to: '01-sunny'}),
     await runTool(ctx, 'send_postcard', {to: '02-moss', item: 'postcard:commons:cafe', text: TEXTS.postcard}),
     await runTool(ctx, 'update_wants', {goal: TEXTS.goal, items: ['postcard']}),
   ];
   for (const r of results) assert.equal(r.isError, false, JSON.stringify(r.structuredContent).slice(0, 200));
   const events = JSON.stringify(sql.exec('SELECT line, data FROM events').toArray());
-  assert.ok(events.includes(TEXTS.greet) && events.includes(TEXTS.goal), 'the public events keep the text (the purge can anonymize them there)');
+  assert.ok(events.includes(TEXTS.greet) && events.includes(TEXTS.hello) && events.includes(TEXTS.goal), 'the public events keep the text (the purge can anonymize them there)');
   const cmds = inputs(sql).filter(r => r.kind === 'command').map(r => r.input);
-  assert.deepEqual(cmds.map(c => c.action), ['greet', 'send_postcard', 'update_wants']);
-  assert.deepEqual(cmds.map(c => c.omitted), [['text'], ['text'], ['goal']]);
-  assert.deepEqual(cmds[0].fields, {kind: 'greet', to: '01-sunny'}); assert.deepEqual(cmds[2].fields, {kind: 'update_wants', items: ['postcard']});
+  assert.deepEqual(cmds.map(c => c.action), ['greet', 'say_hello', 'send_postcard', 'update_wants']);
+  assert.deepEqual(cmds.map(c => c.omitted), [['text'], ['text'], ['text'], ['goal']]);
+  assert.deepEqual(cmds[0].fields, {kind: 'greet', to: '01-sunny'});
+  assert.deepEqual(cmds[1].fields, {kind: 'say_hello', to: '01-sunny'}, 'the hello action keeps public target IDs without retaining its text');
+  assert.deepEqual(cmds[3].fields, {kind: 'update_wants', items: ['postcard']});
   assert.ok(cmds.every(c => /^[0-9a-f]{64}$|^sha-256=/.test(c.payloadHash) || typeof c.payloadHash === 'string'));
   // A deploy now: the new run's snapshot holds the state with that text, as hashes only.
   s.sql.exec("UPDATE runs SET engine_version = 'engine-0'"); // test only: the stored run came from older code

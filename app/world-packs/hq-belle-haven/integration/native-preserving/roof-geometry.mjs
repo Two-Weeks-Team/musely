@@ -4,7 +4,7 @@ import * as maplibre from 'maplibre-gl';
 import {centerLngLat, radiusCheck} from './region.mjs';
 
 export const ROOF_POLICY = Object.freeze({
-  source: 'openmaptiles', sourceLayer: 'building', sourceZoom: 14,
+  source: 'openmaptiles', sourceLayer: 'building', sourceZoom: 14, maxCanonicalZoom: 24,
   tileTemplate: 'https://tiles.openfreemap.org/planet/20261101_080013_pt/{z}/{x}/{y}.pbf',
   minZoom: 17, maxBuildings: 180, commonsReserveM: 40,
   tileReserveM: 2, roofGapM: 0.16, insetM: 0.4,
@@ -23,7 +23,7 @@ const cross = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0]
 const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const area = p => p.reduce((s, a, i) => { const b = p[(i + 1) % p.length]; return s + a[0] * b[1] - b[0] * a[1]; }, 0) / 2;
 const close = p => [...p, p[0]];
-const bounds = p => [Math.min(...p.map(p => p[0])), Math.min(...p.map(p => p[1])), Math.max(...p.map(p => p[0])), Math.max(...p.map(p => p[1]))];
+const bounds = p => p.reduce((b,[x,y])=>[Math.min(b[0],x),Math.min(b[1],y),Math.max(b[2],x),Math.max(b[3],y)],[Infinity,Infinity,-Infinity,-Infinity]);
 const boxOverlap = (a, b, pad = 0) => a[0] <= b[2] + pad && b[0] <= a[2] + pad && a[1] <= b[3] + pad && b[1] <= a[3] + pad;
 const ringKey = ring => {
   const keys = ring.map(p => JSON.stringify(p));
@@ -82,17 +82,31 @@ export function insetConvex(ring, amount) {
   return result;
 }
 function tileInterior(ring, tile) {
-  if (!tile || tile.z !== ROOF_POLICY.sourceZoom || !Number.isInteger(tile.x) || !Number.isInteger(tile.y) || tile.x < 0 || tile.y < 0 || tile.x >= 2 ** tile.z || tile.y >= 2 ** tile.z) return false;
+  // MapLibre 6.16 subdivides maxzoom14 PBFs into higher canonical child
+  // tiles. querySourceFeatures returns those CHILD bounds, not overscaledZ.
+  // Never remap them to the z14 parent: a clipped roof is not a complete roof.
+  if (!tile || !Number.isInteger(tile.z) || tile.z < ROOF_POLICY.sourceZoom || tile.z > ROOF_POLICY.maxCanonicalZoom || !Number.isInteger(tile.x) || !Number.isInteger(tile.y) || tile.x < 0 || tile.y < 0 || tile.x >= 2 ** tile.z || tile.y >= 2 ** tile.z) return false;
   const n = 2 ** tile.z, reserve = ROOF_POLICY.tileReserveM * unit;
   return ring.every(([x, y]) => {
     const mx = origin.x + x * unit, my = origin.y + y * unit;
     return mx > tile.x / n + reserve && mx < (tile.x + 1) / n - reserve && my > tile.y / n + reserve && my < (tile.y + 1) / n - reserve;
   });
 }
-function geometryRings(feature) {
+function geometryObstacles(feature) {
   const g = feature?.geometry;
   const polys = g?.type === 'Polygon' ? [g.coordinates] : g?.type === 'MultiPolygon' ? g.coordinates : [];
-  return polys.map(p => localRing(p[0])).filter(Boolean);
+  return polys.flatMap(p => p.map((raw,index) => {
+    const ring = localRing(raw);
+    if (ring && index === 0) return {ring, exactGeometry:p.length===1};
+    // Finite but unsupported rings still occupy space. Subdivision can return
+    // a closed three-point line; malformed/unclosed/long rings must not erase
+    // unrelated roofs or disappear from collision checks. Their conservative
+    // bounds also represent zero-area segments/points without inventing a roof.
+    // Include every hole too: unsupported topology can put it outside the
+    // exterior. Synthesized bounds must NEVER qualify for the self exemption.
+    const [x0,y0,x1,y1] = bounds(raw.map(roofLocal));
+    return {ring:[[x0,y0],[x1,y0],[x1,y1],[x0,y1]], exactGeometry:false};
+  }));
 }
 function sourceComponents(features) {
   const seen = new Map(), ambiguous = new Set();
@@ -122,7 +136,9 @@ export function buildRoofDetails(features, {radius = 500} = {}) {
     if (!Array.isArray(polygons)) return {type:'FeatureCollection', features:[], report:{buildings:0,rejected:{'uninspectable-source-geometry':1}}};
     componentCount += polygons.length;
     for (const polygon of polygons) {
-      if (!Array.isArray(polygon) || !polygon.length || polygon.some(r => !Array.isArray(r) || r.length < 4 || !r.every(validCoordinate))) return {type:'FeatureCollection',features:[],report:{buildings:0,rejected:{'uninspectable-source-geometry':1}}};
+      // Unknown coordinates cannot be bounded safely, so still fail closed.
+      // Finite short/unclosed rings are locally rejectable, not a source failure.
+      if (!Array.isArray(polygon) || !polygon.length || polygon.some(r => !Array.isArray(r) || !r.length || !r.every(validCoordinate))) return {type:'FeatureCollection',features:[],report:{buildings:0,rejected:{'uninspectable-source-geometry':1}}};
       vertexCount += polygon.reduce((n,r) => n + r.length,0);
       if (componentCount > 20000 || vertexCount > 200000) return {type:'FeatureCollection',features:[],report:{buildings:0,rejected:{'source-geometry-budget':1}}};
     }
@@ -134,7 +150,7 @@ export function buildRoofDetails(features, {radius = 500} = {}) {
   if (ambiguous) rejected['ambiguous-source-id'] = ambiguous;
   // Preserve even unadmitted/hidden source polygons as collision obstacles.
   const circleBox = [-radius - 0.15, -radius - 0.15, radius + 0.15, radius + 0.15];
-  const obstacles = features.flatMap(f => geometryRings(f).map(ring => ({ring, box:bounds(ring), sourceFeatureId:f.id, height:f.properties?.render_height, base:f.properties?.render_min_height}))).filter(o => boxOverlap(o.box,circleBox)).map(o => ({...o,signature:ringKey(o.ring)}));
+  const obstacles = features.flatMap(f => geometryObstacles(f).map(o => ({...o, box:bounds(o.ring), sourceFeatureId:f.id, height:f.properties?.render_height, base:f.properties?.render_min_height}))).filter(o => boxOverlap(o.box,circleBox)).map(o => ({...o,signature:ringKey(o.ring)}));
   for (const f of components) {
     const g = f.geometry, h = f.properties?.render_height, base = f.properties?.render_min_height;
     if (g?.type !== 'Polygon' || g.coordinates?.length !== 1) { reject('multipart-or-courtyard'); continue; }
@@ -152,7 +168,7 @@ export function buildRoofDetails(features, {radius = 500} = {}) {
     // Skip exactly the current polygon, but retain overlapping distinct polygons.
     // Identical buffered duplicates represent the same roof and produce one candidate.
     const own = ringKey(ring);
-    if (obstacles.some(o => boxOverlap(box, o.box, 0.15) && !(o.signature === own && o.sourceFeatureId === f.sourceFeatureId && o.height === h && o.base === base) && ringsNear(ring, o.ring))) { reject('adjacent-or-overlapping-building'); continue; }
+    if (obstacles.some(o => boxOverlap(box, o.box, 0.15) && !(o.exactGeometry && o.signature === own && o.sourceFeatureId === f.sourceFeatureId && o.height === h && o.base === base) && ringsNear(ring, o.ring))) { reject('adjacent-or-overlapping-building'); continue; }
     if (candidateKeys.has(own)) { reject('duplicate-roof-component'); continue; }
     candidateKeys.add(own);
     candidates.push({f, outer, inner, panel, height:h, distance:Math.min(...ring.map(p => Math.hypot(...p)))});
@@ -169,5 +185,5 @@ export function buildRoofDetails(features, {radius = 500} = {}) {
     accepted.push({nativeComponent:f.id, sourceFeatureId:f.sourceFeatureId, componentIndex:f.componentIndex, tile:f.tile, nativeHeight:height, centerLngLat:center, detailCount:2});
   }
   if (candidates.length > ROOF_POLICY.maxBuildings) rejected['budget'] = candidates.length - ROOF_POLICY.maxBuildings;
-  return {type:'FeatureCollection', features:details, report:{buildings:accepted.length, features:details.length, accepted, rejected, runtimeSource:'current-loaded-native-vector-features', fictional:true}};
+  return {type:'FeatureCollection', features:details, report:{buildings:accepted.length, features:details.length, accepted, rejected, sourceFeatures:features.length, sourceCanonicalZooms:[...new Set(features.map(f=>f.tile?.z).filter(Number.isInteger))].sort((a,b)=>a-b), runtimeSource:'current-loaded-native-vector-features', fictional:true}};
 }
