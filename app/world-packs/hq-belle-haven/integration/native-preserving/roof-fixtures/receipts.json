@@ -1,0 +1,17 @@
+{
+  "capturedAt": "2026-11-03T13:20:27.259Z",
+  "receipts": [
+    {
+      "url": "https://tiles.openfreemap.org/planet/20261101_080013_pt/14/2632/6349.pbf",
+      "bytes": 109007,
+      "sha256": "30ff8c26e89fac3eba51a9f07d0596468766ccfe8136ef49280e65c1aafff7fb"
+    },
+    {
+      "url": "https://tiles.openfreemap.org/planet/20261101_080013_pt/14/2633/6349.pbf",
+      "bytes": 52228,
+      "sha256": "79b7874f12b3d6e7c105f65784630ab0e3d63850b58c8547710ea771d6aa920e"
+    }
+  ],
+  "provenance": "Actual immutable OpenFreeMap PBF downloaded 2026-11-03; not fabricated geometry. Offline fixtures do not prove current browser/GPU state.",
+  "attribution": "OpenFreeMap \u00a9 OpenMapTiles Data from OpenStreetMap contributors (ODbL-1.0)"
+}

@@ -1,0 +1,20 @@
+import {Map,setWorkerUrl} from 'maplibre-gl';
+import style from './current-main-map-style.json';
+import {centerLngLat} from './region.mjs';
+import {createNativeRoofDetails,ROOF_LAYER_ID} from './roof-controller.mjs';
+setWorkerUrl(new URL('./maplibre-gl-worker.mjs',import.meta.url).href);
+const status=document.querySelector('#status'),errors=[];
+const map=new Map({container:'map',style,center:centerLngLat,zoom:18,pitch:54,bearing:12,canvasContextAttributes:{antialias:true,preserveDrawingBuffer:true}});
+let controller;const buttons=[...document.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
+function state(){return {roof:controller?.status(),zoom:map.getZoom(),center:map.getCenter(),errors:[...errors],renderedDetails:map.getLayer(ROOF_LAYER_ID)?map.queryRenderedFeatures({layers:[ROOF_LAYER_ID]}).length:0};}
+map.on('error',e=>{errors.push(String(e.error));status.textContent=String(e.error)});
+map.on('styleimagemissing',e=>{if(!map.hasImage(e.id))map.addImage(e.id,{width:1,height:1,data:new Uint8Array(4)})});
+map.once('load',()=>{controller=createNativeRoofDetails(map);buttons.forEach(b=>b.disabled=false);status.textContent='Native map unchanged. Roof detail OFF.';});
+map.on('idle',()=>{if(controller)status.textContent=JSON.stringify({reason:controller.status().reason,buildings:controller.status().report?.buildings,visible:state().renderedDetails,zoom:map.getZoom()});});
+document.querySelector('#off').onclick=()=>controller.disable();
+document.querySelector('#on').onclick=()=>controller.enable();
+document.querySelector('#entry').onclick=()=>map.jumpTo({center:centerLngLat,zoom:21.2,pitch:54,bearing:12});
+document.querySelector('#near').onclick=()=>map.jumpTo({center:centerLngLat,zoom:18,pitch:54,bearing:12});
+document.querySelector('#wide').onclick=()=>map.jumpTo({center:centerLngLat,zoom:16,pitch:54,bearing:12});
+document.querySelector('#inspect').onclick=()=>{const roof=controller.status().report?.accepted[0];if(roof)map.jumpTo({center:roof.centerLngLat,zoom:21,pitch:60,bearing:12})};
+window.nativeRoofProof={map,getState:state,enable:()=>controller.enable(),disable:()=>controller.disable(),dispose:()=>controller.dispose()};
