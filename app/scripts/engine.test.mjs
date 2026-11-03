@@ -67,7 +67,7 @@ test('beats only use known places and real-time durations', () => {
   const kinds = new Set(PLACES.map(p => p.kind));
   for (const b of BEATS) { assert.ok(b.kinds.some(k => kinds.has(k)), b.id); assert.ok(b.minutes >= 3 && b.minutes <= 60, b.id); }
   assert.ok(PLACES.filter(p => p.zone === 'neighborhood').length >= 70);
-  assert.equal(PLACES.filter(p => p.zone === 'bay').length, 7);
+  assert.equal(PLACES.filter(p => p.zone === 'bay' && p.kind === 'region').length, 7);
 });
 
 test('a Muse that chose a place by itself stays there for a beat after arriving', () => {

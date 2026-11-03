@@ -4,7 +4,7 @@
 //  - the device location (GPS) permission flow. S1–S3 ship the permission flow only: the position is matched on this device to the
 //    nearest preset neighborhood and only that preset id is kept. Nothing is sent to the server, nothing is stored, and it does not
 //    verify a neighborhood (the demo verification is staged on the virtual location; GPS verification is phase 2).
-import {nearestPreset, presetById, placeCell, type PresetId} from '../engine/location.ts';
+import {nearestPreset, presetById, type PresetId, type NeighborhoodArea} from '../engine/location.ts';
 import {PLACE_BY_ID} from '../engine/places.ts';
 import {harnessById} from '../engine/harness.ts';
 
@@ -12,7 +12,8 @@ type PlaceRef = {id: string; name?: string};
 /** The public GET /api/owner/location answer (mcp-tools.ts ownerView plus the preset list). */
 export type OwnerLocationView = {
   source: 'virtual' | 'gps'; preset: string | null; cell_label?: string; cell?: string; location?: string; neighborhood_verified?: boolean; set_at?: number;
-  muse: {id: string; place: PlaceRef; at_owner_cell: boolean; travelling_to: PlaceRef | null; speed: string | null; eta_ms: number | null; arrive_at: number | null} | null;
+  area?: NeighborhoodArea | null;
+  muse: {id: string; place: PlaceRef; at_owner_cell: boolean; in_owner_area?: boolean; travelling_to: PlaceRef | null; speed: string | null; eta_ms: number | null; arrive_at: number | null} | null;
   presets?: {id: string; label: string}[];
 };
 
@@ -22,7 +23,6 @@ export const snapshotOf = (view: OwnerLocationView, receivedAt: number): Locatio
 
 const placeName = (p: PlaceRef | null | undefined) => (p ? p.name ?? PLACE_BY_ID.get(p.id)?.name ?? p.id : '');
 const museShort = (id: string) => { try { return harnessById(id).name; } catch { return 'The Muse'; } };
-const cellOfPlace = (id: string) => (PLACE_BY_ID.has(id) ? placeCell(id) : '?');
 export const minutesLeft = (etaAt: number, now: number) => Math.max(1, Math.round((etaAt - now) / 60_000));
 
 /**
@@ -38,7 +38,7 @@ export function museLine(snap: LocationSnapshot, now: number): string {
     const left = snap.etaAt === null ? '' : snap.etaAt <= now ? ', arriving' : `, ${minutesLeft(snap.etaAt, now)} min`;
     return `${who} at ${placeName(m.place)} → ${placeName(m.travelling_to)}, ${how}${left}`;
   }
-  return m.at_owner_cell ? `${who} with the owner at ${placeName(m.place)}` : `${who} at ${placeName(m.place)}`;
+  return `${who} at ${placeName(m.place)}${m.in_owner_area ? ' · in your neighborhood' : ''}`;
 }
 
 export type LocationLine = {text: string; title: string; state: 'virtual' | 'gps' | 'unknown'; stale: boolean};
@@ -49,11 +49,11 @@ export type LocationLine = {text: string; title: string; state: 'virtual' | 'gps
 export function locationLine(snap: LocationSnapshot | null, now: number, error: string | null = null): LocationLine {
   if (!snap) return {text: error ? `Location · unknown (${error})` : 'Location · …', title: error ? 'The owner location could not be read, so it is unknown right now.' : '', state: 'unknown', stale: !!error};
   const v = snap.view, m = v.muse;
-  const where = v.source === 'virtual' ? `Virtual location (demo) · owner at ${presetById(v.preset ?? '')?.label ?? v.cell_label ?? '?'}${v.neighborhood_verified ? ' (verified)' : ''}` : 'GPS (phase 2) · owner cell not shown';
+  const where = `${v.source === 'virtual' ? 'Virtual location (demo)' : 'Device-mapped neighborhood'} · owner neighborhood: ${v.area?.label ?? presetById(v.preset ?? '')?.label ?? v.cell_label ?? '?'}${v.neighborhood_verified ? ' (verified)' : ''}`;
   const text = `${where} · ${museLine(snap, now)}${error ? ' · not updating' : ''}`;
   const title = [
-    v.source === 'virtual' ? `Owner destination cell ${v.cell ?? '?'} (${v.cell_label ?? ''}): where the Muse walks to and what neighborhood verification checks.` : 'GPS owner cell (phase 2): not shown.',
-    m ? `${museShort(m.id)}'s current cell ${cellOfPlace(m.place.id)} (${placeName(m.place)}): discovery, trades and the MCP world state use this place.` : '',
+    v.area ? `Owner neighborhood ${v.area.label}: ${v.area.radiusM} m radius, ${v.area.placeIds.length} activity places. The Muse freely walks between these places.` : 'Owner neighborhood bounds unavailable.',
+    m ? `${museShort(m.id)}'s current place: ${placeName(m.place)}. Discovery, trades and the MCP world state use this place.` : '',
     m?.travelling_to ? `Trip to ${placeName(m.travelling_to)} by ${m.speed ?? 'walk'}${m.arrive_at ? `, arrives ${new Date(m.arrive_at).toISOString()}` : ''}.` : '',
     error ? `Not updating (${error}); this is the last answer received.` : '',
   ].filter(Boolean).join(' ');
@@ -96,9 +96,9 @@ export const VIRTUAL_FALLBACK = 'You can keep using the virtual location (demo):
 export function deviceText(d: DeviceLocation): {heading: string; detail: string; fallback: boolean} {
   const kept = 'The coordinates were matched on this device and dropped: not sent, not stored.';
   switch (d.status) {
-    case 'idle': return {heading: 'Device location (optional)', detail: 'Your browser asks for permission. The position is matched to the nearest preset neighborhood on this device only; the coordinates are not sent or stored.', fallback: false};
+    case 'idle': return {heading: 'Device location (optional)', detail: 'Your browser asks for permission. The position is matched to the nearest neighborhood area on this device only; the coordinates are not sent or stored.', fallback: false};
     case 'requesting': return {heading: 'Asking your browser for the device location…', detail: 'Answer the browser prompt. Nothing changes in the world while this runs.', fallback: false};
-    case 'near': return {heading: `Your device is near ${presetById(d.preset ?? '')?.label ?? d.preset}`, detail: `${kept} Shown on this device only: in this demo the neighborhood verification uses the virtual location, and GPS verification is phase 2.`, fallback: false};
+    case 'near': return {heading: `Your device is near the ${presetById(d.preset ?? '')?.label ?? d.preset} neighborhood`, detail: `${kept} Shown on this device only: choose this neighborhood in the selector to use it. Neighborhood verification is staged for virtual locations; GPS verification is phase 2.`, fallback: false};
     case 'outside': return {heading: 'Your device is outside the Bay Area presets', detail: `${kept} ${VIRTUAL_FALLBACK}`, fallback: true};
     case 'denied': return {heading: 'Location permission was denied', detail: `${VIRTUAL_FALLBACK} You can allow it later in the browser's site settings.`, fallback: true};
     case 'unavailable': return {heading: 'The device location is unavailable', detail: VIRTUAL_FALLBACK, fallback: true};

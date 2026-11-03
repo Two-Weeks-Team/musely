@@ -6,7 +6,7 @@ import {discover, receiveDiscovery, grantItem, checkTrade, commitTrade, speedFor
 import {harnessById, HARNESSES} from './harness.ts';
 import type {Place} from './places.ts';
 import {isConnected, nextId, deliverMessage, notifyOwner, TASK_TTL_MS, emptyInbox} from './inbox.ts';
-import {teleportCheck} from './location.ts';
+import {teleportCheck, sameArea} from './location.ts';
 
 type E = Omit<WorldEvent, 'id' | 'tick'>;
 
@@ -18,7 +18,7 @@ const wantsOf = (m: MuseState) => m.wants?.items ?? DESIRES[m.id] ?? [];
 export function makeHooks(): Hooks {
   return {
     // Taxi only for a verified teleport (13.1): the owner's Muse into its owner's verified cell. Residents walk or ride the bus.
-    speedFor: (m, from, to, s) => speedFor(m.inventory, from, to, !!s && teleportCheck(s.owner, m, to) === null),
+    speedFor: (m, from, to, s) => sameArea(from, to) ? 'walk' : speedFor(m.inventory, from, to, !!s && teleportCheck(s.owner, m, to) === null),
     onArrive: (s, m, place, rand, at) => {
       const out: E[] = [];
       const ledger = s.items;

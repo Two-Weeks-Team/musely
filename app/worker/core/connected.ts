@@ -11,7 +11,7 @@ import {runTool, toolList, ownerView, InvalidParams, TOOLS, type ToolCtx} from '
 import {dispatch, type McpOutcome} from './mcp-server.ts';
 import {defaultOwner, nextOwnerLocation, ownerLabel, tagLocation, PRESETS} from '../../src/engine/location.ts';
 import {followOwner} from '../../src/engine/travel.ts';
-import {emptyInbox, notificationMuse, CONNECTED_MS} from '../../src/engine/inbox.ts';
+import {emptyInbox, notificationMuse, CONNECTED_MS, CONNECTED_REFRESH_MS} from '../../src/engine/inbox.ts';
 import {REVIEWER_MUSE} from './owner-session.ts';
 import {purgeKeyData} from './data-retention.ts';
 import {decideApproval, ownerInbox, definedOwnerOf, type DecisionInput, type DecisionOutcome, type OwnerOf} from './tasks.ts';
@@ -22,7 +22,6 @@ export type ConnectedDeps = {
   /** Who decides a meetup for a Muse (its owner id, when that owner can sign in here), or null for a resident (rule). */
   ownerOf?: OwnerOf;
 };
-const CONNECTED_REFRESH_MS = 10 * 60_000;
 /** World actions (not reads or inbox polling): a connected Muse that acts asks for a priority spotlight turn (8.2). */
 const ACTION_TOOLS = new Set(TOOLS.filter(t => t.write && t.name !== 'heartbeat_check').map(t => t.name));
 const uniq = () => Math.random().toString(36).slice(2, 10);
@@ -41,7 +40,7 @@ export class ConnectedHost {
     return {...ownerView(owner, s.muses.find(m => m.id === owner.muse), now), presets: PRESETS.map(p => ({id: p.id, label: p.label}))};
   }
 
-  /** Owner session only (checked by the Worker route). GPS coordinates are reduced to a cell and dropped. */
+  /** Owner session only (checked by the Worker route). Only catalog neighborhood ids are accepted; raw coordinates are refused. */
   setOwnerLocation(input: unknown) {
     const now = this.now(), s = this.d.runtime.state();
     const next = nextOwnerLocation(s.owner ?? defaultOwner(OWNER_MUSE, now), input, now);

@@ -19,7 +19,7 @@ import {ITEM_BY_ID, itemSpec, itemName, checkTrade, commitTrade, discover, recei
 import {BEATS} from '../../src/engine/beats.ts';
 import {updateWants, localClock, type WorldState, type MuseState, type WorldEvent, type Hooks} from '../../src/engine/world.ts';
 import {rngFor} from '../../src/engine/rng.ts';
-import {placeCell, resolvePlace, ownerLabel, nearbyPlaces, tagLocation, VIRTUAL_LABEL, type OwnerLocation} from '../../src/engine/location.ts';
+import {placeCell, resolvePlace, ownerLabel, ownerArea, areaView, areaContains, areaVerified, nearbyPlaces, tagLocation, VIRTUAL_LABEL, type OwnerLocation} from '../../src/engine/location.ts';
 import {beginTrip, teleport, etaMs} from '../../src/engine/travel.ts';
 import {emptyInbox, expireTasks, nextId, notifyOwner, deliverMessage, messageView, taskView, isConnected, TASK_TTL_MS, MAX_COUNTERS, DAILY, type Task, type Inbox} from '../../src/engine/inbox.ts';
 import type {WorldRuntime} from './world-runtime.ts';
@@ -146,7 +146,7 @@ export const NOT_READY_TOOLS = Object.fromEntries(TOOLS.filter(t => t.notReady).
 const ok = (data: Record<string, unknown>, text?: string): ToolResult => ({content: [{type: 'text', text: (text ? text + '\n' : '') + JSON.stringify(data)}], structuredContent: data, isError: false});
 const refused = (reason: string, extra: Record<string, unknown> = {}): ToolResult => { const data = {ok: false, refused: reason, ...extra}; return {content: [{type: 'text', text: `Refused: ${reason.replace(/_/g, ' ')}\n${JSON.stringify(data)}`}], structuredContent: data, isError: true}; };
 const museOf = (s: WorldState, id: string) => s.muses.find(m => m.id === id)!;
-const placeView = (p: Place) => ({id: p.id, name: p.name, kind: p.kind, zone: p.zone});
+const placeView = (p: Place) => ({id: p.id, name: p.name, kind: p.kind, zone: p.zone, ...(p.virtual ? {virtual: true} : {})});
 const name = (id: string) => harnessById(id).name;
 const inboxOf = (s: WorldState): Inbox => (s.inbox ??= emptyInbox());
 const near = (a: MuseState, b: MuseState) => distanceM(placeById(a.place), placeById(b.place)) <= RULES.tradeRangeM;
@@ -157,10 +157,10 @@ const viewOf = (t: Task, me: string) => { syncTask(t); return taskView(t, me); }
 export function ownerView(owner: OwnerLocation | undefined, m: MuseState | undefined, now: number) {
   if (!owner) return null;
   return {
-    source: owner.source, preset: owner.preset, cell_label: ownerLabel(owner),
+    source: owner.source, preset: owner.preset, cell_label: ownerLabel(owner), area: areaView(ownerArea(owner)),
     ...(owner.source === 'virtual' ? {cell: owner.cell, location: VIRTUAL_LABEL} : {location: 'gps (phase 2: permission flow only)'}),
-    neighborhood_verified: owner.verified, set_at: owner.setAt,
-    muse: m ? {id: m.id, place: placeView(placeById(m.place)), at_owner_cell: placeCell(m.place) === owner.cell && !m.travel, travelling_to: m.travel ? placeView(placeById(m.travel.to)) : null, speed: m.travel?.speed ?? null, eta_ms: etaMs(m, now), arrive_at: m.travel?.arriveAt ?? null} : null,
+    neighborhood_verified: areaVerified(owner), set_at: owner.setAt,
+    muse: m ? {id: m.id, place: placeView(placeById(m.place)), in_owner_area: areaContains(ownerArea(owner), m.place), at_owner_cell: placeCell(m.place) === owner.cell && !m.travel, travelling_to: m.travel ? placeView(placeById(m.travel.to)) : null, speed: m.travel?.speed ?? null, eta_ms: etaMs(m, now), arrive_at: m.travel?.arriveAt ?? null} : null,
   };
 }
 

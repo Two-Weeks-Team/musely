@@ -8,11 +8,11 @@ import {HARNESSES, harnessById} from './harness.ts';
 import {ITEM_BY_ID, itemUpkeep, grantItem, putTimed, historyFault, spendSpotlightTickets} from './items.ts';
 import {rngFor, weightedPick, daySeed} from './rng.ts';
 import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
-import {defaultOwner, tagLocation, placeCell, OWNER_MUSE, type OwnerLocation} from './location.ts';
-import {emptyInbox, expireTasks, deliverMessage, isConnected, type Inbox} from './inbox.ts';
+import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
+import {emptyInbox, expireTasks, deliverMessage, isConnected, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-2 (I-10): encounters record actorOrigin, and initiatedByIntent only for an intent aimed at the other Muse. */
-export const ENGINE_VERSION = 'engine-2';
+/** engine-3: bounded neighborhood roaming and walking; original engine-2 actor-origin semantics remain. */
+export const ENGINE_VERSION = 'engine-3';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
@@ -31,7 +31,7 @@ export type MuseState = {
   intent: {kind: 'greet' | 'trade'; target: string; give?: string | null; want?: string | null} | null;
   /** Public wants (7, 9.1): starts from the harness; Spark or the owner's connected Muse can update it. */
   wants: Wants;
-  /** Owner-location cell this Muse follows (13.1): scripted wandering stays inside it. */
+  /** Legacy private follow anchor; owner-area membership is resolved from the owner location. */
   anchor?: string | null;
 };
 export type Wants = {goal: string; items: string[]; source: 'harness' | 'spark' | 'connected'; updatedAt: number};
@@ -156,7 +156,8 @@ const safeName = (n: string) => n.replace(SAFE, ' ').replace(/\s+/g, ' ').trim()
 /** Structured input for POST /api/muse spotlight (server validates it again). Nearest places only. */
 export function spotlightInput(s: WorldState, museId: string, freedom: Freedom, now: number) {
   const m = s.muses.find(x => x.id === museId)!, here = placeById(m.place);
-  const near = PLACES.filter(p => p.id !== here.id && p.zone !== 'bay').map(p => ({p, d: distanceM(here, p)})).sort((a, b) => a.d - b.d);
+  const area = s.owner?.muse === museId ? ownerArea(s.owner) : null;
+  const near = PLACES.filter(p => p.id !== here.id && (area ? areaContains(area, p) : p.zone !== 'bay')).map(p => ({p, d: distanceM(here, p)})).sort((a, b) => a.d - b.d);
   const liked = new Set(harnessById(museId).persona.likes);
   const pick = [...near.filter(x => liked.has(x.p.kind)).slice(0, 4), ...near.slice(0, 8)].filter((x, i, a) => a.findIndex(y => y.p.id === x.p.id) === i).slice(0, 8);
   return {
@@ -187,7 +188,8 @@ function beatWeight(b: Beat, museId: string) { return (b.weight ?? 1) * (b.roles
 
 function chooseDestination(s: WorldState, m: MuseState, rand: () => number, hour: number): Place | null {
   const here = placeById(m.place), liked = new Set<string>(harnessById(m.id).persona.likes);
-  const options = PLACES.filter(p => p.id !== here.id && p.zone !== 'bay' && eligibleBeats(m, p, hour).length > 0);
+  const area = s.owner?.muse === m.id ? ownerArea(s.owner) : null;
+  const options = PLACES.filter(p => p.id !== here.id && (area ? areaContains(area, p) : p.zone !== 'bay') && eligibleBeats(m, p, hour).length > 0);
   return weightedPick(rand, options, p => (liked.has(p.kind) ? 4 : 1) * (p.zone === 'commons' ? 2.5 : 1) / (1 + distanceM(here, p) / 300));
 }
 
@@ -257,8 +259,9 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     if (paused(m.id)) continue;
     const rand = rngFor(s.seed, s.tick, m.id);
     // A connected Muse (8.8) decides in its owner's runtime: requested trips still arrive and running beats
-    // still finish, but the scenario never picks a trip or a beat for it.
+    // still finish. Only an idle owner-area stroll may be picked by rule; no team-model decision or activity is substituted.
     const connected = isConnected(s.inbox, m.id, now);
+    const arrivedThisTick = !!m.travel && m.travel.arriveAt <= now;
     if (m.travel && m.travel.arriveAt <= now) {
       const place = placeById(m.travel.to);
       const speed = m.travel.speed, chosen = !!m.travel.chosen;
@@ -271,15 +274,29 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     if (m.travel) continue;
     if (m.beat && m.beat.endsAt > now) continue;
     if (m.beat) finishBeat(m, now, emit, s.items, !!itemFault);
-    if (connected) continue;
+    if (connected) {
+      // Ambient owner-area walking is world physics, not a connected command or a team-model decision.
+      // A real command, an incoming approach, any pending commitment, or an existing trip/beat takes priority.
+      const area = s.owner?.muse === m.id ? ownerArea(s.owner) : null;
+      const waiting = s.inbox.tasks.some(t => t.status === 'pending' && (t.from === m.id || t.to === m.id));
+      const invited = (s.inbox.invites ?? []).some(i => i.status === 'open' && (i.from === m.id || i.to.includes(m.id)));
+      const approached = s.muses.some(o => o.id !== m.id && o.intent?.target === m.id);
+      // A stamp can lag a successful read by <10 min. Add that uncertainty to guarantee >=2 min client priority
+      // without turning every read/poll into a world commit or changing command expected_version semantics.
+      const recentlyActive = now - (s.inbox.connected[m.id] ?? 0) < CONNECTED_REFRESH_MS + 2 * TICK_MS;
+      if (areaContains(area, m.place) && !m.intent && !waiting && !invited && !approached && !arrivedThisTick && !recentlyActive) {
+        const dest = chooseDestination(s, m, rand, clock.hour);
+        if (dest) startTrip(s, m, placeById(m.place), dest, now, 'rule', emit, hooks);
+      }
+      continue;
+    }
     const place = placeById(m.place);
     const stay = eligibleBeats(m, place, clock.hour);
     // Intent from a spotlight decision takes priority over wandering.
     const goTravel = !m.intent && (stay.length === 0 || rand() < (place.zone === 'commons' ? .22 : .45));
     if (goTravel) {
-      const picked = chooseDestination(s, m, rand, clock.hour);
-      // A Muse following its owner (13.1) wanders only inside the owner's cell.
-      const dest = picked && m.anchor && placeCell(picked) !== m.anchor ? null : picked;
+      // Choose among the area's places first; never discard an already-picked place at a cell edge.
+      const dest = chooseDestination(s, m, rand, clock.hour);
       if (dest) { startTrip(s, m, place, dest, now, 'scripted', emit, hooks); continue; }
     }
     const beat = weightedPick(rand, stay, b => beatWeight(b, m.id));
@@ -388,7 +405,7 @@ function finishBeat(m: MuseState, now: number, emit: (e: Omit<WorldEvent, 'id' |
 }
 
 function startTrip(s: WorldState, m: MuseState, from: Place, to: Place, now: number, source: Source, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void, hooks: Hooks) {
-  const speed = hooks.speedFor?.(m, from, to, s) ?? 'walk';
+  const speed = sameArea(from, to) ? 'walk' : hooks.speedFor?.(m, from, to, s) ?? 'walk';
   const ms = tripMs(from, to, speed);
   // A Taxi Token is spent when the in-world teleport starts (not a payment, not a booking).
   if (speed === 'taxi') { const k = m.inventory.indexOf('taxi_token'); if (k >= 0) m.inventory.splice(k, 1); }
@@ -420,7 +437,7 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
     const dest = findPlaceByName(o.target_place);
     if (!dest) return reject('unknown place: ' + o.target_place.slice(0, 40));
     // A Taxi Token counts only where it may teleport (13.1: the owner's verified cell); otherwise a Bay trip needs the bus.
-    if (dest.zone === 'bay' && !m.inventory.includes('transit_pass') && hooks.speedFor?.(m, here, dest, s) !== 'taxi') return reject('Bay places need a Transit Pass, or a Taxi Token in a verified neighborhood');
+    if (dest.zone === 'bay' && !sameArea(here, dest) && !m.inventory.includes('transit_pass') && hooks.speedFor?.(m, here, dest, s) !== 'taxi') return reject('Bay places need a Transit Pass, or a Taxi Token in a verified neighborhood');
     const offScript = dest.id !== scripted?.id;
     emit({...base, kind: 'spotlight', place: here.id, line: o.line || null, data: {...base.data, target: dest.id, live: true, offScript}, tags: offScript ? ['off_script'] : []});
     if (dest.id !== here.id) startTrip(s, m, here, dest, now, d.source, emit, hooks);

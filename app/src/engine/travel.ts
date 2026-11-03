@@ -1,10 +1,10 @@
-// Trips outside the scenario tick (direction v2, 13 and 13.1): following the owner's location cell, and
+// Trips outside the scenario tick (direction v2, 13 and 13.1): following the owner's neighborhood area, and
 // moves requested by a connected Muse. The Muse's place changes only on arrival (walk / bus) or through a
 // verified teleport, which spends a Taxi Token at once.
 import {tripMs, type MuseState, type WorldState, type WorldEvent, type Hooks, type Source} from './world.ts';
 import {placeById, distanceM, type Place} from './places.ts';
 import {speedFor, sweepExpired, historyFault} from './items.ts';
-import {placeCell, teleportCheck} from './location.ts';
+import {ownerArea, areaContains, sameArea, teleportCheck} from './location.ts';
 import {rngFor} from './rng.ts';
 
 type Emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => void;
@@ -12,7 +12,7 @@ type Emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => void;
 /** Starts a walk (or a Transit Pass bus ride when held) with a real-speed ETA. Never a taxi. */
 export function beginTrip(m: MuseState, to: Place, now: number, source: Source, emit: Emit, why: string) {
   const from = placeById(m.place);
-  const speed = speedFor(m.inventory, from, to, false);
+  const speed = sameArea(from, to) ? 'walk' : speedFor(m.inventory, from, to, false);
   const ms = tripMs(from, to, speed);
   m.travel = {to: to.id, departAt: now, arriveAt: now + ms, speed, chosen: true};
   m.beat = null;
@@ -33,7 +33,7 @@ export function teleport(s: WorldState, m: MuseState, to: Place, now: number, so
 }
 
 /**
- * After the owner location changes: the owner's Muse follows. Already in the owner cell → stays.
+ * After an area change: the owner's Muse follows from outside; inside it remains free to roam.
  * Verified cell + Taxi Token → teleports. Otherwise it walks (or rides the bus) toward the target with an ETA.
  */
 export function followOwner(s: WorldState, now: number, emit: Emit, hooks: Hooks) {
@@ -41,16 +41,18 @@ export function followOwner(s: WorldState, now: number, emit: Emit, hooks: Hooks
   if (!owner) return null;
   const m = s.muses.find(x => x.id === owner.muse);
   if (!m) return null;
-  m.anchor = owner.cell;
+  const area = ownerArea(owner);
+  m.anchor = area?.id ?? null;
   // Outside the tick: passes that expired since the last sweep must not carry this trip (I-06).
   if (!historyFault(s.items, false, now)) for (const e of sweepExpired(s, now)) emit(e);
   // A paused Muse (delegation revoked) does not follow; the owner cell is still recorded.
   if (s.paused?.[m.id]) return {mode: 'paused' as const};
-  if (placeCell(m.place) === owner.cell && !m.travel) return {mode: 'stay' as const};
+  if (areaContains(area, m.place) && !m.travel) return {mode: 'roaming' as const};
   const target = placeById(owner.target);
   // A verified cell + a Taxi Token teleports, also when a walk there is already under way (verification turned on mid-trip).
+  if (m.travel && areaContains(area, m.place) && areaContains(area, m.travel.to)) return {mode: 'walking' as const, etaMs: Math.max(0, m.travel.arriveAt - now)};
   if (owner.verified && m.inventory.includes('taxi_token') && !teleport(s, m, target, now, 'live', emit, hooks, 'follow owner')) return {mode: 'teleport' as const};
-  if (m.travel && placeCell(m.travel.to) === owner.cell) return {mode: m.travel.speed === 'bus' ? 'bus' as const : 'walking' as const, etaMs: Math.max(0, m.travel.arriveAt - now)};
+  if (m.travel && areaContains(area, m.travel.to)) return {mode: m.travel.speed === 'bus' ? 'bus' as const : 'walking' as const, etaMs: Math.max(0, m.travel.arriveAt - now)};
   const t = beginTrip(m, target, now, 'live', emit, 'follow owner');
   return {mode: t.speed === 'bus' ? 'bus' as const : 'walking' as const, etaMs: t.etaMs};
 }
