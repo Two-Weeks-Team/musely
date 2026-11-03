@@ -411,9 +411,10 @@ test('teleport needs a verified neighborhood and a Taxi Token, and spends it', a
   assert.equal(g.body.follow.mode, 'walking');
 });
 
-test('GPS source is phase 2: only a coarse cell is stored', async () => {
+test('GPS only accepts a local-mapped area id, never raw coordinates or verification', async () => {
   const t = await setup();
-  const r = await t.route('POST', '/api/owner/location', {body: {source: 'gps', lat: 37.427512, lng: -122.169734}});
+  assert.equal((await t.route('POST', '/api/owner/location', {body: {source: 'gps', lat: 37.427512, lng: -122.169734}})).status, 400);
+  const r = await t.route('POST', '/api/owner/location', {body: {source: 'gps', preset: 'stanford'}});
   assert.equal(r.status, 200);
   assert.equal(r.body.location.source, 'gps');
   assert.match(r.body.location.location, /phase 2/);
@@ -495,8 +496,10 @@ test('while connected, the scenario picks no trips or beats for the Muse; reques
   assert.deepEqual(scripted(t), [], 'no scripted departures or beats for a connected Muse');
   const arrive = t.events('arrive').find(e => e.muse === OWNER_SLOT);
   assert.ok(arrive, 'the requested trip still arrives');
-  assert.equal(t.muse(OWNER_SLOT).place, 'commons:workbench');
-  assert.equal(t.muse(OWNER_SLOT).beat, null, 'no beat chosen on arrival either');
+  assert.equal(arrive.place, 'commons:workbench', 'the requested destination was reached');
+  const ambient = t.events('depart').filter(e => e.muse === OWNER_SLOT && e.source === 'rule');
+  assert.ok(ambient.every(e => e.data.speed === 'walk'), 'later idle strolling is rule-only walking');
+  assert.equal(t.muse(OWNER_SLOT).beat, null, 'no team-chosen activity for a connected Muse');
 });
 
 test('a counter while either side is travelling is refused (no swap on the move)', async () => {

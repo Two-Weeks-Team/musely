@@ -75,7 +75,7 @@ export const SNAPSHOT_FIELDS: Record<'state' | 'muse' | 'wants' | 'beat' | 'owne
   wants: {goal: 'text', items: 'copy', source: 'copy', updatedAt: 'copy'},
   beat: {id: 'copy', clip: 'copy', startedAt: 'copy', endsAt: 'copy', line: 'text'},
   // The owner location (cell, preset, target) is private; whether it is set and verified is not.
-  owner: {source: 'copy', muse: 'copy', verified: 'copy', setAt: 'copy', cell: 'private', preset: 'private', target: 'private'},
+  owner: {source: 'copy', muse: 'copy', verified: 'copy', setAt: 'copy', cell: 'private', preset: 'private', target: 'private', area: 'private'},
   inbox: {} as Table,
   task: {id: 'copy', kind: 'copy', from: 'copy', to: 'copy', status: 'copy', awaiting: 'copy', createdAt: 'copy', deadline: 'copy', updatedAt: 'copy', offer: 'copy', round: 'copy', candidate: 'private', answers: 'copy', history: 'copy',
     // Version 2 (I-07): the meetup candidates, the hash that fingerprints them, the owner decisions, who decides and

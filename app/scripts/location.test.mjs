@@ -18,7 +18,7 @@ import {connectedRoutes} from '../worker/core/owner-api.ts';
 import {issueOwnerSession, readOwnerSession} from '../worker/core/owner-session.ts';
 import {makeHooks} from '../src/engine/rules.ts';
 import {placeById, PLACES} from '../src/engine/places.ts';
-import {PRESETS, placeCell, teleportCheck, nearestPreset, nextOwnerLocation, defaultOwner, NEIGHBORHOOD_KM} from '../src/engine/location.ts';
+import {PRESETS, placeCell, teleportCheck, nearestPreset, nextOwnerLocation, defaultOwner, NEIGHBORHOOD_KM, areaById} from '../src/engine/location.ts';
 import {createWorld, tick, TICK_MS, spotlightFor} from '../src/engine/world.ts';
 import {speedFor} from '../src/engine/items.ts';
 import {locationLine, snapshotOf, museLine, deviceLocation, deviceStart, deviceResult, deviceWatchdog, deviceText, DEVICE_IDLE, GEO_WATCHDOG_MS, VIRTUAL_FALLBACK} from '../src/ui/location-state.ts';
@@ -156,7 +156,7 @@ test('AC3 rule engine: residents have no neighborhood verification, so a Taxi To
   let s = createWorld('ac3-residents', T0);
   for (const m of s.muses) m.inventory.push('taxi_token', 'taxi_token');
   // The owner's cell is Stanford and verified for all 360 ticks: the verification exists, but only the owner's Muse may use it.
-  s.owner = {...s.owner, preset: 'stanford', cell: placeCell('bay:stanford'), target: 'bay:stanford', verified: true};
+  s.owner = {...s.owner, preset: 'stanford', area: 'stanford', cell: placeCell('bay:stanford'), target: 'bay:stanford', verified: true};
   const go = {muse: OWNER_SLOT, freedom: 'where', source: 'live', output: {decision: 'go', target_place: 'Stanford', target_agent: '', offer_item: '', want_item: '', public_reason: 'reading', line: ''}};
   const log = [];
   for (let i = 0; i < 360; i++) {
@@ -173,7 +173,7 @@ test('AC3 rule engine: residents have no neighborhood verification, so a Taxi To
   const from = placeById('commons:campfire'), bay = placeById('bay:stanford');
   // Fixed inventories: only a Taxi Token (the run above may have crafted a Transit Pass).
   const ripple = {id: '03-ripple', inventory: ['taxi_token']}, jolly = {id: OWNER_SLOT, inventory: ['taxi_token']};
-  s.owner = {...s.owner, preset: 'stanford', cell: placeCell(bay), target: bay.id, verified: true};
+  s.owner = {...s.owner, preset: 'stanford', area: 'stanford', cell: placeCell(bay), target: bay.id, verified: true};
   assert.equal(hooks.speedFor(ripple, from, bay, s), 'walk', 'a resident with tokens walks even when the owner cell is verified');
   assert.equal(hooks.speedFor(jolly, from, bay, s), 'taxi');
   assert.equal(hooks.speedFor(jolly, from, placeById('bay:oakland'), s), 'walk', 'outside the owner cell');
@@ -198,19 +198,19 @@ test('AC3 rule engine: a spotlight decision to the Bay with only a Taxi Token is
     }
     return null;
   };
-  const stanford = {preset: 'stanford', cell: placeCell('bay:stanford'), target: 'bay:stanford'};
+  const stanford = {preset: 'stanford', area: 'stanford', cell: placeCell('bay:stanford'), target: 'bay:stanford'};
   const resident = run('03-ripple', {...stanford, verified: true});
   assert.equal(resident.kind, 'decision_rejected', 'a resident cannot use the owner\'s verification');
   assert.match(resident.reason, /verified neighborhood/);
   assert.equal(resident.tokens, 1, 'nothing spent');
   assert.equal(run(OWNER_SLOT, {...stanford, verified: false}).kind, 'decision_rejected', 'owner cell not verified');
-  assert.equal(run(OWNER_SLOT, {preset: 'oakland', cell: placeCell('bay:oakland'), target: 'bay:oakland', verified: true}).kind, 'decision_rejected', 'Stanford is not the owner cell');
+  assert.equal(run(OWNER_SLOT, {preset: 'oakland', area: 'oakland', cell: placeCell('bay:oakland'), target: 'bay:oakland', verified: true}).kind, 'decision_rejected', 'Stanford is not the owner cell');
   const ok = run(OWNER_SLOT, {...stanford, verified: true});
   assert.deepEqual([ok.kind, ok.speed, ok.tokens], ['depart', 'taxi', 0], 'verified + token: teleports and spends the token');
 });
 
 test('AC3 teleportCheck: the owner\'s verification belongs to the owner\'s Muse only', () => {
-  const owner = {...defaultOwner(OWNER_SLOT, T0), preset: 'oakland', cell: placeCell('bay:oakland'), target: 'bay:oakland', verified: true};
+  const owner = {...defaultOwner(OWNER_SLOT, T0), preset: 'oakland', area: 'oakland', cell: placeCell('bay:oakland'), target: 'bay:oakland', verified: true};
   const oakland = placeById('bay:oakland');
   assert.equal(teleportCheck(owner, {id: OWNER_SLOT, inventory: ['taxi_token']}, oakland), null);
   assert.equal(teleportCheck(owner, {id: '03-ripple', inventory: ['taxi_token']}, oakland), 'neighborhood_not_verified');
@@ -266,7 +266,7 @@ test('AC3 following the owner: a resent verified location teleports once (the se
   const a = await t.route('POST', '/api/owner/location', {source: 'virtual', preset: 'san-jose', verify: true});
   assert.equal(a.body.follow.mode, 'teleport');
   const b = await t.route('POST', '/api/owner/location', {source: 'virtual', preset: 'san-jose', verify: true});
-  assert.equal(b.body.follow.mode, 'stay');
+  assert.equal(b.body.follow.mode, 'roaming');
   assert.equal(tokens(t.muse(OWNER_SLOT)), 1);
   assert.equal(t.muse(OWNER_SLOT).place, 'bay:san-jose');
   // Already walking to an unverified cell; the owner turns verification on for the same cell: the Muse teleports instead of walking on.
@@ -289,23 +289,23 @@ test('AC4 presets: HQ commons (default) and the seven Bay activity places of dir
   assert.equal(PRESETS[0].place, 'commons:hq');
   const bay = PRESETS.slice(1).map(p => placeById(p.place));
   assert.ok(bay.every(p => p.zone === 'bay' && p.relic), 'each Bay preset is an activity place with its relic');
-  assert.deepEqual(new Set(bay.map(p => p.id)), new Set(PLACES.filter(p => p.zone === 'bay').map(p => p.id)), 'every Bay place, once');
+  assert.deepEqual(new Set(bay.map(p => p.id)), new Set(PLACES.filter(p => p.zone === 'bay' && p.kind === 'region').map(p => p.id)), 'every Bay place, once');
   assert.equal(new Set(PRESETS.map(p => placeCell(p.place))).size, 8, 'eight distinct cells');
 });
 
 test('AC4 always-on line: virtual location (demo), the owner destination and the Muse\'s own cell with a counting ETA; unknown is never assumed', () => {
-  const view = {source: 'virtual', preset: 'stanford', cell_label: 'Stanford', cell: placeCell('bay:stanford'), location: 'virtual (demo)', neighborhood_verified: false,
+  const view = {area: areaById('stanford'), source: 'virtual', preset: 'stanford', cell_label: 'Stanford', cell: placeCell('bay:stanford'), location: 'virtual (demo)', neighborhood_verified: false,
     muse: {id: OWNER_SLOT, place: {id: 'commons:benches', name: 'Bench Circle'}, at_owner_cell: false, travelling_to: {id: 'bay:stanford', name: 'Stanford'}, speed: 'walk', eta_ms: 42 * 60_000, arrive_at: T0 + 42 * 60_000}};
   const snap = snapshotOf(view, T0);
   const l = locationLine(snap, T0);
   // The owner's destination and the Muse's own current cell are told apart, also mid-trip (13.1).
-  assert.equal(l.text, 'Virtual location (demo) · owner at Stanford · Jolly at Bench Circle → Stanford, walking, 42 min');
-  assert.match(l.title, new RegExp(`Owner destination cell ${placeCell('bay:stanford')}`));
-  assert.match(l.title, new RegExp(`current cell ${placeCell('commons:benches')} \\(Bench Circle\\)`));
+  assert.equal(l.text, 'Virtual location (demo) · owner neighborhood: Stanford · Jolly at Bench Circle → Stanford, walking, 42 min');
+  assert.match(l.title, /Owner neighborhood Stanford: 1500 m/);
+  assert.match(l.title, /current place: Bench Circle/);
   assert.match(locationLine(snap, T0 + 30 * 60_000).text, /12 min$/, 'the ETA counts down between answers');
   assert.match(locationLine(snap, T0 + 43 * 60_000).text, /Jolly at Bench Circle → Stanford, walking, arriving$/);
   assert.equal(museLine(snapshotOf({...view, muse: {...view.muse, speed: 'bus', eta_ms: 8 * 60_000}}, T0), T0), 'Jolly at Bench Circle → Stanford, bus, 8 min');
-  assert.match(locationLine(snapshotOf({...view, neighborhood_verified: true, muse: {...view.muse, place: {id: 'bay:stanford', name: 'Stanford'}, at_owner_cell: true, travelling_to: null, speed: null, eta_ms: null}}, T0), T0).text, /owner at Stanford \(verified\) · Jolly with the owner at Stanford/);
+  assert.match(locationLine(snapshotOf({...view, neighborhood_verified: true, muse: {...view.muse, place: {id: 'bay:stanford', name: 'Stanford'}, at_owner_cell: true, in_owner_area: true, travelling_to: null, speed: null, eta_ms: null}}, T0), T0).text, /owner neighborhood: Stanford \(verified\) · Jolly at Stanford · in your neighborhood/);
   assert.match(locationLine(snap, T0, 'HTTP 503').text, /not updating$/, 'a failure keeps the last answer and says so');
   const none = locationLine(null, T0, 'HTTP 503');
   assert.equal(none.state, 'unknown'); assert.doesNotMatch(none.text, /HQ/);
@@ -313,7 +313,7 @@ test('AC4 always-on line: virtual location (demo), the owner destination and the
   const panel = readFileSync(new URL('../src/ui/world-panel.ts', import.meta.url), 'utf8'), css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
   assert.match(panel, /mountLocationChip\(header, spot\)/);
   // The chip's answer is applied when it arrives; the rest of the refresh does not wait for it (and nothing is applied during a replay).
-  assert.match(panel, /void load<OwnerLocationView>\('location', '\/api\/owner\/location'\)\.then\(lr => \{ if \(!isolation\.replay\) locChip\.update\(lr\); \}\)/);
+  assert.match(panel, /if \(!isolation\.replay\) \{locChip\.update\(lr\); paintOwnerArea\(\);\}/);
   assert.ok(!/await\s+locReq|await load<OwnerLocationView>/.test(panel), 'refresh does not wait for the location answer');
   // The open Location tab is drawn again on polls and after a move (refresh), unless one of its controls is in use.
   assert.match(panel, /tab === 'location' && !ret\) \{\n\s+const f = document\.activeElement, inUse = /);
@@ -325,10 +325,10 @@ test('AC4 always-on line: virtual location (demo), the owner destination and the
 
 test('AC4 privacy and MCP docs say what the code does: device location stays on the device; rule refusals are stored command results', () => {
   const privacy = readFileSync(new URL('../static/privacy.html', import.meta.url), 'utf8').replace(/\s+/g, ' ');
-  assert.ok(privacy.includes(`nearest of eight preset areas (the HQ commons and seven Bay Area places) within ${NEIGHBORHOOD_KM} km`), 'radius and preset count match location.ts');
+  assert.ok(privacy.includes(`nearest of eight neighborhood areas (the HQ commons and seven Bay Area neighborhoods), using a ${NEIGHBORHOOD_KM} km proximity limit`), 'radius and preset count match location.ts');
   assert.equal(PRESETS.length, 8);
   assert.ok(privacy.includes('The coordinates are not sent to Musely and not stored, and the result does not verify a neighborhood'));
-  assert.ok(privacy.includes('<code>POST /api/owner/location</code> with <code>source: "gps"</code>') && privacy.includes('keeps that cell as the owner location and does not store the coordinates'));
+  assert.ok(privacy.includes('<code>POST /api/owner/location</code> with <code>source: "gps"</code>') && privacy.includes('accepts only a locally mapped neighborhood preset id, never raw coordinates'));
   for (const f of ['../worker/core/mcp-tools.ts', '../docs/MCP_TOOLS.md']) {
     const doc = readFileSync(new URL(f, import.meta.url), 'utf8');
     assert.ok(/A call the world rules refuse \(for example `?no_taxi_token`? or `?already_here`?\) is a stored result/.test(doc) && /use a new `?command_id`?/.test(doc), f);
@@ -363,7 +363,7 @@ test('AC4 GPS permission flow: denied, unavailable, timeout, no answer and no se
     const txt = deviceText({status: s, preset: null, startedAt: null, at: 1});
     assert.equal(txt.fallback, true, s); assert.ok(txt.detail.includes(VIRTUAL_FALLBACK), s);
   }
-  assert.match(deviceText(near).detail, /neighborhood verification uses the virtual location/, 'GPS does not verify (phase 2)');
+  assert.match(deviceText(near).detail, /GPS verification is phase 2/, 'GPS does not verify (phase 2)');
   assert.equal(deviceText(near).fallback, false);
 });
 

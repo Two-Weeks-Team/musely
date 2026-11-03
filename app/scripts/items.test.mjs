@@ -19,6 +19,7 @@ import {HARNESSES} from '../src/engine/harness.ts';
 import {createWorld, tick, TICK_MS, spotlightFor, localClock} from '../src/engine/world.ts';
 import {makeHooks, resolveMeeting} from '../src/engine/rules.ts';
 import {rngFor} from '../src/engine/rng.ts';
+import {beginTrip} from '../src/engine/travel.ts';
 
 const T0 = Date.parse('2026-11-03T16:00:00Z');
 const cafe = PLACES.find(p => p.kind === 'cafe' && p.zone === 'neighborhood');
@@ -70,7 +71,7 @@ test('trades: relics never move, partners must be close, one per pair per day, a
 });
 
 test('items change abilities: Transit Pass rides the bus, Taxi Token teleports to the Bay', () => {
-  const from = placeById('commons:campfire'), far = PLACES.filter(p => p.zone === 'neighborhood').at(-1), bay = placeById('bay:stanford');
+  const from = placeById('commons:campfire'), far = placeById('bay:stanford'), bay = placeById('bay:stanford');
   assert.equal(speedFor([], from, far), 'walk');
   assert.equal(speedFor(['transit_pass'], from, far), 'bus');
   assert.equal(speedFor(['taxi_token'], from, bay), 'walk', 'unverified by default: a Taxi Token alone does not teleport (13.1)');
@@ -96,6 +97,8 @@ function runWith(give) {
   const hooks = makeHooks();
   let s = createWorld('p1-world', T0); const log = [];
   if (give) for (const [muse, item] of give) s.muses.find(m => m.id === muse).inventory.push(item);
+  // The updated area contract makes every intra-HQ trip a walk. Compare the same cross-area request instead.
+  beginTrip(s.muses.find(m => m.id === '03-ripple'), placeById('bay:stanford'), T0, 'live', e => log.push(e), 'same inter-neighborhood request');
   for (let i = 0; i < 360; i++) { const r = tick(s, {now: T0 + i * TICK_MS}, hooks); s = r.state; log.push(...r.events); }
   return {s, log};
 }
@@ -107,7 +110,6 @@ test('P1: the same start with and without a Transit Pass / Garden Pass diverges 
   // Without the given pass Ripple may still craft one (three bus stops, I-08: residents no longer take taxis), but never rides before it.
   assert.equal(busWithoutPass(base.log, '03-ripple', false), 0);
   assert.ok(trips(base).filter(e => e.data.speed === 'bus').length < bus.length, 'the given pass rides the bus more');
-  const reach = r => Math.max(0, ...trips(r).map(e => e.data.distanceM));
   assert.notDeepEqual(trips(base).map(e => e.data.to), trips(boosted).map(e => e.data.to), 'different destinations');
   const blooms = r => r.log.filter(e => e.kind === 'craft' && e.data.item === 'bloom').length;
   assert.ok(blooms(boosted) >= blooms(base), 'Garden Pass + Clover Seed lets Moss grow a Bloom');
@@ -115,7 +117,8 @@ test('P1: the same start with and without a Transit Pass / Garden Pass diverges 
   const trades = r => r.log.filter(e => e.kind === 'trade_completed').length, finds = r => r.log.filter(e => e.kind === 'discover').length;
   assert.ok(trades(base) >= 1 && trades(boosted) >= 1, `cooperation still happens (trades ${trades(base)} / ${trades(boosted)})`);
   assert.ok(finds(base) >= 40 && finds(boosted) >= 40, `discoveries ${finds(base)} / ${finds(boosted)}`);
-  assert.ok(reach(boosted) > reach(base), 'the pass carries Ripple farther');
+  const firstArrival = r => r.log.find(e => e.muse === '03-ripple' && e.kind === 'arrive' && e.place === 'bay:stanford').at;
+  assert.ok(firstArrival(boosted) < firstArrival(base), 'the pass reaches the same other neighborhood earlier');
 });
 
 test('I-08 a Taxi Token is no ability for a resident: a trade between residents for it is refused; to the owner\'s Muse it counts', () => {
@@ -140,7 +143,7 @@ test('a Taxi Token is consumed by the teleport it enables (the owner\'s Muse, in
   const jolly = s.muses.find(m => m.id === OWNER_SLOT);
   jolly.inventory.push('taxi_token');
   // The owner is "at" Stanford with a verified neighborhood (13.1, demo verification of the virtual cell).
-  s.owner = {...s.owner, preset: 'stanford', cell: placeCell('bay:stanford'), target: 'bay:stanford', verified: true};
+  s.owner = {...s.owner, preset: 'stanford', area: 'stanford', cell: placeCell('bay:stanford'), target: 'bay:stanford', verified: true};
   const decision = () => ({muse: OWNER_SLOT, freedom: 'where', source: 'live', output: {decision: 'go', target_place: 'Stanford', target_agent: '', offer_item: '', want_item: '', public_reason: 'reading', line: ''}});
   // advance until the owner's Muse holds the spotlight
   for (let i = 0; i < 20; i++) {
@@ -167,11 +170,11 @@ const NIGHT = Date.parse('2026-11-04T04:00:00Z'), NOON = Date.parse('2026-11-03T
 
 // One behaviour probe per implemented effect rule: the same situation with and without the item differs.
 const PROBES = {
-  bus_speed: () => { const from = placeById('commons:campfire'), far = PLACES.filter(p => p.zone === 'neighborhood').at(-1); return speedFor([], from, far) === 'walk' && speedFor(['transit_pass'], from, far) === 'bus'; },
+  bus_speed: () => { const from = placeById('commons:campfire'), far = placeById('bay:stanford'); return speedFor([], from, far) === 'walk' && speedFor(['transit_pass'], from, far) === 'bus'; },
   // Through the engine hook (I-08): the owner's Muse in its owner's verified cell teleports only with the token; a resident never.
   teleport: () => {
     const hooks = makeHooks(), s = createWorld('teleport-probe', T0), from = placeById('commons:campfire'), bay = placeById('bay:stanford');
-    s.owner = {...s.owner, preset: 'stanford', cell: placeCell(bay), target: bay.id, verified: true};
+    s.owner = {...s.owner, preset: 'stanford', area: 'stanford', cell: placeCell(bay), target: bay.id, verified: true};
     const go = (id, inventory) => hooks.speedFor({id, inventory}, from, bay, s);
     return go(OWNER_SLOT, []) === 'walk' && go(OWNER_SLOT, ['taxi_token']) === 'taxi' && go('03-ripple', ['taxi_token']) === 'walk';
   },
@@ -448,7 +451,7 @@ test('AC3 expiry: a pass is valid at 23h59m after acquisition and expired at 24h
   const T = T0, l = emptyLedger();
   const a = muse('03-ripple', 'commons:garden'), b = muse('02-moss', 'commons:garden', ['clover_seed']);
   grantItem(l, a, 'transit_pass', T, a.place, 'craft');
-  const from = placeById('commons:campfire'), far = PLACES.filter(p => p.zone === 'neighborhood').at(-1);
+  const from = placeById('commons:campfire'), far = placeById('bay:stanford');
   const w = {items: l, muses: [a, b]};
   assert.deepEqual(sweepExpired(w, T + 24 * H - 60_000), []);
   assert.ok(a.inventory.includes('transit_pass'));

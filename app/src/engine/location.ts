@@ -1,9 +1,7 @@
-// Owner location source and the Muse's current cell (direction v2, 13 and 13.1).
-// - The owner location cell is where the owner "is" (virtual preset in the demo, GPS in phase 2). It is the
-//   follow target and the base of neighborhood verification. Only a coarse cell is ever stored (PRD NFR-2).
-// - The Muse's current place is MuseState.place. It changes only by trips (walk / Transit Pass bus) or a
-//   verified teleport (neighborhood verified for the owner cell + a Taxi Token, which is spent).
-// - Discovery, trade distance and get_world_state use the Muse's place, never the owner cell.
+// Owner neighborhood areas (2026-11-03 directive, superseding direction v2's point/cell wording).
+// Owner condition: area id and staged verification. Muse fact: current catalog place, changed only by travel.
+// The coarse cell remains a compatibility/discovery grid; it never bounds owner roaming.
+// Device coordinates are mapped only in the browser. The server accepts catalog area ids, not coordinates.
 import {PLACES, PLACE_BY_ID, placeById, distanceM, type Place} from './places.ts';
 
 /** Grid size in degrees. Cells are centred on multiples of 0.01° (≈1.1 km × 0.9 km here). */
@@ -26,15 +24,32 @@ export type PresetId = (typeof PRESETS)[number]['id'];
 export const PRESET_IDS: readonly string[] = PRESETS.map(p => p.id);
 export const presetById = (id: string) => PRESETS.find(p => p.id === id) ?? null;
 
+/** Staged neighborhood bounds, not municipal borders or an owner's precise location. */
+export type NeighborhoodArea = {id: PresetId; label: string; center: {lng: number; lat: number}; radiusM: number; placeIds: readonly string[]};
+export const NEIGHBORHOOD_AREAS: readonly NeighborhoodArea[] = PRESETS.map(p => {
+  const center = placeById(p.place), radiusM = 1500;
+  return {id: p.id, label: p.label, center: {lng: center.lng, lat: center.lat}, radiusM,
+    placeIds: PLACES.filter(x => distanceM(center, x) <= radiusM).map(x => x.id)};
+});
+export const areaById = (id: string) => NEIGHBORHOOD_AREAS.find(a => a.id === id) ?? null;
+export const areaContains = (area: NeighborhoodArea | null, place: Place | string) => !!area?.placeIds.includes(typeof place === 'string' ? place : place.id);
+export const sameArea = (from: Place, to: Place) => NEIGHBORHOOD_AREAS.some(a => areaContains(a, from) && areaContains(a, to));
+/** Old stored virtual locations resolve through their preset without rewriting history. */
+export const ownerArea = (o: OwnerLocation | undefined) => o ? areaById(o.preset ?? o.area ?? '') ?? NEIGHBORHOOD_AREAS.find(a => a.placeIds.includes(o.target)) ?? null : null;
+export const areaVerified = (o: OwnerLocation | undefined) => !!o?.verified && o.area === ownerArea(o)?.id;
+export const areaView = (area: NeighborhoodArea | null) => area ? {...area, placeIds: [...area.placeIds]} : null;
+
 export type OwnerLocation = {
   source: 'virtual' | 'gps';
-  /** Preset id for a virtual source; null for GPS. */
+  /** Local-mapped area preset id for either source; older GPS states can have null. */
   preset: PresetId | null;
+  /** Neighborhood identity. Optional only for pre-area stored states. */
+  area?: PresetId;
   /** Coarse cell id "<lat*100>:<lng*100>" (rounded). Never a precise coordinate. */
   cell: string;
-  /** Place the owner's Muse walks to when following (a preset's place, or the place nearest the GPS cell). */
+  /** Area entry place used when following from outside, never a stop/roaming constraint. */
   target: string;
-  /** Demo neighborhood verification for this cell (staged in the demo, direction 13.1). Reset when the cell changes. */
+  /** Staged virtual verification, valid only with the matching explicit area stamp. */
   verified: boolean;
   setAt: number;
   /** The Muse that follows this owner (the owner slot). */
@@ -57,37 +72,31 @@ export function nearestPlace(cell: string): Place {
 
 export function defaultOwner(muse: string, now: number): OwnerLocation {
   const p = PRESETS[0];
-  return {source: 'virtual', preset: p.id, cell: placeCell(p.place), target: p.place, verified: false, setAt: now, muse};
+  return {source: 'virtual', preset: p.id, area: p.id, cell: placeCell(p.place), target: p.place, verified: false, setAt: now, muse};
 }
 
 /** Public label for a cell: the preset name for virtual sources; GPS cells are not described further. */
 export function ownerLabel(o: OwnerLocation) {
-  if (o.source === 'virtual') return presetById(o.preset ?? 'hq')?.label ?? 'HQ commons';
-  return 'GPS cell (phase 2)';
+  return ownerArea(o)?.label ?? 'Neighborhood unknown';
 }
 
-export type LocationInput = {source: 'virtual'; preset: string; verify?: boolean} | {source: 'gps'; lat: number; lng: number};
+export type LocationInput = {source: 'virtual'; preset: string; verify?: boolean} | {source: 'gps'; preset: string};
 export type LocationResult = {ok: true; owner: OwnerLocation} | {ok: false; reason: string};
 
-/** Validates a location request and returns the next owner location (pure). GPS coordinates are dropped after the cell is computed. */
+/** Validates a local-mapped area id. Raw coordinates and unknown fields are refused before any state commit. */
 export function nextOwnerLocation(prev: OwnerLocation, input: unknown, now: number): LocationResult {
   if (!input || typeof input !== 'object') return {ok: false, reason: 'body must be an object'};
   const i = input as Record<string, unknown>;
-  if (i.source === 'virtual') {
+  if (Object.keys(i).some(k => !['source', 'preset', 'verify'].includes(k))) return {ok: false, reason: 'send only a neighborhood preset id; coordinates are not accepted'};
+  if (i.source === 'virtual' || i.source === 'gps') {
     const p = typeof i.preset === 'string' ? presetById(i.preset) : null;
     if (!p) return {ok: false, reason: 'preset must be one of ' + PRESET_IDS.join('|')};
     if (i.verify !== undefined && typeof i.verify !== 'boolean') return {ok: false, reason: 'verify must be a boolean'};
+    if (i.source === 'gps' && i.verify !== undefined) return {ok: false, reason: 'GPS neighborhood verification is phase 2'};
     const cell = placeCell(p.place);
-    // Verification belongs to a cell: moving to another cell clears it unless this request verifies again.
-    const verified = i.verify === true || (i.verify === undefined && prev.cell === cell && prev.verified);
-    return {ok: true, owner: {source: 'virtual', preset: p.id, cell, target: p.place, verified, setAt: now, muse: prev.muse}};
-  }
-  if (i.source === 'gps') {
-    const lat = i.lat, lng = i.lng;
-    if (typeof lat !== 'number' || typeof lng !== 'number' || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return {ok: false, reason: 'lat and lng must be numbers'};
-    if (i.verify !== undefined) return {ok: false, reason: 'GPS neighborhood verification is phase 2'};
-    const cell = cellOf(lat, lng);
-    return {ok: true, owner: {source: 'gps', preset: null, cell, target: nearestPlace(cell).id, verified: false, setAt: now, muse: prev.muse}};
+    // Old cell-only verification cannot silently authorize the expanded neighborhood.
+    const verified = i.source === 'virtual' && (i.verify === true || (i.verify === undefined && prev.source === 'virtual' && ownerArea(prev)?.id === p.id && areaVerified(prev)));
+    return {ok: true, owner: {source: i.source, preset: p.id, area: p.id, cell, target: p.place, verified, setAt: now, muse: prev.muse}};
   }
   return {ok: false, reason: "source must be 'virtual' or 'gps'"};
 }
@@ -103,9 +112,10 @@ export function tagLocation<E extends {muse: string | null; other?: string | nul
  * and a Taxi Token is held. Neighborhood verification belongs to an owner location, so a resident (no owner) or any Muse
  * other than the owner's is never verified.
  */
-export function teleportCheck(owner: OwnerLocation | undefined, muse: {id: string; inventory: readonly string[]}, to: Place): string | null {
-  if (!owner || owner.muse !== muse.id || !owner.verified || owner.source !== 'virtual') return 'neighborhood_not_verified';
-  if (placeCell(to) !== owner.cell) return 'not_in_owner_cell';
+export function teleportCheck(owner: OwnerLocation | undefined, muse: {id: string; inventory: readonly string[]; place?: string}, to: Place): string | null {
+  if (!owner || owner.muse !== muse.id || !areaVerified(owner) || owner.source !== 'virtual') return 'neighborhood_not_verified';
+  if (!areaContains(ownerArea(owner), to)) return 'not_in_owner_cell'; // Legacy refusal code; the criterion is now the area.
+  if (muse.place && sameArea(placeById(muse.place), to)) return 'within_neighborhood_walk';
   if (!muse.inventory.includes('taxi_token')) return 'no_taxi_token';
   return null;
 }

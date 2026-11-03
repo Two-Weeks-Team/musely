@@ -21,11 +21,16 @@ const integer = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v)
 // Geographic distance yields fractional arrival milliseconds; preserve the recorded ETA without rounding.
 const arrivalTime = (v: unknown) => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= Number.MAX_SAFE_INTEGER;
 export const recordedStateHash = (body: string) => sha256Hex('musely-run-state-v1\n' + body);
-export function assertCompatible(r: unknown, expected: RunVersions = currentVersions()): asserts r is RunRecord {
+// Exact known predecessor tuple: checkpoint projection only, with its original versions and hashes intact.
+// No old engine is executed and arbitrary/mixed catalog versions remain incompatible.
+const PRE_AREA_VERSIONS: RunVersions = {schemaVersion: 'run-log-2', engineVersion: 'engine-2', harnessVersion: 'harness-c0c69e98b5e8', catalogVersion: 'catalog-d69858ec160f'};
+export function assertCompatible(r: unknown, expected?: RunVersions): asserts r is RunRecord {
   if (!obj(r)) bad('run header is not an object');
+  const keys = ['schemaVersion', 'engineVersion', 'harnessVersion', 'catalogVersion'] as const;
+  const target = expected ?? (keys.every(k => r[k] === PRE_AREA_VERSIONS[k]) ? PRE_AREA_VERSIONS : currentVersions());
   for (const key of ['schemaVersion', 'engineVersion', 'harnessVersion', 'catalogVersion'] as const) {
     if (typeof r[key] !== 'string') bad(`missing ${key}`);
-    if (r[key] !== expected[key]) throw new ReplayRecordError('incompatible_record', `${key} ${r[key]} (player ${expected[key]})`);
+    if (r[key] !== target[key]) throw new ReplayRecordError('incompatible_record', `${key} ${r[key]} (player ${target[key]})`);
   }
 }
 function readSnapshot(s: unknown, worldId: string): Record<string, any> {
@@ -42,7 +47,7 @@ function readSnapshot(s: unknown, worldId: string): Record<string, any> {
   }
   return state;
 }
-export function loadRun(raw: unknown, expected: RunVersions = currentVersions()) {
+export function loadRun(raw: unknown, expected?: RunVersions) {
   assertCompatible(raw, expected);
   const value = raw as LoadedRun;
   if (typeof value.runId !== 'string' || !value.runId || typeof value.worldId !== 'string' || !integer(value.startedAt) || !Array.isArray(value.inputs) || !Array.isArray(value.events) || !obj(value.readThrough)) bad('run metadata or ordered rows missing');

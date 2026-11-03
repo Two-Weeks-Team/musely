@@ -2,7 +2,7 @@
 // provenance cannot — place stamps, postcards and relics are never for sale or trade.
 // Items go to the agents; people watch. This is reward design, not learning (no RL claim).
 import {PLACES, placeById, distanceM, type Place, type PlaceKind} from './places.ts';
-import {OWNER_MUSE} from './location.ts';
+import {OWNER_MUSE, sameArea} from './location.ts';
 import {canonicalize} from '../identity/jcs.ts';
 import {sha256Hex} from './sha256.ts';
 
@@ -25,7 +25,7 @@ export type ItemSpec = {
  * `where` names the code that applies the rule; scripts/items.test.mjs has one behaviour probe per rule.
  */
 export const EFFECT_RULES = {
-  bus_speed: {does: 'trips over 250 m ride the bus (5x walking speed)', where: 'items.ts speedFor'},
+  bus_speed: {does: 'trips outside a neighborhood over 250 m ride the bus (5x walking speed); inside a neighborhood always walk', where: 'items.ts speedFor'},
   teleport: {does: 'verified-neighborhood teleport; one token spent per teleport. Only the owner\'s Muse, into its owner\'s verified cell: residents have no neighborhood verification', where: 'items.ts speedFor, rules.ts makeHooks, location.ts teleportCheck, travel.ts teleport'},
   plant: {does: 'opens the garden_plant beat (with a Clover Seed) that grows a Bloom', where: 'beats.ts garden_plant'},
   bloom_seed: {does: 'consumed by garden_plant into a Bloom; the Garden Pass is kept', where: 'beats.ts garden_plant, world.ts finishBeat'},
@@ -481,6 +481,7 @@ export function commitTrade(l: Ledger, day: string, a: {id: string; inventory: s
  * neighborhood verification for this trip (direction v2, 13, 13.1: location.ts teleportCheck); unverified is the default.
  */
 export function speedFor(inventory: string[], from: Place, to: Place, neighborhoodVerified = false): 'walk' | 'bus' | 'taxi' {
+  if (sameArea(from, to)) return 'walk';
   if (inventory.includes('taxi_token') && neighborhoodVerified && (to.zone === 'bay' || distanceM(from, to) > 800)) return 'taxi';
   if (inventory.includes('transit_pass') && distanceM(from, to) > 250) return 'bus';
   return 'walk';

@@ -10,6 +10,8 @@ export type Place = {
   /** Local metres from the commons anchor (+x east, +z south) for walking distances. */
   x: number; z: number;
   region?: string; activity?: string; relic?: string;
+  /** Authored activity place, not a surveyed real POI. Remote areas remain map-only. */
+  virtual?: boolean;
 };
 
 const [ANCHOR_LNG, ANCHOR_LAT] = geography.commons as [number, number];
@@ -42,6 +44,10 @@ export const PLACES: Place[] = [
   ...COMMONS.map(([id, name, kind, x, z]) => ({id, name, kind, zone: 'commons' as const, ...fromLocal(x, z), x, z, ...(id === 'commons:hq' ? {relic: 'commons_ember'} : {})})),
   ...(poi.places as {id: string; name: string; kind: string; lng: number; lat: number}[]).map(p => ({id: p.id, name: p.name, kind: p.kind as PlaceKind, zone: 'neighborhood' as const, lng: p.lng, lat: p.lat, ...toLocal(p.lng, p.lat)})),
   ...REGIONS.map(([id, name, lng, lat, activity, relic]) => ({id, name, kind: 'region' as const, zone: 'bay' as const, lng, lat, ...toLocal(lng, lat), region: name, activity, relic})),
+  ...REGIONS.flatMap(([id, name, lng, lat]) => [
+    {id: `${id}:reading`, name: `${name} · reading corner (virtual)`, kind: 'bookshelf' as const, zone: 'bay' as const, lng: lng + .0015, lat, ...toLocal(lng + .0015, lat), region: name, virtual: true},
+    {id: `${id}:garden`, name: `${name} · neighborhood garden (virtual)`, kind: 'park' as const, zone: 'bay' as const, lng: lng - .0015, lat: lat + .0015, ...toLocal(lng - .0015, lat + .0015), region: name, virtual: true},
+  ]),
 ];
 export const PLACE_BY_ID = new Map(PLACES.map(p => [p.id, p]));
 export const placeById = (id: string) => { const p = PLACE_BY_ID.get(id); if (!p) throw new Error('Unknown place ' + id); return p; };
