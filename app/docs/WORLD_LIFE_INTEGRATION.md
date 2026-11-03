@@ -1,5 +1,18 @@
 # Integration-01: installed feature-OFF server integration (#134)
 
+## Five-PR composition candidate (2026-11-03)
+
+The test workflow additionally composes #135 `186666899d557235c17c9ccf974b5e9c7eeed912`
+and #137 `373ad77c37797d63775f901eb8bd20f7f3aec7dd` with the life/server pins below.
+The shared live-scene source merges three ways against exact main151; any conflict
+fails rather than dropping either feature. Production/main/other PRs are not merged.
+
+A real-GLB CPU Three.js regression checks 27 independent actor rigs and the campfire
+port in one scene, OFF asset silence, ON attendance freshness, stable actor roots and
+resource disposal. Separate #135 tests exercise actual MapLibre layers and canonical
+child-tile slicing. These are **not** a GPU proof of roofs, campfire and NPCs co-rendering
+in a single product view. Full combined browser/GPU acceptance remains outstanding.
+
 ## Current integration candidate (2026-11-03)
 
 This revision installs a **default-OFF** WorldDO capability. An explicit server-only

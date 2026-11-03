@@ -79,6 +79,14 @@ jobs:
         with:
           ref: main
           path: current-main
+      - uses: actions/checkout@v4
+        with:
+          ref: 186666899d557235c17c9ccf974b5e9c7eeed912
+          path: dependency-135
+      - uses: actions/checkout@v4
+        with:
+          ref: 373ad77c37797d63775f901eb8bd20f7f3aec7dd
+          path: dependency-137
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -107,3 +115,20 @@ jobs:
         working-directory: dependency-139/app
       - run: node scripts/prepare-assets.mjs && npx tsc -p .
         working-directory: dependency-139/app
+      - name: Compose all five PRs without overwriting resident or campfire scene ports
+        run: |
+          bash app/scripts/compose-world-visuals.sh reviewed-main/app dependency-135/app dependency-137/app dependency-139/app
+          cp app/scripts/five-pr-coexistence.test.mjs dependency-139/app/scripts/
+      - name: Validate combined real actor rigs, campfire state and UI boundaries
+        env:
+          MUSELY_INTEGRATED_ENGINE: engine-7
+        run: node --test scripts/five-pr-coexistence.test.mjs scripts/campfire*.test.mjs scripts/live-scene.test.mjs scripts/personal*.test.mjs scripts/resident-life*.test.mjs scripts/resident-slot-clearance.test.mjs scripts/boundaries.test.mjs scripts/character-proof-build.test.mjs scripts/transport-build.test.mjs scripts/installed/*.test.mjs
+        working-directory: dependency-139/app
+      - run: npm run typecheck && npm run build
+        working-directory: dependency-139/app
+      - run: npm ci --ignore-scripts && npm test && npm run typecheck && npm run validate
+        working-directory: dependency-139/app/world-packs/campfire
+      - run: npm ci --ignore-scripts && npm test
+        working-directory: dependency-139/app/world-packs/hq-belle-haven/authoring
+      - run: npm ci --ignore-scripts && npm test && npm run browser:build
+        working-directory: dependency-139/app/world-packs/hq-belle-haven/integration
