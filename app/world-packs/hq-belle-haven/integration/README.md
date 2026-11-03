@@ -1,3 +1,10 @@
+## Native-preserving alternative
+
+See native-preserving/README.md. Keep the regional GLB disabled in the live native-building
+scene. The new optional color controller preserves native geometry and defaults OFF; it
+has no application bootstrap import yet. npm test includes its regressions and
+npm run browser:build builds its separate visual diagnostic.
+
 # Isolated Musely integration proof
 
 This directory does **not** enable anything in the production application. It supplies

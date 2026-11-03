@@ -1,3 +1,8 @@
+> Integration status: keep the regional GLB OFF in the live native-building scene.
+> Actual product A/B reported duplicate-building depth interference. A feature-OFF
+> native-preserving color alternative is implemented under integration/native-preserving/;
+> its real product/mobile appearance is not yet validated. No native layer is hidden by it.
+
 # HQ / Belle Haven regional authoring pack (World-01)
 
 Related: #130. Source main: `a31c9c9fb0d364f8e7ab8ec0fff2cfb647647620`, rechecked 2026-11-03.
