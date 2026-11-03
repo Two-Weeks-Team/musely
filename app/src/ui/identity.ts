@@ -31,18 +31,23 @@ async function call(method: string, path: string, body?: unknown): Promise<{ok: 
 const why = (r: {status: number; data: any}) => REASONS[r.data?.error] ?? (r.status ? `HTTP ${r.status}${r.data?.error ? ' · ' + r.data.error : ''}` : 'network error');
 
 /** The owner control card for the Identity tab. `onChange` refreshes the world view after a revoke or a re-delegation. */
-export function ownerControlCard(onChange: () => void, name: (id:string)=>string = defaultName) {
+export function ownerControlCard(onChange: () => void, name: (id:string)=>string = defaultName, onSession?: (owner: OwnerView | null) => void) {
   const box = el('div', 'id-card owner-control');
   const result = el('p', 'muted'); result.setAttribute('role', 'status');
 
+  let generation = 0;
+  const publish = (owner: OwnerView | null) => { try { onSession?.(owner); } catch {} };
   async function paint() {
+    const mine = ++generation;
     const r = await call('GET', '/api/owner/session');
+    if (mine !== generation) return;
     const head = el('span', 'eyebrow', 'OWNER CONTROL · OWNER SESSION');
     if (!r.ok || !r.data) {
+      publish(null);
       box.replaceChildren(head, el('h4', '', 'Owner control status unavailable'), el('p', 'muted', `The owner session could not be read (${why(r)}). This is not the same as signed out.`), result);
       return;
     }
-    const s = r.data as SessionAnswer;
+    const s = r.data as SessionAnswer; publish(s.owner);
     if (!s.owner) return signedOut(head);
     signedIn(head, s.owner, s.delegation ?? []);
   }
@@ -56,6 +61,7 @@ export function ownerControlCard(onChange: () => void, name: (id:string)=>string
       if (!input.value) { result.textContent = 'Enter the owner control token first.'; return; }
       go.disabled = true; result.textContent = 'Checking…';
       const token = input.value; input.value = '';
+      generation++; publish(null);
       const res = await call('POST', '/api/owner/session', {token});
       go.disabled = false;
       result.textContent = res.ok ? 'Owner session started for one hour.' : why(res);
@@ -103,7 +109,7 @@ export function ownerControlCard(onChange: () => void, name: (id:string)=>string
       parts.push(card, actions);
     }
     const out = el('button', 'secondary', 'End owner session'); out.type = 'button';
-    out.onclick = async () => { const res = await call('DELETE', '/api/owner/session'); result.textContent = res.ok ? 'Owner session ended.' : why(res); await paint(); if (res.ok) onChange(); };
+    out.onclick = async () => { generation++; publish(null); const res = await call('DELETE', '/api/owner/session'); result.textContent = res.ok ? 'Owner session ended.' : why(res); await paint(); if (res.ok) onChange(); };
     const tail = el('div', 'id-actions'); tail.append(out);
     parts.push(tail, result);
     box.replaceChildren(...parts);
