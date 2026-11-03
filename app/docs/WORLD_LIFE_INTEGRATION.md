@@ -104,3 +104,44 @@ as completion of #134's full integration acceptance criteria.
 The first remote run passed all 22 tests but TS 7 rejected CLI file selection next to
 the application tsconfig (TS5112). A separate explicit project config now checks only
 this module without altering app configuration or suppressing module type errors.
+
+## Second increment: actual server adapter, still not installed in production
+
+New base: main `52d737e03c2562346b35fe06f5b03b2d5fa029a9` (merged PR141).
+Engine5 dependency: PR139 `2e7629976c6f53d15fdb7c586aa355cc28a431df`.
+The earlier race now has a tested **unmerged** fix. The activation blocker is therefore
+unmerged/live-unverified fix, not absence of an implementation. Feature remains OFF.
+
+`world-life-server.ts` reads the real PersonalOwners registry. Only positively identified
+residents are eligible; legacy owners, personal registrations and unknown actors cannot
+fall through to RULE merely because their connection/controlMode is absent. It reads
+invite facts from an actual WorldRuntime instance and its internal stored event log;
+there is no public event-array ingestion entrypoint. This is not new cryptographic
+verification: the existing server database/authenticated command boundary is trusted.
+Missing/truncated spend or terminal evidence fails closed. No production caller is wired.
+
+Actual WorldRuntime + messages + SQLite tests verify committed immediate gathering,
+pending personal Muses until explicit answers, stale command rejection, durable restart,
+and rollback of world/event/projection/run-input writes on early and late failure. An
+independent review found a delayed-first-read bug: current attendance/time incorrectly
+replaced historical gathering evidence. The fix uses stored closedAt plus matching
+campfire_gathering event participants, including after everyone moved or 31 minutes
+elapsed. Expiry bootstrap replays the real opening and terminal facts. Snapshot worldVersion
+is an observation version, not an invented historical event version.
+
+First local attempts corrected two fixture errors: appearance IDs use `00-jolly` rather
+than `jolly`, and projection scope is a bounded campfire set rather than all world POIs.
+The adapter omits out-of-scope current positions, rather than inventing arrival.
+
+Local results: 12 actual-server tests plus 22 contract tests. Baseline and engine5 overlay
+are separate checks; the latter also runs 29 Life-02 craft/Wants/replay checks. Dependency
+changed-file blob hashes were compared with PR139's exact head. CI now checks merged
+main and a separate pinned PR139 checkout with only these integration files and merged
+registry files overlaid. The worker's real strict tsconfig is used because DOM's timeout
+signature differs from the Cloudflare worker types; no shared source/type rules weakened.
+
+Not done: signed MCP end-to-end calls, real identity/login, live model, production
+WorldDO hookup, #132 scheduler hookup, actual multi-site rendering/navigation, deployment.
+Rollback tests use real server classes over local SQLite, not a deployed Durable Object.
+Production atomicity is still a gate until the approved caller uses this table in the same
+transaction. No world.ts/world-runtime.ts/WorldDO changes are included in this PR.

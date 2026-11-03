@@ -2,8 +2,12 @@ name: World Life Contract
 on:
   pull_request:
     paths:
-      - 'app/worker/core/world-life-contract.ts'
-      - 'app/scripts/world-life-contract.test.mjs'
+      - 'app/worker/core/world-life*.ts'
+      - 'app/worker/core/personal-owners.ts'
+      - 'app/worker/core/messages.ts'
+      - 'app/worker/core/world-runtime.ts'
+      - 'app/src/engine/**'
+      - 'app/scripts/world-life*.test.mjs'
       - 'app/scripts/tsconfig.world-life-contract.json'
       - 'app/docs/WORLD_LIFE_INTEGRATION.md'
       - '.github/workflows/world-life-contract.yml'
@@ -23,5 +27,30 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci --ignore-scripts
-      - run: node --test scripts/world-life-contract.test.mjs
+      - run: node --test scripts/world-life-contract.test.mjs scripts/world-life-server.test.mjs
       - run: npx tsc -p scripts/tsconfig.world-life-contract.json
+      - run: npx tsc -p worker
+  engine5-dependency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: 2e7629976c6f53d15fdb7c586aa355cc28a431df
+          path: dependency-139
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Overlay only integration and merged registry files on pinned Life-02
+        run: |
+          cp app/worker/core/world-life*.ts dependency-139/app/worker/core/
+          cp app/worker/core/personal-owners.ts dependency-139/app/worker/core/
+          cp app/src/identity/participant.ts dependency-139/app/src/identity/
+          cp app/scripts/world-life*.test.mjs dependency-139/app/scripts/
+      - run: npm ci --ignore-scripts
+        working-directory: dependency-139/app
+      - name: Offline actual server and atomic craft regressions
+        run: node --test scripts/world-life-contract.test.mjs scripts/world-life-server.test.mjs scripts/wants-use.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs
+        working-directory: dependency-139/app
+      - run: npx tsc -p worker
+        working-directory: dependency-139/app

@@ -6,7 +6,7 @@ export const DEFAULT_CAMPFIRE = 'commons:campfire';
 export const INTEGRATION_ENABLED = false;
 export const ACTIVATION_BLOCKERS = Object.freeze([
   'world-and-life-dependencies-unmerged',
-  'craft-consumption-race-unresolved',
+  'craft-fix-unmerged-and-live-unverified',
   'joint-world-life-transaction-unwired',
   'real-render-and-muse-validation-pending',
 ]);
