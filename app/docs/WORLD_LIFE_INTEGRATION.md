@@ -222,3 +222,9 @@ resident decisions. Main-team dynamic onboarding/world-entry and identity/appear
 integration still need their owning team. Test fixtures do not establish live personal
 Muse participation or autonomous model decisions. Production callers, multi-site MCP,
 real rendering and the shared semantic-version decision remain activation gates.
+
+Independent composition review reran185/185 and worker strict types. It identified a
+future-main risk: using changed main as a three-way base could silently drop changes
+unknown to both pinned branches. CI now asserts exact reviewed-main Git blob hashes
+for all six existing source files replaced/merged from PR138 before composition;
+a moved baseline fails closed and requires a fresh reviewed integration.

@@ -78,6 +78,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Fail closed if current main changed the reviewed shared source baseline
+        shell: bash
+        run: |
+          test "$(git hash-object app/src/engine/inbox.ts)" = "f822128e290000dc0aca5d2da3815c8a768dd40f"
+          test "$(git hash-object app/src/engine/rules.ts)" = "fb942d98ffd9f0967dbf8fd75b08271d930e7d62"
+          test "$(git hash-object app/src/engine/world.ts)" = "4dcd568b0b7cde8f388d6a60543f02c2c525a9bd"
+          test "$(git hash-object app/worker/core/encounters.ts)" = "6dd3b1aecdbd9526af5361c4137cbb7b705abebd"
+          test "$(git hash-object app/worker/core/messages.ts)" = "7ed3b7f9aa3dda3165e5548b6748dfea5b89da06"
+          test "$(git hash-object app/worker/core/world-runtime.ts)" = "435539467a815f2f1a28f8e832b76e0e7946fc48"
       - name: Three-way compose resident and craft changes without overwriting either branch
         shell: bash
         run: |
