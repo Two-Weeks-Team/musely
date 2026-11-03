@@ -490,7 +490,7 @@ test('review 2: a meeting is connected only when the connected Muse headed for t
   st = scene([['00-jolly', '01-sunny', 'commons:cafe']]);
   st.muses.find(m => m.id === '00-jolly').intent = {kind: 'greet', target: '01-sunny'};
   assert.equal(meetingOf(st, '00-jolly').data.actorOrigin, 'system');
-  assert.ok(['engine-6','engine-7'].includes(process.env.MUSELY_INTEGRATED_ENGINE??'engine-6'));
+  assert.ok(['engine-6','engine-7','engine-8'].includes(process.env.MUSELY_INTEGRATED_ENGINE??'engine-6'));
   assert.equal(ENGINE_VERSION, process.env.MUSELY_INTEGRATED_ENGINE??'engine-6', 'atomic consumed-ingredient completion changes the engine content version');
 });
 

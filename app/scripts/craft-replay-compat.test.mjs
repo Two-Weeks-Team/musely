@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {assertCompatible} from '../src/replay/player.ts';
 import {currentVersions} from '../src/replay/versions.ts';
 const expectedEngine=process.env.MUSELY_INTEGRATED_ENGINE??'engine-6';
-assert.ok(['engine-6','engine-7'].includes(expectedEngine),'unsupported integration engine expectation');
+assert.ok(['engine-6','engine-7','engine-8'].includes(expectedEngine),'unsupported integration engine expectation');
 const v4={schemaVersion:'run-log-2',engineVersion:'engine-4',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-c7068bfa0238'};
 test('new consumed-ingredient semantics are explicitly engine-6',()=>{assert.equal(currentVersions().engineVersion,expectedEngine);assert.doesNotThrow(()=>assertCompatible(currentVersions()));});
 test('exact engine-4 checkpoint remains readable without rewriting its source version',()=>{const record={...v4};assert.doesNotThrow(()=>assertCompatible(record));assert.deepEqual(record,v4);});
