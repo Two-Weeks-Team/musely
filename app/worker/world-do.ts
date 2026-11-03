@@ -1,3 +1,4 @@
+import {LegacyProfile,type LegacyOwnerProof} from './core/legacy-profile.ts';
 import {PersonalWorld} from './core/personal-world.ts';
 // The single shared world Durable Object: budget and quota ledger, the heartbeat and commit point,
 // the append-only run log, the trust registry and the owner claim (direction v2, 6, 8.7, 15).
@@ -21,6 +22,7 @@ import {PersonalRegistration, type PersonalBinding} from './core/personal-regist
 
 export class WorldDO extends DurableObject<Env> {
   private ledger: Ledger;
+  private legacyProfile:LegacyProfile;
   private personalAuth: PersonalAuthStore;
   private personalRegistration: PersonalRegistration;
   private personalWorld: PersonalWorld;
@@ -56,6 +58,7 @@ export class WorldDO extends DurableObject<Env> {
       model: {base: env.MODEL_BASE, key: env.MODEL_API_KEY, model: env.MODEL_ID, timeoutMs: 8000},
     });
     // Stable personal/legacy ownership never falls back to resident consent when login is unavailable.
+    this.legacyProfile=new LegacyProfile(ctx.storage,this.runtime);
     this.personalWorld=new PersonalWorld(ctx.storage,this.personalAuth,this.personalRegistration,this.runtime,this.trust,this.origin,hooks,{root:()=>this.ownerRoot,claimed:()=>this.getClaim('owner-muse')?.status==='claimed'});
     this.connected = new ConnectedHost({personal:this.personalWorld,sql: ctx.storage.sql, trust: this.trust, runtime: this.runtime, hooks, baseUrl: this.origin, ownerRoot: () => this.ownerRoot, ownerClaimed: () => this.getClaim('owner-muse')?.status === 'claimed', ownerOf: muse => this.personalWorld.ownerOf(muse)});
     ctx.blockConcurrencyWhile(async () => {
@@ -72,6 +75,7 @@ export class WorldDO extends DurableObject<Env> {
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS claims (agent TEXT PRIMARY KEY, record TEXT NOT NULL, token TEXT)');
       this.trust.init();
       this.personalWorld.init();
+      this.legacyProfile.init();
       this.connected.init();
       this.ritual.init();
       await this.trust.ensureAgents(this.ownerRoot);
@@ -83,6 +87,8 @@ export class WorldDO extends DurableObject<Env> {
     });
   }
   // Private auth RPCs; no provider token/code crosses into DO storage or any world commit.
+  legacyProfileGet(owner:LegacyOwnerProof){return this.legacyProfile.get(owner);}
+  legacyProfilePatch(owner:LegacyOwnerProof,input:unknown){return this.legacyProfile.patch(owner,input);}
   personalLocation(binding:PersonalBinding){return this.personalWorld.location(binding);}
   personalLocationSet(binding:PersonalBinding,input:unknown){return this.personalWorld.setLocation(binding,input);}
   personalStatus(binding:PersonalBinding|null){return this.personalWorld.status(binding);}
