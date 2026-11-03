@@ -92,9 +92,15 @@ From `app/` using the repository's Node 24 and installed TypeScript:
 
 ```
 node --test scripts/world-life-contract.test.mjs
-npx tsc --noEmit --strict --target ES2022 --module ESNext --lib ES2022,DOM worker/core/world-life-contract.ts
+npx tsc -p scripts/tsconfig.world-life-contract.json
 ```
 
 Rollback is removal of these new files/workflow; no production state or route changed.
 Keep feature OFF. Do not describe draft PR creation, these tests, or projection receipts
 as completion of #134's full integration acceptance criteria.
+
+## CI correction
+
+The first remote run passed all 22 tests but TS 7 rejected CLI file selection next to
+the application tsconfig (TS5112). A separate explicit project config now checks only
+this module without altering app configuration or suppressing module type errors.

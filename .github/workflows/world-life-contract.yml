@@ -4,6 +4,7 @@ on:
     paths:
       - 'app/worker/core/world-life-contract.ts'
       - 'app/scripts/world-life-contract.test.mjs'
+      - 'app/scripts/tsconfig.world-life-contract.json'
       - 'app/docs/WORLD_LIFE_INTEGRATION.md'
       - '.github/workflows/world-life-contract.yml'
 permissions:
@@ -23,4 +24,4 @@ jobs:
           cache-dependency-path: app/package-lock.json
       - run: npm ci --ignore-scripts
       - run: node --test scripts/world-life-contract.test.mjs
-      - run: npx tsc --noEmit --strict --target ES2022 --module ESNext --lib ES2022,DOM worker/core/world-life-contract.ts
+      - run: npx tsc -p scripts/tsconfig.world-life-contract.json
