@@ -94,12 +94,13 @@ export function projectInvite(state: Projection, input: InviteReceipt): Projecti
   if (r.worldVersion < state.version) throw Error('stale_world_version');
   const previous = state.receipts.filter(x=>x.inviteId===r.inviteId).at(-1);
   if (previous) {
-    if (r.revision !== previous.revision+1 || r.worldVersion <= previous.worldVersion || r.at < previous.at) throw Error('stale_invite_revision');
+    // Multiple receipts may belong to one committed world version; invite revision orders them.
+    if (r.revision !== previous.revision+1 || r.worldVersion < previous.worldVersion || r.at < previous.at) throw Error('stale_invite_revision');
     if (previous.status !== 'open') throw Error('terminal_invite');
     if (r.placeId!==previous.placeId || r.host!==previous.host || r.expiresAt!==previous.expiresAt ||
         r.spentTokenReceiptId!==previous.spentTokenReceiptId || JSON.stringify(r.invitees)!==JSON.stringify(previous.invitees)) throw Error('invite_scope_changed');
   } else {
-    if (r.revision!==1 || r.status!=='open' || r.expiresAt<=r.at || r.expiresAt-r.at>30*60_000) throw Error('invalid_initial_invite');
+    if (r.revision!==1 || !['open','gathered'].includes(r.status) || r.expiresAt<=r.at || r.expiresAt-r.at>30*60_000) throw Error('invalid_initial_invite');
     if (state.receipts.some(x=>x.spentTokenReceiptId===r.spentTokenReceiptId)) throw Error('token_receipt_reused');
   }
   if ((r.status==='open'||r.status==='gathered') && r.at>=r.expiresAt) throw Error('expired_invite');

@@ -28,7 +28,9 @@ new navigable product places and must never be treated as surveyed coordinates.
   an explicit known place. No change to the existing invite tool's schema.
 - An isolated **display projection** of already-committed invitation receipts, not an executor.
   Explicit place/participants/deadline/token-spend evidence remain immutable per invitation.
-- Exact receipt retry is idempotent; changed payload with the same key is rejected. Versions,
+- A first committed receipt may already be gathered, matching the existing server.
+  Multiple ordered invite revisions may share one world commit version.
+  Exact receipt retry is idempotent; changed payload with the same key is rejected. Versions,
   revisions, terminal states, three-place isolation, max eight invitees and 30-minute bound
   are tested. A spent-token receipt cannot finance another invitation.
 - Arrival is not consent. Only explicitly accepted participants at the right place, neither
@@ -38,7 +40,7 @@ new navigable product places and must never be treated as surveyed coordinates.
   prove existing world snapshot/replay or Durable Object joint-transaction compatibility.
 - Allowlisted public facts only; private reasons, raw GPS, credentials and peer instructions
   are not copied. Peer claims are never accepted as server authenticity proof.
-- Twenty offline Node tests and isolated strict TypeScript passed locally. The CI workflow
+- Twenty-two offline Node tests and isolated strict TypeScript passed locally. The CI workflow
   runs those same bounded checks. These are not the full application test suite.
 
 ## Ownership and integration seams
