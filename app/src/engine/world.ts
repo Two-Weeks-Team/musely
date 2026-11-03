@@ -211,7 +211,7 @@ export function tripMs(from: Place, to: Place, speed: Speed) {
  * With `replies` (the runtime passes it, possibly empty) every meeting gets the other Muse's answer: the recorded
  * live answer for that meeting, or a rule answer. Without it (pure scenario runs) no answers are emitted.
  */
-export function tick(prev: WorldState, input: {now: number; decision?: Decision | null; replies?: EncounterReply[]; spot?: {muse: string; priority: boolean}}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
+export function tick(prev: WorldState, input: {now: number; decision?: Decision | null; replies?: EncounterReply[]; spot?: {muse: string; priority: boolean}; residentMove?: {muse:string;place:string;expectedVersion:number};residentIdle?:readonly string[]}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
   const now = input.now, clock = localClock(now);
   const s: WorldState = structuredClone(prev);
   const events: WorldEvent[] = [];
@@ -296,6 +296,29 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
         if (dest) startTrip(s, m, placeById(m.place), dest, now, 'rule', emit, hooks);
       }
       continue;
+    }
+    // Optional resident-life rule intent after expired activity finishes. Never overrides a
+    // live/replay decision, active trip/beat, personal command or pending commitment.
+    const plan=input.residentMove;
+    if(plan && !input.decision && !spot.priority && plan.muse===spot.muse && plan.muse===m.id && plan.expectedVersion===prev.version && !m.intent){
+      const to=PLACE_BY_ID.get(plan.place),from=placeById(m.place);
+      const pending=s.inbox.tasks.some(t=>t.status==='pending'&&(t.from===m.id||t.to===m.id));
+      const invited=(s.inbox.invites??[]).some(i=>i.status==='open'&&(i.from===m.id||i.to.includes(m.id)));
+      const approached=s.muses.some(o=>o.id!==m.id&&o.intent?.target===m.id);
+      if(to&&!pending&&!invited&&!approached&&to.id!==from.id&&to.zone==='commons'&&from.zone==='commons'&&sameArea(from,to)){
+        startTrip(s,m,from,to,now,'rule',emit,hooks);
+        const trip=m.travel as MuseState['travel'];if(trip)trip.chosen=true;
+        continue;
+      }
+    }
+    // Opt-in enrolled residents wait idle after finishing activity until their own turn.
+    // Otherwise generic auto-restarts can indefinitely hide idle snapshots from the scheduler.
+    // Pending social/owner actions never wait behind this hold.
+    if(input.residentIdle?.includes(m.id)&&m.id!==spot.muse&&!m.intent){
+      const pending=s.inbox.tasks.some(t=>t.status==='pending'&&(t.from===m.id||t.to===m.id));
+      const invited=(s.inbox.invites??[]).some(i=>i.status==='open'&&(i.from===m.id||i.to.includes(m.id)));
+      const approached=s.muses.some(o=>o.id!==m.id&&o.intent?.target===m.id);
+      if(!pending&&!invited&&!approached)continue;
     }
     const place = placeById(m.place);
     const stay = eligibleBeats(m, place, clock.hour);
