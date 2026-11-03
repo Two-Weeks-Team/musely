@@ -1,3 +1,4 @@
+import {serveCriticalAsset} from './asset-encoding.ts';
 // Musely main product Worker (musely.net): static assets plus the /api surface (direction v2, 15 and 20.2).
 import {handleMuse} from './core/proxy.ts';
 import {issueSession, readSession, cookieValue, sessionCookie, hashIp, timingSafeEqual, verifyTurnstile} from './core/session.ts';
@@ -314,6 +315,6 @@ export default {
         return json({error: 'internal'}, 500);
       }
     }
-    return env.ASSETS.fetch(request);
+    return serveCriticalAsset(request, env.ASSETS);
   },
 } satisfies ExportedHandler<Env>;
