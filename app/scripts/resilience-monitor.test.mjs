@@ -76,7 +76,7 @@ test('run input counters agree without assuming run-local global sequence number
 // Real Git repositories, not a mocked status command: cwd must never narrow the intended app scope.
 import {mkdtemp,mkdir,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {join,basename} from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 const execGit=promisify(execFile);
@@ -118,6 +118,7 @@ test('GET deadline and byte-bound failures keep their classification and body-st
  await assert.rejects(observeGet('https://musely.net/',{maxBytes:3,fetcher:async()=>new Response('1234')}),e=>{assert.equal(e.message,'response_too_large');assert.deepEqual(e.failure,{errorName:'Error',causeCode:null,stage:'body'});return true;});
 });
 test('actual monitor round persists sanitized request failure, four successful raw receipts and failed continuity',async()=>{
+ for(const prefix of['','reuse-']){
  const {readFile}=await import('node:fs/promises');
  const source=await readFile(new URL('./resilience-monitor.mjs',import.meta.url),'utf8');
  const roundSource=source.slice(source.indexOf('async function round() {'),source.indexOf('\nawait round();'));
@@ -130,8 +131,8 @@ test('actual monitor round persists sanitized request failure, four successful r
   const data={'/':'{}','/api/status':JSON.stringify(fixture.status),'/api/world':JSON.stringify(fixture.world),'/api/world/run':JSON.stringify(fixture.run)};
   return new Response(data[new URL(u).pathname],{headers:{'content-type':'application/json'}});
  }});
- const run=new AsyncFunction('tracker','pin','start','identity','gitSourceState','source','readFile','config','observeGet','sha256','writeFile','join','out','appendFile','console','const interrupted=false;'+roundSource+';await round();');
- await run(tracker,localPin,performance.now(),async()=>fixture.identity,async()=>({sourceSha:pin.releaseSha,sourceClean:true}),'fixture-source',async()=>cfg,'fixture-config',actualObserve,(await import('./lib/resilience-io.mjs')).sha256,async(path,text)=>writes.push({path,text}),join,'fixture-out',async(path,text)=>writes.push({path,text}),{log(){}});
+ const run=new AsyncFunction('tracker','pin','start','identity','gitSourceState','source','readFile','config','observeGet','sha256','writeFile','join','out','file','basename','appendFile','console','const interrupted=false;'+roundSource+';await round();');
+ await run(tracker,localPin,performance.now(),async()=>fixture.identity,async()=>({sourceSha:pin.releaseSha,sourceClean:true}),'fixture-source',async()=>cfg,'fixture-config',actualObserve,(await import('./lib/resilience-io.mjs')).sha256,async(path,text)=>writes.push({path,text}),join,'fixture-out',name=>join('fixture-out',prefix+name),basename,async(path,text)=>writes.push({path,text}),{log(){}});
  const raw=JSON.parse(writes.find(w=>w.path.endsWith('raw-00000.json')).text),failed=raw.requests.find(r=>r.error);
  assert.equal(raw.requests.length,5);assert.equal(raw.requests.filter(r=>r.status===200).length,4);
  assert.equal(failed.error,'observation_failed');assert.deepEqual(failed.failure,{errorName:'TypeError',causeCode:'UND_ERR_SOCKET',stage:'fetch'});
@@ -139,6 +140,8 @@ test('actual monitor round persists sanitized request failure, four successful r
  assert.equal(JSON.stringify(writes).includes('DO_NOT_PERSIST'),false);
  assert.equal(calls.length,5);assert.ok(calls.every(r=>r.method==='GET'&&r.headers.Connection==='close'));
  assert.equal(tracker.summary().result,'failed');assert.equal(tracker.failures[0].reason,'observation_failed');
+ assert.equal(JSON.parse(writes.find(w=>w.path.endsWith('samples.jsonl')).text).raw,prefix+'raw-00000.json');
+ }
 });
 
 

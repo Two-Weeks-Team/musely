@@ -1,23 +1,23 @@
 // Explicitly invoked 4h wall-clock GET observer. Never invokes an action, fault, login, deploy or configuration write.
-import {readFile,mkdir,writeFile,appendFile} from 'node:fs/promises';
-import {resolve,dirname,join} from 'node:path';
+import {readFile,writeFile,appendFile} from 'node:fs/promises';
+import {resolve,dirname,join,basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {Continuity,validatePin,FOUR_HOURS_MS} from './lib/resilience-monitor.mjs';
 import {observeGet,currentDeployment,sha256,gitSourceState} from './lib/resilience-io.mjs';
+import {openEvidenceOutput} from './lib/evidence-output.mjs';
 const exec=promisify(execFile),app=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const args=process.argv.slice(2),arg=k=>args[args.indexOf(k)+1];
 if(!args.includes('--run') || !args.includes('--pin') || !args.includes('--out')) {
-  console.log('Prepared only. To start after the release is frozen: node scripts/resilience-monitor.mjs --run --pin /absolute/release-pin.json --out /new/external/evidence-directory');
+  console.log('Not running. Start after the final release: node scripts/resilience-monitor.mjs --run --pin /absolute/release-pin.json --out /external/evidence-directory [--prefix unique-run-name for an existing directory]');
   process.exit(args.includes('--help')||!args.length?0:2);
 }
 const pin=JSON.parse(await readFile(resolve(arg('--pin')),'utf8'));validatePin(pin);
 if(!pin.configPath || !pin.sourcePath)throw Error('configPath and sourcePath must identify the attested local release checkout');
 const out=resolve(arg('--out')),source=resolve(pin.sourcePath),config=resolve(pin.configPath);
-if(out===source || out.startsWith(source+'/'))throw Error('Evidence must be outside the release checkout');
-await mkdir(out,{recursive:false});
-await writeFile(join(out,'pin.json'),JSON.stringify(pin,null,2)+'\n',{flag:'wx'});
+if(args.includes('--prefix')&&(!arg('--prefix')||arg('--prefix').startsWith('--')))throw Error('Evidence prefix value required');
+const file=await openEvidenceOutput({directory:out,source,prefix:args.includes('--prefix')?arg('--prefix'):undefined,pin});
 const tracker=new Continuity(pin),start=performance.now();let interrupted=false;
 process.on('SIGINT',()=>{interrupted=true;});process.on('SIGTERM',()=>{interrupted=true;});
 async function identity() {
@@ -41,10 +41,11 @@ async function round() {
     s={...s,identity:deployment,...sourceState,configSha256:sha256(cfg),htmlSha256:requests[0].sha256,status:JSON.parse(status.body),world:JSON.parse(world.body),run:JSON.parse(run.body),events:JSON.parse(events.body)};
   } catch(e) {s.error=['request_timeout','response_too_large','deployment_observation_failed','http_failure'].includes(e.message)?e.message:'observation_failed';}
   const verdict=tracker.observe(s);
-  await writeFile(join(out,`raw-${String(index).padStart(5,'0')}.json`),JSON.stringify(raw)+'\n',{flag:'wx'});
-  const row={...s,verdict,raw:`raw-${String(index).padStart(5,'0')}.json`};
-  await appendFile(join(out,'samples.jsonl'),JSON.stringify(row)+'\n');
-  await writeFile(join(out,'summary.json'),JSON.stringify({...tracker.summary(),pin,endedAt:new Date().toISOString(),interrupted},null,2)+'\n');
+  const rawFile=file(`raw-${String(index).padStart(5,'0')}.json`);
+  await writeFile(rawFile,JSON.stringify(raw)+'\n',{flag:'wx'});
+  const row={...s,verdict,raw:basename(rawFile)};
+  await appendFile(file('samples.jsonl'),JSON.stringify(row)+'\n');
+  await writeFile(file('summary.json'),JSON.stringify({...tracker.summary(),pin,endedAt:new Date().toISOString(),interrupted},null,2)+'\n');
   console.log(JSON.stringify({sample:index,at:new Date(at).toISOString(),issues:verdict.issues,recovered:verdict.recovered}));
 }
 await round();
@@ -54,5 +55,5 @@ while(!interrupted && tracker.needsObservation()) {
 }
 const result=tracker.summary();
 if(interrupted && result.result!=='failed')result.result='incomplete';
-await writeFile(join(out,'summary.json'),JSON.stringify({...result,pin,endedAt:new Date().toISOString(),interrupted},null,2)+'\n');
+await writeFile(file('summary.json'),JSON.stringify({...result,pin,endedAt:new Date().toISOString(),interrupted},null,2)+'\n');
 process.exitCode=result.result==='observed_continuous'?0:1;
