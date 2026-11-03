@@ -18,7 +18,7 @@ function record() {
 const rejects = (r, code) => assert.throws(() => loadRun(r), e => e instanceof ReplayRecordError && e.code === code);
 
 test('the exact historical a31 engine3 checkpoint tuple stays readable after the encounter engine changes', () => {
- for (const [engineVersion, catalogVersion] of [['engine-3', 'catalog-c7068bfa0238'], ['engine-2', 'catalog-d69858ec160f']]) {
+ for (const [engineVersion, catalogVersion] of [['engine-4', 'catalog-c7068bfa0238'], ['engine-3', 'catalog-c7068bfa0238'], ['engine-2', 'catalog-d69858ec160f']]) {
   const r = record();
   Object.assign(r, {schemaVersion: 'run-log-2', engineVersion, harnessVersion: 'harness-c0c69e98b5e8', catalogVersion});
   const player = loadRun(r); player.seek(2);
