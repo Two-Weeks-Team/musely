@@ -8,8 +8,8 @@ import {createWorld,spotlightFor,tick,TICK_MS} from '../src/engine/world.ts';
 import {createLife,recordPromise,saveLife} from '../src/engine/resident-life.ts';
 import {residentProposalForWorld,rememberCommittedResidentEvents,ResidentLifeStore} from '../worker/core/resident-life-adapter.ts';
 const now=Date.parse('2026-11-03T20:00:00Z');
-const setup=()=>{const world=createWorld('life-test',now);const life=createLife([{id:'host',defaultGoal:'Meet neighbors',home:'commons:campfire'}],world.muses.map(m=>({id:m.id,roleId:'host'})));return {world,life};};
-const opts={enabled:true,residentTurnAllowed:true,allowedPlaceIds:['commons:campfire']};
+const setup=()=>{const world=createWorld('life-test',now);world.spotlight.cursor=1;const life=createLife([{id:'host',defaultGoal:'Meet neighbors',home:'commons:campfire'}],world.muses.map(m=>({id:m.id,roleId:'host'})));return {world,life};};
+const opts={enabled:true,residentTurnAllowed:true,allowedPlaceIds:['commons:campfire'],ownershipKind:()=> 'resident'};
 function sqlFor(db){return {exec(q,...args){const stmt=db.prepare(q);return {toArray:()=>stmt.all(...args)};},transactionSync(fn){db.exec('BEGIN');try{const r=fn();db.exec('COMMIT');return r;}catch(e){db.exec('ROLLBACK');throw e;}}};}
 // DO exec executes immediately, including writes; faithfully preserve that in the local seam.
 function durableSql(db){const sql=sqlFor(db);sql.exec=(q,...args)=>{const rows=db.prepare(q).all(...args);return {toArray:()=>rows};};return sql;}
@@ -17,25 +17,25 @@ test('adapter uses real engine spotlight, disabled by default and leaves world u
  const {world,life}=setup(),before=JSON.stringify(world);world.spotlight.cursor=3;
  assert.equal(residentProposalForWorld(life,world,now,opts).residentId,spotlightFor(world,now).muse);
  assert.equal(residentProposalForWorld(life,world,now,{...opts,enabled:false}),null);
- world.spotlight.cursor=0;assert.equal(JSON.stringify(world),before);
+ world.spotlight.cursor=1;assert.equal(JSON.stringify(world),before);
 });
 test('real visitor priority is never replaced; existing streak still controls rotation',()=>{
  const {world,life}=setup();world.spotlight.visitorQueue=['04-ember'];
  assert.equal(residentProposalForWorld(life,world,now,opts),null);
  world.spotlight.streak=2;
- assert.equal(residentProposalForWorld(life,world,now,opts).residentId,'00-jolly');
+ assert.equal(residentProposalForWorld(life,world,now,opts).residentId,'01-sunny');
 });
 test('persistent personal control remains excluded after connected presence expires',()=>{
- const {world,life}=setup();world.muses[0].controlMode='personal';
+ const {world,life}=setup();world.muses[1].controlMode='personal';
  assert.equal(residentProposalForWorld(life,world,now+86_400_000,opts),null);
- delete world.muses[0].controlMode;world.inbox.connected['00-jolly']=now;
+ delete world.muses[1].controlMode;world.inbox.connected['01-sunny']=now;
  assert.equal(residentProposalForWorld(life,world,now,opts),null);
 });
 test('paused, travelling, busy and budget-denied actor cannot receive resident proposal',()=>{
  for(const kind of ['paused','travel','beat','budget']){
- const {world,life}=setup();if(kind==='paused')world.paused={'00-jolly':{at:now,version:0,by:'owner'}};
- if(kind==='travel')world.muses[0].travel={to:'commons:cafe',departAt:now,arriveAt:now+60_000,speed:'walk'};
- if(kind==='beat')world.muses[0].beat={id:'b',clip:'idle',startedAt:now,endsAt:now+60_000,line:null};
+ const {world,life}=setup();if(kind==='paused')world.paused={'01-sunny':{at:now,version:0,by:'owner'}};
+ if(kind==='travel')world.muses[1].travel={to:'commons:cafe',departAt:now,arriveAt:now+60_000,speed:'walk'};
+ if(kind==='beat')world.muses[1].beat={id:'b',clip:'idle',startedAt:now,endsAt:now+60_000,line:null};
  assert.equal(residentProposalForWorld(life,world,now,{...opts,residentTurnAllowed:kind!=='budget'}),null);
  }});
 test('actual engine arrival events enter factual memory with provenance and no raw text/data',()=>{
@@ -47,8 +47,8 @@ test('actual engine arrival events enter factual memory with provenance and no r
  assert.deepEqual(rememberCommittedResidentEvents(next,result.state,events,now+TICK_MS),next);
 });
 test('event intake excludes personal actors, future and unknown/unsupported events',()=>{
- const {world,life}=setup();world.muses[0].controlMode='personal';
- const event={id:'e',tick:0,at:now,source:'rule',kind:'arrive',muse:'00-jolly',place:'commons:cafe',tags:[]};
+ const {world,life}=setup();world.muses[1].controlMode='personal';
+ const event={id:'e',tick:0,at:now,source:'rule',kind:'arrive',muse:'01-sunny',place:'commons:cafe',tags:[]};
  assert.deepEqual(rememberCommittedResidentEvents(life,world,[event,{...event,muse:'ghost'},{...event,muse:'01-sunny',at:now+1},{...event,muse:'01-sunny',kind:'trade_intent'}],now),life);
 });
 test('real SQLite restart persists memory, promises and CAS revision',()=>{
