@@ -78,3 +78,42 @@ test('legacy P0 may not auto-trade for a newly admitted personal counterpart',as
 test('legacy invite does not treat a new personal pending claim as a claimed resident',async t=>{const a=await bootstrap(t,['world_entry','walk_and_greet','world_item_trade','world_invite']),at=await a.attempt();assert.equal(toolValue(await a.mcp('enter_world',{attempt_id:at.id,command_id:'invite-personal-entry'})).ok,true);const {grantItem}=await import('../src/engine/items.ts');a.dobj.runtime.commitExternal(Date.now(),'synthetic-invite-fixture',s=>{const m=s.muses.find(m=>m.id==='00-jolly');grantItem(s.items,m,'invite_token',Date.now(),m.place,'find');});a.db.prepare('INSERT INTO claims (agent,record) VALUES (?,?)').run('owner-muse',JSON.stringify({status:'claimed',fingerprint:'synthetic-fingerprint'}));const issued=await a.dobj.issueAgentKey('00-jolly'),{hashAgentKey}=await import('../worker/core/agent-keys.ts');const out=toolValue(await a.dobj.mcp(await hashAgentKey(issued.key),'tools/call',{name:'invite_campfire',arguments:{to:[a.profile.actorId],command_id:'pending-personal-invite'}},false));assert.equal(out.ok,false);assert.equal(out.refused,'no_invitee_available');const state=a.dobj.runtime.state();assert.equal(state.inbox.invites?.length??0,0);assert.ok(state.muses.find(m=>m.id==='00-jolly').inventory.includes('invite_token'));});
 
 test('signed personal AgentCard separates explicitly granted allowed and approval scopes without widening',async t=>{const {SCOPES}=await import('../src/engine/harness.ts'),{verifyCard}=await import('../src/identity/card.ts'),scopes=['world_entry','walk_and_greet',...SCOPES.approval],a=await bootstrap(t,scopes),r=await a.go('GET','/api/agents/'+a.profile.actorId+'/card');assert.equal(r.status,200);const card=await r.json(),trusted=a.dobj.trust.agentByMuse(a.profile.actorId).rootJwk;assert.equal((await verifyCard(card,trusted)).ok,true);assert.deepEqual(card['x-musely'].scopes.allowed,['walk_and_greet','world_entry']);assert.deepEqual(card['x-musely'].scopes.approval,[...SCOPES.approval].sort());assert.deepEqual(card['x-musely'].scopes.forbidden,[...SCOPES.forbidden]);assert.equal(card['x-musely'].owner_claimed,false);assert.equal(card['x-musely'].harness,'personal');});
+
+test('first authenticated connector call is private connection proof, never world admission',async t=>{
+ const a=await bootstrap(t),before=JSON.stringify(a.dobj.worldView());
+ assert.deepEqual((await a.status()).connection,{connected:false,lastSeenAt:null});
+ const invalid=await a.mcp('register_agent',{unexpected:true});assert.ok(invalid.error);assert.equal((await a.mcp('get_world_state',{})).result.isError,true);
+ assert.deepEqual((await a.status()).connection,{connected:false,lastSeenAt:null});
+ const out=await a.mcp('register_agent',{});assert.equal(out.result.isError,false);
+ const status=await a.status();assert.equal(status.connection.connected,true);assert.ok(Number.isSafeInteger(status.connection.lastSeenAt)&&status.connection.lastSeenAt>0);
+ assert.equal(status.entry.state,'viewing');assert.equal(JSON.stringify(a.dobj.worldView()),before);
+ const anon=await(await a.go('GET','/api/personal/status')).json();assert.deepEqual(anon.connection,{connected:false,lastSeenAt:null});
+ assert.doesNotMatch(JSON.stringify(a.dobj.worldView()),/lastSeenAt|personal_connector_activity/);
+ await a.restart();assert.equal((await a.status()).connection.connected,true);
+});
+test('connector connection proof is suppressed immediately by key or authority revocation',async t=>{
+ for(const mode of ['key','authority']){
+  const a=await bootstrap(t);assert.equal((await a.mcp('register_agent',{})).result.isError,false);
+  assert.equal((await a.status()).connection.connected,true);
+  const path=mode==='key'?'/api/personal/keys/'+a.key.row.id:'/api/personal/authority';
+  const r=await a.go('DELETE',path,{...H,cookie:a.cookie,'content-type':'application/json'},mode==='key'?undefined:JSON.stringify({expectedVersion:1}));assert.equal(r.status,200);
+  assert.deepEqual((await a.status()).connection,{connected:false,lastSeenAt:null});
+  assert.equal((await a.mcp('register_agent',{})).status,'unauthorized');
+ }
+});
+test('private connection bookkeeping failure cannot turn a successful connector reply into an error',async t=>{
+ const a=await bootstrap(t);
+ a.db.exec("CREATE TRIGGER fail_connector_activity BEFORE INSERT ON personal_connector_activity BEGIN SELECT RAISE(ABORT,'SYNTHETIC_PRIVATE_FAILURE'); END;");
+ const out=await a.mcp('register_agent',{});assert.equal(out.result.isError,false);
+ assert.deepEqual((await a.status()).connection,{connected:false,lastSeenAt:null});
+ assert.equal((await a.status()).entry.state,'viewing');
+});
+
+test('connector observation is scoped to its owner and a new owner never sees another connection',async t=>{
+ const a=await bootstrap(t);await a.mcp('register_agent',{});assert.equal((await a.status()).connection.connected,true);
+ const old=globalThis.fetch;globalThis.fetch=async(url,init)=>new URL(url).pathname==='/v1.0/me'?new Response(JSON.stringify({id:'22222222',username:'second-personal'})):old(url,init);
+ const second=await login(a),headers={...H,cookie:second.c,'content-type':'application/json'};
+ const created=await a.go('POST','/api/personal/draft',headers,JSON.stringify({operationId:'second-observer',displayName:'Second observer',appearanceId:'00-jolly'}));assert.equal(created.status,200);
+ const status=await(await a.go('GET','/api/personal/status',{cookie:second.c})).json();assert.notEqual(status.profile.actorId,a.profile.actorId);assert.deepEqual(status.connection,{connected:false,lastSeenAt:null});assert.equal(JSON.stringify(status).includes(a.key.row.id),false);
+ assert.equal((await a.status()).connection.connected,true);
+});

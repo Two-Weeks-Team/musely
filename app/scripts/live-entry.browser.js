@@ -55,6 +55,7 @@ async (page) => {
    check(vp,'the real guide offers explicit personal setup and a permission-bound first meeting',/sign.in|profile/i.test(guide)&&/https:\/\/musely.net\/mcp/.test(guide)&&/secure/i.test(guide)&&/say_hello\(to\)/.test(guide)&&/decide for yourself/i.test(guide),guide);
    check(vp,'ordinary setup has no staged timer or local trial controls',await p.locator('#connect-play,#entry-trial,#entry-wear').count()===0);
    await p.screenshot({path:'output/guide-'+vp+'.png'});
+   await p.locator('.entry-body > details.entry-advanced > summary').click();
    const copy=p.locator('#entry-copy-setup');
    if(await copy.count()){
     await copy.click();

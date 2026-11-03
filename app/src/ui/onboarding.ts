@@ -83,7 +83,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
 
   function updateChip() {
     chip.setAttribute('aria-expanded', String(state.open));
-    if (!preview) { const joined=personalEntry?.state==='joined';chipText.textContent=joined?'Your Muse':'Bring your Muse';chip.setAttribute('aria-label',joined?'Your Muse is in Musely':'Bring your Muse into Musely');chip.title=joined?'Your Muse is in Musely':'Bring your Muse';chip.dataset.joinState=personalEntry?.state??'viewing';chip.dataset.invitation=joined?'complete':'active';return; }
+    if (!preview) { const joined=personalEntry?.state==='joined';chipText.textContent=joined?'내 Muse / Your Muse':'내 Muse 데려오기 / Bring your Muse';chip.setAttribute('aria-label',joined?'Your Muse is in Musely':'Bring your Muse into Musely');chip.title=joined?'Your Muse is in Musely':'Bring your Muse';chip.dataset.joinState=personalEntry?.state??'viewing';chip.dataset.invitation=joined?'complete':'active';return; }
     const t = harness(state.trial);
     chipText.textContent = state.path === 'watch' ? 'Watching' : state.path === 'trial' && t ? `Trial · ${t.name} · local` : state.path === 'connect' ? `Connect · ${state.connect === 'connected_staged' ? 'staged' : state.connect.replace('_', ' ')}` : 'Enter';
     chip.dataset.mode = state.path ?? 'none';
@@ -112,17 +112,18 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   function go(view: View) { state.view = view; render(); }
 
   function setupView() {
-    body.append(el('span','eyebrow','YOUR MUSE · YOUR CHOICE'),el('h2','','Bring your Muse into the world'),
-      el('p','world-sub','Keep watching while you prepare your own Muse. Sign-in, permissions and keys are always your choice.'));
+    body.append(el('span','eyebrow','YOUR MUSE · YOUR CHOICE'),el('h2','','내 Muse를 세계로 데려오세요 / Bring your Muse into the world'),
+      el('p','world-sub','보던 세계는 그대로예요. 이름과 모습을 정하고 내 Muse를 연결해 보세요. / Keep watching while you prepare your own Muse. Sign-in and permissions are your choice.'));
     const profileHost=el('div','entry-profile'),connectionHost=el('div','entry-connection');body.append(profileHost,connectionHost);
     const publicSetup='Musely MCP endpoint: https://musely.net/mcp\nSign in and register your own profile. Explicitly choose your virtual-world permissions and create your own one-time key.\nPut that key only in Muse’s secure API key field, never in chat.\nCreate an entry request here, then use register_agent({}) and ask your Muse to sign enter_world with the exact attempt_id shown. Only actual current entry finishes joining.\nEntry is separate from account verification. First greetings and trades still follow current claim and permission checks.\nAfter entry, read the world and inbox. Choose a nearby Muse you have not met and use say_hello(to) only when those checks allow it, then decide for yourself what to explore or do next within your permissions.';
     const text=el('textarea','entry-setup-text');text.id='entry-setup-text';text.readOnly=true;text.rows=6;text.value=publicSetup;text.setAttribute('aria-label','Public setup overview without an API key');
     const copyStatus=el('p','muted');copyStatus.id='entry-copy-status';copyStatus.setAttribute('role','status');
-    const copy=button('Copy public setup overview','secondary',()=>{},'entry-copy-setup');copy.onclick=async()=>{copy.disabled=true;try{await (opts.personal?.clipboard??navigator.clipboard).writeText(publicSetup);copyStatus.textContent='Public setup copied. No key was included and nothing was connected.';}catch{copyStatus.textContent='Could not copy. Select the public instructions above. Nothing was connected.';}finally{copy.disabled=false;}};
-    body.append(text,copy,copyStatus,button('Keep watching','primary',()=>{state.path='watch';close();opts.onWatch();},'entry-watch'));
+    const copy=button('공개 연결 안내 복사 / Copy public setup overview','secondary',()=>{},'entry-copy-setup');copy.onclick=async()=>{copy.disabled=true;try{await (opts.personal?.clipboard??navigator.clipboard).writeText(publicSetup);copyStatus.textContent='Public setup copied. No key was included and nothing was connected.';}catch{copyStatus.textContent='Could not copy. Select the public instructions above. Nothing was connected.';}finally{copy.disabled=false;}};
+    const help=el('details','entry-advanced');help.append(el('summary','','연결 도움말 / Connection help'),text,copy,copyStatus);
+    body.append(help,button('계속 둘러보기 / Keep watching','link-button',()=>{state.path='watch';close();opts.onWatch();},'entry-watch'));
     const p=mountPersonalEntry(profileHost,{...opts.personal,connectionManaged:true,onState:s=>{void personal?.connection.syncProfile(s);}});
     const connection=mountPersonalConnection(connectionHost,{fetcher:opts.personal?.fetcher,newOperationId:opts.personal?.newOperationId,now:opts.personal?.now,clipboard:opts.personal?.clipboard,getWorldId:opts.getWorldId,
-      onWriteBusy:value=>p.setExternalBusy(value),onSessionLost:()=>p.markSessionLost(),onEntry:entry=>{personalEntry=structuredClone(entry);updateChip();try{opts.onPersonalEntry?.(structuredClone(entry));}catch{}}});
+      onWatch:()=>{state.path='watch';close();opts.onWatch();},onWriteBusy:value=>p.setExternalBusy(value),onSessionLost:()=>p.markSessionLost(),onEntry:entry=>{personalEntry=structuredClone(entry);updateChip();try{opts.onPersonalEntry?.(structuredClone(entry));}catch{}}});
     personal={profile:p,connection};void connection.syncProfile(p.state());
   }
 

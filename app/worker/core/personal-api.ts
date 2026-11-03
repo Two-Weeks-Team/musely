@@ -93,7 +93,7 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
     }
     if(bootstrap){
       const p=await current();
-      if(!p){if(url.pathname===BASE+'/status')return json({profile:null,authority:null,keys:[],entry:{state:'viewing',actor:null,attempt:null,receipt:null,reason:'signed_out'}});return failure('personal_session_required',401);}
+      if(!p){if(url.pathname===BASE+'/status')return json({profile:null,authority:null,keys:[],connection:{connected:false,lastSeenAt:null},entry:{state:'viewing',actor:null,attempt:null,receipt:null,reason:'signed_out'}});return failure('personal_session_required',401);}
       const binding:PersonalBinding={sidDigest:await personalDigest('sid',p.sid),appId:cfg.appId!,proof:{principalId:p.principalId,authVersion:p.authVersion,issuedAt:p.issuedAt,expiresAt:p.expiresAt}};
       let input:unknown;if(bootstrapWrite){try{input=await bootstrapJSON(request);}catch{return failure('invalid_entry',400);}}
       try{
