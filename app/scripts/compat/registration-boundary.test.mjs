@@ -1,7 +1,10 @@
 // Main188fcb7 registration compatibility. Local boot fixture, not actual provider login.
-import {test} from 'node:test';import assert from 'node:assert/strict';import {register} from 'node:module';import {DatabaseSync} from 'node:sqlite';
+import {test,after} from 'node:test';import assert from 'node:assert/strict';import {register} from 'node:module';import {DatabaseSync} from 'node:sqlite';
 import {personalDigest,personalNonce,signPersonalSession,personalCookie} from '../../worker/core/personal-session.ts';
 register('data:text/javascript,'+encodeURIComponent(`export async function resolve(s,c,n){if(s==='cloudflare:workers')return{url:'data:text/javascript,export class DurableObject {constructor(ctx,env){this.ctx=ctx;this.env=env;}}',shortCircuit:true};return n(s,c);}`));
+const savedFetch=globalThis.fetch;let networkAttempts=0;
+globalThis.fetch=()=>{networkAttempts++;throw Error('registration boundary forbids network');};
+after(()=>{globalThis.fetch=savedFetch;assert.equal(networkAttempts,0);});
 const O='https://musely.net',H={origin:O,'sec-fetch-site':'same-origin','content-type':'application/json'},D='/api/personal/draft',P='/api/personal/profile';
 const intent=(x={})=>({operationId:'op-one',displayName:'  ComBba  ',appearanceId:'00-jolly',...x});
 async function boot(t){const {default:worker,WorldDO}=await import('../../worker/index.ts');const db=new DatabaseSync(':memory:');t.after(()=>db.close());let depth=0,ready,alarm=null;const sql={exec(q,...b){const s=db.prepare(q),rows=s.columns().length?s.all(...b):(s.run(...b),[]);return{toArray:()=>rows};}};const storage={sql,transactionSync(fn){const n='tx'+depth++;db.exec('SAVEPOINT '+n);try{const v=fn();assert.ok(!v?.then);db.exec('RELEASE '+n);return v;}catch(e){db.exec('ROLLBACK TO '+n);db.exec('RELEASE '+n);throw e;}finally{depth--; }},getAlarm:async()=>alarm,setAlarm:async n=>alarm=n};const ctx={storage,blockConcurrencyWhile:fn=>(ready=fn())},env={MODEL_ID:'synthetic',MODEL_BASE:'https://not-called.invalid',PUBLIC_ORIGIN:O,ALLOWED_HOSTS:'musely.net',DAILY_BUDGET_USD:'1',SESSION_SECRET:'synthetic-session-secret',THREADS_APP_ID:'12345',THREADS_APP_SECRET:'synthetic-app-secret'};let do_;
