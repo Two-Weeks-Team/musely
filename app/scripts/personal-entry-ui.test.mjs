@@ -155,3 +155,9 @@ test('an unconfirmed draft operation survives a read-only refresh before retryin
  field(t.host,'displayName').value='ComBba';await submit(t.host);await t.c.refresh();field(t.host,'displayName').value='ComBba';await submit(t.host);
  const writes=t.calls.filter(x=>x.method==='POST').map(x=>JSON.parse(x.body));assert.deepEqual(writes[0],writes[1]);assert.equal(t.c.state().phase,'registered');
 });
+test('a connection write barrier blocks profile refresh, save and logout until it settles',async()=>{
+ const t=setup(url=>url.endsWith('/me')?me():profile());await t.c.ready;const reads=t.calls.length;t.c.setExternalBusy(true);await t.c.refresh();await action(t.host,'logout').onclick();await form(t.host).onsubmit({preventDefault(){}});assert.equal(t.calls.length,reads);assert.equal(action(t.host,'refresh').disabled,true);t.c.setExternalBusy(false);await t.c.refresh();assert.equal(t.calls.length,reads+2);t.c.dispose();
+});
+test('profile lifecycle publishes safe snapshots for connection fencing without changing registration into entry',async()=>{
+ const states=[],t=setup(url=>url.endsWith('/me')?me():profile(),{onState:s=>states.push(s)});await t.c.ready;assert.ok(states.some(s=>s.authenticated===true&&s.profile?.actorId===PROFILE.actorId));assert.ok(states.every(s=>s.joined===false));t.c.dispose();assert.equal(states.at(-1).authenticated,false);assert.equal(states.at(-1).profile,null);
+});

@@ -4,7 +4,7 @@ import type {ActorProfile} from '../identity/participant.ts';
 
 export type PersonalEntryPhase = 'observer' | 'authenticated' | 'pending' | 'registered' | 'error';
 export type PersonalEntryState = {phase: PersonalEntryPhase; authenticated: boolean | null; profile: ActorProfile | null; busy: boolean; joined: false};
-type Options = {fetcher?: typeof fetch; navigate?: (url: string) => void | Promise<void>; newOperationId?: () => string; now?: () => number};
+export type PersonalEntryOptions = {connectionManaged?: boolean; onState?: (state: PersonalEntryState) => void; fetcher?: typeof fetch; navigate?: (url: string) => void | Promise<void>; newOperationId?: () => string; now?: () => number};
 class Failure extends Error { readonly status: number; readonly invalid: boolean; constructor(status = 0, invalid = false) { super('personal_entry_unavailable'); this.status = status; this.invalid = invalid; } }
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const exact = (v: unknown, keys: string[]): v is Record<string, unknown> => object(v) && Object.keys(v).length === keys.length && keys.every(k => Object.hasOwn(v, k));
@@ -30,12 +30,12 @@ function authorization(v: unknown): string {
 }
 
 /** Explicit mount performs me/profile reads only. All writes require the component's user controls. */
-export function mountPersonalEntry(host: HTMLElement, options: Options = {}) {
+export function mountPersonalEntry(host: HTMLElement, options: PersonalEntryOptions = {}) {
  const fetcher = options.fetcher ?? fetch, navigate = options.navigate ?? (url => window.location.assign(url));
  const now = options.now ?? Date.now, operationId = options.newOperationId ?? (() => crypto.randomUUID());
  const root = document.createElement('section'); root.className = 'personal-entry'; host.append(root);
  let phase: PersonalEntryPhase = 'pending', authenticated: boolean | null = null, profile: ActorProfile | null = null, expiresAt = 0;
- let logoutPending = false;
+ let logoutPending = false, externalBusy = false;
  let busy = false, disposed = false, generation = 0, controller: AbortController | null = null, actorBinding: string | null = null, needsRefresh = false;
  let message = 'Checking your profile…', draft = {displayName: '', appearanceId: MUSE_VARIANTS[0].id as string};
  let pendingDraft: {intent: string; operationId: string} | null = null;
@@ -46,7 +46,7 @@ export function mountPersonalEntry(host: HTMLElement, options: Options = {}) {
  const signedOut = (text = 'Keep watching, or sign in to prepare your own Muse.') => { authenticated = false; expiresAt = 0; actorBinding = null; resetProfile(); needsRefresh = false; phase = 'observer'; busy = false; message = text; };
  const usable = () => { if (authenticated === true && expiresAt > now()) return true; signedOut('Your session ended. You can keep watching or sign in again.'); render(); return false; };
  function begin(text: string, force = false): Context | null {
-  if (disposed || busy && !force) return null;
+  if (disposed || externalBusy || busy && !force) return null;
   controller?.abort(); controller = new AbortController(); generation++; busy = true; phase = 'pending'; message = text; render();
   return {generation, controller};
  }
@@ -75,7 +75,7 @@ export function mountPersonalEntry(host: HTMLElement, options: Options = {}) {
   else draft = {displayName: '', appearanceId: MUSE_VARIANTS[0].id};
  }
  async function refresh() {
-  if (disposed || logoutPending) return;
+  if (disposed || logoutPending || externalBusy) return;
   // Keep an unconfirmed operation across read-only checks; logout/dispose/signed-out always discard it.
   authenticated = null; expiresAt = 0; resetProfile(true); needsRefresh = false;
   const c = begin('Checking your profile…', true)!;
@@ -100,7 +100,7 @@ export function mountPersonalEntry(host: HTMLElement, options: Options = {}) {
   } catch (e) { fail(e, c, 'Could not open sign-in. Try again when you are ready.'); }
  }
  async function save(nameInput: string, appearanceInput: string) {
-  if (disposed || busy || needsRefresh || !usable()) return;
+  if (disposed || busy || externalBusy || needsRefresh || !usable()) return;
   draft = {displayName: nameInput, appearanceId: appearanceInput};
   if (!publicName(nameInput) || !appearance(appearanceInput)) { phase = 'error'; message = 'Use a public name of 1–40 characters and choose an appearance.'; render(); return; }
   const name = nameInput.trim(), variant = appearance(appearanceInput)!;
@@ -137,22 +137,23 @@ export function mountPersonalEntry(host: HTMLElement, options: Options = {}) {
   root.replaceChildren(); root.dataset.state = phase; root.dataset.joined = 'false';
   const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; return n; };
   root.append(element('h2', 'Your Muse'), element('p', 'Watch the world while you prepare your own Muse.'));
-  const status = element('p', message || (profile ? 'Your profile is registered. Your Muse has not entered the world yet.' : 'Choose a public name and appearance for your Muse.')); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); root.append(status);
-  const button = (action: string, text: string, fn: () => Promise<void>) => { const b = element('button', text); b.type = 'button'; b.className = 'secondary'; b.dataset.action = action; b.disabled = busy; b.onclick = fn; root.append(b); return b; };
+  const status = element('p', message || (profile ? options.connectionManaged ? 'Your profile is registered. Current world entry is checked in the connection section.' : 'Your profile is registered. Your Muse has not entered the world yet.' : 'Choose a public name and appearance for your Muse.')); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); root.append(status);
+  const button = (action: string, text: string, fn: () => Promise<void>) => { const b = element('button', text); b.type = 'button'; b.className = 'secondary'; b.dataset.action = action; b.disabled = busy || externalBusy; b.onclick = fn; root.append(b); return b; };
   if (profile && authenticated) root.append(element('p', (phase === 'error' ? 'Last confirmed profile: ' : '') + profile.displayName));
   if (authenticated === false) button('login', 'Sign in with Threads', login);
   if (authenticated === true && !needsRefresh) {
-   const f = element('form'), label = element('label', 'Public Muse name'), input = element('input'); input.type = 'text'; input.name = 'displayName'; input.value = draft.displayName; input.maxLength = 80; input.disabled = busy; input.setAttribute('aria-label', 'Public Muse name'); label.append(input);
-   const appearanceLabel = element('label', 'Appearance'), select = element('select'); select.name = 'appearanceId'; select.setAttribute('aria-label', 'Appearance'); select.disabled = busy;
+   const f = element('form'), label = element('label', 'Public Muse name'), input = element('input'); input.type = 'text'; input.name = 'displayName'; input.value = draft.displayName; input.maxLength = 80; input.disabled = busy || externalBusy; input.setAttribute('aria-label', 'Public Muse name'); label.append(input);
+   const appearanceLabel = element('label', 'Appearance'), select = element('select'); select.name = 'appearanceId'; select.setAttribute('aria-label', 'Appearance'); select.disabled = busy || externalBusy;
    for (const v of MUSE_VARIANTS) { const option = element('option', v.name); option.value = v.id; select.append(option); }
    select.value = draft.appearanceId; appearanceLabel.append(select);
-   const submit = element('button', profile ? 'Save profile' : 'Register profile'); submit.type = 'submit'; submit.className = 'primary'; submit.disabled = busy;
+   const submit = element('button', profile ? 'Save profile' : 'Register profile'); submit.type = 'submit'; submit.className = 'primary'; submit.disabled = busy || externalBusy;
    f.onsubmit = async event => { event.preventDefault(); await save(input.value, select.value); }; f.append(label, appearanceLabel, submit); root.append(f);
   }
   // A deliberate read can cancel an old request or recover a page restored after external sign-in.
-  button('refresh', 'Refresh profile', refresh).disabled = logoutPending;
+  button('refresh', 'Refresh profile', refresh).disabled = logoutPending || externalBusy;
   if (authenticated === true) button('logout', 'Sign out', logout);
+  try { options.onState?.(state()); } catch {}
  }
  const ready = refresh();
- return {ready, refresh, state, dispose() { if (disposed) return; disposed = true; generation++; controller?.abort(); resetProfile(); authenticated = false; busy = false; actorBinding = null; root.remove(); }};
+ return {ready, refresh, state, markSessionLost() { if (disposed) return; generation++; controller?.abort(); signedOut('Your session ended. Sign in again when you are ready.'); render(); }, setExternalBusy(value: boolean) { if (disposed || externalBusy === value) return; externalBusy = value; render(); }, dispose() { if (disposed) return; disposed = true; generation++; controller?.abort(); resetProfile(); authenticated = false; busy = false; actorBinding = null; try { options.onState?.(state()); } catch {} root.remove(); }};
 }
