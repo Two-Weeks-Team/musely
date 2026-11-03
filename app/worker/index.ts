@@ -1,3 +1,4 @@
+import {isInstalledResidentId} from './core/world-life-controller.ts';
 import {serveCriticalAsset} from './asset-encoding.ts';
 // Musely main product Worker (musely.net): static assets plus the /api surface (direction v2, 15 and 20.2).
 import {handleMuse} from './core/proxy.ts';
@@ -132,7 +133,8 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   if (RUN_LOG_PATHS.has(url.pathname) && request.method === 'GET') return cachedRead(request, env, ip, () => runLogRead(env, url));
 
   // Identity (direction v2, 6): signed A2A Agent Cards and the P0 / demo checks.
-  const cardMatch = /^\/api\/agents\/(0\d-[a-z]+)\/card$/.exec(url.pathname);
+  const candidateCard = /^\/api\/agents\/([^/]+)\/card$/.exec(url.pathname);
+  const cardMatch=candidateCard && (/^(0\d-[a-z]+|pm_[a-f0-9-]{36})$/.test(candidateCard[1])||isInstalledResidentId(candidateCard[1]))?candidateCard:null;
   if (cardMatch && request.method === 'GET') { const card = await world(env).agentCard(cardMatch[1]); return card ? json(card) : json({error: 'unknown_agent'}, 404); }
   // P0 demonstration (judge link or the owner). It never revokes or delegates: those are the owner's own actions.
   if (url.pathname === '/api/p0/run' && request.method === 'POST') {

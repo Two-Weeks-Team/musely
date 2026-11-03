@@ -3,7 +3,7 @@
 import {spawnSync} from 'node:child_process';
 import {writeFileSync,readFileSync} from 'node:fs';
 const [left,base,right,out,kind='runtime']=process.argv.slice(2);
-if(!['runtime','world'].includes(kind))throw Error('unknown composition kind');
+if(!['runtime','world','messages','player'].includes(kind))throw Error('unknown composition kind');
 if(!left||!base||!right||!out)throw Error('expected left base right output');
 const result=spawnSync('git',['merge-file','-p',left,base,right],{encoding:'utf8'});
 if(result.error)throw result.error;

@@ -1,3 +1,4 @@
+import type {PersonalWorld} from './personal-world.ts';
 // The connected-Muse surface of the world Durable Object (direction v2, 7.2, 8.8, 12.3, 13.1):
 // agent keys, the owner location source, owner notifications and the MCP tool dispatch. Kept outside
 // world-do.ts so tests can run the exact same logic over node:sqlite.
@@ -20,6 +21,7 @@ import {decideApproval, ownerInbox, definedOwnerOf, type DecisionInput, type Dec
 export type ConnectedDeps = {
   /** Absent by default. Server configuration only; never inferred from tool arguments. */
   campfires?:CampfirePolicy;
+  personal?: PersonalWorld;
   sql: Sql; trust: Trust; runtime: WorldRuntime; hooks: Hooks; baseUrl: string;
   ownerRoot: () => JsonWebKey | null; ownerClaimed: () => boolean; now?: () => number;
   /** Who decides a meetup for a Muse (its owner id, when that owner can sign in here), or null for a resident (rule). */
@@ -137,9 +139,10 @@ export class ConnectedHost {
 
   // ----- MCP -----
   /** Key check only (active, not revoked): no last-use, no connected flag. The transport asks before it refuses a message it will not dispatch. */
-  authenticate(keyHash: string) { return this.keys.findActive(keyHash) !== null; }
+  authenticate(keyHash: string) { return this.keys.findActive(keyHash) !== null || !!this.d.personal?.lookup(keyHash); }
 
   async mcp(keyHash: string, method: string, params: unknown, isNotification: boolean): Promise<McpOutcome> {
+    if(this.d.personal?.lookup(keyHash))return this.d.personal.mcp(keyHash,method,params,isNotification);
     const key = this.keys.findActive(keyHash);
     if (!key) return {status: 'unauthorized'};
     // A message without an id runs nothing but notifications (the transport already answers 400; this is the second fence).
@@ -154,7 +157,7 @@ export class ConnectedHost {
     // claim value stays in ownerClaimed for Agent Cards and credential checks.
     const ctx: ToolCtx = {campfires:()=>this.d.campfires,trust: this.d.trust, runtime: this.d.runtime, hooks: this.d.hooks, ownerRoot: this.d.ownerRoot(), ownerClaimed: this.d.ownerClaimed(), ownerClaimedNow: () => this.d.ownerClaimed(), claimExempt: key.muse === REVIEWER_MUSE, baseUrl: this.d.baseUrl, key, now: () => this.now(), ownerOf: m => this.ownerOf(m), authorize: () => this.keys.byId(key.id)?.revokedAt === null ? null : 'agent_key_revoked'};
     try {
-      const out = await dispatch(method, params, {list: toolList, call: (n, a) => runTool(ctx, n, a), isInvalidParams: e => e instanceof InvalidParams});
+      const out = await dispatch(method, params, {list:()=>toolList(this.d.runtime.state().muses.map(m=>m.id)), call: (n, a) => runTool(ctx, n, a), isInvalidParams: e => e instanceof InvalidParams});
       // A successful world action puts the Muse in the priority queue (deduplicated, 3 per hour); a revoked Muse never.
       const tool = method === 'tools/call' ? String((params as {name?: unknown} | null)?.name ?? '') : '';
       if (ACTION_TOOLS.has(tool) && (out.result as {isError?: boolean} | undefined)?.isError === false && !this.d.trust.suspended(key.muse)) this.d.runtime.requestSpotlight(key.muse, this.now(), {origin: 'connected', requester: 'connected:' + key.muse});

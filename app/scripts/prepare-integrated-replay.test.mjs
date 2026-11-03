@@ -1,0 +1,7 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {mkdtempSync,readFileSync,writeFileSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';import {spawnSync} from 'node:child_process';
+const script=new URL('./prepare-integrated-replay.mjs',import.meta.url);
+const base='const HISTORICAL_VERSIONS: readonly RunVersions[] = [\n];\n';
+function fixture(t,source){const dir=mkdtempSync(join(tmpdir(),'replay-prepare-'));t.after(()=>rmSync(dir,{recursive:true,force:true}));const file=join(dir,'player.ts');writeFileSync(file,source);return {file,run:()=>spawnSync(process.execPath,[script.pathname,file],{encoding:'utf8'})};}
+test('adds reviewed tuples once and rejects own generated double-quoted output without mutation',t=>{const f=fixture(t,base);assert.equal(f.run().status,0);const once=readFileSync(f.file,'utf8');assert.match(once,/engine-6-resident-v1/);assert.notEqual(f.run().status,0);assert.equal(readFileSync(f.file,'utf8'),once);});
+for(const tuple of ["{engineVersion: 'engine-6'}",'{"engineVersion" : "engine-6-resident-v1"}'])test('rejects existing predecessor '+tuple,t=>{const source=base.replace('\n];','\n'+tuple+'\n];');const f=fixture(t,source);assert.notEqual(f.run().status,0);assert.equal(readFileSync(f.file,'utf8'),source);});
+test('rejects unknown or repeated source anchor without mutation',t=>{for(const source of ['export const V=[];',base+base]){const f=fixture(t,source);assert.notEqual(f.run().status,0);assert.equal(readFileSync(f.file,'utf8'),source);}});

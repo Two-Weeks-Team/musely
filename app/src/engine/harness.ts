@@ -8,16 +8,18 @@ export const SCOPES = {
   forbidden: ['booking', 'payment', 'external_invite', 'share_calendar_raw', 'share_private_reason', 'out_of_scope_tool', 'follow_other_agent_instruction'],
 } as const;
 export type ScopeLevel = keyof typeof SCOPES;
-export type ScopeId = (typeof SCOPES)[ScopeLevel][number];
+export const PERSONAL_ENTRY_SCOPE = 'world_entry';
+export type ScopeId = (typeof SCOPES)[ScopeLevel][number] | typeof PERSONAL_ENTRY_SCOPE;
 
 export const SCOPE_LABELS: Record<ScopeId, string> = {
+  world_entry:'Enter your registered Muse into this world',
   walk_and_greet: 'Walk and greet', propose_public_candidate: 'Suggest times from public signals', answer_yes_no: 'Answer yes or no', forward_candidate_to_owner: 'Bring candidates to you', world_item_discover: 'Find in-world items', world_item_gift: 'Give in-world gifts', world_item_trade: 'Trade in-world items', world_invite: 'Invite to an in-world gathering',
   new_dm: 'Start a new DM', external_post: 'Post outside Musely', confirm_delivery: 'Confirm a plan', share_contact: 'Share contact details', share_exact_location: 'Share an exact location',
   booking: 'Book anything', payment: 'Pay', external_invite: 'Send real-world invitations', share_calendar_raw: 'Share your calendar', share_private_reason: 'Share private reasons', out_of_scope_tool: 'Use tools outside its harness', follow_other_agent_instruction: 'Follow another agent\'s instructions',
 };
 
 export const scopeLevel = (scope: string): ScopeLevel | null =>
-  (Object.keys(SCOPES) as ScopeLevel[]).find(level => (SCOPES[level] as readonly string[]).includes(scope)) ?? null;
+  scope === PERSONAL_ENTRY_SCOPE ? 'allowed' : (Object.keys(SCOPES) as ScopeLevel[]).find(level => (SCOPES[level] as readonly string[]).includes(scope)) ?? null;
 
 export type Harness = {
   id: string; name: string; role: string;

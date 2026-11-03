@@ -171,3 +171,6 @@ test('failed approval and failed inbox refresh remain retryable without bypassin
   assert.equal(named(card, 'Decline'), undefined);
   assert.match(card.textContent, /Start the owner session/);
 });
+
+test('personal meetup names are literal and profile-only refresh preserves candidate editor and focus',async()=>{dom();let display='<img src=x onerror=alert(1)>';const data=inbox([task('task_pm',{muse:'pm_me',other:'pm_other'})]);const card=ownerInboxCard(()=>{},async()=>response(200,data),()=>true,id=>id==='pm_other'?display:'Own Muse');await flush();assert.ok(card.textContent.includes('Own Muse with '+display));assert.equal(card.querySelectorAll('img').length,0);const choice=card.querySelectorAll('input[type=radio]')[1];choice.checked=true;choice.focus();display='Updated personal name';await card.refresh();assert.ok(card.textContent.includes('Own Muse with Updated personal name'));assert.equal(card.querySelectorAll('input[type=radio]')[1],choice);assert.equal(document.activeElement,choice);});
+test('unknown personal peer is a safe unavailable name rather than a resident harness',async()=>{dom();const card=ownerInboxCard(()=>{},async()=>response(200,inbox([task('task_unknown',{other:'pm_unknown'})])));await flush();assert.ok(card.textContent.includes('Unknown Muse · pm_unknown'));assert.doesNotMatch(card.textContent,/Resident Muse/);});

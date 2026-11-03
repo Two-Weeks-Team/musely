@@ -4,7 +4,7 @@
 import {WorldRuntime,type TxSql,type RuntimeOptions} from './world-runtime.ts';
 import {createOwnershipAdapter,type PersonalOwners} from './personal-owners.ts';
 import {isRuntimeControlled,emptyInbox} from '../../src/engine/inbox.ts';
-import {HARNESS_IDS} from '../../src/engine/harness.ts';
+import * as harness from '../../src/engine/harness.ts';
 import {BEATS} from '../../src/engine/beats.ts';
 import {PLACES,distanceM} from '../../src/engine/places.ts';
 import type {WorldState,WorldEvent,Hooks} from '../../src/engine/world.ts';
@@ -15,6 +15,9 @@ import type {OwnerOf} from './tasks.ts';
 import {WorldLifeEventReader,projectStoredRuntimeInvite} from './world-life-server.ts';
 import {createProjection,restoreProjection,saveProjection,type Projection} from './world-life-contract.ts';
 export const WORLD_LIFE_PLACES=Object.freeze(['commons:campfire','commons:garden','commons:benches']);
+type RosterCapability={ACTOR_IDS?:readonly string[];harnessRoleId?:(id:string)=>string;isResidentInstance?:(id:string)=>boolean};
+const roster=harness as typeof harness & RosterCapability;
+export const isInstalledResidentId=(id:string):boolean=>roster.isResidentInstance?.(id)===true;
 type Ownership='resident'|'personal'|'legacy'|'unknown';
 type CommitObserver=(before:WorldState,after:WorldState,events:readonly WorldEvent[],now:number)=>void;
 type FactoryConfig={enabled:boolean;world:()=>WorldState;ownership:(id:string)=>Ownership;authorize:(world:WorldState,actor:string,peer:string|null,at:number)=>boolean;goalBeatsFor:(id:string)=>readonly string[];ledger:Ledger;model:ModelConfig|null;ownerOf:OwnerOf;ownerMuse:string;now:()=>number};
@@ -41,23 +44,30 @@ export class WorldLifeController {
   this.sql=sql;this.owners=owners;this.trust=trust;this.active=active;
   const factory=(WorldRuntime as Capability).createResidentServices;
   if(typeof factory!=='function')throw Error('resident_dependencies_not_installed');
-  this.ownership=id=>createOwnershipAdapter(this.owners).resolve(id).kind;
+  if(!Array.isArray(roster.ACTOR_IDS)||typeof roster.harnessRoleId!=='function'||typeof roster.isResidentInstance!=='function')throw Error('resident_roster_dependency_not_installed');
+  this.ownership=id=>{const kind=createOwnershipAdapter(this.owners).resolve(id).kind;return kind==='unknown'&&isInstalledResidentId(id)?'resident':kind;};
   this.reader=new WorldLifeEventReader(sql);
   this.services=factory(sql,{enabled:true,world:()=>this.requireRuntime().state(),ownership:this.ownership,
-   authorize:(s,a,b,at)=>this.authorize(s,a,b,at),goalBeatsFor:id=>BEATS.filter(b=>b.result?.craft&&b.roles?.includes(id)).map(b=>b.id),
-   ledger,model,ownerOf,ownerMuse:'00-jolly',now:()=>Date.now()});
+   authorize:(s,a,b,at)=>this.authorize(s,a,b,at),goalBeatsFor:id=>BEATS.filter(b=>b.result?.craft&&b.roles?.includes(roster.harnessRoleId!(id))).map(b=>b.id),
+   ledger,model,ownerOf:id=>this.ownerOf(id,ownerOf),ownerMuse:'00-jolly',now:()=>Date.now()});
  }
+ ownerOf(id:string,fallback:OwnerOf):string|null{return this.ownership(id)==='resident'?null:fallback(id);}
  private requireRuntime(){if(!this.runtime)throw Error('world_life_runtime_not_bound');return this.runtime;}
  bind(runtime:WorldRuntime){if(this.runtime)throw Error('world_life_already_bound');this.runtime=runtime;}
  /** All options are server-created. Runtime independently replaces budget/model and registry authority. */
  runtimeOptions():Partial<RuntimeOptions> {
   const active=this.active;
-  const ids=HARNESS_IDS.filter(id=>!['00-jolly','04-ember','09-copper'].includes(id));
+  const ids=roster.ACTOR_IDS!.filter(id=>!['00-jolly','04-ember','09-copper'].includes(id)); // Templates only; runtime rechecks initialized registry before enrollment.
   return {residentGoals:this.services.residentGoals,residentWants:this.services.residentWants,
-   residentLife:{get enabled(){return active();},ownershipKind:this.ownership,allowedPlaceIds:WORLD_LIFE_PLACES,
-    initialState:{schema:1,residents:ids.map(id=>({id,roleId:'catalog-resident',goal:'Use an available catalog activity',routine:[],memories:[],promises:[],lastServedAt:0,served:0}))}},
+   residentLife:{roster:'neighborhood-24-v1',get enabled(){return active();},ownershipKind:this.ownership,allowedPlaceIds:WORLD_LIFE_PLACES,
+    initialState:{schema:1,residents:ids.map((id,i)=>({id,roleId:roster.harnessRoleId!(id),goal:'Use an available catalog activity',routine:[0,8,16].map((hour,j)=>({hour,place:WORLD_LIFE_PLACES[(i+j)%WORLD_LIFE_PLACES.length]})),memories:[],promises:[],lastServedAt:0,served:0}))}},
    onCommit:(before:WorldState,after:WorldState,events:readonly WorldEvent[],now:number)=>this.onCommit(before,after,events,now),
   } as unknown as Partial<RuntimeOptions>;
+ }
+ async ensureAgents(ownerRoot:Parameters<Trust['ensureAgents']>[0]){
+  const ids=roster.ACTOR_IDS!.filter(isInstalledResidentId);
+  await (this.trust.ensureAgents as unknown as (root:Parameters<Trust['ensureAgents']>[0],ids:readonly string[])=>Promise<void>).call(this.trust,ownerRoot,ids);
+  if(ids.some(id=>this.trust.agentByMuse(id)?.kind!=='resident'))throw Error('resident_trust_dependency_not_installed');
  }
  init(){
   // Prevent enabling a partial dependency composition that ignores residentLife options.
@@ -73,8 +83,10 @@ export class WorldLifeController {
  acceptMeetingGate(world:WorldState,at:number,gate:NonNullable<Hooks['canMeet']>){this.gate=gate;this.gateVersion=world.version;this.gateAt=at;}
  private authorize(s:WorldState,id:string,peer:string|null,at:number):boolean {
   const actor=s.muses.find(m=>m.id===id);
-  if(!this.active()||!actor||this.ownership(id)!=='resident'||isRuntimeControlled(s,id,at)||s.paused?.[id]||this.trust.suspended(id))return false;
+  if(!this.ready||!this.active()||!actor||this.ownership(id)!=='resident'||isRuntimeControlled(s,id,at)||s.paused?.[id]||this.trust.suspended(id))return false;
   if(peer===null)return true;
+  // Match the main team's pending-claim restriction for newly admitted personal actors.
+  if(this.trust.agentByMuse(peer)?.kind==='personal')return false;
   const other=s.muses.find(m=>m.id===peer),a=PLACES.find(p=>p.id===actor.place),b=PLACES.find(p=>p.id===other?.place);
   if(!other||actor.travel||other.travel||!a||!b||a.zone!=='commons'||b.zone!=='commons'||distanceM(a,b)>100||s.paused?.[peer]||this.trust.suspended(peer))return false;
   if(!this.gate||this.gateVersion!==s.version||at<this.gateAt||at-this.gateAt>60_000)return false;

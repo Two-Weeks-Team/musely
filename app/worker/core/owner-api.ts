@@ -1,3 +1,4 @@
+import type {LegacyOwnerProof} from './legacy-profile.ts';
 // Owner control HTTP routes (contract C06, I-02): the owner session, revocation and re-delegation, approvals and the
 // owner inbox (I-07), the owner location source (13.1), Musely agent keys (7.2) with the key purge (G-09), owner
 // notifications (12.3) and the reviewer Muse reset (G-08).
@@ -13,6 +14,8 @@ import type {DecisionInput, DecisionOutcome} from './tasks.ts';
 
 type MaybePromise<T> = T | Promise<T>;
 export interface ConnectedStub {
+  legacyProfileGet(owner:LegacyOwnerProof):MaybePromise<unknown>;
+  legacyProfilePatch(owner:LegacyOwnerProof,input:unknown):MaybePromise<unknown>;
   ownerLocation(): MaybePromise<unknown>;
   setOwnerLocation(input: unknown): MaybePromise<{ok: boolean; reason?: string}>;
   issueAgentKey(muse: string): MaybePromise<unknown>;
@@ -42,6 +45,15 @@ async function body(request: Request, limit: number): Promise<Record<string, unk
   try { const text = await request.text(); if (text.length > limit) return null; const v = JSON.parse(text || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? v : null; } catch { return null; }
 }
 
+// Bounded bytes/time for the new profile write; other legacy routes keep their existing parsers.
+async function profileBody(request: Request): Promise<unknown> {
+  if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json') || !request.body) throw Error('invalid_profile');
+  const reader=request.body.getReader(), bytes:number[]=[];let timer:ReturnType<typeof setTimeout>|undefined;
+  const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('invalid_profile')),1000);});
+  try { for(let reads=0;reads<4097;reads++){const part=await Promise.race([reader.read(),deadline]);if(part.done)return JSON.parse(new TextDecoder('utf-8',{fatal:true,ignoreBOM:false}).decode(new Uint8Array(bytes)));if(bytes.length+part.value.byteLength>4096)throw Error('invalid_profile');for(const byte of part.value)bytes.push(byte);}throw Error('invalid_profile'); }
+  finally {if(timer!==undefined)clearTimeout(timer);void reader.cancel().catch(()=>{});}
+}
+
 /**
  * The owner gate. `write` adds the CSRF Origin check. With `muse`, the session's principal must own that Muse: another
  * principal's session is refused (not_your_muse), so two owners can never approve or revoke for each other.
@@ -56,6 +68,19 @@ export function requireOwner(request: Request, auth: OwnerAuth, cfg: Pick<OwnerC
 export async function connectedRoutes(request: Request, url: URL, auth: OwnerAuth, stub: ConnectedStub, cfg: OwnerConfig): Promise<Response | null> {
   const p = url.pathname, method = request.method;
   const gate = (opts: {write: boolean; muse?: string}) => requireOwner(request, auth, cfg, opts);
+
+  if(p==='/api/owner/profile'){
+    if(!['GET','PATCH'].includes(method))return json({error:'method_not_allowed'},405,{allow:'GET, PATCH'});
+    const owner=gate({write:method==='PATCH',muse:OWNER_MUSE});if(owner instanceof Response)return owner;
+    if(url.search)return json({error:'bad_query'},400);
+    const proof:LegacyOwnerProof={principal:owner.principal,ownerId:owner.ownerId,exp:owner.exp};
+    let input:unknown;if(method==='PATCH'){try{input=await profileBody(request);}catch{return json({error:'invalid_profile'},400);}}
+    try{return json({profile:method==='GET'?await stub.legacyProfileGet(proof):await stub.legacyProfilePatch(proof,input)});}
+    catch(e){const code=e&&typeof e==='object'&&'name'in e&&e.name==='LegacyProfileError'&&'code'in e&&typeof e.code==='string'?e.code:null;
+      const status=code==='owner_session_required'?401:code==='not_your_muse'?403:code==='invalid_profile'?400:code==='profile_conflict'?409:503;
+      return json({error:status===503?'profile_unavailable':code},status);
+    }
+  }
 
   // ----- owner session (C06) -----
   if (p === '/api/owner/session' && method === 'POST') {

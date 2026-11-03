@@ -1,4 +1,4 @@
-// Internal persistence only: no route, authentication, credential issuance or world entry is connected.
+// Private registry behind verified personal routes; no agent credentials or world entry are issued here.
 // ensurePrincipal requires an already-verified provider subject from its future trusted auth caller.
 // registerDraft accepts server-provisioned agent/root references, never private key material or a claim verdict.
 import type {Sql} from './ledger.ts';
@@ -33,11 +33,24 @@ function registration(input: DraftRegistration): DraftRegistration & {appearance
   if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).sort().join(',') !== 'agentId,appearanceId,displayName,operationId,rootRef') return fail('invalid_registration');
   const {operationId, displayName, appearanceId, agentId, rootRef} = input;
   if (!validReference(operationId) || typeof displayName !== 'string' || !validReference(agentId) || typeof rootRef !== 'string' || !/^root_ref:[A-Za-z0-9_-]{1,96}$/.test(rootRef)) return fail('invalid_registration');
+  return {operationId, ...normalizePersonalProfile(displayName, appearanceId), agentId, rootRef};
+}
+
+export type DraftIntent = {operationId: string; displayName: string; appearanceId: string};
+/** Names stay literal public text; consumers must render with textContent, never HTML. */
+export function normalizePersonalProfile(displayName: unknown, appearanceId: unknown): {displayName: string; appearanceId: MuseVariantId} {
+  if (typeof displayName !== 'string') return fail('invalid_registration');
   const name = displayName.trim();
   if (!name || [...name].length > 40 || /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u.test(displayName)) return fail('invalid_registration');
   const variant = MUSE_VARIANTS.find(v => v.id === appearanceId);
   if (!variant) return fail('invalid_registration');
-  return {operationId, displayName: name, appearanceId: variant.id, agentId, rootRef};
+  return {displayName: name, appearanceId: variant.id};
+}
+export function normalizeDraftIntent(input: unknown): DraftIntent {
+  if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).sort().join(',') !== 'appearanceId,displayName,operationId') return fail('invalid_registration');
+  const x = input as DraftIntent;
+  if (!validReference(x.operationId)) return fail('invalid_registration');
+  return {operationId: x.operationId, ...normalizePersonalProfile(x.displayName, x.appearanceId)};
 }
 
 export class PersonalOwners {
@@ -89,6 +102,19 @@ export class PersonalOwners {
   profile(actorId: string): ActorProfile | null {
     const row = this.storage.sql.exec('SELECT actor_id, display_name, appearance_id, revision FROM personal_profiles WHERE actor_id = ?', actorId).toArray()[0];
     return row ? {actorId: String(row.actor_id), displayName: String(row.display_name), appearanceId: String(row.appearance_id) as MuseVariantId, revision: Number(row.revision)} : null;
+  }
+  /** API intent idempotence ignores fresh server-generated refs, but verifies the persisted result binding. */
+  draftForIntent(principalId: string, input: DraftIntent): PersonalActor | null {
+    const value = normalizeDraftIntent(input);
+    const r = this.storage.sql.exec('SELECT payload, actor_id FROM personal_registrations WHERE principal_id = ? AND operation_id = ?', principalId, value.operationId).toArray()[0];
+    if (!r) return null;
+    let payload: unknown;
+    try { payload = JSON.parse(String(r.payload)); } catch { return fail('registration_incomplete'); }
+    if (!Array.isArray(payload) || payload.length !== 4) return fail('registration_incomplete');
+    if (payload[0] !== value.displayName || payload[1] !== value.appearanceId) return fail('operation_conflict');
+    const actor = this.actor(String(r.actor_id));
+    if (!actor || actor.principalId !== principalId || actor.agentId !== payload[2] || actor.rootRef !== payload[3]) return fail('registration_incomplete');
+    return actor;
   }
   registerDraft(principalId: string, input: DraftRegistration, now = Date.now()): PersonalActor {
     const value = registration(input);

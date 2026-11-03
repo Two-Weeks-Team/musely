@@ -1,4 +1,52 @@
-# Integration-01: feature-off integration boundary prototype (#134)
+# Integration-01: installed feature-OFF server integration (#134)
+
+## Current integration candidate (2026-11-03)
+
+This revision installs a **default-OFF** WorldDO capability. An explicit server-only
+`sandbox-v1` mode plus both unmerged dependency capabilities is required. No deployed
+configuration is enabled. Missing dependencies and unknown mode strings fail closed.
+
+Reviewed main: `18df53b92d26673927f0c90ddae65a9df1d4eeed` (main150).
+Pinned dependencies: #138 `6fe12e6c7782d2048b179b617b7dce123ae701ea` and
+#139 `c9a7ef0d4a21a7e0496cb02e3326eb1e3ba176ef`.
+
+- Actual in-process Worker/WorldDO/SQLite signed MCP paths preserve main148 personal
+  admission, nonce/receipt rollback, main149 legacy profiles and main150 asset responses.
+- An opted-in world has 24 distinct resident identities (seven existing plus 17 exact
+  catalog instances), separate trust roots, roles/appearance reuse, public-place routines,
+  registered goals, discovery, proposal, model-assisted negotiation and verified use.
+  Goal creation/routines are rules, not claimed emergent model intentions.
+- Signed personal entry and introduction lead to a normal heartbeat NPC reply in the
+  personal inbox. The model response transport and OAuth provider are **offline mocks**.
+  Normal meeting verification retains main's requirement for both walk-and-greet and
+  item-trade scopes; a signed greeting alone requires only its original greeting scope.
+  No automatic personal answer or movement is invented.
+- Dynamic pending-claim personal actors remain excluded from autonomous trades, including
+  generic encounter rules and model offers. Legacy connected owner slots remain distinct.
+- Explicit refusal persists for the same actor/peer/item pair for 30 minutes. Restart,
+  transaction rollback, OFF withdrawal, late model results and immediate pre-alarm signed
+  gift/trade/invite requests are tested. OFF freezes the enrolled expansion residents.
+- Projection reads actual committed opening/terminal facts. Overdue open invitations wait
+  for actual upkeep, so restart does not fabricate expiry or fail before upkeep.
+- Three independently recorded SQLite histories from engine5, engine6 and
+  engine6-resident-v1 replay unchanged through the combined **engine7** reader. Exact
+  catalog/harness tuples are checked; mixed/unknown tuples are rejected. The composition
+  helper rejects unknown conflicts and duplicate predecessor insertion.
+
+Local evidence: default-OFF 251/251 plus worker strict; full combined suite 545 passed,
+zero failed and two explicit missing-GLB renderer skips (547 total). An independent
+installed/installation/replay-helper run passed 35/35 plus worker strict, including the
+new `nr_basil` negotiation. Exact-head CI is recorded in the PR after completion. Large renderer GLBs are not
+available in this local snapshot, so local renderer skips are not visual acceptance;
+repository CI uses real checked-in binaries. GPU/browser rendering, actual provider login,
+paid model execution, public HTTP/TLS/workerd deployment and operational activation remain
+**unverified and unperformed**. Main is not merged, and no deployment is requested.
+
+The following sections are preserved chronological investigation history. Earlier claims
+of no caller or endpoints describe those earlier revisions, not the current capability.
+
+---
+
 
 ## Status and evidence
 
@@ -369,3 +417,33 @@ fixture. Local installed 17/17 and worker strict pass. The expanded local run re
 binary files (both zero-byte fixture placeholders). They are not declared passed or blamed
 on main; CI uses the repository checkout assets to establish the result. No placeholder
 assets are committed by this PR.
+
+Exact-head CI for 42f6b3e609cc2348093f4d17c0d9f5d31a34efb4 supersedes the local
+asset limitation: run41646636837 passed standalone OFF152/152, PR139 overlay281/281,
+and complete installed composition378/378 plus worker strict in all three jobs. The four
+main147 render tests passed with repository binaries. The first wiring CI failed at its
+main guard because the PR event base metadata still reported7a85; the fixed guard checks
+the actual fetched main ref against d289, retaining the exact-source fail-closed condition.
+
+A further composition regression blocked a false routine-served claim: when goal-idle
+wins engine priority, a resident routine is no longer marked accepted or counted as served.
+The installed test checks unchanged served/lastServedAt, no travel, recorded goal idle and
+absence of a recorded residentLife proposal. It is included in the378-test composition.
+
+## Explicit refusal interoperability
+
+The next composition pins PR13915373e56fefff6b9a46ea26addd40335bdc327fc. Three
+installed signed-MCP regressions exercise actual rejection, persistence through restart,
+new personal proposals without an automatic-counter loophole, and mode withdrawal.
+The user's new signed proposal remains allowed; only the resident's repeated proposal of
+the same item pair to that person is suppressed by the server's bounded refusal policy.
+No private refusal text is stored. OFF rejection changes the legitimate trade task but
+writes no resident refusal memory or life revision. Focused installed/installation21/21 pass.
+
+The first restart assertion also compared an unrelated legacy owner's inventory; legacy
+boot legitimately restores that owner's starter items. The regression now specifically
+checks both exchange participants, the rejected task and absence of repeated offers.
+Shared runtime merges preserve engineHooks (including all refusal gates), resident move/idle,
+goal idle and exact run-log fields. Shared rules/world/MCP changes merge cleanly against
+the pinned reviewed source. CI still runs personal-scene tests with real repository assets;
+local broad server checks exclude that known-incomplete binary fixture only.
