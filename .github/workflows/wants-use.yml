@@ -1,0 +1,27 @@
+name: Life-02 wants and use
+on:
+  pull_request:
+    paths:
+      - 'app/src/engine/**'
+      - 'app/src/identity/**'
+      - 'app/scripts/wants-use.test.mjs'
+      - 'app/package*.json'
+      - '.github/workflows/wants-use.yml'
+permissions:
+  contents: read
+jobs:
+  offline-contract:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: node --test scripts/wants-use.test.mjs
+      - run: node node_modules/typescript/bin/tsc --ignoreConfig --noEmit --target es2022 --module esnext --moduleResolution bundler --allowImportingTsExtensions --strict --skipLibCheck src/engine/wants-use.ts
