@@ -17,7 +17,7 @@ class Node {
 const walk=n=>[n,...n.childNodes.flatMap(walk)];
 const button=(card,text)=>walk(card).find(n=>n.tagName==='button'&&n.textContent===text&&!n.removed);
 const response=(data,status=200)=>({ok:status<300,status,json:async()=>data});
-async function fixture(t,{pendingCamera=false,ttl=180000}={}){
+async function fixture(t,{pendingCamera=false,cameraError=null,ttl=180000}={}){
  const originals={document:globalThis.document,navigator:globalThis.navigator,fetch:globalThis.fetch,MutationObserver:globalThis.MutationObserver,setTimeout:globalThis.setTimeout,clearTimeout:globalThis.clearTimeout};
  const timers=new Map();let next=0;const observers=[];const listeners=new Map();
  const state={open:true,captures:0,stopped:0,statusCalls:0,sessionCalls:0,starts:0,posts:[],done:0,now:Date.now(),status:async()=>{state.statusCalls++;return {};},session:async()=>{state.sessionCalls++;}};
@@ -26,7 +26,7 @@ async function fixture(t,{pendingCamera=false,ttl=180000}={}){
  globalThis.MutationObserver=class {constructor(f){this.f=f;observers.push(this);} observe(){} disconnect(){this.off=true;}};
  globalThis.setTimeout=(f,ms)=>{timers.set(++next,{f,ms});return next;};globalThis.clearTimeout=id=>timers.delete(id);
  const camera=deferred(),stream={getTracks:()=>[{stop(){state.stopped++;}}]};
- Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia:()=>pendingCamera?camera.promise:Promise.resolve(stream)}}});
+ Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia:()=>cameraError?Promise.reject(Object.assign(new Error('camera fixture'),{name:cameraError})):pendingCamera?camera.promise:Promise.resolve(stream)}}});
  globalThis.fetch=async(url,init)=>{if(url==='/api/ritual/record')return response({record:null});if(url==='/api/ritual/start'){state.starts++;return response({id:'fixture',steps:[{id:'a',text:'raise one hand'},{id:'b',text:'turn your head'},{id:'c',text:'show three fingers'}],expiresAt:Date.now()+ttl});}if(url==='/api/muse'){state.posts.push(JSON.parse(init.body));return response({source:'live',output:{results:[]}});}throw Error('Unexpected offline request');};
  const card=ritualCard(()=>state.done++);await flush();
  const start=button(card,'Try the ritual with your camera');start.onclick();await flush();
@@ -48,6 +48,15 @@ test('preview is focused and waits without session or challenge use, then each m
 test('cancel during pending permission stops a late stream and never starts a challenge',async t=>{
  const f=await fixture(t,{pendingCamera:true});await f.click('취소 · Cancel');f.camera.resolve(f.stream);await flush();
  assert.equal(f.state.stopped,1);assert.equal(f.state.starts,0);assert.equal(f.state.posts.length,0);assert.equal(f.start.disabled,false);
+});
+for(const [name,expected] of [
+ ['NotAllowedError',[/Site information.*Site settings.*Camera/,/macOS.*Privacy & Security.*Camera/,/camera policy/]],
+ ['NotFoundError',[/No camera was found/,/Connect or enable/]],
+ ['NotReadableError',[/Another app may be using it/,/device may be unavailable/]],
+])test(`${name} gives actionable camera guidance without a challenge or upload`,async t=>{
+ const f=await fixture(t,{cameraError:name});
+ for(const pattern of expected)assert.match(f.card.textContent,pattern);
+ assert.equal(f.state.starts,0);assert.equal(f.state.posts.length,0);assert.equal(f.state.captures,0);assert.equal(f.start.disabled,false);
 });
 for(const kind of ['hidden','removed','closed'])test(`${kind} releases preview and sends no frames`,async t=>{
  const f=await fixture(t);await f.dismiss(kind);assert.equal(f.state.stopped,1);assert.equal(f.state.posts.length,0);assert.equal(f.state.starts,0);assert.equal(f.start.disabled,false);

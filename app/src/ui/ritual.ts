@@ -6,6 +6,14 @@ import {ensureSession, sparkStatus} from '../live';
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 type Verdict = {step: string; passed: boolean; confidence: number; observation?: string};
 
+function cameraFailure(error: unknown): string | null {
+  const name = error instanceof Error ? error.name : null;
+  if (name === 'NotAllowedError') return 'Camera access was blocked. In Chrome, open Site information → Site settings → Camera and allow this site. On macOS, also check System Settings → Privacy & Security → Camera and allow your browser. If both are allowed, this page’s camera policy may be blocking access.';
+  if (name === 'NotFoundError') return 'No camera was found. Connect or enable a camera, then try again.';
+  if (name === 'NotReadableError') return 'The camera could not be opened. Another app may be using it, or the device may be unavailable. Close other camera apps and check the device, then try again.';
+  return null;
+}
+
 /** Recorded result card (default) plus the "try it yourself" flow. Returns the container to insert. */
 export function ritualCard(onDone: () => void) {
   const box = el('div', 'id-card ritual');
@@ -114,7 +122,7 @@ export function ritualCard(onDone: () => void) {
       onDone();
     } catch (err) {
       if (err instanceof Dismissed) { stage.replaceChildren(el('p', 'muted', sent ? 'Ritual closed. Judging may already have received the three frames.' : 'Ritual cancelled: nothing was sent.')); return; }
-      stage.replaceChildren(el('p', 'muted', 'The ritual could not run: ' + (err as Error).message + '. The recorded ritual above still shows how it works.'));
+      stage.replaceChildren(el('p', 'muted', cameraFailure(err) ?? ('The ritual could not run: ' + (err as Error).message + '. The recorded ritual above still shows how it works.')));
     } finally {
       observer.disconnect(); document.removeEventListener('visibilitychange', visibility); document.removeEventListener('toggle', visibility, true);
       clearTimeout(expiry); for (const timer of timers) clearTimeout(timer);
