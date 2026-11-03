@@ -1,3 +1,4 @@
+import {presentationIn, resolveMuse, withSnapshotProfiles} from './personal-profile.ts';
 import {recordedSceneFrame} from './recorded-scene.ts';
 import type {RecordedFrame, RecordedEvidence, RecordedEvent} from '../replay/player.ts';
 // Live world surface (direction v2, task 6): shows what the shared world is really doing and lets anyone
@@ -10,7 +11,7 @@ import type {RecordedFrame, RecordedEvidence, RecordedEvent} from '../replay/pla
 //    (run id, the commit that wrote it, state hashes) from /api/world/event
 //  - Highlights are read from the server a page at a time (cursor) over a chosen period, so older moments stay reachable
 import {Marker, type Map as LibreMap} from 'maplibre-gl';
-import {HARNESSES, harnessById} from '../engine/harness';
+import {HARNESSES} from '../engine/harness';
 import {PLACES, PLACE_BY_ID} from '../engine/places';
 import {itemName, ITEMS, effectRule} from '../engine/items';
 import {MUSE_VARIANTS} from '../character-kit/catalog';
@@ -41,14 +42,14 @@ type EventRecord = {runId: string | null; runIdStored: boolean; input: {seq: num
 type ServerAutonomy = {values: Record<string, {value: string; measured: boolean}>; scope: {runIds: string[]; complete: boolean; partialReason?: string | null}; sample: {events: number}};
 /** Highlights per server page (the API allows 300). */
 const HL_PAGE = 300;
-type MuseView = {id: string; place: string; travel: {to: string; departAt: number; arriveAt: number; speed: string} | null; beat: {id: string; line: string | null} | null; inventory: string[]; reflection: string; wants?: {goal: string; items: string[]; source: string}};
+type MuseView = {id: string; profile?: import('../identity/participant.ts').ActorProfile; place: string; travel: {to: string; departAt: number; arriveAt: number; speed: string} | null; beat: {id: string; line: string | null} | null; inventory: string[]; reflection: string; wants?: {goal: string; items: string[]; source: string}};
 type WorldView = LiveWorld & {nextSpotlight: {muse: string; freedom: string; priority?: boolean}};
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
-const museName = (id: string | null | undefined) => (id ? (id === '00-jolly' ? "Jolly · Kim Sejun's Muse" : harnessById(id).name) : 'World');
-const shortName = (id: string | null | undefined) => (id ? harnessById(id).name : 'World');
+const publicMuseName = (id: string | null | undefined, w?: LiveWorld | null) => {if(!id)return 'World';const p=presentationIn(id,w);return p.kind==='legacy'&&id==='00-jolly'?"Jolly · Kim Sejun's Muse":p.name;};
+const publicShortName = (id: string | null | undefined,w?: LiveWorld | null) => id?presentationIn(id,w).name:'World';
 const placeName = (id: string | null | undefined) => (id ? PLACE_BY_ID.get(id)?.name ?? id : '');
-const color = (id: string) => MUSE_VARIANTS.find(v => v.id === id)?.body ?? '#E8DDC7';
+const color = (id: string,w?: LiveWorld | null) => presentationIn(id,w).color;
 // Every time on screen is the viewer's own time (their device's time zone). The world itself keeps Menlo Park time for its day and its
 // beats; only what is shown is converted.
 // The formatters are made per call: a formatter keeps the zone it was built in, and a device can change zone during a session.
@@ -57,8 +58,8 @@ const viewerDay = (ms: number) => new Intl.DateTimeFormat(undefined, {month: 'sh
 const viewerZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'your time zone';
 
 
-export function describe(e: Ev): string {
-  const a = shortName(e.muse), b = shortName(e.other);
+export function describe(e: Ev,w?: LiveWorld | null): string {
+  const a = publicShortName(e.muse,w), b = publicShortName(e.other,w);
   const d = e.data ?? {};
   switch (e.kind) {
     case 'spotlight': return d.live === false ? `${a} holds the spotlight (${d.freedom}); the scenario decides` : `${a} decides (${d.freedom}): ${d.decision ?? ''}${d.target ? ' → ' + placeName(d.target) : ''}`;
@@ -158,44 +159,51 @@ export function engineP1(day: string, muse = '03-ripple', item = 'transit_pass',
 }
 
 // ---------- Map markers ----------
-function museMarkers(map: LibreMap, onSelect: (id: string) => void, isLive: () => boolean) {
+export function museMarkers(map: LibreMap, onSelect: (id: string) => void, isLive: () => boolean, marker: (node:HTMLElement)=>Marker = node=>new Marker({element:node,anchor:'center'})) {
   const markers = new Map<string, {m: Marker; label: HTMLElement}>();
-  for (const h of HARNESSES) {
-    const node = el('div', 'muse-pin');
-    node.style.setProperty('--muse', color(h.id));
-    const dot = el('span', 'muse-pin-dot'); const label = el('span', 'muse-pin-label', h.name);
-    node.append(dot, label);
-    node.title = museName(h.id); node.dataset.museId = h.id; node.setAttribute('role', 'button'); node.tabIndex = 0;
-    const select = () => onSelect(h.id); node.onclick = select; node.onkeydown = e => {if (e.key === 'Enter' || e.key === ' ') {e.preventDefault(); select();}};
-    markers.set(h.id, {m: new Marker({element: node, anchor: 'center'}).setLngLat(PLACES[0] ? [PLACES[0].lng, PLACES[0].lat] : [0, 0]), label});
-  }
   let added = false;
+  function add(id: string) {
+    const p=presentationIn(id),node=el('div','muse-pin'),label=el('span','muse-pin-label',p.name);
+    node.style.setProperty('--muse',p.color);node.append(el('span','muse-pin-dot'),label);
+    node.dataset.museId=id;node.setAttribute('role','button');node.tabIndex=0;
+    const select=()=>onSelect(id);node.onclick=select;node.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select();}};
+    const m=marker(node).setLngLat([PLACES[0].lng,PLACES[0].lat]);
+    markers.set(id,{m,label});if(added)m.addTo(map);
+  }
+  for(const h of HARNESSES)add(h.id);
   return {
     update(w: LiveWorld | null, events: readonly LiveEvent[] = [], atMs = Date.now(), replay = false) {
       if (!w) return;
       if (!added) { for (const {m} of markers.values()) m.addTo(map); added = true; }
       const now = atMs, zoom = map.getZoom();
       const frames = liveFrames(w, scheduleCues(events.filter(e => e.tick === undefined || e.tick <= w.tick)), now);
+      const ids=new Set(w.muses.map(m=>m.id));
+      for(const[id,k]of markers)if(!ids.has(id)){k.m.remove();markers.delete(id);}
       for (const v of w.muses) {
-        const k = markers.get(v.id); if (!k) continue;
+        if(!markers.has(v.id))add(v.id);const k=markers.get(v.id)!;const p=resolveMuse(v);
         const f = frames.get(v.id), pos = f ? sceneToLngLat(f.x, f.z) : null; if (!pos) {k.m.getElement().style.display = 'none'; continue;}
         k.m.setLngLat(pos);
         const node = k.m.getElement(); node.style.display = (!isLive() && !replay) || zoom > 20.2 ? 'none' : '';
-        node.dataset.replay = String(replay); node.dataset.projectedAt = String(now); node.dataset.lnglat = JSON.stringify(pos); node.dataset.version = String(w.version ?? w.tick); node.dataset.owner = ownerOf(v.id).kind;
+        node.dataset.replay = String(replay); node.dataset.projectedAt = String(now); node.dataset.lnglat = JSON.stringify(pos); node.dataset.version = String(w.version ?? w.tick); node.dataset.owner = ownerOf(v.id,v).kind;node.style.setProperty('--muse',p.color);node.setAttribute('aria-label',`Select ${p.name} · ${v.id}`);
         node.dataset.inventory = JSON.stringify(v.inventory);
-        node.title = `${replay ? 'REPLAY · ' : ''}${museName(v.id)} · ${ownerOf(v.id).label} · ${inventorySummary(v.inventory).text}`;
-        k.label.textContent = harnessById(v.id).name + (v.travel ? ` → ${placeName(v.travel.to)}` : '');
+        node.title = `${replay ? 'REPLAY · ' : ''}${publicMuseName(v.id,w)} · ${ownerOf(v.id,v).label} · ${inventorySummary(v.inventory).text}`;
+        k.label.textContent = p.name + (v.travel ? ` → ${placeName(v.travel.to)}` : '');
       }
     },
   };
 }
 
 // ---------- Panel ----------
+const describeEvent = describe;
 type EvidenceEv = Ev & {fixture?: boolean; recorded?: RecordedEvidence};
 const PARTS: [Filter['part'], string][] = [['', 'Any time'], ['night', 'Night 0–6'], ['morning', 'Morning 6–12'], ['afternoon', 'Afternoon 12–18'], ['evening', 'Evening 18–24']];
 
 export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorld, events: readonly LiveEvent[]) => void; onSelect?: (id: string) => void; isLive?: () => boolean; paused?: () => boolean; onReturnLive?: () => void} = {}) {
   enforceIsolation();
+  const displayWorld=()=>currentRecorded?withSnapshotProfiles(recordedSceneFrame(currentRecorded).world,currentRecorded.publicState):world;
+  const museName=(id:string|null|undefined)=>publicMuseName(id,displayWorld());
+  const shortName=(id:string|null|undefined)=>publicShortName(id,displayWorld());
+  const describe=(e:Ev)=>describeEvent(e,(e as EvidenceEv).fixture?null:displayWorld());
   const header = document.querySelector('header')!;
   const open = el('button', 'quiet world-open'); open.type = 'button'; open.id = 'world-open';
   const openDot = el('span', 'live-pulse'); open.append(openDot, el('span', '', 'Live world'));
@@ -347,7 +355,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   let currentRecorded: RecordedFrame | null = null;
   const replayFrames = new Set<(frame: RecordedFrame | null) => void>();
   const replayCtx = {
-    onFrame: (frame: RecordedFrame | null) => { currentRecorded = frame; ownerAreaMap.update(null, false); if (frame) {const view = recordedSceneFrame(frame); pins.update(view.world, view.events, frame.recordedAt, true);} else {pins.update(world, events); paintOwnerArea();} for (const listener of replayFrames) listener(frame); },
+    onFrame: (frame: RecordedFrame | null) => { currentRecorded = frame; ownerAreaMap.update(null, false); if (frame) {const view = recordedSceneFrame(frame); pins.update(withSnapshotProfiles(view.world,frame.publicState), view.events, frame.recordedAt, true);} else {pins.update(world, events); paintOwnerArea();} for (const listener of replayFrames) listener(frame); },
     returnLive: () => { live.onReturnLive?.(); tab = 'feed'; void render().then(() => refresh()); },
     showEvidence: (e: ReplayEvent | RecordedEvent, trigger: HTMLElement) => openEvidence(e, trigger),
     sourceLabel: (e: ReplayEvent | RecordedEvent) => sourceLabel(e), describe: (e: ReplayEvent | RecordedEvent) => describe(e), museName, placeName, at,
@@ -519,8 +527,8 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
       catch (err) { result.textContent = 'Could not run: ' + (err as Error).message; }
       b.disabled = false; }; return b; };
     actions.append(run('Try an impostor', '/api/demo/impostor'), run('Try an instruction injection', '/api/demo/injection'), run('Run P0 step (judge link or owner)', '/api/p0/run', p0Text));
-    ownerInboxView = ownerInboxCard(() => void refresh(), (u, i) => fetch(u, i), () => !stale() && !isolation.replay);
-    body.append(card, ownerControlCard(() => void refresh()), ownerInboxView, ritualCard(() => void refresh()), el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it. P0 is two runs: the first commits a signed trade, then the owner revokes (owner control above), then the second run re-sends the same job and is refused. P0 itself never revokes or delegates again.'), actions, result);
+    ownerInboxView = ownerInboxCard(() => void refresh(), (u, i) => fetch(u, i), () => !stale() && !isolation.replay, shortName);
+    body.append(card, ownerControlCard(() => void refresh(),shortName), ownerInboxView, ritualCard(() => void refresh()), el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it. P0 is two runs: the first commits a signed trade, then the owner revokes (owner control above), then the second run re-sends the same job and is refused. P0 itself never revokes or delegates again.'), actions, result);
   }
 
   // The Location tab is drawn again after a move and on every poll while it is open: an unsent preset/verify choice and the last
@@ -605,7 +613,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   paintConn();
   void refresh();
   setInterval(refresh, 10_000);
-  map.on('zoom', () => {if (currentRecorded) {const view = recordedSceneFrame(currentRecorded); pins.update(view.world, view.events, currentRecorded.recordedAt, true);}});
+  map.on('zoom', () => {if (currentRecorded) {const view = recordedSceneFrame(currentRecorded); pins.update(withSnapshotProfiles(view.world,currentRecorded.publicState), view.events, currentRecorded.recordedAt, true);}});
   setInterval(() => {if (!isolation.replay && !live.paused?.()) pins.update(world, events);}, 1000);
   setInterval(paintOwnerArea, 1000);
   return {refresh, onReplayFrame(listener: (frame: RecordedFrame | null) => void) { replayFrames.add(listener); return () => replayFrames.delete(listener); }, get events() { return events; }, get world() { return world; }, showEvidence: openEvidence, flows: flowState, replay: replayPlayer, health, openTab(id: string) { tab = id; if (!panel.matches(':popover-open')) panel.showPopover(); void render(); }};

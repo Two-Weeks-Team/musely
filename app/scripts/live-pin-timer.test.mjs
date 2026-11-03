@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import {transform} from 'esbuild';
 import {HARNESSES} from '../src/engine/harness.ts';
 import {PLACES} from '../src/engine/places.ts';
+import {presentationIn,resolveMuse} from '../src/ui/personal-profile.ts';
 import * as live from '../src/ui/live-scene-core.ts';
 const text=await fs.readFile(new URL('../src/ui/world-panel.ts', import.meta.url),'utf8');
 const part=text.slice(text.indexOf('function museMarkers('),text.indexOf('// ---------- Panel',text.indexOf('function museMarkers(')));
@@ -12,8 +13,8 @@ const js=(await transform(functionText,{loader:'ts'})).code;
 const nodes=new Map();
 class Marker {constructor({element}){this.element=element;nodes.set(element.dataset.museId,this);}setLngLat(pos){this.pos=pos;return this;}addTo(){return this;}getElement(){return this.element;}remove(){}}
 const el=(_tag,_cls,text='')=>({textContent:text,style:{setProperty(){}},dataset:{},setAttribute(){},append(){}});
-const make=Function('HARNESSES','Marker','el','color','museName','PLACES','liveFrames','scheduleCues','sceneToLngLat','ownerOf','inventorySummary','harnessById','placeName',js+';return museMarkers;')
- (HARNESSES,Marker,el,()=>'',live.museName,PLACES,live.liveFrames,live.scheduleCues,live.sceneToLngLat,live.ownerOf,live.inventorySummary,id=>HARNESSES.find(x=>x.id===id),id=>id);
+const make=Function('HARNESSES','Marker','el','color','museName','PLACES','liveFrames','scheduleCues','sceneToLngLat','ownerOf','inventorySummary','presentationIn','resolveMuse','publicMuseName','placeName',js+';return museMarkers;')
+ (HARNESSES,Marker,el,()=>'',live.museName,PLACES,live.liveFrames,live.scheduleCues,live.sceneToLngLat,live.ownerOf,live.inventorySummary,presentationIn,resolveMuse,live.museName,id=>id);
 const timerLine=text.split('\n').find(x=>x.includes('setInterval(() =>') && x.includes('pins.update('));
 assert.ok(timerLine,'exercise the actual panel timer');
 const NOW=1800000000000;

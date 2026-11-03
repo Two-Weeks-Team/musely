@@ -2,11 +2,11 @@
 // owner actions: they need the owner session (POST /api/owner/session with the owner control token, 1 hour). A judge
 // link does not give it. The token is typed here, sent once in a POST body and never kept in the page, the URL or storage.
 // Everything is built with textContent; nothing from the server is parsed as HTML.
-import {harnessById} from '../engine/harness';
+import {resolveMuse} from './personal-profile.ts';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const at = (ms: number) => new Intl.DateTimeFormat(undefined, {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}).format(new Date(ms));
-const name = (id: string) => harnessById(id).name;
+const defaultName = (id: string) => resolveMuse({id}).name;
 
 type OwnerView = {principal: string; ownerId: string; label: string; demo: boolean; note: string; muses: string[]; expiresAt: number};
 type Delegation = {muse: string; status: 'active' | 'revoked'; version: number | null; paused: {at: number; by: string} | null; pendingTasks: number};
@@ -31,7 +31,7 @@ async function call(method: string, path: string, body?: unknown): Promise<{ok: 
 const why = (r: {status: number; data: any}) => REASONS[r.data?.error] ?? (r.status ? `HTTP ${r.status}${r.data?.error ? ' · ' + r.data.error : ''}` : 'network error');
 
 /** The owner control card for the Identity tab. `onChange` refreshes the world view after a revoke or a re-delegation. */
-export function ownerControlCard(onChange: () => void) {
+export function ownerControlCard(onChange: () => void, name: (id:string)=>string = defaultName) {
   const box = el('div', 'id-card owner-control');
   const result = el('p', 'muted'); result.setAttribute('role', 'status');
 
