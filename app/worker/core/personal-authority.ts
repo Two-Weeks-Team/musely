@@ -82,7 +82,7 @@ export class PersonalAuthority {
     const b = copyBinding(binding), root = await this.checkedRoot(this.ownActor(b));
     const actor = this.ownActor(b); this.sameRoot(actor, root); return this.view(actor);
   }
-  async grant(binding: PersonalBinding, input: unknown): Promise<PersonalAuthorityView> {
+  async grant(binding: PersonalBinding, input: unknown, afterChange?: (value:PersonalAuthorityView)=>void): Promise<PersonalAuthorityView> {
     const b = copyBinding(binding);
     if (!fields(input, 'expectedVersion,scopes')) return fail('invalid_authority');
     const x = input as {expectedVersion: number; scopes: unknown}, expected = x.expectedVersion, scopes = explicitScopes(x.scopes);
@@ -92,7 +92,7 @@ export class PersonalAuthority {
       const actor = this.ownActor(b); this.sameRoot(actor, root); const before = this.view(actor);
       if (before.version !== expected) return fail('authority_conflict');
       this.storage.sql.exec('INSERT INTO personal_authority (actor_id,agent_id,root_ref,version,scopes,active) VALUES (?,?,?,?,?,1) ON CONFLICT(actor_id) DO UPDATE SET version=excluded.version, scopes=excluded.scopes, active=1', actor.actorId, actor.agentId, actor.rootRef, expected + 1, JSON.stringify(scopes));
-      return this.view(actor);
+      const result=this.view(actor); afterChange?.(result); return result;
     });
   }
   /** Explicit owner action, distinct from browser logout; older version keys can never reactivate. */

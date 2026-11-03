@@ -1,3 +1,4 @@
+import {PersonalWorld} from './core/personal-world.ts';
 // The single shared world Durable Object: budget and quota ledger, the heartbeat and commit point,
 // the append-only run log, the trust registry and the owner claim (direction v2, 6, 8.7, 15).
 import {DurableObject} from 'cloudflare:workers';
@@ -15,7 +16,6 @@ import {revokeMuse, redelegateMuse, reconcilePaused, delegationStatus} from './c
 import {resetMuse} from './core/muse-reset.ts';
 import {initRetention, pruneCommands, RETENTION_CHECK_MS} from './core/data-retention.ts';
 import {migrateTaskStore, type DecisionInput} from './core/tasks.ts';
-import {ownerIdForMuse} from './core/owner-session.ts';
 import {PersonalAuthStore, type PersonalFlow, type PersonalSessionRow} from './core/personal-session.ts';
 import {PersonalRegistration, type PersonalBinding} from './core/personal-registration.ts';
 
@@ -23,6 +23,7 @@ export class WorldDO extends DurableObject<Env> {
   private ledger: Ledger;
   private personalAuth: PersonalAuthStore;
   private personalRegistration: PersonalRegistration;
+  private personalWorld: PersonalWorld;
   private runtime: WorldRuntime;
   private trust: Trust;
   private ritual: RitualStore;
@@ -54,10 +55,9 @@ export class WorldDO extends DurableObject<Env> {
       hooks,
       model: {base: env.MODEL_BASE, key: env.MODEL_API_KEY, model: env.MODEL_ID, timeoutMs: 8000},
     });
-    // A Muse has an owner for meetup approvals only when that owner can sign in here (its control token is set); otherwise
-    // it is a resident and its side is approved by rule (I-07).
-    const tokens = {owner: env.OWNER_CONTROL_TOKEN, peer: env.DEMO_PEER_CONTROL_TOKEN, reviewer: env.REVIEWER_CONTROL_TOKEN, judge: env.JUDGE_TOKEN};
-    this.connected = new ConnectedHost({sql: ctx.storage.sql, trust: this.trust, runtime: this.runtime, hooks, baseUrl: this.origin, ownerRoot: () => this.ownerRoot, ownerClaimed: () => this.getClaim('owner-muse')?.status === 'claimed', ownerOf: muse => ownerIdForMuse(tokens, muse)});
+    // Stable personal/legacy ownership never falls back to resident consent when login is unavailable.
+    this.personalWorld=new PersonalWorld(ctx.storage,this.personalAuth,this.personalRegistration,this.runtime,this.trust,this.origin,hooks,{root:()=>this.ownerRoot,claimed:()=>this.getClaim('owner-muse')?.status==='claimed'});
+    this.connected = new ConnectedHost({personal:this.personalWorld,sql: ctx.storage.sql, trust: this.trust, runtime: this.runtime, hooks, baseUrl: this.origin, ownerRoot: () => this.ownerRoot, ownerClaimed: () => this.getClaim('owner-muse')?.status === 'claimed', ownerOf: muse => this.personalWorld.ownerOf(muse)});
     ctx.blockConcurrencyWhile(async () => {
       this.ledger.init();
       this.personalAuth.init();
@@ -71,6 +71,7 @@ export class WorldDO extends DurableObject<Env> {
       // Owner claims. The Threads token stays inside this object; no method returns it over HTTP.
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS claims (agent TEXT PRIMARY KEY, record TEXT NOT NULL, token TEXT)');
       this.trust.init();
+      this.personalWorld.init();
       this.connected.init();
       this.ritual.init();
       await this.trust.ensureAgents(this.ownerRoot);
@@ -82,9 +83,21 @@ export class WorldDO extends DurableObject<Env> {
     });
   }
   // Private auth RPCs; no provider token/code crosses into DO storage or any world commit.
+  personalLocation(binding:PersonalBinding){return this.personalWorld.location(binding);}
+  personalLocationSet(binding:PersonalBinding,input:unknown){return this.personalWorld.setLocation(binding,input);}
+  personalStatus(binding:PersonalBinding|null){return this.personalWorld.status(binding);}
+  personalAuthorityOwn(binding:PersonalBinding){return this.personalWorld.authorityOwn(binding);}
+  personalAuthorityGrant(binding:PersonalBinding,input:unknown){return this.personalWorld.grant(binding,input);}
+  personalAuthorityRevoke(binding:PersonalBinding,input:unknown){return this.personalWorld.revoke(binding,input);}
+  personalKeyIssue(binding:PersonalBinding,input:unknown){return this.personalWorld.authority.issueKey(binding,input);}
+  personalKeys(binding:PersonalBinding){return this.personalWorld.authority.listKeys(binding);}
+  personalKeyRevoke(binding:PersonalBinding,id:string){return this.personalWorld.authority.revokeKey(binding,id);}
+  personalAttemptCreate(binding:PersonalBinding,input:unknown){return{attempt:this.personalWorld.entry.create(binding,input),entry:this.personalWorld.entry.project(binding)};}
+  personalAttemptRead(binding:PersonalBinding,id:string){return{attempt:this.personalWorld.entry.read(binding,id),entry:this.personalWorld.entry.project(binding)};}
+  personalAttemptCancel(binding:PersonalBinding,id:string){return{attempt:this.personalWorld.entry.cancel(binding,id),entry:this.personalWorld.entry.project(binding)};}
   personalDraftRegister(binding: PersonalBinding, input: unknown) { return this.personalRegistration.register(binding, input); }
   personalProfileRead(binding: PersonalBinding) { return this.personalRegistration.profile(binding); }
-  personalProfilePatch(binding: PersonalBinding, input: unknown) { return this.personalRegistration.patch(binding, input); }
+  personalProfilePatch(binding: PersonalBinding, input: unknown) { return this.personalWorld.patchProfile(binding, input); }
   personalAuthBegin(flow: PersonalFlow) { return this.personalAuth.begin(flow); }
   personalAuthConsume(binding: Pick<PersonalFlow, 'stateDigest' | 'browserDigest' | 'appId' | 'redirectUri'>, now: number) { return this.personalAuth.consume(binding, now); }
   personalAuthComplete(stateDigest: string, appId: string, subject: string, sidDigest: string, now: number) { return this.personalAuth.complete(stateDigest, appId, subject, sidDigest, now); }

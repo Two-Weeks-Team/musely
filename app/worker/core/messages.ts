@@ -1,3 +1,4 @@
+import {participantName} from '../../src/engine/participants.ts';
 // Communication between Muses (direction v2, 9 and 12.2; contracts C06, C07; I-13): postcards, gifts, campfire invites
 // and help requests. The MCP tools (mcp-tools.ts) call these inside their signed command (commands.ts executeCommand):
 // the envelope, delegation, scope, expiry, nonce and expected_version are checked before, and every function here runs
@@ -63,7 +64,7 @@ export function sendPostcard(st: WorldState, me: string, a: {to: string; item: s
   const timed = takeTimed(st.items, me, item);
   inbox.mail.push({id: nextId(inbox, 'mail'), from: me, to, item, text, sentAt: at, deliverAt: at + travelMs, crossRegion, ...(timed ? {timed} : {})});
   appendHistory(st.items, {item, from: me, to, place: from.id, at, via: 'gift'});
-  live({at, source: 'live', kind: 'postcard_sent', muse: me, other: to, place: from.id, line: `Mailed ${itemName(item)} to ${name(to)}`, data: {item, eta_ms: travelMs, cross_region: crossRegion, note: text}, tags: []});
+  live({at, source: 'live', kind: 'postcard_sent', muse: me, other: to, place: from.id, line: `Mailed ${itemName(item)} to ${participantName(st,to)}`, data: {item, eta_ms: travelMs, cross_region: crossRegion, note: text}, tags: []});
   return {ok: true, data: {item, eta_ms: travelMs, deliver_at: at + travelMs, cross_region: crossRegion, sent_today: count.postcards}};
 }
 
@@ -79,7 +80,7 @@ export function giveGift(st: WorldState, me: string, a: {to: string; item: strin
   const count = sentToday(inbox, st.day, me);
   if (count.gifts >= DAILY.gifts) return {ok: false, reason: 'daily_limit'};
   transferItem(st.items, m, r, item, at); count.gifts += 1;
-  live({at, source: 'live', kind: 'gift', muse: me, other: to, place: m.place, line: `A ${itemName(item)} for ${name(to)}`, data: {item}, tags: []});
+  live({at, source: 'live', kind: 'gift', muse: me, other: to, place: m.place, line: `A ${itemName(item)} for ${participantName(st,to)}`, data: {item}, tags: []});
   if (isRuntimeControlled(st, to, at)) deliverMessage(inbox, {from: me, to, kind: 'gift', at, text: null, item});
   return {ok: true, data: {gave: item, to, gifts_today: count.gifts}};
 }
@@ -118,7 +119,7 @@ export function inviteCampfire(st: WorldState, me: string, a: {to: string[]; tex
   if (unavailable.length === a.to.length) return {ok: false, reason: 'no_invitee_available'};
   m.inventory.splice(m.inventory.indexOf('invite_token'), 1);
   const inv: CampfireInvite = {id: nextId(inbox, 'invite'), from: me, to: [...a.to], place: CAMPFIRE, note: a.text, at, expiresAt: at + INVITE_TTL_MS, status: 'open', answers: {}};
-  live({at, source: 'live', kind: 'campfire_invite', muse: me, other: a.to.length === 1 ? a.to[0] : null, place: m.place, line: `Invited ${a.to.map(name).join(', ')} to a campfire talk`, data: {invite_id: inv.id, to: inv.to, place: CAMPFIRE, spent: 'invite_token', note: a.text, deadline: inv.expiresAt, stage: 'invite'}, tags: ['campfire_invite']});
+  live({at, source: 'live', kind: 'campfire_invite', muse: me, other: a.to.length === 1 ? a.to[0] : null, place: m.place, line: `Invited ${a.to.map(id=>participantName(st,id)).join(', ')} to a campfire talk`, data: {invite_id: inv.id, to: inv.to, place: CAMPFIRE, spent: 'invite_token', note: a.text, deadline: inv.expiresAt, stage: 'invite'}, tags: ['campfire_invite']});
   const campfire = placeById(CAMPFIRE);
   for (const id of a.to) {
     if (unavailable.includes(id)) { inv.answers[id] = {answer: 'unavailable', via: 'rule', at}; continue; }
@@ -179,8 +180,8 @@ export function gatherIf(st: WorldState, inv: CampfireInvite, now: number, emit:
   for (const id of here) if (inv.answers[id]?.answer === 'pending') inv.answers[id] = {answer: 'accept', via: 'live', at: now};
   if (here.length < GATHERING_MIN) return false;
   inv.status = 'gathered'; inv.closedAt = now; inv.gathered = here;
-  for (const id of here) museOf(st, id).reflection = `Campfire talk with ${here.filter(x => x !== id).map(name).join(', ')}`.slice(0, 100);
-  emit({at: now, source: 'rule', kind: 'campfire_gathering', muse: inv.from, place: inv.place, line: `${here.length} Muses gathered at the campfire for ${name(inv.from)}'s invite`, data: {invite_id: inv.id, from: inv.from, count: here.length, muses: here, answers_via: Object.fromEntries(here.filter(id => id !== inv.from).map(id => [id, inv.answers[id].via]))}, tags: ['campfire_gathering_3plus', 'invite_gathering']});
+  for (const id of here) museOf(st, id).reflection = `Campfire talk with ${here.filter(x => x !== id).map(other=>participantName(st,other)).join(', ')}`.slice(0, 100);
+  emit({at: now, source: 'rule', kind: 'campfire_gathering', muse: inv.from, place: inv.place, line: `${here.length} Muses gathered at the campfire for ${participantName(st,inv.from)}'s invite`, data: {invite_id: inv.id, from: inv.from, count: here.length, muses: here, answers_via: Object.fromEntries(here.filter(id => id !== inv.from).map(id => [id, inv.answers[id].via]))}, tags: ['campfire_gathering_3plus', 'invite_gathering']});
   return true;
 }
 
@@ -286,7 +287,7 @@ export function proposeHelp(st: WorldState, me: string, a: {to: string; item: st
   const t: Task = {id: nextId(inbox, 'task'), kind: 'help', from: me, to: a.to, status: 'pending', awaiting: a.to, createdAt: at, deadline: at + TASK_TTL_MS, updatedAt: at, round: 0,
     help: {service: svc.service, item: a.item, part: a.needs, asked: null, result: null, note: a.text}, history: [{by: me, action: 'propose', at}]};
   inbox.tasks.push(t);
-  live({at, source: 'live', kind: 'help_requested', muse: me, other: a.to, place: m.place, line: `Asked ${name(a.to)} for help with ${itemName(a.item)}`, data: {task_id: t.id, service: svc.service, item: a.item, part: a.needs, note: a.text, deadline: t.deadline, stage: 'propose'}, tags: []});
+  live({at, source: 'live', kind: 'help_requested', muse: me, other: a.to, place: m.place, line: `Asked ${participantName(st,a.to)} for help with ${itemName(a.item)}`, data: {task_id: t.id, service: svc.service, item: a.item, part: a.needs, note: a.text, deadline: t.deadline, stage: 'propose'}, tags: []});
   // A resident answers by rule at once; a connected helper sees the Task in its own inbox and answers with answer_help.
   const result = isRuntimeControlled(st, a.to, at) ? 'pending' : residentHelps(st, t, rule, at);
   return {ok: true, data: {task: taskView(t, me), status: statusOf(t), result}};
@@ -317,7 +318,7 @@ function completeHelp(st: WorldState, t: Task, via: 'live' | 'rule', emit: Emit,
   takeTimed(st.items, req.id, part);
   help.result = svc.result;
   transitionTask(t, 'completed', {by: helper.id, action: 'accept', at, via});
-  const reflections = {[req.id]: `${name(helper.id)} helped with my ${itemName(help.item)}: got ${itemName(svc.result)}`.slice(0, 100), [helper.id]: `Helped ${name(req.id)} with ${itemName(help.item)} (${svc.service})`.slice(0, 100)};
+  const reflections = {[req.id]: `${participantName(st,helper.id)} helped with my ${itemName(help.item)}: got ${itemName(svc.result)}`.slice(0, 100), [helper.id]: `Helped ${participantName(st,req.id)} with ${itemName(help.item)} (${svc.service})`.slice(0, 100)};
   req.reflection = reflections[req.id]; helper.reflection = reflections[helper.id];
   emit({at, source: via, kind: 'help_completed', muse: helper.id, other: req.id, place: helper.place, line: svc.line, data: {task_id: t.id, service: svc.service, item: help.item, part, result: svc.result, accepted_by: helper.id, accepted_via: via, reflections, stage: 'complete'}, tags: ['help_completed']});
   return true;

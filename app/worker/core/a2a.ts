@@ -27,7 +27,7 @@ export function findOwnerTrade(s: WorldState, revoked: (museId: string) => boole
   const me = s.muses.find(m => m.id === OWNER_SLOT)!;
   const here = placeById(me.place);
   // A partner whose owner revoked its delegation (paused) cannot answer: it is never picked.
-  const partners = s.muses.filter(m => m.id !== OWNER_SLOT && !m.travel && !s.paused?.[m.id] && !revoked(m.id)).sort((a, b) => distanceM(here, placeById(a.place)) - distanceM(here, placeById(b.place)));
+  const partners = s.muses.filter(m => m.id !== OWNER_SLOT && m.controlMode!=='personal' && !m.travel && !s.paused?.[m.id] && !revoked(m.id)).sort((a, b) => distanceM(here, placeById(a.place)) - distanceM(here, placeById(b.place)));
   for (const p of partners) for (const give of me.inventory) for (const want of p.inventory) {
     if (checkTrade(s.items, s.day, me, p, give, want, 0, at).ok) return {partner: p.id, give, want};
   }
@@ -58,6 +58,8 @@ export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; 
     apply: (st, emit, at) => {
       emit({at, source: 'live', kind: 'a2a_verified', muse: OWNER_SLOT, other: plan.partner, line: 'Signature, delegation, scope, expiry, nonce: verified', data: {steps: ['signature', 'recipient', 'delegation', 'scope', 'expiry', 'content', 'replay', 'counterparty'], envelope: evidence, content, label: opts.label, ...requester(c.requestedBy)}, tags: ['p0_valid']});
       const a = st.muses.find(m => m.id === OWNER_SLOT)!, b = st.muses.find(m => m.id === plan.partner)!;
+      // P0's resident rule acceptance cannot speak for an admitted personal runtime.
+      if(st.muses.find(m=>m.id===plan.partner)?.controlMode==='personal')return{ok:false,code:'counterparty_personal_runtime_required'};
       // A tampered item history refuses the swap (I-06) instead of throwing inside the commit.
       const check = historyFault(st.items, false, at) ? {ok: false as const, reason: 'history_tamper'} : checkTrade(st.items, st.day, a, b, plan.give, plan.want, 0, at);
       if (!check.ok) { emit({at, source: 'rule', kind: 'trade_rejected', muse: plan.partner, other: OWNER_SLOT, line: 'Not this time.', data: {reason_public: null, rule: check.reason}, tags: ['trade_rejected']}); return {ok: false, code: check.reason}; }
@@ -111,7 +113,7 @@ export type Credential = {museId: string; agentId: string; card: CardCheck; dele
 const MEETING_SCOPES = ['walk_and_greet', 'world_item_trade'];
 
 /** One Muse's Agent Card against its trusted root and its server_heartbeat delegation, both checked for real. */
-export async function museCredential(c: CredCtx, museId: string, now: number): Promise<Credential | null> {
+export async function museCredential(c: CredCtx, museId: string, now: number,requiredScopes:readonly string[]=MEETING_SCOPES): Promise<Credential | null> {
   const agent = c.trust.agentByMuse(museId);
   if (!agent) return null;
   let card: CardCheck;
@@ -119,13 +121,13 @@ export async function museCredential(c: CredCtx, museId: string, now: number): P
   const base = {museId, agentId: agent.agentId, card};
   // While revoked, no new delegation is issued: the stored one is checked and fails.
   let exec: Executor | null = null;
-  try { exec = c.trust.suspended(museId) ? await c.trust.storedExecutor(museId, 'server_heartbeat') : await c.trust.executor(museId, 'server_heartbeat', c.ownerRoot); } catch { exec = null; }
+  try { exec = c.trust.suspended(museId) ? await c.trust.storedExecutor(museId, 'server_heartbeat') : await c.trust.executor(museId,agent.kind==='personal'?'server_custodial':'server_heartbeat', c.ownerRoot); } catch { exec = null; }
   if (!exec) return {...base, delegation: {ok: false, reason: c.trust.suspended(museId) ? 'delegation_revoked' : 'no_delegation'}};
   const d = await verifyDelegation(exec.delegation, agent.rootJwk), ref = await delegationRef(exec.delegation);
   const reason = !d || d.agent_id !== agent.agentId ? 'bad_delegation_signature'
     : c.trust.isRevoked(ref) || d.version !== c.trust.delegationVersion(agent.agentId) ? 'delegation_revoked'
     : d.exp <= now ? 'delegation_expired'
-    : !MEETING_SCOPES.every(x => (d.scopes as string[]).includes(x)) ? 'scope_not_delegated' : null;
+    : !requiredScopes.every(x => (d.scopes as string[]).includes(x)) ? 'scope_not_delegated' : null;
   return {...base, delegation: reason || !d ? {ok: false, reason: reason ?? 'bad_delegation_signature'} : {ok: true, ref, version: d.version, exp: d.exp, signer_kind: d.signer_kind}};
 }
 
@@ -139,8 +141,8 @@ export function credentialProblem(t: Trust, cr: Credential | null | undefined, a
 }
 
 /** The counterparty of a peer command (a resident answering by rule): card and delegation before the commit. */
-export async function peerCheck(c: CredCtx, museId: string, now: number): Promise<PeerCheck> {
-  const cr = await museCredential(c, museId, now);
+export async function peerCheck(c: CredCtx, museId: string, now: number,requiredScopes:readonly string[]=MEETING_SCOPES): Promise<PeerCheck> {
+  const cr = await museCredential(c, museId, now,requiredScopes);
   const why = credentialProblem(c.trust, cr, now);
   return why ? {ok: false, reason: 'counterparty_' + why} : {ok: true, current: at => !credentialProblem(c.trust, cr, at)};
 }

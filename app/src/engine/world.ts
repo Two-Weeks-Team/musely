@@ -1,3 +1,5 @@
+import {participantName,participantLikes} from './participants.ts';
+import type {ActorProfile} from '../identity/participant.ts';
 // Scenario engine and spotlight rotation (direction v2, 8.1–8.4, 8.6, 8.8).
 // tick(state, input) is pure: the same state, day seed and inputs always give the same next state and
 // events. Model outputs, approvals and asynchronous answers are not reproducible from the seed, so they
@@ -11,8 +13,8 @@ import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-4: durable first introductions/signals; neighborhood roaming and original actor-origin semantics remain. */
-export const ENGINE_VERSION = 'engine-4';
+/** engine-5: dynamic personal admission and recorded public profiles; exact engine 2/3/4 checkpoints remain historical. */
+export const ENGINE_VERSION = 'engine-5';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
@@ -23,6 +25,8 @@ export type Introduction = {id: string; at: number; place: string};
 
 export type MuseState = {
   id: string;
+  /** Actual public identity of an admitted personal actor, independent of the appearance asset. */
+  profile?: ActorProfile;
   place: string;
   travel: {to: string; departAt: number; arriveAt: number; speed: Speed; chosen?: boolean} | null;
   beat: {id: string; clip: string; startedAt: number; endsAt: number; line: string | null} | null;
@@ -164,7 +168,7 @@ export function spotlightInput(s: WorldState, museId: string, freedom: Freedom, 
   const m = s.muses.find(x => x.id === museId)!, here = placeById(m.place);
   const area = s.owner?.muse === museId ? ownerArea(s.owner) : null;
   const near = PLACES.filter(p => p.id !== here.id && (area ? areaContains(area, p) : p.zone !== 'bay')).map(p => ({p, d: distanceM(here, p)})).sort((a, b) => a.d - b.d);
-  const liked = new Set(harnessById(museId).persona.likes);
+  const liked = new Set(participantLikes(s,museId));
   const pick = [...near.filter(x => liked.has(x.p.kind)).slice(0, 4), ...near.slice(0, 8)].filter((x, i, a) => a.findIndex(y => y.p.id === x.p.id) === i).slice(0, 8);
   return {
     muse: museId, freedom, localTime: localClock(now).hhmm, place: safeName(here.name),
@@ -193,7 +197,7 @@ function eligibleBeats(m: MuseState, place: Place, hour: number) {
 function beatWeight(b: Beat, museId: string) { return (b.weight ?? 1) * (b.roles?.includes(museId) ? 3 : 1); }
 
 function chooseDestination(s: WorldState, m: MuseState, rand: () => number, hour: number): Place | null {
-  const here = placeById(m.place), liked = new Set<string>(harnessById(m.id).persona.likes);
+  const here = placeById(m.place), liked = new Set<string>(participantLikes(s,m.id));
   const area = s.owner?.muse === m.id ? ownerArea(s.owner) : null;
   const options = PLACES.filter(p => p.id !== here.id && (area ? areaContains(area, p) : p.zone !== 'bay') && eligibleBeats(m, p, hour).length > 0);
   return weightedPick(rand, options, p => (liked.has(p.kind) ? 4 : 1) * (p.zone === 'commons' ? 2.5 : 1) / (1 + distanceM(here, p) / 300));
@@ -338,8 +342,8 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       // The other Muse answers (8.3). A connected Muse answers from its owner's runtime, so nothing is said for it here.
       if (input.replies && !isRuntimeControlled(s, other.id, now)) replyTo(other, initiator, placeId, meeting, input.replies.find(r => r.encounterId === meeting && r.muse === other.id && r.other === initiator.id), now, emit);
       if (initiator.intent?.target === other.id) initiator.intent = null;
-      remember(a, `Met ${harnessById(b.id).name} at ${placeById(placeId).name}`);
-      remember(b, `Met ${harnessById(a.id).name} at ${placeById(placeId).name}`);
+      remember(a, `Met ${participantName(s,b.id)} at ${placeById(placeId).name}`);
+      remember(b, `Met ${participantName(s,a.id)} at ${placeById(placeId).name}`);
     }
     const place = placeById(placeId);
     if (place.kind === 'campfire' && group.length >= 3 && clock.hour >= 17) emit({at: now, source: 'rule', kind: 'gathering', muse: group[0].id, place: placeId, data: {count: group.length, muses: group.map(m => m.id)}, tags: ['campfire_gathering_3plus']});
@@ -387,7 +391,7 @@ function remember(m: MuseState, line: string) { m.memory = [line, ...m.memory.fi
  * A rule answer never carries model evidence.
  */
 function replyTo(m: MuseState, to: MuseState, placeId: string, meeting: string, r: EncounterReply | undefined, now: number, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void) {
-  const toName = harnessById(to.id).name;
+  const toName = to.profile?.displayName ?? harnessById(to.id).name;
   if (r && r.source !== 'rule' && r.output) {
     const o = r.output;
     emit({at: now, source: r.source, kind: 'encounter_reply', muse: m.id, other: to.id, place: placeId, line: o.line || null, data: {encounterId: meeting, intent: o.intent, item: o.item || null, public_reason: o.public_reason, injection_suspected: o.injection_suspected, evidence: r.evidence ?? null}, tags: []});
@@ -434,7 +438,7 @@ function findPlaceByName(name: string): Place | null {
 }
 function findMuse(s: WorldState, ref: string): MuseState | null {
   const r = ref.trim().toLowerCase();
-  return s.muses.find(m => m.id === r || harnessById(m.id).name.toLowerCase() === r) ?? null;
+  return s.muses.find(m => m.id === r || participantName(s,m.id).toLowerCase() === r) ?? null;
 }
 
 /** Validates a live/replayed spotlight decision against the world and the Muse's scope, then applies it. */
