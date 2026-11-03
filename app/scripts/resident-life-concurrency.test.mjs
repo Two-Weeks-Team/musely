@@ -50,7 +50,8 @@ test('actual committed routine and idle-hold run replays every stored checkpoint
  const captured=record(c.runtime),before=structuredClone(captured),life=c.store.load(c.runtime.worldId),world=c.runtime.state();
  assert.ok(captured.inputs.some(i=>i.input?.residentLifePolicy?.idle?.includes('01-sunny')));assert.ok(captured.events.some(e=>e.kind==='depart'&&e.source==='rule'&&e.muse==='01-sunny'));
  assert.ok(!JSON.stringify(captured).includes('SYNTHETIC-LIFE-NOT-IN-PUBLIC-LOG'));
- for(const speed of [1,10,60]){const player=loadRun(captured);player.setSpeed(speed);player.seek(Number.MAX_SAFE_INTEGER);assert.deepEqual(player.getFrame().publicState,publicState(world));assert.equal(player.getFrame().snapshotHash,captured.inputs.at(-1).afterHash);
+ for(const speed of [1,10,60]){const player=loadRun(captured);player.setSpeed(speed);player.play();player.advance((captured.inputs.at(-1).at-captured.startedAt)/speed+1000);player.seek(Number.MAX_SAFE_INTEGER);assert.deepEqual(player.getFrame().publicState,publicState(world));assert.equal(player.getFrame().snapshotHash,captured.inputs.at(-1).afterHash);
+ for(const [at,input] of new Map(captured.inputs.map(i=>[i.at,i]))){player.seek((at-captured.startedAt)/1000);assert.deepEqual(player.getFrame().publicState,JSON.parse(input.afterSnapshot.body));assert.equal(player.getFrame().snapshotHash,input.afterHash);}
  player.seek(0);assert.deepEqual(player.getFrame().publicState,JSON.parse(captured.initialSnapshot.body));}
  assert.deepEqual(captured,before);assert.deepEqual(c.store.load(c.runtime.worldId),life);assert.deepEqual(c.runtime.state(),world);assert.equal(calls,0);
 });
