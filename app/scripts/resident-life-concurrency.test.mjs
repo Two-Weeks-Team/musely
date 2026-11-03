@@ -6,6 +6,7 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {WorldRuntime} from '../worker/core/world-runtime.ts';
+import {makeHooks} from '../src/engine/rules.ts';
 import {Ledger} from '../worker/core/ledger.ts';
 import {PersonalOwners,createOwnershipAdapter} from '../worker/core/personal-owners.ts';
 import {ResidentLifeStore} from '../worker/core/resident-life-adapter.ts';
@@ -35,12 +36,11 @@ test('independent life revision change during await rejects stale movement but p
  let c;c=boot(t,':memory:',{beforeCommit:()=>{const row=c.store.load(c.runtime.worldId);row.state.residents[0].goal='newer local edit';c.store.save(c.runtime.worldId,row.revision,row.state);}});selectSunny(c);await c.runtime.heartbeat(NOW);
  assert.ok(!c.runtime.events().some(e=>e.kind==='depart'&&e.muse==='01-sunny'&&e.source==='rule'));assert.equal(c.store.load(c.runtime.worldId).state.residents[0].goal,'newer local edit');
 });
-test('unsupported dynamic personal world entry fails closed with complete heartbeat rollback',async t=>{
- const c=boot(t),principal=c.owners.ensurePrincipal({provider:'fixture',subject:'synthetic-subject'},NOW),actor=c.owners.registerDraft(principal.id,{operationId:'fixture-op',displayName:'Synthetic personal actor',appearanceId:'01-sunny',agentId:'fixture-agent',rootRef:'root_ref:fixture'},NOW);
+test('synthetic dynamic personal actor participates in factual encounters without resident control',async t=>{
+ const c=boot(t,':memory:',{hooks:makeHooks()}),principal=c.owners.ensurePrincipal({provider:'fixture',subject:'synthetic-subject'},NOW),actor=c.owners.registerDraft(principal.id,{operationId:'fixture-op',displayName:'Synthetic personal actor',appearanceId:'01-sunny',agentId:'fixture-agent',rootRef:'root_ref:fixture'},NOW);
  c.runtime.commitExternal(NOW,'fixture-personal-entry',s=>{const clone=structuredClone(s.muses[1]);clone.id=actor.actorId;clone.controlMode='personal';clone.travel=null;clone.beat=null;clone.intent=null;s.muses.push(clone);s.spotlight.cursor=s.muses.length-1;s.inbox.connected[actor.actorId]=NOW;});
  const worldBefore=c.runtime.state(),lifeBefore=c.store.load(c.runtime.worldId),eventsBefore=c.runtime.events(0,20_000);
- await assert.rejects(c.runtime.heartbeat(NOW+86_400_000),/Unknown Muse harness/);
- assert.deepEqual(c.runtime.state(),worldBefore);assert.deepEqual(c.store.load(c.runtime.worldId),lifeBefore);assert.deepEqual(c.runtime.events(0,20_000),eventsBefore);
+ assert.equal((await c.runtime.heartbeat(NOW+86_400_000)).status,'committed');
  const before=worldBefore.muses.at(-1),after=c.runtime.state().muses.find(m=>m.id===actor.actorId);
  assert.equal(c.ownership.resolve(actor.actorId).kind,'personal');assert.equal(after.place,before.place);assert.equal(after.travel,null);assert.equal(after.beat,null);assert.ok(!c.store.load(c.runtime.worldId).state.residents.some(r=>r.id===actor.actorId));
  assert.ok(!c.runtime.events(0,20_000).some(e=>e.muse===actor.actorId&&['depart','beat'].includes(e.kind)));
