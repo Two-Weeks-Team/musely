@@ -16,6 +16,8 @@ export type OwnerTask = {task_id: string; kind: string; muse: string; other: str
 type Notification = {id: string; kind: 'meetup_candidate' | 'trade_completed' | 'blocked'; at: number; line: string; muse: string; other: string | null};
 type InboxAnswer = {owner: {label: string; demo: boolean}; demo_limits: string | null; approvals: OwnerTask[]; recent: OwnerTask[]; notifications: Notification[]; approval_window_min: number};
 
+export type OwnerInboxSession = {principal: string; ownerId: string; expiresAt: number};
+
 // ---------- private conditions: this device only ----------
 export type Window = {from: number; to: number};
 export type PrivateConditions = {busy: Window[]; avoid: string[]};
@@ -100,25 +102,63 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fe
   const box = el('div', 'id-card owner-inbox');
   const result = el('p', 'muted'); result.setAttribute('role', 'status');
   const store = (() => { try { return window.localStorage; } catch { return null; } })();
-  let cond = loadConditions(store), request = 0;
+  let cond = loadConditions(store), request = 0, sessionGeneration = 0, disposed = false;
+  let session: OwnerInboxSession | null | undefined; // undefined: one preflight; null: no automatic retries.
+  let pending: Promise<void> | null = null;
   let view: {owner: string; waiting: HTMLElement; approvals: HTMLElement; recent: HTMLElement; notifications: HTMLElement; status: HTMLElement} | null = null;
   const cards = new Map<string, {key: string; node: HTMLElement & {updateOther(side: Side): void;updateNames():void}}>();
-  const refreshButton = () => { const b = el('button', 'secondary', 'Refresh owner inbox'); b.type = 'button'; b.onclick = () => void paint(); return b; };
+  const refreshButton = () => { const b = el('button', 'secondary', 'Refresh owner inbox'); b.type = 'button'; b.onclick = () => void recheckSession(); return b; };
   // Keep nodes that already occupy the right slot connected: removing and re-appending an editor blurs it in browsers.
   const reconcile = (parent: HTMLElement, nodes: HTMLElement[]) => {
     nodes.forEach((node, i) => { if (parent.children[i] !== node) parent.insertBefore(node, parent.children[i] ?? null); });
     while (parent.children.length > nodes.length) parent.children[parent.children.length - 1].remove();
   };
 
-  async function paint(force = false) {
-    if (!active()) return;
-    const mine = ++request, r = await loadOwnerInbox(f);
-    if (mine !== request || !active()) return;
-    const head = el('span', 'eyebrow', 'OWNER INBOX · YOUR APPROVALS');
-    if (r.status === 401) {
-      view = null; cards.clear();
-      box.replaceChildren(head, el('h4', '', 'Owner inbox'), el('p', 'muted', 'Start the owner session (owner control above) to see the meetups waiting for your approval.'), refreshButton(), result); return;
+  const sessionValue = (value: unknown): OwnerInboxSession | null => {
+    if (!value || typeof value !== 'object') return null;
+    const v = value as OwnerInboxSession;
+    return typeof v.principal === 'string' && !!v.principal && typeof v.ownerId === 'string' && !!v.ownerId && Number.isSafeInteger(v.expiresAt) && v.expiresAt > Date.now() ? {principal:v.principal,ownerId:v.ownerId,expiresAt:v.expiresAt} : null;
+  };
+  function signedOut(message = 'Start the owner session (owner control above) to see the meetups waiting for your approval.') {
+    view = null; cards.clear(); result.textContent = '';
+    box.replaceChildren(el('span', 'eyebrow', 'OWNER INBOX · YOUR APPROVALS'), el('h4', '', 'Owner inbox'), el('p', 'muted', message), refreshButton(), result);
+  }
+  function setOwnerSession(value: unknown) {
+    if (disposed) return;
+    const next = sessionValue(value);
+    if (session !== undefined && JSON.stringify(session) === JSON.stringify(next)) return;
+    sessionGeneration++; request++; pending = null; session = next;
+    signedOut();
+    if (next) void paint();
+  }
+  function recheckSession() {
+    if (disposed || !active()) return Promise.resolve();
+    sessionGeneration++; request++; pending = null; session = undefined; signedOut('Checking the owner session…');
+    return paint();
+  }
+  function paint(force = false): Promise<void> {
+    if (disposed) return Promise.resolve();
+    if (!active()) { request++; pending = null; return Promise.resolve(); }
+    if (session === null) return Promise.resolve();
+    if (session && session.expiresAt <= Date.now()) { setOwnerSession(null); return Promise.resolve(); }
+    if (pending) return pending;
+    const task = paintOnce(force); pending = task;
+    void task.finally(() => { if (pending === task) pending = null; });
+    return task;
+  }
+  async function paintOnce(force: boolean) {
+    const mine = ++request, generation = sessionGeneration;
+    const current = () => !disposed && mine === request && generation === sessionGeneration && active();
+    if (session === undefined) {
+      const check = await call(f, 'GET', '/api/owner/session');
+      if (!current()) return;
+      session = check.ok ? sessionValue(check.data?.owner) : null;
+      if (!session) { signedOut(check.ok || check.status === 401 ? undefined : 'The owner session could not be confirmed. Check owner control above or refresh explicitly.'); return; }
     }
+    const r = await loadOwnerInbox(f);
+    if (!current()) return;
+    if (!session || session.expiresAt <= Date.now() || r.status === 401) { setOwnerSession(null); return; }
+    const head = el('span', 'eyebrow', 'OWNER INBOX · YOUR APPROVALS');
     if (!r.ok || !r.data) {
       const message = `It could not be read (${decisionText(r)}). This is not the same as an empty inbox.`;
       if (view) { view.status.textContent = `Owner inbox is not updating. ${message} Showing the last successful answer.`; return; }
@@ -204,14 +244,16 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fe
     const approve = el('button', 'secondary', 'Approve the chosen candidate'); approve.type = 'button';
     const decline = el('button', 'secondary', 'Decline'); decline.type = 'button';
     const send = async (decision: 'approve' | 'reject') => {
-      if (!active() || approve.disabled || decline.disabled) return;
+      if (disposed || !active() || !session || session.expiresAt <= Date.now() || approve.disabled || decline.disabled) return;
+      const generation = sessionGeneration;
       approve.disabled = decline.disabled = true; result.textContent = decision === 'approve' ? 'Approving…' : 'Declining…';
       try {
         const res = await submitDecision(f, t, decision, decision === 'approve' ? radios.find(r => r.checked)?.value ?? null : null);
-        if (!active()) return;
+        if (disposed || !active() || generation !== sessionGeneration) return;
+        if (res.status === 401 || !session || session.expiresAt <= Date.now()) { setOwnerSession(null); return; }
         result.textContent = res.ok ? (res.data.confirmed ? `Confirmed: both sides approved. ${name(t.muse)} and ${name(t.other)} each got a Meetup Ember.` : decision === 'approve' ? 'Approved. Waiting for the other side.' : 'Declined. Nothing is confirmed and no reason was sent.') : decisionText(res);
-        await paint();
-        if (active()) onChange();
+        request++; pending = null; await paint();
+        if (!disposed && active() && generation === sessionGeneration) onChange();
       } finally {
         // A refresh reuses an unchanged undecided card, including its disabled buttons. Release that in-flight state;
         // a settled decision or a lost session removed this card, so it must not bring the old controls back.
@@ -227,5 +269,5 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fe
 
   box.append(el('span', 'eyebrow', 'OWNER INBOX · YOUR APPROVALS'), el('p', 'muted', 'Checking the owner inbox…'));
   void paint();
-  return Object.assign(box, {refresh: () => paint()});
+  return Object.assign(box, {refresh: () => paint(), setOwnerSession, dispose() { if (disposed) return; disposed = true; sessionGeneration++; request++; pending = null; session = null; view = null; cards.clear(); result.textContent = ''; box.replaceChildren(); }});
 }

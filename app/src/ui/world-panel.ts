@@ -431,7 +431,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     tabs.querySelectorAll('button').forEach(b => { const on = (b as HTMLElement).dataset.tab === tab; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
     if (tab !== 'replay') leaveReplay();
     else if (replayView && body.querySelector('.replay-view')) return; // already on screen: keep playing
-    ownerInboxView = null;
+    ownerInboxView?.dispose(); ownerInboxView = null;
     body.replaceChildren();
     if (tab === 'feed') {
       const evH = health.get('events'), s = resState(evH, events.length > 0);
@@ -528,8 +528,9 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
       catch (err) { result.textContent = 'Could not run: ' + (err as Error).message; }
       b.disabled = false; }; return b; };
     actions.append(run('Try an impostor', '/api/demo/impostor'), run('Try an instruction injection', '/api/demo/injection'), run('Run P0 step (judge link or owner)', '/api/p0/run', p0Text));
-    ownerInboxView = ownerInboxCard(() => void refresh(), (u, i) => fetch(u, i), () => !stale() && !isolation.replay, shortName);
-    body.append(card, ownerControlCard(() => void refresh(),shortName), ownerInboxView, ritualCard(() => void refresh()), el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it. P0 is two runs: the first commits a signed trade, then the owner revokes (owner control above), then the second run re-sends the same job and is refused. P0 itself never revokes or delegates again.'), actions, result);
+    const inbox = ownerInboxCard(() => void refresh(), (u, i) => fetch(u, i), () => !stale() && !isolation.replay && panel.matches(':popover-open'), shortName);
+    ownerInboxView = inbox;
+    body.append(card, ownerControlCard(() => void refresh(),shortName, owner => inbox.setOwnerSession(owner)), inbox, ritualCard(() => void refresh()), el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it. P0 is two runs: the first commits a signed trade, then the owner revokes (owner control above), then the second run re-sends the same job and is refused. P0 itself never revokes or delegates again.'), actions, result);
   }
 
   // The Location tab is drawn again after a move and on every poll while it is open: an unsent preset/verify choice and the last
