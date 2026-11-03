@@ -19,7 +19,8 @@ async (page) => {
   await p.locator('#world-open').click();
   await p.locator('#world-panel .tab[data-tab="identity"]').click();
   await p.locator('.ritual button', {hasText: 'Try the ritual'}).click();
-  await p.waitForSelector('.ritual-prompt');
+  await p.getByRole('button', {name: '준비됐어요 · Ready', exact: true}).click();
+  await p.getByRole('button', {name: '동작 준비됐어요 · Ready for this move', exact: true}).click();
   await p.waitForTimeout(1200);
   await p.locator('#world-panel .tab[data-tab="feed"]').click();   // dismiss mid-countdown
   await p.waitForTimeout(5000);
