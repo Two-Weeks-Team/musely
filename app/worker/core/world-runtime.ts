@@ -25,6 +25,8 @@ import {syncTasks} from './tasks.ts';
 import {withMessageHooks} from './messages.ts';
 import type {Ledger, Sql} from './ledger.ts';
 import {RunLog, evidenceIds, commandFields, outputFields, reasonCode, type InputKind, type CommitRecord} from './run-log.ts';
+import {ResidentLifeStore, residentProposalForWorld, rememberCommittedResidentEvents, knownResident, type ResidentOwnershipKind} from './resident-life-adapter.ts';
+import {noteServed, restoreLife, saveLife, type LifeState} from '../../src/engine/resident-life.ts';
 import {recountAutonomy, values} from './autonomy-oracle.ts';
 
 /** The world's SQL handle plus the Durable Object storage transaction (ctx.storage.transactionSync). */
@@ -46,6 +48,9 @@ export type SpotlightOrigin = 'visitor' | 'judge' | 'connected';
 export type SpotlightRequestResult = {ok: true; muse: string; position: number; already: boolean; eventIds: string[]} | {ok: false; reason: 'unknown_muse' | 'paused' | 'queue_full' | 'hourly_limit'};
 
 export type RuntimeOptions = {
+  /** Default absent/off. Trusted server-only policy; no browser-controlled flags. */
+  residentLife?: {enabled:boolean;initialState:LifeState;allowedPlaceIds:readonly string[];
+    ownershipKind:(id:string)=>ResidentOwnershipKind;promiseLeadMs?:number;promiseGraceMs?:number};
   worldId: string;
   model: (Omit<ModelConfig, 'key'> & {key: string | undefined}) | null;
   ledger: Ledger;
@@ -81,6 +86,7 @@ const synchronous = <T>(r: T): T => {
 export class WorldRuntime {
   private sql: TxSql;
   private opts: RuntimeOptions;
+  private lifeStore: ResidentLifeStore | null = null;
   /** Commands between their lookup and their commit, per actor:commandId (one DO instance runs them all). */
   readonly pending = new Set<string>();
   private slotsInUse = 0;
@@ -114,6 +120,14 @@ export class WorldRuntime {
     this.sql.exec(COMMANDS_TABLE);
     this.sql.exec('CREATE TABLE IF NOT EXISTS refusals (key TEXT PRIMARY KEY, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, count INTEGER NOT NULL)');
     this.runLog.init();
+    if(this.opts.residentLife?.enabled===true){
+      this.lifeStore=new ResidentLifeStore(this.sql);this.lifeStore.init();
+      if(!this.lifeStore.load(this.worldId)){
+        const initial=restoreLife(saveLife(this.opts.residentLife.initialState));
+        initial.residents=initial.residents.filter(r=>knownResident(r.id,this.opts.residentLife!.ownershipKind));
+        this.lifeStore.save(this.worldId,null,initial);
+      }
+    }
     const existed = this.sql.exec('SELECT id FROM world WHERE id = 1').toArray().length > 0;
     if (!existed) {
       const s = createWorld(this.opts.worldId, now);
@@ -145,6 +159,12 @@ export class WorldRuntime {
     if (p) this.runLog.append(p, inserted);
   }
 
+  private residentIdleIds(life:LifeState|undefined,world:WorldState,now:number):string[]{
+    const policy=this.opts.residentLife;
+    if(!life||policy?.enabled!==true)return [];
+    return life.residents.filter(r=>knownResident(r.id,policy.ownershipKind)&&world.muses.some(m=>m.id===r.id)&&!world.paused?.[r.id]&&!isRuntimeControlled(world,r.id,now)&&(!this.opts.delegationValid||this.opts.delegationValid(r.id))).map(r=>r.id);
+  }
+
   /** One heartbeat. Safe to call again after a crash or an alarm retry. */
   async heartbeat(now: number): Promise<HeartbeatResult> {
     const before = this.state();
@@ -157,7 +177,11 @@ export class WorldRuntime {
       const spot = spotlightFor(before, now), turn = {muse: spot.muse, priority: spot.priority};
       const [{decision, info}, canMeet] = await Promise.all([this.liveSpotlight(before, spot.muse, spot.freedom, now), this.meetingGate(before, now)]);
       // The spotlight slot is free again: this tick's meetings, and the other Muse's answer to each.
-      const answers = await this.encounterReplies(before, now, decision, canMeet, turn);
+      const lifeBefore=this.lifeStore?.load(this.worldId) ?? null;
+      const residentIdle=this.residentIdleIds(lifeBefore?.state,before,now);
+      const proposedLife=!decision && (!this.opts.delegationValid||this.opts.delegationValid(spot.muse)) && lifeBefore && this.opts.residentLife ? residentProposalForWorld(lifeBefore.state,before,now,{...this.opts.residentLife,promiseGraceMs:this.opts.residentLife.promiseGraceMs ?? 60*TICK_MS,residentTurnAllowed:true}) : null;
+      const residentMove=proposedLife ? {muse:proposedLife.residentId,place:proposedLife.placeId,expectedVersion:proposedLife.expectedWorldVersion} : undefined;
+      const answers = await this.encounterReplies(before, now, decision, canMeet, turn, residentMove,residentIdle);
       this.opts.beforeCommit?.();
       // Commit point: everything below is synchronous and one storage transaction.
       return this.sql.transactionSync(() => {
@@ -178,7 +202,18 @@ export class WorldRuntime {
         discard(r, why);
         return {muse: r.muse, other: r.other, place: r.place, encounterId: r.encounterId, source: 'rule' as const, output: null, reason: 'discarded: ' + why};
       });
-      const {state, events} = tick(current, {now, decision: usable, replies, spot: turn}, canMeet ? {...this.opts.hooks, canMeet: this.dedupMeetings(canMeet)} : this.opts.hooks);
+      const freshLife=this.lifeStore?.load(this.worldId) ?? null;
+      const lifeCandidate=!decision && (!this.opts.delegationValid||this.opts.delegationValid(turn.muse)) && proposedLife && lifeBefore && freshLife?.revision===lifeBefore.revision && current.version===before.version && this.opts.residentLife ? residentProposalForWorld(freshLife.state,current,now,{...this.opts.residentLife,promiseGraceMs:this.opts.residentLife.promiseGraceMs ?? 60*TICK_MS,residentTurnAllowed:true}) : null;
+      const acceptedLife=lifeCandidate && lifeCandidate.residentId===proposedLife?.residentId && lifeCandidate.placeId===proposedLife?.placeId ? lifeCandidate : null;
+      const appliedMove=acceptedLife ? {muse:acceptedLife.residentId,place:acceptedLife.placeId,expectedVersion:acceptedLife.expectedWorldVersion} : undefined;
+      const committedIdle=this.residentIdleIds(freshLife?.state,current,now);
+      const {state, events} = tick(current, {now, decision: usable, replies, spot: turn, residentMove:appliedMove,residentIdle:committedIdle}, canMeet ? {...this.opts.hooks, canMeet: this.dedupMeetings(canMeet)} : this.opts.hooks);
+      if(this.lifeStore && freshLife && this.opts.residentLife){
+        const trusted=events.filter(e=>e.muse && knownResident(e.muse!,this.opts.residentLife!.ownershipKind));
+        let lifeNext=rememberCommittedResidentEvents(freshLife.state,state,trusted,now);
+        if(acceptedLife)lifeNext=noteServed(lifeNext,acceptedLife.residentId,now);
+        this.lifeStore.saveInTransaction(this.worldId,freshLife.revision,lifeNext);
+      }
       // Task records (C06, I-07): revision and contentHash follow any content change the tick made.
       syncTasks(state.inbox);
       // A model answer to a meeting that did not happen in the committed tick is not used.
@@ -193,6 +228,8 @@ export class WorldRuntime {
       // The tick's recorded inputs (8.1: not reproducible from the seed): the spotlight answer, used or discarded, and
       // every meeting answer with its source; ids of the model calls, never the prompt.
       const tickInput = {
+        ...(this.opts.residentLife?.enabled===true ? {residentLifePolicy:{version:1,idle:committedIdle}} : {}),
+        ...(acceptedLife ? {residentLife:{policyVersion:1,source:'rule',proposal:acceptedLife,revisionBefore:freshLife!.revision,revisionAfter:freshLife!.revision+1}} : {}),
         seed: state.seed, gate: canMeet ? 'checked' : 'off',
         spotlight: {muse: turn.muse, priority: turn.priority, source: info.source, reason: reasonCode(info.reason), freedom: spot.freedom, used: !!usable, discarded: decision && lost ? reasonCode(lost) : null,
           decision: decision ? {source: decision.source, freedom: decision.freedom, output: outputFields(decision.output), evidence: evidenceIds(decision.evidence)} : null},
@@ -321,9 +358,9 @@ export class WorldRuntime {
    * Muse's answer to each: live when a slot and the budget allow, else rule with the reason. A connected Muse is not
    * answered for. Nothing is written here; the dry run's meeting gate is the undeduplicated one.
    */
-  private async encounterReplies(s: WorldState, now: number, decision: Decision | null, canMeet: Hooks['canMeet'], turn: {muse: string; priority: boolean}): Promise<EncounterReply[]> {
+  private async encounterReplies(s: WorldState, now: number, decision: Decision | null, canMeet: Hooks['canMeet'], turn: {muse: string; priority: boolean}, residentMove?:{muse:string;place:string;expectedVersion:number},residentIdle?:readonly string[]): Promise<EncounterReply[]> {
     let dry: WorldEvent[];
-    try { dry = tick(s, {now, decision, replies: [], spot: turn}, canMeet ? {...this.opts.hooks, canMeet} : this.opts.hooks).events; } catch (e) {
+    try { dry = tick(s, {now, decision, replies: [], spot: turn,residentMove,residentIdle}, canMeet ? {...this.opts.hooks, canMeet} : this.opts.hooks).events; } catch (e) {
       console.error('encounter dry run failed', e);
       return [];
     }
