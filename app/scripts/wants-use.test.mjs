@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createWorld,tick} from '../src/engine/world.ts';
 import {grantItem,checkTrade,commitTrade} from '../src/engine/items.ts';
-import {planUse,publicNeed,verifyUse,itemUtility} from '../src/engine/wants-use.ts';
+import {goalTradeUtility,planUse,publicNeed,verifyUse,itemUtility} from '../src/engine/wants-use.ts';
 const NOW=Date.parse('2026-11-03T18:00:00Z');
 function fixture(){
  const s=createWorld('wants-use',NOW), a=s.muses.find(x=>x.id==='02-moss'), b=s.muses.find(x=>x.id==='05-bloom');
@@ -80,4 +80,28 @@ test('nonfinite goal times cannot bypass verification or planning',()=>{
  const f=finish();for(const key of ['createdAt','expiresAt']) for(const value of [NaN,Infinity,-Infinity]){
  const goal={...f.goal,[key]:value};assert.equal(verifyUse(goal,f.before,f.state,f.events,f.done).fulfilled,false);assert.equal(planUse(f.before,goal,NOW).state,'blocked');}
  assert.equal(verifyUse(f.goal,f.before,f.state,f.events,NaN).fulfilled,false);
+});
+
+test('goal utility preserves the required copy but allows a surplus prerequisite to obtain another',()=>{
+ const {s,a,b,goal}=fixture();b.wants.items=['clover_seed'];
+ assert.equal(goalTradeUtility(s,goal,'clover_seed','garden_pass',NOW).reason,'would_lose_goal_prerequisite');
+ a.inventory.push('clover_seed');assert.equal(goalTradeUtility(s,goal,'clover_seed','garden_pass',NOW).benefit,'goal_prerequisite');
+ assert.ok(planUse(s,goal,NOW).candidates.some(c=>c.give==='clover_seed'&&c.want==='garden_pass'));
+});
+test('declared desires cannot authorize losing goal prerequisites or gaining redundant items',()=>{
+ const {s,a,goal}=fixture();a.wants.items=['tea','coffee'];
+ assert.equal(goalTradeUtility(s,goal,'clover_seed','tea',NOW).ok,false);
+ assert.equal(goalTradeUtility(s,goal,'coffee','tea',NOW).benefit,'declared_want');
+ a.inventory.push('tea');assert.equal(goalTradeUtility(s,goal,'coffee','tea',NOW).reason,'no_verified_goal_benefit');
+});
+test('utility rejects inactive, malformed or nonfinite goals and absent offers',()=>{
+ const {s,goal}=fixture();for(const bad of [{...goal,status:'fulfilled'},{...goal,createdAt:NaN},{...goal,expiresAt:NaN}])assert.equal(goalTradeUtility(s,bad,'coffee','garden_pass',NOW).ok,false);
+ assert.equal(goalTradeUtility(s,goal,'tea','garden_pass',NOW).ok,false);
+ assert.equal(goalTradeUtility(s,goal,'coffee','coffee',NOW).ok,false);
+});
+test('an expired plus a valid pass is one usable copy, not tradable surplus',()=>{
+ const {s,a,goal}=fixture();a.inventory=a.inventory.filter(i=>i!=='clover_seed');
+ grantItem(s.items,a,'garden_pass',NOW,a.place,'craft');grantItem(s.items,a,'garden_pass',NOW,a.place,'craft');s.items.expiry[a.id][0].expiresAt=NOW;
+ assert.equal(goalTradeUtility(s,goal,'garden_pass','clover_seed',NOW).reason,'would_lose_goal_prerequisite');
+ grantItem(s.items,a,'garden_pass',NOW,a.place,'craft');assert.equal(goalTradeUtility(s,goal,'garden_pass','clover_seed',NOW).ok,true);
 });

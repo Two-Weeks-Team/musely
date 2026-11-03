@@ -182,7 +182,7 @@ export class WorldRuntime {
       const refreshed=this.state();
       if(refreshed.tick!==before.tick||refreshed.day!==before.day)return {status:'skipped_duplicate',tick:refreshed.tick,events:0};
       before=refreshed;now=Math.max(clock(),before.lastTickAt);
-      const wantsConsumedTurn=goalResult?.ok===true||goalResult?.reason==='turn_already_consumed'||negotiated?.ok===true||['turn_already_consumed','already_reserved','timeout','network','upstream','bad_output','rate_limited','output_rejected','invalid_trade_choice','stale_authority_or_state','stale_task','trade_precondition_changed'].includes(negotiated?.reason??'');
+      const wantsConsumedTurn=goalResult?.ok===true||goalResult?.reason==='turn_already_consumed'||negotiated?.ok===true||['turn_already_consumed','already_reserved','timeout','network','upstream','bad_output','rate_limited','output_rejected','invalid_trade_choice','goal_utility_not_improved','stale_authority_or_state','stale_task','trade_precondition_changed'].includes(negotiated?.reason??'');
       // The turn is fixed here and passed to the commit: queue requests made while the model answers wait for the next tick.
       const spot = spotlightFor(before, now), turn = {muse: spot.muse, priority: spot.priority};
       const [{decision, info}, canMeet] = await Promise.all([wantsConsumedTurn?Promise.resolve({decision:null,info:{source:'rule',reason:negotiated?.ok===true||negotiated?.reason==='turn_already_consumed'?'resident_trade_turn':'resident_trade_attempt'}}):this.liveSpotlight(before, spot.muse, spot.freedom, now), this.meetingGate(before, now)]);

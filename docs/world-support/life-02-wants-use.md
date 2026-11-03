@@ -83,3 +83,12 @@ Goal receipts are mandatory inside every runtime commit transaction, not an opti
 Twelve new offline tests include uninterrupted heartbeat sequences cafe→arrival→plant→verified receipt and public need→pending trade→mock-model acceptance→actual craft→receipt; they also cover OFF/personal denial, store mismatch, missing optional observer, and full observer failure rollback. Role/catalog selection is deterministic. Only negotiation model transport is mocked; no real-provider judgment quality, production traffic or paid calls were tested. Autonomous free-form questions, long-range exploration and recipient utility optimization remain separate behavior work; this is a concrete bounded recipe/trade/use loop.
 
 Design basis checked against Cloudflare's official SQLite Durable Object storage documentation: https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/ . Synchronous same-storage transactions cover state/events/receipts; SQL cursors are fully consumed before await, snapshots are copied before model work and authority/version is rechecked at commit. Node SQLite tests exercise rollback locally; Cloudflare-hosted rollout remains unverified.
+
+
+## Goal-relative trade utility (2026-11-03)
+
+Legal inventory transfers alone do not prove an autonomous choice helps its resident. `goalTradeUtility` now independently checks validated model accepts/counters and rechecks inside commit: retain existing required recipe copies and gain a missing prerequisite or a newly acquired, publicly declared wanted item. It permits exchanging surplus copies of a prerequisite, rather than banning that material entirely. This is a bounded policy, not proof of optimal economics or inferred private preferences. Rejection leaves the original task pending; model output cannot override it.
+
+The uninterrupted two-resident heartbeat regression now trades a spare seed for a spare pass, retains each actor's essential copy, and verifies BOTH residents actually craft Bloom with separate goal receipts. Additional tests reject a legal but harmful sole-ingredient trade, unrelated duplicate gains, invalid goal lifetimes and absent offers. No real model/provider call is made.
+
+Official basis: OWASP LLM06:2025 Excessive Agency recommends downstream complete mediation and validation rather than allowing LLM outputs to authorize actions. https://genai.owasp.org/llmrisk/llm062025-excessive-agency/ . The specific prerequisite/benefit rule is our explicit product policy and is tested against the actual catalog, not a claim that OWASP specifies game utility.

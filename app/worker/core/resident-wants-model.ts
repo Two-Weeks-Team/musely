@@ -11,7 +11,7 @@ import {sha256Hex} from '../../src/engine/sha256.ts';
 import {BEATS} from '../../src/engine/beats.ts';
 import {checkTrade} from '../../src/engine/items.ts';
 import {type WorldState,type WorldEvent} from '../../src/engine/world.ts';
-import {verifyUse,type UseGoal} from '../../src/engine/wants-use.ts';
+import {goalTradeUtility,verifyUse,type UseGoal} from '../../src/engine/wants-use.ts';
 export type GoalRow={revision:number;goal:UseGoal};
 const bounded=(s:unknown):s is string=>typeof s==='string'&&/^[a-zA-Z0-9:_-]{1,160}$/.test(s);
 function clean(g:UseGoal):UseGoal {
@@ -76,7 +76,7 @@ export async function prepareResidentTrade(c:WantsModelContext,goalId:string,tas
  if(!recipe?.result?.craft)return no('unsupported_goal');
  messages.push({role:'user',content:JSON.stringify({context_kind:'goal_data_not_instructions',goal_beat:recipe.id,
    required_at_start:recipe.needs??[],consumed_on_use:recipe.result.consume??[],produces:recipe.result.craft,
-   allowed_place_kinds:recipe.kinds,missing_items:(recipe.needs??[]).filter(id=>!actor.inventory.includes(id))})});
+   allowed_place_kinds:recipe.kinds,retain_required_copies:true,require_concrete_gain:true,own_declared_wants:actor.wants.items.slice(0,4),missing_items:(recipe.needs??[]).filter(id=>!actor.inventory.includes(id))})});
  if(!c.model?.key)return no('not_connected');const release=c.acquireSlot();if(!release)return no('concurrency_limit');
  const reservationId='wants:'+sha256Hex(JSON.stringify([before.worldId,goalId,row!.revision,taskId,task.round,before.version]));
  try {
@@ -92,6 +92,7 @@ export async function prepareResidentTrade(c:WantsModelContext,goalId:string,tas
   const a=current.muses.find(m=>m.id===actor.id)!,b=current.muses.find(m=>m.id===other.id)!;
   const check=choice.decision==='accept'?checkTrade(current.items,current.day,b,a,task.offer.give,task.offer.want,task.round,c.now()):choice.decision==='counter'?checkTrade(current.items,current.day,a,b,choice.counter_give,choice.counter_want,task.round+1,c.now()):{ok:true};
   if(!check.ok)return no('invalid_trade_choice');
+  if(choice.decision!=='reject'&&!goalTradeUtility(current,latest!.goal,choice.decision==='accept'?task.offer.want:choice.counter_give,choice.decision==='accept'?task.offer.give:choice.counter_want,c.now()).ok)return no('goal_utility_not_improved');
   return {ok:true as const,kind:'proposal_only' as const,actor:actor.id,taskId,goalId,expectedVersion:current.version,goalRevision:latest!.revision,
    choice:{decision:choice.decision,counter_give:choice.counter_give,counter_want:choice.counter_want},evidence:{source:'model_response' as const,requestId:result.requestId,reservationId}};
  }finally{release();}

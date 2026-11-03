@@ -3,6 +3,7 @@
  */
 import {prepareResidentTrade,type WantsModelContext} from './resident-wants-model.ts';
 import {completeTrade} from './mcp-tools.ts';
+import {goalTradeUtility} from '../../src/engine/wants-use.ts';
 import {checkTrade,historyFault,sweepExpired} from '../../src/engine/items.ts';
 import {isRuntimeControlled,TASK_TTL_MS} from '../../src/engine/inbox.ts';
 import {HARNESS_IDS} from '../../src/engine/harness.ts';
@@ -47,6 +48,7 @@ export async function runResidentWantsTurn(runtime:WorldRuntime,policy:ResidentW
    const choice=prepared.choice;
    const checked=choice.decision==='accept'?checkTrade(s.items,s.day,b,a,t.offer.give,t.offer.want,t.round,at):choice.decision==='counter'?checkTrade(s.items,s.day,a,b,choice.counter_give,choice.counter_want,t.round+1,at):{ok:true};
    if(!checked.ok)throw new StaleTrade('trade_precondition_changed');
+   if(choice.decision!=='reject'&&!goalTradeUtility(s,row.goal,choice.decision==='accept'?t.offer.want:choice.counter_give,choice.decision==='accept'?t.offer.give:choice.counter_want,at).ok)throw new StaleTrade('goal_utility_not_improved');
    const modelEmit:typeof emit=e=>emit({...e,source:'live',data:{...e.data,actorOrigin:'system',decisionSource:'resident_model',evidence:prepared.evidence}});
    if(choice.decision==='accept')completeTrade(s,t,id,modelEmit,emit,at,policy.ownerMuse,'live',policy.ownerOf);
    else if(choice.decision==='reject'){t.status='rejected';t.awaiting=null;t.updatedAt=at;t.history.push({by:id,action:'reject',at,via:'live'});modelEmit({at,source:'live',kind:'trade_rejected',muse:id,other:peer,place:a.place,line:null,data:{task_id:t.id,stage:'negotiate'},tags:['trade_rejected']});}

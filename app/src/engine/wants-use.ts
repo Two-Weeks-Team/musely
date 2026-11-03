@@ -39,7 +39,7 @@ export function planUse(s: WorldState, goal: UseGoal, now: number): UsePlan {
       if (peer.id===m.id || peer.travel || peer.beat || s.paused?.[peer.id] || distanceM(placeById(m.place),placeById(peer.place))>100) continue;
       const wants=publicNeed(s,peer.id);
       for (const want of p.missing) for (const give of new Set(m.inventory)) {
-        if (!wants?.items.includes(give) || beat.needs?.includes(give)) continue;
+        if (!wants?.items.includes(give) || !goalTradeUtility(s,goal,give,want,now).ok) continue;
         if (checkTrade(s.items,s.day,m,peer,give,want,0,now).ok) p.candidates.push({peer:peer.id,give,want});
       }
     }
@@ -93,3 +93,18 @@ export function verifyUse(goal: UseGoal, before: WorldState, after: WorldState, 
 
 /** Catalog truth: no-effect collectibles never become executable powers from peer prose. */
 export const itemUtility=(id:string)=>({item:id,rule:effectRule(id),implemented:effectRule(id)!==null});
+
+/** Bounded goal-relative utility, not a claim to optimal preferences. The server, not
+ * model prose, preserves existing prerequisites and requires a concrete acquired need. */
+export function goalTradeUtility(s:WorldState,goal:UseGoal,give:string,receive:string,now:number):{ok:true;benefit:'goal_prerequisite'|'declared_want'}|{ok:false;reason:string}{
+ const no=(reason:string)=>({ok:false as const,reason});
+ const m=s.muses.find(x=>x.id===goal.muse),beat=BEATS.find(x=>x.id===goal.beat);
+ if(!m||!beat?.result?.craft||goal.status!=='active'||![now,goal.createdAt,goal.expiresAt].every(Number.isFinite)||goal.createdAt>now||goal.expiresAt<=now||give===receive||!itemSpec(give)||!itemSpec(receive))return no('invalid_goal_trade');
+ const count=(item:string)=>Math.max(0,m.inventory.filter(i=>i===item).length-(s.items.expiry?.[m.id]??[]).filter(e=>e.item===item&&e.expiresAt<=now).length);
+ const required=new Map<string,number>();for(const items of [beat.needs??[],beat.result.consume??[]]){const counts=new Map<string,number>();for(const id of items)counts.set(id,(counts.get(id)??0)+1);for(const [id,n] of counts)required.set(id,Math.max(required.get(id)??0,n));}
+ if(count(give)<1)return no('offered_item_unavailable');
+ if(count(give)-1<Math.min(count(give),required.get(give)??0))return no('would_lose_goal_prerequisite');
+ if(count(receive)<(required.get(receive)??0))return {ok:true,benefit:'goal_prerequisite'};
+ if(m.wants.items.includes(receive)&&count(receive)===0)return {ok:true,benefit:'declared_want'};
+ return no('no_verified_goal_benefit');
+}
