@@ -1,7 +1,7 @@
 // New meeting -> public context -> the personal runtime's next decision. Local TLS fixtures only.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {httpsWorld, JOLLY, COPPER} from './test-support/https-world.mjs';
+import {httpsWorld, JOLLY, COPPER, domainState} from './test-support/https-world.mjs';
 const MOSS = '02-moss';
 const ok = result => {assert.equal(result.isError, false, JSON.stringify(result)); return result.structuredContent;};
 const intros = (t, id) => structuredClone(t.muse(id).introductions ?? {});
@@ -73,6 +73,30 @@ test('world and heartbeat surface new nearby contacts and the received meeting i
   assert.ok(inbox.opportunities.new_muses.some(m => m.id === MOSS));
   assert.ok(!inbox.opportunities.new_muses.some(m => m.id === JOLLY));
   assert.equal(greetings(t).length, 1, 'reading the encounter does not auto-reply');
+});
+
+test('world and heartbeat keep continuation available for known peers without choosing an exchange', async tc => {
+  const t = await httpsWorld(tc);
+  ok(await t.tool(JOLLY, 'say_hello', {to: COPPER}));
+  ok(await t.tool(JOLLY, 'heartbeat_check'));
+  const before = structuredClone(domainState(t)), eventCount = t.events().length;
+  const world = ok(await t.tool(JOLLY, 'get_world_state'));
+  const heartbeat = ok(await t.tool(JOLLY, 'heartbeat_check'));
+  const peer = world.neighbors.find(m => m.id === COPPER);
+  assert.ok(peer.in_trade_range);
+  assert.deepEqual(peer.public_wants.items, t.muse(COPPER).wants.items);
+  assert.ok(peer.holds.length > 0);
+  for (const response of [world, heartbeat]) {
+    assert.equal(response.continuation?.decision_owner, 'personal_muse');
+    assert.equal(response.continuation.server_acts_for_muse, false);
+    assert.equal(typeof response.continuation.prompt, 'string');
+    assert.ok(!response.opportunities.new_muses.some(m => m.id === COPPER));
+    assert.equal(response.opportunities.trade_context, undefined);
+  }
+  assert.deepEqual(world.continuation, heartbeat.continuation);
+  assert.equal(heartbeat.next_check_hint_s, 300);
+  assert.deepEqual(domainState(t), before);
+  assert.equal(t.events().length, eventCount);
 });
 
 test('introduction history survives a real WorldDO restart and a separately issued key', async tc => {
