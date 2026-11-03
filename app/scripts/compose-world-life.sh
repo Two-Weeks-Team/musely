@@ -3,6 +3,8 @@
 set -euo pipefail
 own=$(realpath "$1"); base=$(realpath "$2"); life=$(realpath "$3"); wants=$(realpath "$4"); mode=${5:-full}
 merge() { local p=$1 right=$2; git merge-file -p "$own/$p" "$base/$p" "$right/$p" > "$wants/$p.merge"; mv "$wants/$p.merge" "$wants/$p"; }
+# Preserve main151 personal onboarding in dependencies based on earlier main150.
+for p in src/main.ts src/style.css src/ui/onboarding.ts src/ui/personal-connection.ts src/ui/personal-entry.ts src/ui/recorded-scene.ts scripts/live-entry.browser.js scripts/personal-connection.test.mjs scripts/personal-entry-ui.test.mjs scripts/personal-onboarding.browser.mjs; do cp "$base/$p" "$wants/$p"; done
 cp "$own"/worker/core/world-life*.ts "$wants/worker/core/"
 cp "$own"/worker/core/{campfire-policy,connected}.ts "$wants/worker/core/"
 merge worker/core/mcp-tools.ts "$wants"

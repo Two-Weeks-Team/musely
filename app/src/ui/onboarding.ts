@@ -1,5 +1,7 @@
-// The ordinary door is an honest operator-assisted invitation, not a join receipt. No API, credential or
-// authority is created here. The former local harness/staged walkthrough is available only with entryPreview=1.
+// Ordinary watching is side-effect free. Personal setup writes require its explicit controls; only
+// current server entry can retire the door. Scripted walkthrough remains entryPreview-only.
+import {mountPersonalEntry,type PersonalEntryOptions} from './personal-entry.ts';
+import {mountPersonalConnection,type EntryProjection} from './personal-connection.ts';
 import {HARNESSES, SCOPES, SCOPE_LABELS, type Harness, type ScopeLevel} from '../engine/harness';
 
 export type EntryPath = 'watch' | 'trial' | 'connect';
@@ -42,7 +44,7 @@ export const firstSteps = (h: Harness): string[] => [
   `Looks for ${h.wants.items.map(i => i.replace(/_/g, ' ')).join(' or ')}: ${h.wants.goal.charAt(0).toLowerCase() + h.wants.goal.slice(1)}`,
 ];
 
-export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchParams}) {
+export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchParams; getWorldId?:()=>string|null; onPersonalEntry?:(entry:EntryProjection)=>void; personal?:PersonalEntryOptions & {clipboard?:{writeText:(value:string)=>Promise<void>}}}) {
   const preview = opts.initial?.get('entryPreview') === '1';
   const state: EntryState = {path: null, view: 'choose', open: false, viewing: null, trial: null, lastTrial: null, connect: 'unconnected', connectStep: 0, entries: 0, ownerClaim: 'none', liveTradeAllowed: false, liveWrites: 0};
   const header = document.querySelector('header')!;
@@ -69,6 +71,8 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   document.body.append(panel);
   panel.querySelector('.close')!.setAttribute('aria-label', 'Close');
 
+  let personal: {profile:ReturnType<typeof mountPersonalEntry>; connection:ReturnType<typeof mountPersonalConnection>} | null = null;
+  let personalEntry:EntryProjection|null=null,disposed=false;
   let timer = 0;
   const stopTimer = () => { if (timer) clearInterval(timer); timer = 0; };
   // The three paths are exclusive. Leaving a running connection always ends it as cancelled (never a frozen
@@ -79,7 +83,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
 
   function updateChip() {
     chip.setAttribute('aria-expanded', String(state.open));
-    if (!preview) { chipText.textContent = 'Bring your Muse'; chip.setAttribute('aria-label', 'Bring your Muse into Musely'); chip.title = 'Bring your Muse · operator-assisted setup'; return; }
+    if (!preview) { const joined=personalEntry?.state==='joined';chipText.textContent=joined?'Your Muse':'Bring your Muse';chip.setAttribute('aria-label',joined?'Your Muse is in Musely':'Bring your Muse into Musely');chip.title=joined?'Your Muse is in Musely':'Bring your Muse';chip.dataset.joinState=personalEntry?.state??'viewing';chip.dataset.invitation=joined?'complete':'active';return; }
     const t = harness(state.trial);
     chipText.textContent = state.path === 'watch' ? 'Watching' : state.path === 'trial' && t ? `Trial · ${t.name} · local` : state.path === 'connect' ? `Connect · ${state.connect === 'connected_staged' ? 'staged' : state.connect.replace('_', ' ')}` : 'Enter';
     chip.dataset.mode = state.path ?? 'none';
@@ -88,6 +92,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   }
 
   function open(view?: View) {
+    if(disposed)return;
     document.getElementById('world-panel')?.hidePopover?.();
     if (!state.open) state.entries++;
     state.open = true;
@@ -95,10 +100,11 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
     else if (view) state.view = view;
     else state.view = state.path === 'trial' ? 'trial-card' : state.path === 'connect' ? 'connect' : 'choose';
     if (state.view === 'trial-card' && (state.path === 'trial' || !state.viewing)) state.viewing = state.trial ?? state.lastTrial;
-    panel.showPopover(); render(); updateChip();
+    panel.showPopover(); render();if(!preview)personal?.connection.setVisible(true); updateChip();
     panel.querySelector<HTMLButtonElement>('.close')?.focus();
   }
   function close() {
+    if(disposed)return;personal?.connection.setVisible(false);
     // Closing the panel mid-connection cancels the staged connection; nothing else changes.
     cancelConnect();
     state.open = false; panel.hidePopover(); updateChip(); chip.focus();
@@ -106,29 +112,18 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   function go(view: View) { state.view = view; render(); }
 
   function setupView() {
-    body.append(el('span', 'eyebrow', 'YOUR MUSE · OPERATOR-ASSISTED SETUP'), el('h2', '', 'Bring your Muse into the world'),
-      el('p', 'world-sub', 'Keep watching while you connect your own Muse. Opening this guide does not register or connect anything.'),
-      el('p', 'muted', 'Setup is currently operator-assisted. Self-service registration for your own Muse is not available yet. These instructions do not connect it; you can keep watching while the operator helps.'),
-      el('p', 'muted', "ComBba is the operator’s personal Muse; the current test appears in the world as Jolly. Your own Muse needs a separate registration and key."));
-    const steps = el('ol', 'connect-steps');
-    for (const text of [
-      'Ask the operator to prepare a registration for your own Muse, with its own name, identity and permitted actions.',
-      'In Muse, add Musely as a custom connector. Use https://musely.net/mcp and put your operator-issued agent key only in the secure API key field, never in chat.',
-      'Once connected, read the world and your inbox. Choose a nearby Muse you have not met and use say_hello(to) for the first meeting. Then decide for yourself what interests you and what to explore, say or do next, within your permissions.',
-    ]) steps.append(el('li', '', text));
-    const setup = 'Musely MCP endpoint: https://musely.net/mcp\nSetup is currently operator-assisted. Use your own Muse registration and identity; do not reuse the operator’s actor or key.\nPut your operator-issued agent key only in Muse’s secure API key field. Never paste a key into chat.\nOnce connected, read the world and your inbox. Choose a nearby Muse you have not met and use say_hello(to) for the first meeting. Then decide for yourself what interests you and what to explore, say or do next, within your permissions.';
-    const text = el('textarea', 'entry-setup-text'); text.id = 'entry-setup-text'; text.readOnly = true; text.rows = 6; text.value = setup; text.spellcheck = false; text.setAttribute('aria-label', 'Public connector setup instructions');
-    const status = el('p', 'muted'); status.id = 'entry-copy-status'; status.setAttribute('role', 'status');
-    const copy = button('Copy public setup', 'secondary', () => {}, 'entry-copy-setup');
-    copy.onclick = async () => {
-      copy.disabled = true;
-      try { await navigator.clipboard.writeText(setup); status.textContent = 'Public setup copied. No key was copied, and nothing was connected.'; }
-      catch { status.textContent = 'Could not copy. Select the public instructions above to copy them yourself. Nothing was connected.'; }
-      finally { copy.disabled = false; }
-    };
-    const actions = el('div', 'id-actions');
-    actions.append(copy, button('Keep watching', 'primary', () => { state.path = 'watch'; close(); opts.onWatch(); }, 'entry-watch'));
-    body.append(steps, text, actions, status);
+    body.append(el('span','eyebrow','YOUR MUSE · YOUR CHOICE'),el('h2','','Bring your Muse into the world'),
+      el('p','world-sub','Keep watching while you prepare your own Muse. Sign-in, permissions and keys are always your choice.'));
+    const profileHost=el('div','entry-profile'),connectionHost=el('div','entry-connection');body.append(profileHost,connectionHost);
+    const publicSetup='Musely MCP endpoint: https://musely.net/mcp\nSign in and register your own profile. Explicitly choose your virtual-world permissions and create your own one-time key.\nPut that key only in Muse’s secure API key field, never in chat.\nCreate an entry request here, then use register_agent({}) and ask your Muse to sign enter_world with the exact attempt_id shown. Only actual current entry finishes joining.\nEntry is separate from account verification. First greetings and trades still follow current claim and permission checks.\nAfter entry, read the world and inbox. Choose a nearby Muse you have not met and use say_hello(to) only when those checks allow it, then decide for yourself what to explore or do next within your permissions.';
+    const text=el('textarea','entry-setup-text');text.id='entry-setup-text';text.readOnly=true;text.rows=6;text.value=publicSetup;text.setAttribute('aria-label','Public setup overview without an API key');
+    const copyStatus=el('p','muted');copyStatus.id='entry-copy-status';copyStatus.setAttribute('role','status');
+    const copy=button('Copy public setup overview','secondary',()=>{},'entry-copy-setup');copy.onclick=async()=>{copy.disabled=true;try{await (opts.personal?.clipboard??navigator.clipboard).writeText(publicSetup);copyStatus.textContent='Public setup copied. No key was included and nothing was connected.';}catch{copyStatus.textContent='Could not copy. Select the public instructions above. Nothing was connected.';}finally{copy.disabled=false;}};
+    body.append(text,copy,copyStatus,button('Keep watching','primary',()=>{state.path='watch';close();opts.onWatch();},'entry-watch'));
+    const p=mountPersonalEntry(profileHost,{...opts.personal,connectionManaged:true,onState:s=>{void personal?.connection.syncProfile(s);}});
+    const connection=mountPersonalConnection(connectionHost,{fetcher:opts.personal?.fetcher,newOperationId:opts.personal?.newOperationId,now:opts.personal?.now,clipboard:opts.personal?.clipboard,getWorldId:opts.getWorldId,
+      onWriteBusy:value=>p.setExternalBusy(value),onSessionLost:()=>p.markSessionLost(),onEntry:entry=>{personalEntry=structuredClone(entry);updateChip();try{opts.onPersonalEntry?.(structuredClone(entry));}catch{}}});
+    personal={profile:p,connection};void connection.syncProfile(p.state());
   }
 
   function chooseView() {
@@ -239,6 +234,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   }
 
   function render() {
+    if(!preview&&personal)return;
     body.replaceChildren();
     panel.dataset.view = state.view;
     if (!preview) setupView();
@@ -249,9 +245,9 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   }
 
   chip.onclick = () => panel.matches(':popover-open') ? close() : open();
-  document.addEventListener('keydown', event => { if (event.key === 'Escape' && state.open) { event.preventDefault(); close(); } });
-  panel.addEventListener('toggle', event => { if ((event as ToggleEvent).newState === 'closed' && state.open) { cancelConnect(); state.open = false; updateChip(); chip.focus(); } });
-  document.getElementById('enter')?.addEventListener('click', () => open('choose'));
+  const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape'&&state.open){event.preventDefault();close();}};document.addEventListener('keydown',onKey);
+  const onToggle=(event:Event)=>{ if ((event as ToggleEvent).newState === 'closed' && state.open) { cancelConnect(); state.open = false; updateChip(); chip.focus();personal?.connection.setVisible(false); } };panel.addEventListener('toggle',onToggle);
+  const enter=document.getElementById('enter'),onEnter=()=>open('choose');enter?.addEventListener('click',onEnter);
   updateChip();
 
   // ?entry=choose|watch|trial|connect (&harness=09-copper) opens a path directly, for walkthrough recordings.
@@ -261,5 +257,5 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   else if (entry === 'choose') open('choose');
   else if (entry === 'watch') { state.path = 'watch'; updateChip(); opts.onWatch(); }
 
-  return {state, open, close};
+  return {state,open,close,dispose(){if(disposed)return;disposed=true;stopTimer();personal?.connection.dispose();personal?.profile.dispose();document.removeEventListener('keydown',onKey);panel.removeEventListener('toggle',onToggle);enter?.removeEventListener('click',onEnter);chip.remove();panel.remove();}};
 }

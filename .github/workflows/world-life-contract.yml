@@ -39,7 +39,7 @@ jobs:
           path: dependency-138
       - uses: actions/checkout@v4
         with:
-          ref: 18df53b92d26673927f0c90ddae65a9df1d4eeed
+          ref: d4521aa70467fb2e18705dcd26816ba482ec3892
           path: reviewed-main
       - uses: actions/checkout@v4
         with:
@@ -49,7 +49,7 @@ jobs:
         with:
           node-version: '24'
       - name: Require current main to match the reviewed baseline
-        run: test "$(git -C current-main rev-parse HEAD)" = "18df53b92d26673927f0c90ddae65a9df1d4eeed"
+        run: test "$(git -C current-main rev-parse HEAD)" = "d4521aa70467fb2e18705dcd26816ba482ec3892"
       - run: npm ci --ignore-scripts
         working-directory: dependency-139/app
       - name: Compose exact dependency sources, fail on unreviewed conflicts
@@ -73,7 +73,7 @@ jobs:
           path: dependency-138
       - uses: actions/checkout@v4
         with:
-          ref: 18df53b92d26673927f0c90ddae65a9df1d4eeed
+          ref: d4521aa70467fb2e18705dcd26816ba482ec3892
           path: reviewed-main
       - uses: actions/checkout@v4
         with:
@@ -83,7 +83,7 @@ jobs:
         with:
           node-version: '24'
       - name: Require current main to match the reviewed baseline
-        run: test "$(git -C current-main rev-parse HEAD)" = "18df53b92d26673927f0c90ddae65a9df1d4eeed"
+        run: test "$(git -C current-main rev-parse HEAD)" = "d4521aa70467fb2e18705dcd26816ba482ec3892"
       - run: npm ci --ignore-scripts
         working-directory: dependency-139/app
       - name: Capture real predecessor checkpoint records before composition

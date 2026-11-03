@@ -6,7 +6,9 @@ This revision installs a **default-OFF** WorldDO capability. An explicit server-
 `sandbox-v1` mode plus both unmerged dependency capabilities is required. No deployed
 configuration is enabled. Missing dependencies and unknown mode strings fail closed.
 
-Reviewed main: `18df53b92d26673927f0c90ddae65a9df1d4eeed` (main150).
+Reviewed main: `d4521aa70467fb2e18705dcd26816ba482ec3892` (main151).
+The ten main151 personal-onboarding files are preserved in feature and dependency
+compositions; server source did not change. New personal-connection regressions run.
 Pinned dependencies: #138 `6fe12e6c7782d2048b179b617b7dce123ae701ea` and
 #139 `c9a7ef0d4a21a7e0496cb02e3326eb1e3ba176ef`.
 
