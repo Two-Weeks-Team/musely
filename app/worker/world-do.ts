@@ -17,10 +17,12 @@ import {initRetention, pruneCommands, RETENTION_CHECK_MS} from './core/data-rete
 import {migrateTaskStore, type DecisionInput} from './core/tasks.ts';
 import {ownerIdForMuse} from './core/owner-session.ts';
 import {PersonalAuthStore, type PersonalFlow, type PersonalSessionRow} from './core/personal-session.ts';
+import {PersonalRegistration, type PersonalBinding} from './core/personal-registration.ts';
 
 export class WorldDO extends DurableObject<Env> {
   private ledger: Ledger;
   private personalAuth: PersonalAuthStore;
+  private personalRegistration: PersonalRegistration;
   private runtime: WorldRuntime;
   private trust: Trust;
   private ritual: RitualStore;
@@ -34,6 +36,7 @@ export class WorldDO extends DurableObject<Env> {
     this.origin = env.PUBLIC_ORIGIN;
     if (!this.origin) throw new Error('PUBLIC_ORIGIN is not set');
     this.personalAuth = new PersonalAuthStore(ctx.storage);
+    this.personalRegistration = new PersonalRegistration(ctx.storage, this.personalAuth);
     this.ledger = new Ledger(ctx.storage.sql, {dailyCapUsd: Number(env.DAILY_BUDGET_USD) || 20});
     this.trust = new Trust(ctx.storage.sql);
     this.ritual = new RitualStore(ctx.storage.sql);
@@ -58,6 +61,7 @@ export class WorldDO extends DurableObject<Env> {
     ctx.blockConcurrencyWhile(async () => {
       this.ledger.init();
       this.personalAuth.init();
+      this.personalRegistration.init();
       this.runtime.init(Date.now());
       // Task records version 2 (C06, I-07): migrates a stored version 1 inbox once, before any other commit; a restart writes nothing.
       migrateTaskStore(this.runtime, Date.now());
@@ -78,6 +82,9 @@ export class WorldDO extends DurableObject<Env> {
     });
   }
   // Private auth RPCs; no provider token/code crosses into DO storage or any world commit.
+  personalDraftRegister(binding: PersonalBinding, input: unknown) { return this.personalRegistration.register(binding, input); }
+  personalProfileRead(binding: PersonalBinding) { return this.personalRegistration.profile(binding); }
+  personalProfilePatch(binding: PersonalBinding, input: unknown) { return this.personalRegistration.patch(binding, input); }
   personalAuthBegin(flow: PersonalFlow) { return this.personalAuth.begin(flow); }
   personalAuthConsume(binding: Pick<PersonalFlow, 'stateDigest' | 'browserDigest' | 'appId' | 'redirectUri'>, now: number) { return this.personalAuth.consume(binding, now); }
   personalAuthComplete(stateDigest: string, appId: string, subject: string, sidDigest: string, now: number) { return this.personalAuth.complete(stateDigest, appId, subject, sidDigest, now); }

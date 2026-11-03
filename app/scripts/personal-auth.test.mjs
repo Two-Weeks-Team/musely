@@ -19,7 +19,7 @@ async function boot(t,override={}){
  const env={MODEL_ID:'synthetic-model',MODEL_BASE:'https://not-called.invalid/v1',DAILY_BUDGET_USD:'1',PUBLIC_ORIGIN:ORIGIN,ALLOWED_HOSTS:'musely.net,www.musely.net',SESSION_SECRET:'synthetic-personal-session-secret',OWNER_CONTROL_TOKEN:OWNER,THREADS_APP_ID:'123456789',THREADS_APP_SECRET:'synthetic-provider-secret',...override};
  let dobj;
  const restart=async()=>{dobj=new WorldDO(ctx,env);await ready;env.WORLD={idFromName:()=> 'world',get:()=>dobj};};await restart();env.ASSETS={fetch:async()=>new Response('asset')};
- const go=(method,path,headers={},body)=>worker.fetch(new Request(ORIGIN+path,{method,headers,body}),env);
+ const go=(method,path,headers={},body)=>worker.fetch(new Request(ORIGIN+path,{method,headers,body,...(body instanceof ReadableStream?{duplex:"half"}:{})}),env);
  return{env,db,go,restart,get dobj(){return dobj;}};
 }
 const start=async t=>{const r=await t.go('POST',START,H);assert.equal(r.status,200,'personal login start must exist');const b=await r.json();const u=new URL(b.authorizationUrl);assert.equal(u.origin,'https://threads.com');assert.equal(u.pathname,'/oauth/authorize');assert.equal(u.searchParams.get('scope'),'threads_basic');assert.equal(u.searchParams.get('redirect_uri'),ORIGIN+CALLBACK);assert.equal(u.searchParams.get('response_type'),'code');assert.match(u.searchParams.get('state'),/^personal-v1\.[A-Za-z0-9_-]{43}$/);const c=cookie(r,'musely_pf');assert.ok(c);assert.match(c? r.headers.get('set-cookie'):'',/Path=\/api\/threads;/);assert.match(r.headers.get('set-cookie'),/HttpOnly; Secure; SameSite=Lax/);assert.equal(r.headers.get('cache-control'),'no-store');return{r,b,u,c,state:u.searchParams.get('state')};};
@@ -128,4 +128,19 @@ test('provider secret availability never bypasses durable local logout of an alr
  assert.equal((await a.go('DELETE',LOGOUT,{...H,cookie:c})).status,200);
  a.env.THREADS_APP_SECRET='synthetic-provider-secret';assert.equal((await (await a.go('GET',ME,{cookie:c})).json()).authenticated,false,'restoring provider config must not resurrect a logged-out sid');assert.equal(calls.length,2);
  const fresh=await login(a),appId=a.env.THREADS_APP_ID;delete a.env.THREADS_APP_ID;assert.equal((await a.go('DELETE',LOGOUT,{...H,cookie:fresh.c})).status,503,'missing local binding cannot report durable logout success');a.env.THREADS_APP_ID=appId;assert.equal((await(await a.go('GET',ME,{cookie:fresh.c})).json()).authenticated,true);
+});
+
+// Cloudflare presents real empty HTTP writes as closed non-null streams.
+test('closed empty HTTP streams permit personal start and logout without granting world entry',async t=>{
+ const a=await boot(t),calls=provider(t),empty=()=>new ReadableStream({start(c){c.close();}});
+ const startAnswer=await a.go('POST',START,H,empty());assert.equal(startAnswer.status,200);assert.ok((await startAnswer.json()).authorizationUrl);
+ const u=await login(a);const out=await a.go('DELETE',LOGOUT,{...H,cookie:u.c},empty());assert.equal(out.status,200);assert.equal((await(await a.go('GET',ME,{cookie:u.c})).json()).authenticated,false);assert.equal(calls.length,2);assert.equal(a.db.prepare('SELECT count(*) n FROM personal_actors').get().n,0);
+});
+test('nonempty and errored HTTP streams fail closed before personal auth state changes',async t=>{
+ const a=await boot(t),calls=provider(t);for(const method of ['POST','DELETE'])for(const kind of ['data','error']){let cancelled=false;const stream=new ReadableStream({start(c){if(kind==='error')c.error(Error('synthetic stream error'));else c.enqueue(new Uint8Array([0]));},cancel(){cancelled=true;}});const r=await a.go(method,method==='POST'?START:LOGOUT,H,stream);assert.equal(r.status,400);assert.equal((await r.json()).error,'body_not_allowed');if(kind==='data')assert.equal(cancelled,true);}
+ assert.equal(calls.length,0);assert.equal(a.db.prepare('SELECT count(*) n FROM personal_auth_flows').get().n,0);
+});
+
+test('stalled empty-write stream is bounded and cancelled without a durable auth flow',{timeout:3000},async t=>{
+ const a=await boot(t);let cancelled=false;const stream=new ReadableStream({cancel(){cancelled=true;}});const r=await a.go('POST',START,H,stream);assert.equal(r.status,400);assert.equal(cancelled,true);assert.equal(a.db.prepare('SELECT count(*) n FROM personal_auth_flows').get().n,0);
 });
