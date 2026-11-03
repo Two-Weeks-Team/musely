@@ -1,6 +1,6 @@
 # World-02: isolated campfire visual pack (draft)
 
-Related #131. Not production-integrated, not ready to merge. World-01 #130 / PR135 is still a draft awaiting actual WebGL acceptance; its coordinate contract may change.
+Related #131. Default-OFF scene hooks implemented; not visually accepted or ready to merge. World-01 #130 / PR135 is still a draft awaiting actual WebGL acceptance; its coordinate contract may change.
 
 ## Scope and coexistence
 
@@ -8,7 +8,7 @@ Original procedural stone ring, three logs, coal, layered flame, eight spark mes
 
 `ArrivalSnapshot` is a trusted adapter DTO, **not an authorization mechanism**. `receiptId` nonemptiness only catches missing data; it does not cryptographically verify arrival. Existing authoritative world state must supply same-place arrived Muse IDs. Expired, future or wrong-place snapshots show no attendance/sparks. A low idle flame is ambient decoration. Count/seat occupancy is metadata, not rendered avatars.
 
-Coordinates are metres, local ground center, Y up. The prop contains no geographic offset or 30-degree commons rotation. Position/orientation must be supplied once by the existing Place/scene adapter. PR135 geographic-mesh reprojection is not automatically applicable to this local prop. No main.ts, world engine, Place IDs, server or production import has been changed in the proposed final layout.
+Coordinates are metres, local ground center, Y up. The prop contains no geographic offset or 30-degree commons rotation. Position/orientation must be supplied once by the existing Place/scene adapter. PR135 geographic-mesh reprojection is not automatically applicable to this local prop. main.ts, world engine, Place IDs and server remain unchanged. scene.ts and live-scene.ts now import/use the optional port.
 
 ## Reproduce
 
@@ -29,7 +29,7 @@ Regenerate with installed Blender 4.3.2: `blender -b --python create.py`. Genera
 
 ## Remaining acceptance gates
 
-Remote exact-commit CI, real WebGL frames and animation, actual Musely scene/Place-state adapter, mobile/draw-call/performance testing, and #130 coordinate acceptance. No production deployment or real-device validation has happened. Integration stays disabled until these gates are satisfied.
+Remote exact-commit CI, real WebGL frames and animation, actual Musely scene/Place-state adapter, mobile/draw-call/performance testing, and #130 coordinate acceptance. No production deployment or real-device validation has happened. The feature remains OFF by default until these gates are satisfied.
 
 Original procedural asset/code only; no imported Muse/Jolly assets or third-party textures. This folder does not change repository-wide licensing.
 
@@ -40,3 +40,16 @@ Review found initial visible sparks before first update (P2) and a stale seven-m
 Latest main includes signed campfire arrival consent (#136). This pack does not bypass or replace it. No current app/worker files are changed. #130 coordinate/scene-overlap investigation remains blocking actual integration.
 
 CI correction: first remote run passed 14 tests but TS7 discovered the parent app tsconfig and failed TS5112 with command-line files. Added an explicit isolated tsconfig and use tsc -p; no parent compiler config changed.
+
+
+## Optional actual-scene port (e806 baseline)
+
+`makeWorld(..., sourceHeight, {enabled: true, distanceM: () => distanceInSceneMetres})` explicitly enables the replacement. Otherwise no model parsing, request or scene replacement occurs. The returned `world.campfireVisual` exposes enable/disable/dispose/getMetrics. A valid camera-distance provider is mandatory; unavailable/invalid distances hide the replacement. This PR does not add an end-user toggle or guess camera distances.
+
+The existing `Fire` group is swapped only after asset loading succeeds. Original ring, logs, benches and glow are batched in the main scene and remain untouched. This integration hides the pack's extra architecture to avoid duplicated seats/rings. It uses the existing Fire's x/z without a new map transform, and applies no #130 terrain/building layer. Failed loading and disable restore original visibility. Dispose is idempotent; disabled/disposed pending loads cannot resurrect a model.
+
+Actual `makeLiveScene` feeds the accepted current projection world each update (including replay projection). Only current-place Muses with travel:null count; invite/gathering events alone never count. This is read-only projection, not consent/identity validation. Existing engine/worker arrival policy remains authoritative. Leaving live mode clears evidence; disposing a live controller disables but does not destroy the world-owned port, allowing controller recreation. Final world owners must call port.dispose() at teardown.
+
+The existing production build is IIFE and has no generic GLB URL copier. To avoid a new server/build pipeline or broken import.meta URL, a byte-identical base64 JSON is bundled and parsed only on explicit enable. This adds about 160 KB of uncompressed source payload even while OFF; no network fetch is added, and compressed delivery/GPU timing is not yet measured. validate.mjs enforces equality with the independently validated GLB. This is an explicit cost, not zero-cost feature gating.
+
+Verification at e8060f13b08142758aaa0ef0fb27a736bf3d7c3d: 21 independent pack tests, 2 actual makeLiveScene integration tests, app+worker typecheck passed locally. Local full build reached bundle output but failed existing character-kit lod0 checksum: reused verification mirror has two mismatching lod0/lod1 files. All other available original app files were Git-blob checked; missing source-authoring images are not required by this feature. Exact repository CI is authoritative for final build. WebGL frames, actual makeWorld character/DOM execution, mobile FPS and final #130 overlap acceptance remain unverified.

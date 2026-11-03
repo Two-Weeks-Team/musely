@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import {validateBytes} from 'gltf-validator';
 const file=new URL('./campfire-prototype.glb',import.meta.url),b=fs.readFileSync(file);
+if(!b.equals(Buffer.from(JSON.parse(fs.readFileSync(new URL('./asset-bytes.json',import.meta.url))).base64,'base64')))throw new Error('Embedded bytes differ from validated GLB');
 const validation=await validateBytes(new Uint8Array(b),{uri:'campfire-prototype.glb'});
 const len=b.readUInt32LE(12),g=JSON.parse(b.subarray(20,20+len).toString());
 const triangles=g.meshes.reduce((s,m)=>s+m.primitives.reduce((n,p)=>n+g.accessors[p.indices].count/3,0),0);

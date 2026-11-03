@@ -1,7 +1,7 @@
 name: Campfire Pack
 on:
   pull_request:
-    paths: ['app/world-packs/campfire/**', '.github/workflows/campfire-pack.yml']
+    paths: ['app/world-packs/campfire/**', 'app/src/scene.ts', 'app/src/ui/live-scene.ts', 'app/scripts/campfire-visual-port.test.mjs', '.github/workflows/campfire-pack.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -20,3 +20,17 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run validate
+  app-integration:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: node --test scripts/campfire-visual-port.test.mjs scripts/live-scene.test.mjs scripts/campfire-consent.test.mjs
+      - run: npm run build

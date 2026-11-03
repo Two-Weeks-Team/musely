@@ -21,5 +21,6 @@
   "stateWrites": false,
   "visualAttendance": "trusted arrived snapshot only; no generated avatars",
   "license": "MIT for these original procedural assets and code; no Muse/Jolly assets included",
-  "integrationStatus": "isolated asset only; no production import or World-01 scene adapter"
+  "integrationStatus": "default-OFF scene.ts/live-scene.ts port; only legacy Fire flames replaced; WebGL/mobile acceptance pending",
+  "baseline": "e8060f13b08142758aaa0ef0fb27a736bf3d7c3d"
 }

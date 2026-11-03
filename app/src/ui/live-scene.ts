@@ -1,3 +1,4 @@
+import type {CampfireScenePort} from '../../world-packs/campfire/scene-port.mjs';
 // I-09: read-only server snapshot/event → existing rig, props, labels and four small effects.
 // The scripted eight-character scene stays intact; live mode reuses its matching IDs and adds Ember/Copper.
 import * as T from 'three';
@@ -11,7 +12,7 @@ import {surfaceHeightAt} from '../surfaces.ts';
 import {UPPER_BONES, inventorySummary, museName, ownerOf, type ActorFrame, type FxKind, type LiveWorld, type LiveEvent} from './live-scene-core.ts';
 
 type Host = {scene: T.Scene; actors: MuseActor[] | null | undefined; muses: T.Object3D[]; shadows: T.Mesh[];
-  selection: T.Object3D; library: MaterialLibrary | null | undefined; shadowTexture: T.Texture | null; ambient(t: number): void};
+  selection: T.Object3D; campfireVisual?: CampfireScenePort; library: MaterialLibrary | null | undefined; shadowTexture: T.Texture | null; ambient(t: number): void};
 type Entry = {actor: MuseActor; shadow: T.Mesh; extra: boolean; label: HTMLElement | null};
 type Point = {x: number; y: number};
 const FX: Record<FxKind, number> = {teleport: 0x8fb8ff, item: 0xffd27d, stamp: 0x92d7b3, trade_lock: 0xe0b2f7};
@@ -56,6 +57,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
   function setActive(value: boolean) {
     const leavingLive = active && !value;
     active = value;
+    if(!value) host.campfireVisual?.setWorld(null);
     if (!host.actors?.length) {for (const node of host.muses) node.visible = !value;for (const shadow of host.shadows) {shadow.userData.instanceHidden = value;if (!shadow.userData.instanced) shadow.visible = !value;}}
     if (root) root.hidden = !value;
     for (const e of entries.values()) {
@@ -71,6 +73,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
   function update(at: number, selectedId = selected) {
     now = at; selected = selectedId;
     if (disposed || !active || !projection.world) return;
+    host.campfireVisual?.setWorld(projection.world);
     frames = projection.frames(at);
     for (const e of entries.values()) {
       const f = frames.get(e.actor.variant), actor = e.actor;
@@ -122,9 +125,12 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
         source: sourceOf(m.id), frame: f ?? null, rendered: !!e?.actor.root.visible, lod: e?.actor.lod ?? null, loadedLods: e ? [...e.actor.loaded].sort() : [], propsLoaded: e?.actor.propsLoaded ?? false, carryShown: e?.actor.carryShown() ?? false};})};
   }
   function dispose() {
+    if(disposed)return;
     setActive(false); disposed = true; root?.remove();
+    host.campfireVisual?.disable();
     for (const e of entries.values()) if (e.extra) {e.actor.dispose(); e.shadow.removeFromParent(); e.shadow.geometry.dispose(); (e.shadow.material as T.Material).dispose();}
     for (const mesh of [...effects.values()]) {mesh.removeFromParent(); mesh.geometry.dispose(); (mesh.material as T.Material).dispose();}
   }
   return {ready, accept, setRecordedFrame, setActive, update, getMetrics, dispose, get projection() {return projection;}, get liveProjection() {return store.live;}, get frames() {return frames;}, get active() {return active;}};
 }
+

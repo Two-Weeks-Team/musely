@@ -1,7 +1,8 @@
 import{readFile,writeFile,mkdir,copyFile}from'node:fs/promises';import{build}from'esbuild';import{createHash}from'node:crypto';import{renderTemplate}from'./embedding.mjs';
+import {prepareAssets} from './prepare-assets.mjs';
 // Build both views from current sources into a separate development output.
 // Production dist is neither an input nor an output of this command.
-await import('./prepare-assets.mjs');
+await prepareAssets();
 const manifest=JSON.parse(await readFile('assets/source-manifest.json','utf8'));
 for(const[name,entry]of Object.entries(manifest)){const bytes=await readFile('assets/'+name);if(createHash('sha256').update(bytes).digest('hex')!==entry.sha256)throw Error('Changed source asset: '+name);}
 const dir='dist-character-proof';await mkdir(dir+'/character-kit/runtime/base',{recursive:true});await mkdir(dir+'/world',{recursive:true});
