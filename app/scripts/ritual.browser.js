@@ -20,6 +20,11 @@ async (page) => {
   await p.locator('#world-panel .tab[data-tab="identity"]').click();
   await p.waitForSelector('.ritual button');
   await p.locator('.ritual button', {hasText: 'Try the ritual'}).click();
+  await p.getByRole('button', {name: '준비됐어요 · Ready', exact: true}).click();
+  for (let i = 0; i < 3; i++) {
+   await p.getByRole('button', {name: '이 동작 준비됐어요', exact: true}).click();
+   await p.waitForTimeout(3200);
+  }
   await p.waitForFunction(() => /LIVE · Muse Spark vision|NOT JUDGED|could not run/.test(document.querySelector('.ritual-stage')?.textContent ?? ''), null, {timeout: 60000});
   const text = (await p.locator('.ritual-stage').textContent()).replace(/\s+/g, ' ');
   await p.screenshot({path: 'output/ritual-result.png'});
