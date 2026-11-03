@@ -1,5 +1,6 @@
 /** Opt-in adapter only. No production caller, timer, model call or world mutation. */
 import {localClock, spotlightFor, type WorldState, type WorldEvent} from '../../src/engine/world.ts';
+import {sha256Hex} from '../../src/engine/sha256.ts';
 import {hasActorHarness} from '../../src/engine/harness.ts';
 import {PRINCIPALS} from './owner-session.ts';
 import {isRuntimeControlled} from '../../src/engine/inbox.ts';
@@ -39,8 +40,10 @@ export function rememberCommittedResidentEvents(life:LifeState,world:WorldState,
     for(const id of new Set(recipients)){
       if(!allowed(id)||!world.muses.some(m=>m.id===id)||!next.residents.some(m=>m.id===id)||isRuntimeControlled(world,id,now))continue;
       const receiving=id!==e.muse;
-      next=remember(next,id,{id:receiving?`${e.id}:received:${id}`:e.id,kind:'executed',at:e.at,subject:receiving?e.muse:e.other??e.place??e.muse,
-        publicSummary:`Committed ${e.kind} event${receiving?' received':''}`,source:e.source,evidenceId:e.id});
+      const rawId=receiving?`${e.id}:received:${id}`:e.id;
+      const bounded=(value:string)=>value.length<=160&&!/[\u0000-\u001f<>]/.test(value)?value:`event-sha256:${sha256Hex(value)}`;
+      next=remember(next,id,{id:bounded(rawId),kind:'executed',at:e.at,subject:receiving?e.muse:e.other??e.place??e.muse,
+        publicSummary:`Committed ${e.kind} event${receiving?' received':''}`,source:e.source,evidenceId:bounded(e.id)});
     }
   }
   return next;
