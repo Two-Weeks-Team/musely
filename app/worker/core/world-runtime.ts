@@ -26,6 +26,7 @@ import {withMessageHooks} from './messages.ts';
 import type {Ledger, Sql} from './ledger.ts';
 import {RunLog, evidenceIds, commandFields, outputFields, reasonCode, type InputKind, type CommitRecord} from './run-log.ts';
 import {ResidentLifeStore, residentProposalForWorld, rememberCommittedResidentEvents, knownResident, type ResidentOwnershipKind} from './resident-life-adapter.ts';
+import {residentContextForWorld, withResidentContext, type ResidentContext} from './resident-life-context.ts';
 import {noteServed, restoreLife, saveLife, type LifeState} from '../../src/engine/resident-life.ts';
 import {recountAutonomy, values} from './autonomy-oracle.ts';
 
@@ -159,6 +160,11 @@ export class WorldRuntime {
     if (p) this.runLog.append(p, inserted);
   }
 
+  private registryControls(muse:string):boolean {
+    const kind=this.opts.residentLife?.ownershipKind(muse);
+    return kind==='personal'||kind==='unknown';
+  }
+
   private residentIdleIds(life:LifeState|undefined,world:WorldState,now:number):string[]{
     const policy=this.opts.residentLife;
     if(!life||policy?.enabled!==true)return [];
@@ -187,28 +193,30 @@ export class WorldRuntime {
       return this.sql.transactionSync(() => {
       const raw = this.raw(), current: WorldState = JSON.parse(raw);
       if (current.tick !== before.tick || current.day !== before.day || this.sql.exec('SELECT 1 FROM ticks WHERE day = ? AND tick = ?', before.day, before.tick).toArray().length) return {status: 'skipped_duplicate', tick: before.tick, events: 0};
+      const freshLife=this.lifeStore?.load(this.worldId) ?? null;
+      const staleResidentContext=(evidence:Record<string,unknown>|undefined,muse:string):boolean => evidence?.residentLifeRevision!==undefined &&
+        (evidence.residentLifeRevision!==freshLife?.revision || this.opts.residentLife?.enabled!==true || !knownResident(muse,this.opts.residentLife.ownershipKind));
       let usable = decision;
       const late: Omit<WorldEvent, 'id' | 'tick'>[] = [];
       // The answer keeps its turn unless its Muse was paused or revoked, or the world itself moved (a queue request does
       // not move it). One discard event, with the most specific reason.
-      const lost = !decision ? null : current.paused?.[decision.muse] ? 'paused before commit' : isRuntimeControlled(current,decision.muse,now) ? 'personal or connected before commit' : this.opts.delegationValid && !this.opts.delegationValid(decision.muse) ? 'delegation revoked before commit' : current.version !== before.version ? 'world changed while the model was answering' : null;
+      const lost = !decision ? null : current.paused?.[decision.muse] ? 'paused before commit' : this.registryControls(decision.muse) ? 'registry controlled before commit' : isRuntimeControlled(current,decision.muse,now) ? 'personal or connected before commit' : this.opts.delegationValid && !this.opts.delegationValid(decision.muse) ? 'delegation revoked before commit' : staleResidentContext(decision.evidence,decision.muse) ? 'resident context changed while the model was answering' : current.version !== before.version ? 'world changed while the model was answering' : null;
       if (decision && lost) { late.push({at: now, source: decision.source, kind: 'decision_discarded', muse: decision.muse, data: {reason: lost, evidence: decision.evidence ?? null}, tags: []}); usable = null; }
       // Same checks for every model answer to a meeting: a revoked answerer or a moved world discards it (it was paid for).
       const discard = (r: EncounterReply, reason: string) => late.push({at: now, source: r.source as WorldEvent['source'], kind: 'encounter_reply_discarded', muse: r.muse, other: r.other, place: r.place, data: {reason, encounterId: r.encounterId, evidence: r.evidence ?? null}, tags: []});
       const replies = answers.map(r => {
         if (r.source === 'rule') return r;
-        const why = current.paused?.[r.muse] ? 'paused before commit' : isRuntimeControlled(current,r.muse,now) ? 'personal or connected before commit' : this.opts.delegationValid && !this.opts.delegationValid(r.muse) ? 'delegation revoked before commit' : current.version !== before.version ? 'world changed while the model was answering' : null;
+        const why = current.paused?.[r.muse] ? 'paused before commit' : this.registryControls(r.muse) ? 'registry controlled before commit' : isRuntimeControlled(current,r.muse,now) ? 'personal or connected before commit' : this.opts.delegationValid && !this.opts.delegationValid(r.muse) ? 'delegation revoked before commit' : staleResidentContext(r.evidence,r.muse) ? 'resident context changed while the model was answering' : current.version !== before.version ? 'world changed while the model was answering' : null;
         if (!why) return r;
         discard(r, why);
         return {muse: r.muse, other: r.other, place: r.place, encounterId: r.encounterId, source: 'rule' as const, output: null, reason: 'discarded: ' + why};
       });
-      const freshLife=this.lifeStore?.load(this.worldId) ?? null;
       const lifeCandidate=!decision && (!this.opts.delegationValid||this.opts.delegationValid(turn.muse)) && proposedLife && lifeBefore && freshLife?.revision===lifeBefore.revision && current.version===before.version && this.opts.residentLife ? residentProposalForWorld(freshLife.state,current,now,{...this.opts.residentLife,promiseGraceMs:this.opts.residentLife.promiseGraceMs ?? 60*TICK_MS,residentTurnAllowed:true}) : null;
       const acceptedLife=lifeCandidate && lifeCandidate.residentId===proposedLife?.residentId && lifeCandidate.placeId===proposedLife?.placeId ? lifeCandidate : null;
       const appliedMove=acceptedLife ? {muse:acceptedLife.residentId,place:acceptedLife.placeId,expectedVersion:acceptedLife.expectedWorldVersion} : undefined;
       const committedIdle=this.residentIdleIds(freshLife?.state,current,now);
       const {state, events} = tick(current, {now, decision: usable, replies, spot: turn, residentMove:appliedMove,residentIdle:committedIdle}, canMeet ? {...this.opts.hooks, canMeet: this.dedupMeetings(canMeet)} : this.opts.hooks);
-      if(this.lifeStore && freshLife && this.opts.residentLife){
+      if(this.lifeStore && freshLife && this.opts.residentLife?.enabled===true){
         const trusted=events.filter(e=>e.muse && knownResident(e.muse!,this.opts.residentLife!.ownershipKind));
         let lifeNext=rememberCommittedResidentEvents(freshLife.state,state,trusted,now);
         if(acceptedLife)lifeNext=noteServed(lifeNext,acceptedLife.residentId,now);
@@ -231,13 +239,13 @@ export class WorldRuntime {
         ...(this.opts.residentLife?.enabled===true ? {residentLifePolicy:{version:1,idle:committedIdle}} : {}),
         ...(acceptedLife ? {residentLife:{policyVersion:1,source:'rule',proposal:acceptedLife,revisionBefore:freshLife!.revision,revisionAfter:freshLife!.revision+1}} : {}),
         seed: state.seed, gate: canMeet ? 'checked' : 'off',
-        spotlight: {muse: turn.muse, priority: turn.priority, source: info.source, reason: reasonCode(info.reason), freedom: spot.freedom, used: !!usable, discarded: decision && lost ? reasonCode(lost) : null,
+        spotlight: {muse: turn.muse, ...(typeof decision?.evidence?.residentLifeRevision==='number'?{residentLifeRevision:decision.evidence.residentLifeRevision}:{}), priority: turn.priority, source: info.source, reason: reasonCode(info.reason), freedom: spot.freedom, used: !!usable, discarded: decision && lost ? reasonCode(lost) : null,
           decision: decision ? {source: decision.source, freedom: decision.freedom, output: outputFields(decision.output), evidence: evidenceIds(decision.evidence)} : null},
-        replies: answers.map(r => ({muse: r.muse, other: r.other, encounterId: r.encounterId, source: r.source, reason: reasonCode(r.reason), output: outputFields(r.output), evidence: evidenceIds(r.evidence), used: r.source === 'rule' || (replies.find(x => x.encounterId === r.encounterId && x.muse === r.muse)?.source !== 'rule' && answered.has(`${r.encounterId}>${r.muse}`))})),
+        replies: answers.map(r => ({muse: r.muse, ...(typeof r.evidence?.residentLifeRevision==='number'?{residentLifeRevision:r.evidence.residentLifeRevision}:{}), other: r.other, encounterId: r.encounterId, source: r.source, reason: reasonCode(r.reason), output: outputFields(r.output), evidence: evidenceIds(r.evidence), used: r.source === 'rule' || (replies.find(x => x.encounterId === r.encounterId && x.muse === r.muse)?.source !== 'rule' && answered.has(`${r.encounterId}>${r.muse}`))})),
       };
       this.logCommit({at: now, kind: 'tick', label: `${current.day}:${current.tick}`, beforeRaw: raw, before: current, after: state, changed: true, events: all, input: tickInput});
       const said = all.filter(e => e.kind === 'encounter_reply');
-      return {status: 'committed' as const, tick: current.tick, events: all.length, spotlight: {muse: turn.muse, priority: turn.priority, ...info}, replies: {live: said.filter(e => e.source === 'live').length, rule: said.filter(e => e.source === 'rule').length}};
+      return {status: 'committed' as const, tick: current.tick, events: all.length, spotlight: {muse: turn.muse, ...(typeof decision?.evidence?.residentLifeRevision==='number'?{residentLifeRevision:decision.evidence.residentLifeRevision}:{}), priority: turn.priority, ...info}, replies: {live: said.filter(e => e.source === 'live').length, rule: said.filter(e => e.source === 'rule').length}};
       });
     } finally {
       this.inFlight.delete(this.reservationId(before));
@@ -307,6 +315,7 @@ export class WorldRuntime {
   private async liveSpotlight(s: WorldState, muse: string, freedom: Decision['freedom'], now: number): Promise<{decision: Decision | null; info: {source: string; reason?: string; requestId?: string | null}}> {
     // A paused Muse (owner revoked its delegation) has no turn: no model call, no fallback, no event.
     if (s.paused?.[muse]) return {decision: null, info: {source: 'scripted'}};
+    if(this.registryControls(muse))return {decision:null,info:{source:'scripted',reason:'registry_controlled_actor'}};
     if(isRuntimeControlled(s,muse,now))return {decision:null,info:{source:'scripted',reason:s.muses.find(m=>m.id===muse)?.controlMode==='personal'?'personal_muse':isConnected(s.inbox,muse,now)?'connected_muse':'unresolved_actor'}};
     // The world must never stop on one bad input: if the spotlight input cannot be built, the scenario continues.
     let input;
@@ -322,7 +331,8 @@ export class WorldRuntime {
     // A connected Muse thinks in its owner's runtime (8.8): the team key never decides for it.
     if (isRuntimeControlled(s, muse, now)) return {decision: null, info: {source: 'scripted', reason: s.muses.find(m => m.id === muse)?.controlMode === 'personal' ? 'personal_muse' : 'connected_muse'}};
     if (!this.opts.model?.key) return fallback('not_connected');
-    const call = await this.modelCall('spotlight', input, this.reservationId(s));
+    const context=residentContextForWorld(this.lifeStore?.load(this.worldId) ?? null,s,muse,now,this.opts.residentLife);
+    const call = await this.modelCall('spotlight', input, this.reservationId(s),context);
     if (!call.ok) return fallback(call.reason);
     return {decision: {muse, freedom, source: 'live', output: call.output as Decision['output'], evidence: call.evidence}, info: {source: 'live', requestId: call.evidence.requestId as string | null}};
   }
@@ -332,13 +342,13 @@ export class WorldRuntime {
    * (an alarm retry cannot reserve twice), the 8-second model deadline, then the real cost settled whatever the
    * answer was. The slot is released in every path, including a throw.
    */
-  private async modelCall(action: 'spotlight' | 'encounter', input: Record<string, unknown>, id: string): Promise<{ok: true; output: unknown; evidence: Record<string, unknown>} | {ok: false; reason: string}> {
+  private async modelCall(action: 'spotlight' | 'encounter', input: Record<string, unknown>, id: string, residentContext:ResidentContext|null=null): Promise<{ok: true; output: unknown; evidence: Record<string, unknown>} | {ok: false; reason: string}> {
     const model = this.opts.model;
     if (!model?.key) return {ok: false, reason: 'not_connected'};
     const release = this.modelSlot();
     if (!release) return {ok: false, reason: 'concurrency_limit'};
     try {
-      const messages = buildMessages(action, input);
+      const messages = withResidentContext(buildMessages(action, input),residentContext);
       const res = this.opts.ledger.reserve({id, tier: 'world', session: 'world', ip: '', action, maxCostUsd: maxCostUsd(action, messages)});
       if (!res.ok) return {ok: false, reason: res.reason};
       // Reserved before (a retried tick after a crash): that call was already made or paid for; never call twice.
@@ -348,7 +358,7 @@ export class WorldRuntime {
       const problem = checkOutput(action, input, result.output);
       this.opts.ledger.settle(id, actualCostUsd(result.usage), problem ? 'rejected' : 'live');
       if (problem) return {ok: false, reason: 'output_rejected:' + problem};
-      return {ok: true, output: result.output, evidence: {model: model.model, requestId: result.requestId, responseId: result.responseId, latencyMs: result.latencyMs, reservationId: id}};
+      return {ok: true, output: result.output, evidence: {model: model.model, requestId: result.requestId, responseId: result.responseId, latencyMs: result.latencyMs, reservationId: id, ...(residentContext ? {residentLifeRevision:residentContext.revision} : {})}};
     } finally {
       release();
     }
@@ -365,7 +375,7 @@ export class WorldRuntime {
       console.error('encounter dry run failed', e);
       return [];
     }
-    const meetings = dry.filter(e => e.kind === 'encounter' && e.other && e.muse && !isRuntimeControlled(s, e.other, now));
+    const meetings = dry.filter(e => e.kind === 'encounter' && e.other && e.muse && !isRuntimeControlled(s, e.other, now)&&!this.registryControls(e.other));
     // Budget kept for visitors, and a breaker after repeated timeouts: both answer by rule without a call.
     const budget = meetings.length ? this.opts.ledger.status() : null;
     const held = budget && budget.remainingUsd < ENCOUNTER_BUDGET_FLOOR * budget.capUsd ? 'budget_reserved_for_visitors' : now < this.circuitOpenUntil ? 'circuit_open' : null;
@@ -379,7 +389,8 @@ export class WorldRuntime {
       const greeting = dry.find(g => g.kind === 'greet' && g.muse === other && g.other === muse)?.line ?? null;
       let input;
       try { input = validate('encounter', encounterInput(s, muse, other, place, greeting, now)); } catch (err) { return rule('input_invalid: ' + String((err as Error).message).slice(0, 80)); }
-      return this.modelCall('encounter', input, `${this.opts.worldId}:${s.day}:${s.tick}:encounter:${muse}>${other}`)
+      const context=residentContextForWorld(this.lifeStore?.load(this.worldId) ?? null,s,muse,now,this.opts.residentLife);
+      return this.modelCall('encounter', input, `${this.opts.worldId}:${s.day}:${s.tick}:encounter:${muse}>${other}`,context)
         .then((c): EncounterReply => { this.noteEncounterCall(c.ok ? 'ok' : c.reason, now); return c.ok ? {...base, source: 'live', output: c.output as EncounterReply['output'], evidence: {...c.evidence, encounterId: meeting}} : rule(c.reason); })
         .catch((err): EncounterReply => { console.error('encounter answer failed', err); return rule('error'); });
     }));
