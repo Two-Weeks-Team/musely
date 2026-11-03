@@ -56,6 +56,7 @@ export class PersonalWorld{
  init(){this.authority.init();
  this.entry.init();
  this.storage.sql.exec('CREATE TABLE IF NOT EXISTS personal_owner_locations (actor_id TEXT PRIMARY KEY,location TEXT NOT NULL)');
+ this.storage.sql.exec('CREATE TABLE IF NOT EXISTS personal_connector_activity (key_id TEXT PRIMARY KEY REFERENCES personal_authority_keys(id),actor_id TEXT NOT NULL,grant_version INTEGER NOT NULL,last_seen_at INTEGER NOT NULL)');
  this.storage.sql.exec('CREATE TABLE IF NOT EXISTS personal_entry_receipts (id TEXT PRIMARY KEY,attempt_id TEXT NOT NULL UNIQUE,actor_id TEXT NOT NULL,agent_id TEXT NOT NULL,root_ref TEXT NOT NULL,key_id TEXT NOT NULL,grant_version INTEGER NOT NULL,profile_revision INTEGER NOT NULL,world_id TEXT NOT NULL,committed_at INTEGER NOT NULL,run_id TEXT NOT NULL,input_seq INTEGER NOT NULL,event_seq INTEGER NOT NULL,event_id TEXT NOT NULL,after_hash TEXT NOT NULL,command_id TEXT NOT NULL,payload_hash TEXT NOT NULL,UNIQUE(agent_id,command_id))');
  }
  private own(b:PersonalBinding){if(!b||!this.auth.active(b.sidDigest,b.proof,b.appId,Date.now()))return fail('personal_session_required');
@@ -82,12 +83,14 @@ export class PersonalWorld{
  return this.safeAuthority(v);
  });
  }
- status(b:PersonalBinding|null){if(!b)return{profile:null,authority:null,keys:[],entry:this.entry.project(null)};
+ status(b:PersonalBinding|null){if(!b)return{profile:null,authority:null,keys:[],connection:{connected:false,lastSeenAt:null},entry:this.entry.project(null)};
  return this.storage.transactionSync(()=>{if(!this.auth.active(b.sidDigest,b.proof,b.appId,Date.now()))return fail('personal_session_required');
  const profile=this.registration.profile(b);
- if(!profile)return{profile:null,authority:null,keys:[],entry:this.entry.project(b)};
+ if(!profile)return{profile:null,authority:null,keys:[],connection:{connected:false,lastSeenAt:null},entry:this.entry.project(b)};
  const actor=this.own(b),g=this.storage.sql.exec('SELECT version,active,scopes FROM personal_authority WHERE actor_id=?',actor.actorId).toArray()[0];
- return{profile,authority:{actorId:actor.actorId,version:Number(g?.version??0),active:Number(g?.active??0)===1,scopes:g?JSON.parse(String(g.scopes)):[]},keys:this.authority.listKeys(b),entry:this.entry.project(b)};
+ const seen=this.storage.sql.exec('SELECT max(a.last_seen_at) AS seen FROM personal_connector_activity a JOIN personal_authority_keys k ON k.id=a.key_id JOIN personal_authority g ON g.actor_id=k.actor_id WHERE a.actor_id=? AND k.actor_id=? AND k.agent_id=? AND k.root_ref=? AND k.revoked_at IS NULL AND a.grant_version=k.grant_version AND k.grant_version=g.version AND g.active=1 AND g.agent_id=k.agent_id AND g.root_ref=k.root_ref',actor.actorId,actor.actorId,actor.agentId,actor.rootRef).toArray()[0]?.seen;
+ const lastSeenAt=typeof seen==='number'&&Number.isSafeInteger(seen)&&seen>0?seen:null;
+ return{profile,authority:{actorId:actor.actorId,version:Number(g?.version??0),active:Number(g?.active??0)===1,scopes:g?JSON.parse(String(g.scopes)):[]},keys:this.authority.listKeys(b),connection:{connected:lastSeenAt!==null,lastSeenAt},entry:this.entry.project(b)};
  });
  }
  locationFor(actorId:string):OwnerLocation|undefined{const row=this.storage.sql.exec('SELECT location FROM personal_owner_locations WHERE actor_id=?',actorId).toArray()[0];
@@ -201,6 +204,14 @@ export class PersonalWorld{
    const authorize=()=>this.lookup(hash)?.version===b.version?null:'agent_key_revoked';
    return runTool({trust:this.trust,runtime:this.runtime,hooks:this.hooks,ownerRoot:this.legacy.root(),ownerClaimed:this.legacy.claimed(),ownerClaimedNow:this.legacy.claimed,personal:true,ownerLocation:()=>this.locationFor(b.actor.actorId),baseUrl:this.baseUrl,key:{id:b.id,muse:b.actor.actorId,signerKind:'server_custodial',createdAt:b.createdAt,lastUsedAt:null,revokedAt:null},now:Date.now,authorize,ownerOf:id=>this.ownerOf(id)},name,args);
   };
-  try{const out=await dispatch(method,params,{list:()=>toolList(this.runtime.state().muses.map(m=>m.id),true),call,isInvalidParams:e=>e instanceof InvalidParams});if(method==='tools/list'&&out.result)out.result={...(out.result as Record<string,unknown>),cacheScope:'private',ttlMs:0};return{status:'ok',...out};}catch{return{status:'ok',error:{code:-32603,message:'Internal error'}};}
+  try{const out=await dispatch(method,params,{list:()=>toolList(this.runtime.state().muses.map(m=>m.id),true),call,isInvalidParams:e=>e instanceof InvalidParams});
+   if(out.result&&(out.result as {isError?:boolean}).isError!==true&&!out.error){
+    // Owner-private connection observation, separate from world presence, admission and claim.
+    // Re-check after any awaited tool work; revoked keys cannot leave a positive observation.
+    try{this.storage.transactionSync(()=>{const current=this.lookup(hash);if(!current||current.id!==b.id||current.actor.actorId!==b.actor.actorId||current.actor.rootRef!==b.actor.rootRef||current.version!==b.version)return;
+     this.storage.sql.exec('INSERT INTO personal_connector_activity (key_id,actor_id,grant_version,last_seen_at) VALUES (?,?,?,?) ON CONFLICT(key_id) DO UPDATE SET last_seen_at=max(last_seen_at,excluded.last_seen_at)',b.id,b.actor.actorId,b.version,Date.now());
+    });}catch{/* An optional observation must not turn an already-completed tool action into a retry. */}
+   }
+   if(method==='tools/list'&&out.result)out.result={...(out.result as Record<string,unknown>),cacheScope:'private',ttlMs:0};return{status:'ok',...out};}catch{return{status:'ok',error:{code:-32603,message:'Internal error'}};}
  }
 }

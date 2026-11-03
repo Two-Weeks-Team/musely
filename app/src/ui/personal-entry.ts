@@ -136,24 +136,37 @@ export function mountPersonalEntry(host: HTMLElement, options: PersonalEntryOpti
   if (disposed) return;
   root.replaceChildren(); root.dataset.state = phase; root.dataset.joined = 'false';
   const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; return n; };
-  root.append(element('h2', 'Your Muse'), element('p', 'Watch the world while you prepare your own Muse.'));
-  const status = element('p', message || (profile ? options.connectionManaged ? 'Your profile is registered. Current world entry is checked in the connection section.' : 'Your profile is registered. Your Muse has not entered the world yet.' : 'Choose a public name and appearance for your Muse.')); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); root.append(status);
-  const button = (action: string, text: string, fn: () => Promise<void>) => { const b = element('button', text); b.type = 'button'; b.className = 'secondary'; b.dataset.action = action; b.disabled = busy || externalBusy; b.onclick = fn; root.append(b); return b; };
-  if (profile && authenticated) root.append(element('p', (phase === 'error' ? 'Last confirmed profile: ' : '') + profile.displayName));
-  if (authenticated === false) button('login', 'Sign in with Threads', login);
+  root.append(element('h2', '1 · 내 Muse의 이름과 모습 / Your Muse’s name and appearance'));
+  const detail=element('details');detail.className='entry-advanced';detail.append(element('summary','이름·모습·로그인 관리 / Manage name, appearance and sign-in'));
+  const translated:Record<string,string>={
+   'Checking your profile…':'이름과 모습을 확인하고 있어요…',
+   'Opening Threads sign-in…':'Threads 로그인을 열고 있어요…',
+   'Continue in Threads, then return here to check your profile.':'Threads에서 로그인한 뒤 돌아와 확인해 주세요.',
+   'Your session ended. Sign in again when you are ready.':'로그인이 끝났어요. 준비되면 다시 로그인해 주세요.',
+   'Could not open sign-in. Try again when you are ready.':'로그인을 열지 못했어요. 다시 눌러 주세요.',
+   'Could not check your profile. Refresh to try again.':'이름과 모습을 확인하지 못했어요. 다시 확인해 주세요.',
+   'Use a public name of 1–40 characters and choose an appearance.':'공개할 이름을 1~40자로 적고 모습을 골라 주세요.',
+   'Signed out. You can keep watching.':'로그아웃했어요. 세계 관람은 계속할 수 있어요.'};
+  const normal=profile?(options.connectionManaged?'이름과 모습이 준비됐어요. 연결과 입장은 아래에서 확인해 주세요. / Your name and appearance are ready. Check connection and entry below.':'이름과 모습이 준비됐어요. 아직 세계 입장 완료는 아니에요. / Your name and appearance are ready. Your Muse has not entered the world yet.'):'내 Muse의 공개 이름과 모습을 골라 주세요. 관람은 로그인 없이도 할 수 있어요. / Choose your Muse’s name and appearance. You can keep watching without signing in.';
+  const status = element('p', message?(translated[message]??'안내를 확인하고 다음 버튼을 눌러 주세요.')+' / '+message:normal); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); root.append(status);
+  const button = (action: string, text: string, fn: () => Promise<void>) => { const b = element('button', text); b.type = 'button'; b.className = 'secondary'; b.dataset.action = action; b.disabled = busy || externalBusy; b.onclick = fn; return b; };
+  if (profile && authenticated) root.append(element('p', profile.displayName));
+  if (authenticated === false) {const b=button('login','Threads로 로그인 / Sign in with Threads',login);b.className='primary';root.append(b);}
   if (authenticated === true && !needsRefresh) {
-   const f = element('form'), label = element('label', 'Public Muse name'), input = element('input'); input.type = 'text'; input.name = 'displayName'; input.value = draft.displayName; input.maxLength = 80; input.disabled = busy || externalBusy; input.setAttribute('aria-label', 'Public Muse name'); label.append(input);
-   const appearanceLabel = element('label', 'Appearance'), select = element('select'); select.name = 'appearanceId'; select.setAttribute('aria-label', 'Appearance'); select.disabled = busy || externalBusy;
+   const f = element('form'), label = element('label', '공개할 Muse 이름 / Public Muse name'), input = element('input'); input.type = 'text'; input.name = 'displayName'; input.value = draft.displayName; input.maxLength = 80; input.disabled = busy || externalBusy; input.setAttribute('aria-label', '공개할 Muse 이름 / Public Muse name'); label.append(input);
+   const appearanceLabel = element('label', '모습 / Appearance'), select = element('select'); select.name = 'appearanceId'; select.setAttribute('aria-label', '모습 / Appearance'); select.disabled = busy || externalBusy;
    for (const v of MUSE_VARIANTS) { const option = element('option', v.name); option.value = v.id; select.append(option); }
    select.value = draft.appearanceId; appearanceLabel.append(select);
-   const submit = element('button', profile ? 'Save profile' : 'Register profile'); submit.type = 'submit'; submit.className = 'primary'; submit.disabled = busy || externalBusy;
-   f.onsubmit = async event => { event.preventDefault(); await save(input.value, select.value); }; f.append(label, appearanceLabel, submit); root.append(f);
+   const submit = element('button', profile ? '이름·모습 저장 / Save name and appearance' : '내 Muse 만들기 / Create my Muse'); submit.type = 'submit'; submit.className = profile?'secondary':'primary'; submit.disabled = busy || externalBusy;
+   f.onsubmit = async event => { event.preventDefault(); await save(input.value, select.value); }; f.append(label, appearanceLabel, submit);(profile?detail:root).append(f);
   }
-  // A deliberate read can cancel an old request or recover a page restored after external sign-in.
-  button('refresh', 'Refresh profile', refresh).disabled = logoutPending || externalBusy;
-  if (authenticated === true) button('logout', 'Sign out', logout);
+  const refreshButton=button('refresh','다시 확인 / Check again',refresh);refreshButton.disabled=logoutPending||externalBusy;
+  if(needsRefresh||authenticated===null&&phase==='error'){refreshButton.className='primary';root.append(refreshButton);}else detail.append(refreshButton);
+  if (authenticated === true) detail.append(button('logout', '로그아웃 / Sign out', logout));
+  root.append(detail);
   try { options.onState?.(state()); } catch {}
  }
+
  const ready = refresh();
  return {ready, refresh, state, markSessionLost() { if (disposed) return; generation++; controller?.abort(); signedOut('Your session ended. Sign in again when you are ready.'); render(); }, setExternalBusy(value: boolean) { if (disposed || externalBusy === value) return; externalBusy = value; render(); }, dispose() { if (disposed) return; disposed = true; generation++; controller?.abort(); resetProfile(); authenticated = false; busy = false; actorBinding = null; try { options.onState?.(state()); } catch {} root.remove(); }};
 }
