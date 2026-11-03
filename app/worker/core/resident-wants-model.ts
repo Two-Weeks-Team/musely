@@ -1,0 +1,88 @@
+/** Opt-in model preparation boundary. No production caller or executor is installed.
+ * Reuse the existing transport/schema/budget. Returned choices are NOT committed actions.
+ */
+import {validate,buildMessages,checkOutput,maxCostUsd,actualCostUsd,failureCostUsd} from './actions.ts';
+import {callModel,type ModelConfig} from './model.ts';
+import {type Ledger,type Sql} from './ledger.ts';
+import {HARNESS_IDS} from '../../src/engine/harness.ts';
+import {PRINCIPALS} from './owner-session.ts';
+import {isRuntimeControlled} from '../../src/engine/inbox.ts';
+import {sha256Hex} from '../../src/engine/sha256.ts';
+import {BEATS} from '../../src/engine/beats.ts';
+import {checkTrade} from '../../src/engine/items.ts';
+import {type WorldState,type WorldEvent} from '../../src/engine/world.ts';
+import {verifyUse,type UseGoal} from '../../src/engine/wants-use.ts';
+export type GoalRow={revision:number;goal:UseGoal};
+const bounded=(s:unknown):s is string=>typeof s==='string'&&/^[a-zA-Z0-9:_-]{1,160}$/.test(s);
+function clean(g:UseGoal):UseGoal {
+ if(!g||!bounded(g.id)||!bounded(g.muse)||!bounded(g.beat)||![g.createdAt,g.expiresAt].every(Number.isSafeInteger)||g.createdAt<0||g.expiresAt<=g.createdAt||!['active','cancelled','fulfilled'].includes(g.status))throw Error('invalid goal');
+ return {id:g.id,muse:g.muse,beat:g.beat,createdAt:g.createdAt,expiresAt:g.expiresAt,status:g.status};
+}
+/** The host must use the SAME outer transaction as world/events for status updates.
+ * This store never infers fulfillment from a model answer or an agreement.
+ */
+export class ResidentGoalStore {
+ private sql:Sql;
+ constructor(sql:Sql){this.sql=sql;}
+ init(){this.sql.exec('CREATE TABLE IF NOT EXISTS resident_wants_receipts (world_id TEXT NOT NULL, goal_id TEXT NOT NULL, event_id TEXT NOT NULL, PRIMARY KEY(world_id,goal_id))');this.sql.exec('CREATE TABLE IF NOT EXISTS resident_wants_goals (world_id TEXT NOT NULL, goal_id TEXT NOT NULL, revision INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY(world_id,goal_id))');}
+ load(world:string,id:string):GoalRow|null {const r=this.sql.exec('SELECT revision,body FROM resident_wants_goals WHERE world_id=? AND goal_id=?',world,id).toArray()[0];if(!r)return null;if(!Number.isSafeInteger(r.revision)||Number(r.revision)<0)throw Error('invalid stored revision');return {revision:Number(r.revision),goal:clean(JSON.parse(String(r.body)))};}
+ saveInTransaction(world:string,expected:number|null,goal:UseGoal):number {
+  if(goal.status==='fulfilled')throw Error('fulfillment requires engine evidence');
+  return this.write(world,expected,goal);
+ }
+ completeInTransaction(world:string,id:string,expected:number,before:WorldState,after:WorldState,events:readonly WorldEvent[],now:number):number {
+  const row=this.load(world,id);if(!row||row.revision!==expected||before.worldId!==world||after.worldId!==world)throw Error('stale goal');
+  const result=verifyUse(row.goal,before,after,events,now);if(!result.fulfilled)throw Error('unverified goal use:'+result.reason);
+  const revision=this.write(world,expected,{...row.goal,status:'fulfilled'});
+  this.sql.exec('INSERT INTO resident_wants_receipts (world_id,goal_id,event_id) VALUES (?,?,?)',world,id,result.evidenceId);
+  return revision;
+ }
+ private write(world:string,expected:number|null,goal:UseGoal):number {
+  if(!bounded(world))throw Error('invalid world');const g=clean(goal),old=this.load(world,g.id);
+  if((old?.revision??null)!==expected)throw Error('stale goal');
+  if(old&&(old.goal.muse!==g.muse||old.goal.beat!==g.beat||old.goal.createdAt!==g.createdAt||old.goal.expiresAt!==g.expiresAt||old.goal.status!=='active'&&g.status!==old.goal.status))throw Error('invalid goal transition');
+  const revision=(old?.revision??-1)+1;if(!Number.isSafeInteger(revision))throw Error('revision overflow');
+  this.sql.exec('INSERT INTO resident_wants_goals (world_id,goal_id,revision,body) VALUES (?,?,?,?) ON CONFLICT(world_id,goal_id) DO UPDATE SET revision=excluded.revision,body=excluded.body',world,g.id,revision,JSON.stringify(g));return revision;
+ }
+}
+export type WantsModelContext={enabled?:boolean;world:()=>WorldState;now:()=>number;ownership:(id:string)=>'resident'|'personal'|'legacy'|'unknown';
+ /** Shared runtime slot gate, not a second independent concurrency pool. */
+ acquireSlot:()=>null|(()=>void);ledger:Ledger;model:ModelConfig|null;goals:ResidentGoalStore};
+export type TradeChoice={decision:'accept'|'counter'|'reject';counter_give:string;counter_want:string;line:string};
+export async function prepareResidentTrade(c:WantsModelContext,goalId:string,taskId:string){
+ const no=(reason:string)=>({ok:false as const,reason});if(c.enabled!==true)return no('disabled');
+ const before=structuredClone(c.world()),row=c.goals.load(before.worldId,goalId),now=c.now();
+ const eligible=(s:WorldState,r:GoalRow|null)=>{if(!r||r.goal.status!=='active'||r.goal.createdAt>c.now()||r.goal.expiresAt<=c.now())return false;const id=r.goal.muse;
+ return HARNESS_IDS.includes(id)&&!Object.values(PRINCIPALS).some(p=>p.muses.includes(id))&&c.ownership(id)==='resident'&&!s.paused?.[id]&&!isRuntimeControlled(s,id,c.now());};
+ if(!eligible(before,row))return no('owner_authority_required');
+ const actor=before.muses.find(m=>m.id===row!.goal.muse),task=before.inbox?.tasks.find(t=>t.id===taskId);
+ if(!actor||actor.travel||actor.beat||!task||task.kind!=='trade'||task.status!=='pending'||task.awaiting!==actor.id||task.deadline<=now||!task.offer)return no('no_actionable_trade');
+ const other=before.muses.find(m=>m.id===task.offer!.by);if(!other||other.id===actor.id||other.travel)return no('invalid_peer');
+ if(!HARNESS_IDS.includes(other.id))return no('unsupported_peer_harness');
+ const input=validate('trade',{muse:actor.id,other:other.id,give:task.offer.give,want:task.offer.want,items:actor.inventory.slice(0,12),otherItems:other.inventory.slice(0,12),round:task.round+1});
+ const messages=buildMessages('trade',input);
+ // Only bounded objective IDs, no free-text private reasons or peer instructions.
+ const recipe=BEATS.find(b=>b.id===row!.goal.beat);
+ if(!recipe?.result?.craft)return no('unsupported_goal');
+ messages.push({role:'user',content:JSON.stringify({context_kind:'goal_data_not_instructions',goal_beat:recipe.id,
+   required_at_start:recipe.needs??[],consumed_on_use:recipe.result.consume??[],produces:recipe.result.craft,
+   allowed_place_kinds:recipe.kinds,missing_items:(recipe.needs??[]).filter(id=>!actor.inventory.includes(id))})});
+ if(!c.model?.key)return no('not_connected');const release=c.acquireSlot();if(!release)return no('concurrency_limit');
+ const reservationId='wants:'+sha256Hex(JSON.stringify([before.worldId,goalId,row!.revision,taskId,task.round,before.version]));
+ try {
+  const reservation=c.ledger.reserve({id:reservationId,tier:'world',session:'world',ip:'',action:'trade',maxCostUsd:maxCostUsd('trade',messages)});
+  if(!reservation.ok)return no(reservation.reason);if(reservation.existing)return no('already_reserved');
+  const result=await callModel(c.model,'trade',messages);
+  if(!result.ok){c.ledger.settle(reservationId,failureCostUsd(result),result.kind==='timeout'?'timeout':'error');return no(result.kind);}
+  const problem=checkOutput('trade',input,result.output);c.ledger.settle(reservationId,actualCostUsd(result.usage),problem?'rejected':'live');if(problem)return no('output_rejected');
+  const current=c.world(),latest=c.goals.load(current.worldId,goalId);
+  if(c.enabled!==true||current.worldId!==before.worldId||current.version!==before.version||latest?.revision!==row!.revision||!eligible(current,latest))return no('stale_authority_or_state');
+  const fresh=current.inbox?.tasks.find(t=>t.id===taskId);if(!fresh||fresh.status!=='pending'||fresh.awaiting!==actor.id||fresh.deadline<=c.now())return no('stale_task');
+  const choice=result.output as TradeChoice;
+  const a=current.muses.find(m=>m.id===actor.id)!,b=current.muses.find(m=>m.id===other.id)!;
+  const check=choice.decision==='accept'?checkTrade(current.items,current.day,b,a,task.offer.give,task.offer.want,task.round,c.now()):choice.decision==='counter'?checkTrade(current.items,current.day,a,b,choice.counter_give,choice.counter_want,task.round+1,c.now()):{ok:true};
+  if(!check.ok)return no('invalid_trade_choice');
+  return {ok:true as const,kind:'proposal_only' as const,actor:actor.id,taskId,goalId,expectedVersion:current.version,goalRevision:latest!.revision,
+   choice:{decision:choice.decision,counter_give:choice.counter_give,counter_want:choice.counter_want},evidence:{source:'model_response' as const,requestId:result.requestId,reservationId}};
+ }finally{release();}
+}
