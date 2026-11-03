@@ -1,5 +1,6 @@
 // Personal authentication route adapter only. A valid login never creates an actor or inherits legacy owner powers.
-import {originAllowed} from './owner-session.ts';
+import {originAllowed,OWNER_COOKIE} from './owner-session.ts';
+import type {DecisionOutcome} from './tasks.ts';
 import type {PersonalBinding} from './personal-registration.ts';
 import type {ActorProfile} from '../../src/identity/participant.ts';
 import {personalAuthorizeUrl, personalThreadsIdentity, type PersonalThreadsConfig} from './threads.ts';
@@ -12,6 +13,10 @@ import {
 
 type MaybePromise<T> = T | Promise<T>;
 export interface PersonalAuthStub {
+  personalLegacyView(binding:PersonalBinding,ownerCookie:string|null):MaybePromise<unknown>;
+  personalLegacyAdopt(binding:PersonalBinding,ownerCookie:string|null,input:unknown):MaybePromise<unknown>;
+  personalLegacyInbox(binding:PersonalBinding):MaybePromise<unknown>;
+  personalLegacyApprove(binding:PersonalBinding,input:unknown):MaybePromise<DecisionOutcome>;
   personalClaimRead(binding:PersonalBinding):MaybePromise<unknown>;
   personalClaimRevoke(binding:PersonalBinding,input:unknown):MaybePromise<unknown>;
   personalClaimBegin(binding:PersonalBinding,input:unknown,flow:PersonalFlow):MaybePromise<boolean>;
@@ -78,7 +83,7 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
   try {
     const now = cfg.now ?? Date.now;
     const routes = new Map([[START, 'POST'], [PERSONAL_CALLBACK, 'GET'], [BASE + '/me', 'GET'], [BASE + '/session', 'DELETE'], [BASE + '/draft', 'POST'], [BASE + '/profile', request.method === 'PATCH' ? 'PATCH' : 'GET']]);
-    const bootstrap=bootstrapMethods(url.pathname);
+    const bootstrap=url.pathname===BASE+'/legacy-muse'?['GET','POST']:url.pathname===BASE+'/inbox'?['GET']:url.pathname===BASE+'/approvals'?['POST']:bootstrapMethods(url.pathname);
     const method = routes.get(url.pathname)??(bootstrap?.includes(request.method)?request.method:bootstrap?.[0]);
     if (!method) return failure('not_found', 404);
     if (request.method !== method) { const r = failure('method_not_allowed', 405); r.headers.set('allow', bootstrap?bootstrap.join(', '):url.pathname === BASE + '/profile' ? 'GET, PATCH' : method); return r; }
@@ -102,6 +107,9 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
       const binding:PersonalBinding={sidDigest:await personalDigest('sid',p.sid),appId:cfg.appId!,proof:{principalId:p.principalId,authVersion:p.authVersion,issuedAt:p.issuedAt,expiresAt:p.expiresAt}};
       let input:unknown;if(bootstrapWrite){try{input=await bootstrapJSON(request);}catch{return failure('invalid_entry',400);}}
       try{
+       if(url.pathname===BASE+'/legacy-muse'){const ownerCookie=personalCookieValue(request,OWNER_COOKIE);return json(request.method==='GET'?await stub.personalLegacyView(binding,ownerCookie):await stub.personalLegacyAdopt(binding,ownerCookie,input));}
+       if(url.pathname===BASE+'/inbox')return json(await stub.personalLegacyInbox(binding));
+       if(url.pathname===BASE+'/approvals'){const r=await stub.personalLegacyApprove(binding,input);return r.ok?json({ok:true,decision:(input as {decision:string}).decision,duplicate:r.duplicate,confirmed:r.confirmed,task:r.task}):json({error:r.code,retryable:r.retryable,...(r.extra??{})},r.status);}
        if(url.pathname===BASE+'/claim')return json(request.method==='GET'?await stub.personalClaimRead(binding):await stub.personalClaimRevoke(binding,input));
        if(url.pathname===BASE+'/claim/start'){
         if(!ready)return failure('personal_auth_not_configured',503);
@@ -118,8 +126,11 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
        if(url.pathname.startsWith(BASE+'/keys/'))return json({key:await stub.personalKeyRevoke(binding,url.pathname.split('/').at(-1)!)});
        const result=url.pathname===BASE+'/entry-attempts'?await stub.personalAttemptCreate(binding,input):request.method==='GET'?await stub.personalAttemptRead(binding,url.pathname.split('/').at(-1)!):await stub.personalAttemptCancel(binding,url.pathname.split('/').at(-1)!);
        return json(result);
-      }catch(e){const code=e&&typeof e==='object'&&'name'in e&&e.name==='PersonalRegistryError'&&'code'in e&&typeof e.code==='string'?e.code:null;
+      }catch(e){const code=e&&typeof e==='object'&&'name'in e&&typeof e.name==='string'&&['PersonalRegistryError','PersonalAdoptionError','PersonalLegacyError','LegacyProfileError'].includes(e.name)&&'code'in e&&typeof e.code==='string'?e.code:null;
        if(code==='personal_session_required')return failure(code,401);
+       if(code==='owner_session_required'||code==='not_your_muse'||code==='adoption_required')return failure(code,403);
+       if(code&&['invalid_adoption','invalid_approval','invalid_profile'].includes(code))return failure(code,400);
+       if(code&&['adoption_conflict','adoption_changed','profile_conflict'].includes(code))return failure(code,409);
        if(code&&['invalid_authority','invalid_entry','invalid_registration','invalid_location','invalid_claim'].includes(code))return failure(code,400);
        if(code&&['key_not_found','entry_attempt_not_found'].includes(code))return failure(code,404);
        if(code&&['claim_changed','claim_binding_invalid','authority_conflict','authority_changed','authority_required','operation_conflict','entry_key_invalid','entry_version_conflict','entry_profile_conflict','entry_world_conflict','entry_paused','entry_already_activated','draft_required'].includes(code))return failure(code,409);
@@ -145,10 +156,10 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
         return json({profile, entry: {state: profile ? 'registered' : 'viewing'}});
       } catch (e) {
         // RPC preserves serializable name/code, not a custom Error's prototype (compat >=2026-04-21).
-        const code = e && typeof e === 'object' && 'name' in e && e.name === 'PersonalRegistryError' && 'code' in e && typeof e.code === 'string' ? e.code : null;
+        const code = e && typeof e === 'object' && 'name' in e && typeof e.name==='string' && ['PersonalRegistryError','PersonalAdoptionError','PersonalLegacyError','LegacyProfileError'].includes(e.name) && 'code' in e && typeof e.code === 'string' ? e.code : null;
         if (code === 'personal_session_required') return failure(code, 401);
-        if (code === 'invalid_registration') return failure(code, 400);
-        if (code && ['operation_conflict', 'actor_exists', 'binding_conflict', 'draft_required', 'revision_conflict'].includes(code)) return failure(code, 409);
+        if (code === 'invalid_registration'||code==='invalid_profile') return failure(code, 400);
+        if (code && ['operation_conflict', 'actor_exists', 'binding_conflict', 'draft_required', 'revision_conflict','adoption_conflict','adoption_changed','profile_conflict'].includes(code)) return failure(code, 409);
         return failure('registration_unavailable', 503);
       }
     }

@@ -1,6 +1,12 @@
 import {losePersonalClaim} from './core/personal-claim-loss.ts';
 import {PersonalClaims,type ClaimFlowBinding} from './core/personal-claims.ts';
 import {LegacyProfile,type LegacyOwnerProof} from './core/legacy-profile.ts';
+import {PersonalAdoption} from './core/personal-adoption.ts';
+import {PersonalLegacy} from './core/personal-legacy.ts';
+import {ReceiptSnapshots} from './core/receipt-snapshots.ts';
+import {canonicalize} from '../src/identity/jcs.ts';
+import {readOwnerSession,type OwnerTokens} from './core/owner-session.ts';
+import {PersonalRegistryError} from './core/personal-owners.ts';
 import {PersonalWorld} from './core/personal-world.ts';
 // The single shared world Durable Object: budget and quota ledger, the heartbeat and commit point,
 // the append-only run log, the trust registry and the owner claim (direction v2, 6, 8.7, 15).
@@ -25,6 +31,9 @@ import {PersonalRegistration, type PersonalBinding} from './core/personal-regist
 export class WorldDO extends DurableObject<Env> {
   private ledger: Ledger;
   private legacyProfile:LegacyProfile;
+  private personalAdoption:PersonalAdoption;
+  private personalLegacy:PersonalLegacy;
+  private receiptSnapshots:ReceiptSnapshots;
   private personalAuth: PersonalAuthStore;
   private personalRegistration: PersonalRegistration;
   private personalWorld: PersonalWorld;
@@ -42,7 +51,8 @@ export class WorldDO extends DurableObject<Env> {
     this.origin = env.PUBLIC_ORIGIN;
     if (!this.origin) throw new Error('PUBLIC_ORIGIN is not set');
     this.personalAuth = new PersonalAuthStore(ctx.storage);
-    this.personalRegistration = new PersonalRegistration(ctx.storage, this.personalAuth);
+    this.receiptSnapshots=new ReceiptSnapshots(ctx.storage.sql);
+    this.personalRegistration = new PersonalRegistration(ctx.storage, this.personalAuth,{reservedPrincipal:id=>this.personalAdoption?.hasPrincipal(id)??false});
     this.ledger = new Ledger(ctx.storage.sql, {dailyCapUsd: Number(env.DAILY_BUDGET_USD) || 20});
     this.trust = new Trust(ctx.storage.sql);
     this.ritual = new RitualStore(ctx.storage.sql);
@@ -66,9 +76,15 @@ export class WorldDO extends DurableObject<Env> {
     this.legacyProfile=new LegacyProfile(ctx.storage,this.runtime);
     this.personalWorld=new PersonalWorld(ctx.storage,this.personalAuth,this.personalRegistration,this.runtime,this.trust,this.origin,hooks,{root:()=>this.ownerRoot,claimed:()=>this.getClaim('owner-muse')?.status==='claimed'});
     this.connected = new ConnectedHost({personal:this.personalWorld,sql: ctx.storage.sql, trust: this.trust, runtime: this.runtime, hooks, baseUrl: this.origin, ownerRoot: () => this.ownerRoot, ownerClaimed: () => this.getClaim('owner-muse')?.status === 'claimed', ownerOf: muse => this.personalWorld.ownerOf(muse)});
+    this.personalAdoption=new PersonalAdoption(ctx.storage,this.personalAuth,{
+      currentLegacy:()=>{const agent=this.trust.agentByMuse(OWNER_SLOT);if(!agent)throw new PersonalRegistryError('adoption_unavailable');const{kty,crv,x,y}=agent.rootJwk;return{actorId:OWNER_SLOT,agentId:agent.agentId,rootBinding:canonicalize({kty,crv,x,y}),worldId:this.runtime.worldId,profile:this.legacyProfile.view()};},
+      commitProfile:(owner,input)=>{const profile=this.legacyProfile.patch(owner,input),commit=this.runtime.runLog.lastInput();if(!commit)throw new PersonalRegistryError('adoption_unavailable');const event=ctx.storage.sql.exec("SELECT seq,id FROM events WHERE run_id=? AND input_seq=? AND kind='legacy_profile_updated' AND muse=? ORDER BY seq DESC LIMIT 1",commit.runId,commit.seq,OWNER_SLOT).toArray()[0];if(!event)throw new PersonalRegistryError('adoption_unavailable');if(!commit.afterSnapshot&&commit.afterSnapshotError==='replay_storage_limit')this.receiptSnapshots.put({kind:'legacy_adoption',actorId:OWNER_SLOT,worldId:this.runtime.worldId,runId:commit.runId,inputSeq:commit.seq,eventId:String(event.id),afterHash:commit.afterHash},this.runtime.state());return{profile,commit:{worldId:this.runtime.worldId,runId:commit.runId,inputSeq:commit.seq,eventSeq:Number(event.seq),eventId:String(event.id),afterHash:commit.afterHash}};},
+    });
+    this.personalLegacy=new PersonalLegacy({storage:ctx.storage,auth:this.personalAuth,adoption:this.personalAdoption,runtime:this.runtime,trust:this.trust,connected:this.connected,legacyProfile:this.legacyProfile});
     ctx.blockConcurrencyWhile(async () => {
       this.ledger.init();
       this.personalAuth.init();
+      this.personalAdoption.init();
       this.personalRegistration.init();
       this.runtime.init(Date.now());
       // Task records version 2 (C06, I-07): migrates a stored version 1 inbox once, before any other commit; a restart writes nothing.
@@ -101,7 +117,7 @@ export class WorldDO extends DurableObject<Env> {
   personalClaimRevoke(binding:PersonalBinding,input:unknown){return this.personalClaims.revoke(binding,input);}
   personalClaimBegin(binding:PersonalBinding,input:unknown,flow:PersonalFlow){return this.personalClaims.begin(binding,input,flow);}
   personalClaimComplete(binding:ClaimFlowBinding,code:string|null){return this.personalClaims.complete(binding,code);}
-  personalStatus(binding:PersonalBinding|null){return this.personalWorld.status(binding);}
+  personalStatus(binding:PersonalBinding|null){if(binding&&this.personalAdoption.hasPrincipal(binding.proof.principalId)){this.guardAdoptionBinding(binding);return{kind:'legacy_adoption',...this.personalLegacy.view(binding,null)};}return this.personalWorld.status(binding);}
   personalAuthorityOwn(binding:PersonalBinding){return this.personalWorld.authorityOwn(binding);}
   personalAuthorityGrant(binding:PersonalBinding,input:unknown){return this.personalWorld.grant(binding,input);}
   personalAuthorityRevoke(binding:PersonalBinding,input:unknown){return this.personalWorld.revoke(binding,input);}
@@ -112,8 +128,14 @@ export class WorldDO extends DurableObject<Env> {
   personalAttemptRead(binding:PersonalBinding,id:string){return{attempt:this.personalWorld.entry.read(binding,id),entry:this.personalWorld.entry.project(binding)};}
   personalAttemptCancel(binding:PersonalBinding,id:string){return{attempt:this.personalWorld.entry.cancel(binding,id),entry:this.personalWorld.entry.project(binding)};}
   personalDraftRegister(binding: PersonalBinding, input: unknown) { return this.personalRegistration.register(binding, input); }
-  personalProfileRead(binding: PersonalBinding) { return this.personalRegistration.profile(binding); }
-  personalProfilePatch(binding: PersonalBinding, input: unknown) { return this.personalWorld.patchProfile(binding, input); }
+  personalProfileRead(binding: PersonalBinding) { this.guardAdoptionBinding(binding);return this.personalLegacy.profile(binding)??this.personalRegistration.profile(binding); }
+  personalProfilePatch(binding: PersonalBinding, input: unknown) { this.guardAdoptionBinding(binding);return this.personalAdoption.hasPrincipal(binding.proof.principalId)?this.personalLegacy.patchProfile(binding,input):this.personalWorld.patchProfile(binding,input); }
+  private guardAdoptionBinding(binding:PersonalBinding){if(!binding||binding.appId!==this.env.THREADS_APP_ID||!this.personalAuth.active(binding.sidDigest,binding.proof,binding.appId,Date.now()))throw new PersonalRegistryError('personal_session_required');}
+  private async adoptionOwner(cookie:string|null):Promise<LegacyOwnerProof|null>{const tokens:OwnerTokens={owner:this.env.OWNER_CONTROL_TOKEN,peer:this.env.DEMO_PEER_CONTROL_TOKEN,reviewer:this.env.REVIEWER_CONTROL_TOKEN,judge:this.env.JUDGE_TOKEN};const owner=await readOwnerSession(this.env.SESSION_SECRET??'',cookie,tokens);return owner?.principal==='owner'?{principal:owner.principal,ownerId:owner.ownerId,exp:owner.exp}:null;}
+  async personalLegacyView(binding:PersonalBinding,ownerCookie:string|null){this.guardAdoptionBinding(binding);const owner=this.personalAdoption.hasPrincipal(binding.proof.principalId)?null:await this.adoptionOwner(ownerCookie);this.guardAdoptionBinding(binding);return this.personalLegacy.view(binding,owner);}
+  async personalLegacyAdopt(binding:PersonalBinding,ownerCookie:string|null,input:unknown){this.guardAdoptionBinding(binding);const owner=await this.adoptionOwner(ownerCookie);this.guardAdoptionBinding(binding);if(!owner)throw new PersonalRegistryError('owner_session_required');return this.personalLegacy.adopt(binding,owner,input);}
+  personalLegacyInbox(binding:PersonalBinding){this.guardAdoptionBinding(binding);return this.personalLegacy.inbox(binding);}
+  personalLegacyApprove(binding:PersonalBinding,input:unknown){this.guardAdoptionBinding(binding);return this.personalLegacy.approve(binding,input);}
   personalAuthBegin(flow: PersonalFlow) { return this.personalAuth.begin(flow); }
   personalAuthConsume(binding: Pick<PersonalFlow, 'stateDigest' | 'browserDigest' | 'appId' | 'redirectUri'>, now: number) { return this.personalAuth.consume(binding, now); }
   personalAuthComplete(stateDigest: string, appId: string, subject: string, sidDigest: string, now: number) { return this.personalAuth.complete(stateDigest, appId, subject, sidDigest, now); }

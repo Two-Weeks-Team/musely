@@ -26,6 +26,8 @@ export class LegacyProfile {
     try { return {actorId: ACTOR, ...normalizePersonalProfile(r.display_name, r.appearance_id), revision: Number(r.revision)}; } catch { return fail('profile_unavailable'); }
   }
   get(owner: LegacyOwnerProof): ActorProfile { this.guard(owner); return this.current(); }
+  /** Public profile data only. Trusted adapters enforce their own authenticated ownership before writes. */
+  view():ActorProfile{return this.current();}
   patch(owner: LegacyOwnerProof, input: unknown): ActorProfile {
     this.guard(owner);
     if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).sort().join(',') !== 'appearanceId,displayName,expectedRevision') return fail('invalid_profile');
