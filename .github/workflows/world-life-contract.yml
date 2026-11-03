@@ -108,8 +108,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Require the exact reviewed main merge base
-        run: test "${{ github.event.pull_request.base.sha }}" = "d2892ebebde56d495341493b2317a40c7a5d0658"
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: current-main
+      - name: Require the actual main ref to match the reviewed baseline
+        run: test "$(git -C current-main rev-parse HEAD)" = "d2892ebebde56d495341493b2317a40c7a5d0658"
       - name: Fail closed if current main changed the reviewed shared source baseline
         shell: bash
         run: |
