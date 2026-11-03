@@ -1,3 +1,4 @@
+import {participantName,participantLikes} from '../../src/engine/participants.ts';
 // Shared workflow Tasks (C06): the version 2 Task record, its migration, and the meetup owner approval (I-07).
 // I-03A made the facade; I-07 owns the stored version 2 fields, the migration, trade and meetup; I-13 adds help through
 // registerTaskKind (see "kinds" below) without editing this file's workflow.
@@ -299,14 +300,14 @@ const hhmm = (mins: number) => `${String(Math.floor(mins / 60)).padStart(2, '0')
  * `shift` moves the slots on by that many half hours (a revision never repeats the list it replaces). Nothing private
  * (an owner's schedule, constraints or reasons) is an input.
  */
-export function meetupCandidates(a: string, b: string, at: number, shift = 0): MeetupCandidate[] {
-  const likesA = harnessById(a).persona.likes as readonly string[], likesB = harnessById(b).persona.likes as readonly string[];
+export function meetupCandidates(a: string, b: string, at: number, shift = 0, state?: WorldState): MeetupCandidate[] {
+  const likesA = state?participantLikes(state,a):harnessById(a).persona.likes as readonly string[], likesB = state?participantLikes(state,b):harnessById(b).persona.likes as readonly string[];
   const places = COMMONS.map(placeById);
   const both = places.filter(p => likesA.includes(p.kind) && likesB.includes(p.kind));
   const either = places.filter(p => !both.includes(p) && (likesA.includes(p.kind) || likesB.includes(p.kind)));
   const ranked = [...both, ...either];
   if (!ranked.length) ranked.push(placeById('commons:campfire'));
-  const basis = (p: (typeof places)[number]) => both.includes(p) ? `both like ${p.kind} spots` : likesB.includes(p.kind) ? `${museName(b)} likes ${p.kind} spots` : likesA.includes(p.kind) ? `${museName(a)} likes ${p.kind} spots` : 'an open spot in the commons';
+  const basis = (p: (typeof places)[number]) => both.includes(p) ? `both like ${p.kind} spots` : likesB.includes(p.kind) ? `${state?participantName(state,b):museName(b)} likes ${p.kind} spots` : likesA.includes(p.kind) ? `${state?participantName(state,a):museName(a)} likes ${p.kind} spots` : 'an open spot in the commons';
   const c = localClock(at + 60 * 60_000), first = Math.ceil((c.hour * 60 + c.minute) / 30) * 30;
   return Array.from({length: MAX_CANDIDATES}, (_, i) => {
     const p = ranked[i % ranked.length];
@@ -340,7 +341,7 @@ export const definedOwnerOf: OwnerOf = museId => Object.values(PRINCIPALS).find(
  * is approved by rule at once, bound to this revision and hash (it accepted the whole list, so any candidate). Each owned
  * side gets the meetup_candidate notification (one of the three owner notifications).
  */
-export function startOwnerApproval(inbox: Inbox, t: Task, at: number, ownerOf: OwnerOf, emit: Emit) {
+export function startOwnerApproval(inbox: Inbox, t: Task, at: number, ownerOf: OwnerOf, emit: Emit, state?:WorldState) {
   syncTask(t);
   t.stage = 'owner_approval'; t.awaiting = null; t.deadline = at + OWNER_APPROVAL_TTL_MS; t.updatedAt = at;
   t.owners = {[t.from]: ownerOf(t.from), [t.to]: ownerOf(t.to)};
@@ -349,9 +350,9 @@ export function startOwnerApproval(inbox: Inbox, t: Task, at: number, ownerOf: O
     const other = m === t.from ? t.to : t.from;
     if (t.owners[m] === null) {
       t.approvals[m] = {ref: nextId(inbox, 'ap'), by: RULE_APPROVER, revision: t.revision!, contentHash: t.contentHash!, at, decision: 'approve', candidate: null, source: 'rule'};
-      emit({at, source: 'rule', kind: 'owner_decision', muse: m, other, line: `${museName(m)} has no owner here: approved by rule`, data: {task_id: t.id, decision: 'approve', revision: t.revision, approval_ref: t.approvals[m].ref, actor: 'rule', candidate: 'private (owner only)'}, tags: []});
+      emit({at, source: 'rule', kind: 'owner_decision', muse: m, other, line: `${state?participantName(state,m):museName(m)} has no owner here: approved by rule`, data: {task_id: t.id, decision: 'approve', revision: t.revision, approval_ref: t.approvals[m].ref, actor: 'rule', candidate: 'private (owner only)'}, tags: []});
     } else {
-      notifyOwner(inbox, {kind: 'meetup_candidate', at, line: `A meetup candidate with ${museName(other)} needs your approval`, ref: t.id, other, muse: m, detail: {candidates: candidatesOf(t).map(c => ({...c})), revision: t.revision, content_hash: t.contentHash, deadline: t.deadline}});
+      notifyOwner(inbox, {kind: 'meetup_candidate', at, line: `A meetup candidate with ${state?participantName(state,other):museName(other)} needs your approval`, ref: t.id, other, muse: m, detail: {candidates: candidatesOf(t).map(c => ({...c})), revision: t.revision, content_hash: t.contentHash, deadline: t.deadline}});
       emit({at, source: 'live', kind: 'approval_requested', muse: m, other, line: 'A meetup needs its owner’s decision', data: {requestId: `owner:${t.id}:${t.revision}:${m}`, task_id: t.id, revision: t.revision, actorOrigin: 'system'}, tags: []});
     }
   }
@@ -409,7 +410,7 @@ export function decideApproval(st: WorldState, i: DecisionInput, at: number, emi
   if (t.stage !== 'owner_approval') return refuse(409, 'not_ready_for_approval', {stage: t.stage ?? 'negotiate'});
   if (t.approvals?.[i.muse]) return refuse(409, 'already_decided');
   const approval = (candidate: string | null): TaskApproval => ({ref: nextId(inbox, 'ap'), by: i.ownerId, revision: t.revision!, contentHash: t.contentHash!, at, decision: i.decision, candidate, source: 'owner'});
-  const decided = (a: TaskApproval) => emit({at, source: 'live', kind: 'owner_decision', muse: i.muse, other, line: a.decision === 'approve' ? `${museName(i.muse)}'s owner approved a meetup with ${museName(other)}` : `${museName(i.muse)}'s owner declined a meetup with ${museName(other)}`, data: {task_id: t.id, decision: a.decision, revision: a.revision, approval_ref: a.ref, actor: 'owner', candidate: 'private (owner only)'}, tags: []});
+  const decided = (a: TaskApproval) => emit({at, source: 'live', kind: 'owner_decision', muse: i.muse, other, line: a.decision === 'approve' ? `${participantName(st,i.muse)}'s owner approved a meetup with ${participantName(st,other)}` : `${participantName(st,i.muse)}'s owner declined a meetup with ${participantName(st,other)}`, data: {task_id: t.id, decision: a.decision, revision: a.revision, approval_ref: a.ref, actor: 'owner', candidate: 'private (owner only)'}, tags: []});
 
   if (i.decision === 'reject') {
     const a = approval(null);
@@ -437,7 +438,7 @@ export function decideApproval(st: WorldState, i: DecisionInput, at: number, emi
   // The chosen place is private: item provenance is part of public run snapshots.
   for (const m of [t.from, t.to]) grantItem(st.items, st.muses.find(x => x.id === m)!, 'meetup_ember', at, null, 'meetup');
   t.confirmed = {candidate, at}; t.status = 'completed'; t.awaiting = null; t.history.push({by: 'musely', action: 'approve', at});
-  emit({at, source: 'live', kind: 'meetup_confirmed', muse: t.from, other: t.to, line: `${museName(t.from)} and ${museName(t.to)} agreed to meet (both sides approved)`, data: {task_id: t.id, revision: t.revision, approval_refs: [t.approvals[t.from].ref, t.approvals[t.to].ref], approvals: {[t.from]: t.approvals[t.from].source, [t.to]: t.approvals[t.to].source}, candidate: 'private (owner only)', granted: 'meetup_ember', stage: 'confirm'}, tags: ['meetup_confirmed']});
+  emit({at, source: 'live', kind: 'meetup_confirmed', muse: t.from, other: t.to, line: `${participantName(st,t.from)} and ${participantName(st,t.to)} agreed to meet (both sides approved)`, data: {task_id: t.id, revision: t.revision, approval_refs: [t.approvals[t.from].ref, t.approvals[t.to].ref], approvals: {[t.from]: t.approvals[t.from].source, [t.to]: t.approvals[t.to].source}, candidate: 'private (owner only)', granted: 'meetup_ember', stage: 'confirm'}, tags: ['meetup_confirmed']});
   return {ok: true, duplicate: false, confirmed: true, changed: true, task: ownerTaskView(t, i.muse)};
 }
 

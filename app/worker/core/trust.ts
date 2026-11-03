@@ -2,9 +2,10 @@
 // Private keys never leave this object: system resident roots and every executor key live in SQLite;
 // the owner's root comes from the OWNER_ROOT_JWK secret. Methods used by verifyEnvelope are synchronous
 // so a nonce check-and-set cannot interleave with another request.
+import {utf8} from '../../src/identity/jcs.ts';
 import type {Sql} from './ledger.ts';
 import type {TrustRegistry} from '../../src/identity/envelope.ts';
-import {generateKeyPair, importPrivateJwk, type KeyPair} from '../../src/identity/jws.ts';
+import {generateKeyPair, importPrivateJwk, type KeyPair,signBytes,verifyBytes} from '../../src/identity/jws.ts';
 import {issueDelegation, delegationRef, peekDelegation, type Delegation, type SignerKind} from '../../src/identity/delegation.ts';
 import {buildCard, signCard, type AgentCard} from '../../src/identity/card.ts';
 import type {EcPublicJwk} from '../../src/identity/fingerprint.ts';
@@ -12,7 +13,7 @@ import {HARNESSES, harnessById, SCOPES} from '../../src/engine/harness.ts';
 
 export const OWNER_SLOT = '00-jolly';
 const SCOPE_SUMMARY = {allowed: [...SCOPES.allowed], approval: [...SCOPES.approval], forbidden: [...SCOPES.forbidden]};
-export type AgentRow = {agentId: string; museId: string; rootJwk: EcPublicJwk; kind: 'owner' | 'resident'; label: string};
+export type AgentRow = {agentId: string; museId: string; rootJwk: EcPublicJwk; kind: 'owner' | 'resident' | 'personal'; label: string};
 export type Executor = {key: KeyPair; delegation: string; d: Delegation};
 
 export class DelegationRevoked extends Error {
@@ -63,16 +64,18 @@ export class Trust implements TrustRegistry {
 
   agentByMuse(museId: string): AgentRow | null {
     const r = this.sql.exec('SELECT agent_id, muse_id, root_jwk, kind, label FROM agents WHERE muse_id = ?', museId).toArray()[0];
-    return r ? {agentId: String(r.agent_id), museId: String(r.muse_id), rootJwk: JSON.parse(String(r.root_jwk)), kind: r.kind as AgentRow['kind'], label: String(r.label)} : null;
+    if(r)return {agentId:String(r.agent_id),museId:String(r.muse_id),rootJwk:JSON.parse(String(r.root_jwk)),kind:r.kind as AgentRow['kind'],label:String(r.label)};
+    try{const p=this.sql.exec('SELECT a.agent_id,a.actor_id,r.public_jwk,p.display_name FROM personal_actors a JOIN personal_actor_roots r ON r.root_ref=a.root_ref AND r.actor_id=a.actor_id AND r.agent_id=a.agent_id JOIN personal_profiles p ON p.actor_id=a.actor_id WHERE a.actor_id=?',museId).toArray()[0];return p?{agentId:String(p.agent_id),museId:String(p.actor_id),rootJwk:JSON.parse(String(p.public_jwk)),kind:'personal',label:String(p.display_name)}:null;}catch{return null;}
   }
   agentById(agentId: string): AgentRow | null {
     const r = this.sql.exec('SELECT muse_id FROM agents WHERE agent_id = ?', agentId).toArray()[0];
-    return r ? this.agentByMuse(String(r.muse_id)) : null;
+    if(r)return this.agentByMuse(String(r.muse_id));
+    try{const p=this.sql.exec('SELECT actor_id FROM personal_actors WHERE agent_id=?',agentId).toArray()[0];return p?this.agentByMuse(String(p.actor_id)):null;}catch{return null;}
   }
 
   // TrustRegistry (synchronous)
   rootKey(agentId: string) { return this.agentById(agentId)?.rootJwk ?? null; }
-  delegationVersion(agentId: string) { return Number(this.sql.exec('SELECT version FROM delegation_versions WHERE agent_id = ?', agentId).toArray()[0]?.version ?? 1); }
+  delegationVersion(agentId: string) { const a=this.agentById(agentId);if(a?.kind==='personal')return Number(this.sql.exec('SELECT version FROM personal_authority WHERE actor_id=?',a.museId).toArray()[0]?.version??0);return Number(this.sql.exec('SELECT version FROM delegation_versions WHERE agent_id = ?', agentId).toArray()[0]?.version ?? 1); }
   isRevoked(ref: string) { return this.sql.exec('SELECT 1 FROM revoked WHERE ref = ?', ref).toArray().length > 0; }
   claimNonce(agentId: string, nonce: string, messageId: string, expiresAt: number) {
     this.sql.exec('DELETE FROM nonces WHERE exp < ?', Date.now() - 60_000);
@@ -104,6 +107,14 @@ export class Trust implements TrustRegistry {
     if (!agent) throw new Error('Unknown Muse ' + museId);
     if (this.suspended(museId)) throw new DelegationRevoked(museId);
     const version = this.delegationVersion(agent.agentId);
+    if(agent.kind==='personal'){
+      const g=this.sql.exec('SELECT scopes,active,version FROM personal_authority WHERE actor_id=?',museId).toArray()[0];
+      const scopes=g?JSON.parse(String(g.scopes)):null;
+      if(!g||Number(g.active)!==1||Number(g.version)!==version||!Array.isArray(scopes)||!scopes.length||scopes.some(s=>typeof s!=='string'||![...SCOPES.allowed,...SCOPES.approval,'world_entry'].includes(s)))throw new DelegationRevoked(museId);
+      const root=await this.rootPair(agent,null),key=await generateKeyPair();
+      const delegation=await issueDelegation(root,key,{signerKind,version,ttlMs:24*3600000,scopes});
+      return{key,delegation,d:peekDelegation(delegation)!};
+    }
     const row = this.sql.exec('SELECT kid, delegation, version FROM executors WHERE agent_id = ? AND signer_kind = ?', agent.agentId, signerKind).toArray()[0];
     // Reuse the stored executor while its delegation is current; an expired one (24 h TTL) is re-issued at the same version.
     if (row && Number(row.version) === version && (peekDelegation(String(row.delegation))?.exp ?? 0) > Date.now() + 60_000) {
@@ -138,7 +149,7 @@ export class Trust implements TrustRegistry {
   }
 
   /** While suspended (revoked, before the owner delegates again) the Muse takes no live decisions and gets no new delegation. */
-  suspended(museId: string) { const a = this.agentByMuse(museId); return !!a && this.delegatedVersion(a.agentId) < this.delegationVersion(a.agentId); }
+  suspended(museId: string) { const a = this.agentByMuse(museId);if(a?.kind==='personal'){const g=this.sql.exec('SELECT active FROM personal_authority WHERE actor_id=?',museId).toArray()[0];return !g||Number(g.active)!==1;} return !!a && this.delegatedVersion(a.agentId) < this.delegationVersion(a.agentId); }
 
   /** The owner's explicit re-delegation after a revocation: new executors may be issued at the current version. */
   redelegate(museId: string) {
@@ -164,12 +175,14 @@ export class Trust implements TrustRegistry {
   async card(museId: string, ownerRootJwk: JsonWebKey | null, claim: {claimed: boolean; fingerprint: string | null}, baseUrl: string): Promise<AgentCard> {
     const agent = this.agentByMuse(museId)!;
     const root = await this.rootPair(agent, ownerRootJwk);
+    if(agent.kind==='personal'){const p=this.sql.exec('SELECT display_name,appearance_id FROM personal_profiles WHERE actor_id=?',museId).toArray()[0],g=this.sql.exec('SELECT scopes FROM personal_authority WHERE actor_id=?',museId).toArray()[0];const scopes=g?JSON.parse(String(g.scopes)):[];const card=buildCard(harnessById(String(p.appearance_id)),{kid:agent.agentId,publicJwk:agent.rootJwk},{ownerClaimed:false,fingerprint:null,scopes:{allowed:scopes.filter((s:string)=>(SCOPES.allowed as readonly string[]).includes(s)||s==='world_entry'),approval:scopes.filter((s:string)=>(SCOPES.approval as readonly string[]).includes(s)),forbidden:[...SCOPES.forbidden]},baseUrl});card.name=String(p.display_name);card.description='A personal Muse. Decisions remain in its owner runtime; Musely only verifies and commits explicit delegated actions.';card.skills=[];card['x-musely'].harness='personal';return signCard(card,root,`${baseUrl}/.well-known/jwks/${agent.agentId}.json`);}
     const owned = agent.kind === 'owner';
     const card = buildCard(harnessById(museId), {kid: agent.agentId, publicJwk: agent.rootJwk}, {ownerClaimed: owned ? claim.claimed : true, fingerprint: owned ? claim.fingerprint : null, scopes: SCOPE_SUMMARY, baseUrl, ownerLabel: owned ? 'Kim Sejun' : 'Musely resident'});
     return signCard(card, root, `${baseUrl}/.well-known/jwks/${agent.agentId}.json`);
   }
 
   private async rootPair(agent: AgentRow, ownerRootJwk: JsonWebKey | null): Promise<KeyPair> {
+    if(agent.kind==='personal'){const r=this.sql.exec('SELECT r.private_jwk,r.public_jwk FROM personal_actor_roots r JOIN personal_actors a ON a.root_ref=r.root_ref AND a.actor_id=r.actor_id AND a.agent_id=r.agent_id WHERE a.actor_id=? AND a.agent_id=? AND r.signer_kind=?',agent.museId,agent.agentId,'server_custodial').toArray()[0];if(!r)throw Error('personal_root_unavailable');const key=await importPrivateJwk(JSON.parse(String(r.private_jwk)));if(key.kid!==agent.agentId||!await verifyBytes(agent.rootJwk,utf8('personal-root-v1'),await signBytes(key.privateKey,utf8('personal-root-v1'))))throw Error('personal_root_invalid');return key;}
     if (agent.kind === 'owner') { if (!ownerRootJwk) throw new Error('Owner root key not configured'); return importPrivateJwk(ownerRootJwk); }
     const r = this.sql.exec('SELECT jwk FROM private_keys WHERE kid = ?', agent.agentId).toArray()[0];
     return importPrivateJwk(JSON.parse(String(r.jwk)));
