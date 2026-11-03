@@ -9,7 +9,7 @@ import {ITEM_BY_ID, itemUpkeep, grantItem, putTimed, historyFault, spendSpotligh
 import {rngFor, weightedPick, daySeed} from './rng.ts';
 import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
-import {emptyInbox, expireTasks, deliverMessage, isConnected, type Inbox} from './inbox.ts';
+import {emptyInbox, expireTasks, deliverMessage, isConnected, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
 /** engine-3: bounded neighborhood roaming and walking; original engine-2 actor-origin semantics remain. */
 export const ENGINE_VERSION = 'engine-3';
@@ -281,7 +281,9 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       const waiting = s.inbox.tasks.some(t => t.status === 'pending' && (t.from === m.id || t.to === m.id));
       const invited = (s.inbox.invites ?? []).some(i => i.status === 'open' && (i.from === m.id || i.to.includes(m.id)));
       const approached = s.muses.some(o => o.id !== m.id && o.intent?.target === m.id);
-      const recentlyActive = now - (s.inbox.connected[m.id] ?? 0) < 2 * TICK_MS;
+      // A stamp can lag a successful read by <10 min. Add that uncertainty to guarantee >=2 min client priority
+      // without turning every read/poll into a world commit or changing command expected_version semantics.
+      const recentlyActive = now - (s.inbox.connected[m.id] ?? 0) < CONNECTED_REFRESH_MS + 2 * TICK_MS;
       if (areaContains(area, m.place) && !m.intent && !waiting && !invited && !approached && !arrivedThisTick && !recentlyActive) {
         const dest = chooseDestination(s, m, rand, clock.hour);
         if (dest) startTrip(s, m, placeById(m.place), dest, now, 'rule', emit, hooks);

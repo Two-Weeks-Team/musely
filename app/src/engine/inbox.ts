@@ -100,6 +100,8 @@ export const emptyInbox = (): Inbox => ({version: 2, tasks: [], messages: [], ma
 export const DAILY = {postcards: 3, gifts: 3} as const;
 
 export const isConnected = (inbox: Inbox | undefined, museId: string, now: number) => !!inbox && now - (inbox.connected[museId] ?? -Infinity) < CONNECTED_MS;
+/** Connection activity is persisted at most every ten minutes; readers must include this uncertainty. */
+export const CONNECTED_REFRESH_MS = 10 * 60_000;
 export const nextId = (inbox: Inbox, prefix: string) => `${prefix}_${(++inbox.seq).toString(36)}`;
 
 export function notifyOwner(inbox: Inbox, n: Omit<OwnerNotification, 'id'> & {muse: string}) {

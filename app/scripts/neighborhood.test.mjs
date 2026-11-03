@@ -127,7 +127,7 @@ test('an idle connected owner may stroll by rule; other connected Muses and acti
     if (guard === 'task') guarded.inbox.tasks.push({id: 't', status: 'pending', from: m.id, to: '02-moss', deadline: T0 + 3600_000});
     if (guard === 'invite') (guarded.inbox.invites ??= []).push({id: 'i', from: m.id, to: ['02-moss'], status: 'open', expiresAt: T0 + 3600_000, answers: {}});
     if (guard === 'paused') guarded.paused = {[m.id]: {at: T0, version: 0, by: 'owner'}};
-    const r = tick(guarded, {now: T0 + 10 * TICK_MS});
+    const r = tick(guarded, {now: T0 + 20 * TICK_MS});
     assert.equal(r.events.filter(e => e.muse === m.id && e.kind === 'depart').length, 0, guard);
   }
 });
