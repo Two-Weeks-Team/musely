@@ -145,3 +145,18 @@ WorldDO hookup, #132 scheduler hookup, actual multi-site rendering/navigation, d
 Rollback tests use real server classes over local SQLite, not a deployed Durable Object.
 Production atomicity is still a gate until the approved caller uses this table in the same
 transaction. No world.ts/world-runtime.ts/WorldDO changes are included in this PR.
+
+## Pinned combined dependency candidate
+
+PR138 is now published at `234bbd25c64413df3d20611686c667bc9fd37018`.
+A third CI job composes its resident tick seam and scheduler/life files with PR139's
+engine5 at the pinned SHA above. It applies the main-to-PR138 world diff with zero
+fuzz, rather than replacing the engine5 file and accidentally removing the craft fix.
+Only end-of-file whitespace is normalized when producing the seam diff. All seven
+resident source/test blob hashes were checked against the published PR head.
+
+The equivalent local candidate passed **109/109** tests and worker strict TypeScript
+(46 resident tests, 34 integration tests, 29 craft/Wants/replay checks). This is a
+review/test composition, not a merged or deployed product. Engine semantic-version
+coordination, historical real replay evidence and final production caller ownership
+remain explicit integration gates. The root/owning team must review those before merge.
