@@ -3,7 +3,9 @@
 ## Five-PR composition candidate (2026-11-03)
 
 The test workflow additionally composes #135 `186666899d557235c17c9ccf974b5e9c7eeed912`
-and #137 `373ad77c37797d63775f901eb8bd20f7f3aec7dd` with the life/server pins below.
+and #137 `7d3bdad83830099e43e68ae02df669c532c8c50e` with the life/server pins below.
+The #137 update from 373ad77 changes only README and PERFORMANCE_ACCEPTANCE.md;
+complete Git-tree comparison confirms identical runtime/source/GLB blobs.
 The shared live-scene source merges three ways against exact main151; any conflict
 fails rather than dropping either feature. Production/main/other PRs are not merged.
 
@@ -12,6 +14,9 @@ port in one scene, OFF asset silence, ON attendance freshness, stable actor root
 resource disposal. Separate #135 tests exercise actual MapLibre layers and canonical
 child-tile slicing. These are **not** a GPU proof of roofs, campfire and NPCs co-rendering
 in a single product view. Full combined browser/GPU acceptance remains outstanding.
+The Mac browser connection is currently unavailable, so no new Mac GPU measurement
+or visual co-rendering acceptance is claimed. Snapshot draw-call counts are not FPS
+or frame-time measurements.
 
 ## Current integration candidate (2026-11-03)
 
