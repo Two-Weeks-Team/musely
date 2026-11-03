@@ -23,7 +23,7 @@ import {makeLiveScene} from './ui/live-scene';
 import {museName,ownerOf,inventorySummary,type LiveWorld,type LiveEvent} from './ui/live-scene-core';
 import style from '../assets/map-style.json';
 import geography from '../assets/geography.json';
-import arrivalMap from '../assets/arrival-map.json';
+import {mountArrivalOverview} from './arrival-overview';
 declare global {interface Window {__world:any}}
 // Production uses a hash-pinned same-origin classic worker; .cjs selects its supported worker mode.
 // The inline local proof keeps its data/Blob worker behavior.
@@ -50,16 +50,17 @@ const showingScene=()=>showingLive()||showingRecorded();
 // Preview cues (P-05) live with the other playback state so any control can end one before it changes the world.
 let cues:Cue[]=[],cueRestore:{paused:boolean;tour:boolean;tourCamera:boolean}|null=null;
 const statuses:string[]=[],errors:string[]=[];let frame=0,drawCalls=0,triangles=0,fps=0,fpsFrames=0,fpsStart=performance.now();
-// The embedded overview renders first. Online tiles join once the light character files (LOD2 + clips)
+// The overview loads only below zoom 14; ordinary HQ entry needs no geographic payload. Online tiles join once the light character files (LOD2 + clips)
 // arrive, or after 4 s: on slow first visits the tile downloads would otherwise take the bandwidth the
 // commons needs to appear (direction: commons, residents and story within 8 s).
-const initialStyle={...style,sources:{'arrival-overview':{type:'geojson',data:arrivalMap}},layers:[style.layers[0],{id:'arrival-water',type:'fill',source:'arrival-overview',maxzoom:14,filter:['==',['get','kind'],'water'],paint:{'fill-color':'#101623'}},{id:'arrival-roads',type:'line',source:'arrival-overview',maxzoom:14,filter:['==',['get','kind'],'transportation'],paint:{'line-color':'#35415A','line-width':1.2,'line-opacity':.6}}]};
+const initialStyle={...style,sources:{'arrival-overview':{type:'geojson',data:{type:'FeatureCollection',features:[]}}},layers:[style.layers[0],{id:'arrival-water',type:'fill',source:'arrival-overview',maxzoom:14,filter:['==',['get','kind'],'water'],paint:{'fill-color':'#101623'}},{id:'arrival-roads',type:'line',source:'arrival-overview',maxzoom:14,filter:['==',['get','kind'],'transportation'],paint:{'line-color':'#35415A','line-width':1.2,'line-opacity':.6}}]};
 const kitLight=kitLibrary?Promise.all([kitLibrary.load(lodUrl(2,kitLibrary.base)),kitLibrary.load(clipsUrl(kitLibrary.base))]).then(()=>'kit',()=>'kit-failed'):Promise.resolve('no-kit');
 let onlineMapAddedAtMs=0;
 function addOnlineMap(){if(onlineMapAddedAtMs)return;onlineMapAddedAtMs=performance.now();for(const [id,source] of Object.entries(style.sources))map.addSource(id,source as any);const before=map.getLayer('musely-world')?'musely-world':undefined;for(const layer of style.layers.slice(1))map.addLayer(layer as any,before);}
 let sceneReadyAtMs=0,onlineMapReadyAtMs=0,detailReadyAtMs=0,initialEntryCamera=false;
 const ratio=pixelRatioFor();
 const map=new LibreMap({container:'map',pixelRatio:ratio.applied,style:initialStyle as unknown as StyleSpecification,center:anchor,zoom:autoplay||entryPreview?(innerWidth<700?9.6:10.25):21.2,pitch:54,bearing:BEARING,minZoom:8,maxZoom:23.8,maxPitch:65,attributionControl:false,canvasContextAttributes:{antialias:true,preserveDrawingBuffer:true},fadeDuration:200});
+mountArrivalOverview(map,{url:assetData.overviewUrl,data:assetData.overviewData},{onError:()=>{errors.push('Overview map could not load');$('network-note').hidden=false;$('network-note').textContent='The Bay overview could not load. Other map details may still be available.';}});
 map.on('styleimagemissing',e=>{if(!map.hasImage(e.id))map.addImage(e.id,{width:1,height:1,data:new Uint8Array(4)});});
 map.dragRotate.disable();map.touchZoomRotate.disableRotation();
 function manual(){follow=false;tourCamera=false;if(cueRestore)cueRestore.tourCamera=false;$('tour').classList.remove('active');$('follow').classList.remove('active');if(!tour)$('tour').textContent='Play story · 3:30';}

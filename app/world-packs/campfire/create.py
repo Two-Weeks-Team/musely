@@ -43,8 +43,9 @@ bpy.context.scene.frame_start=1;bpy.context.scene.frame_end=49;bpy.context.scene
 bpy.ops.object.select_all(action='DESELECT')
 for o in asset:o.select_set(True)
 bpy.ops.export_scene.gltf(filepath=out+'/campfire-prototype.glb',export_format='GLB',use_selection=True,export_animations=True)
-import base64
-json.dump({'base64':base64.b64encode(open(out+'/campfire-prototype.glb','rb').read()).decode()},open(out+'/asset-bytes.json','w'))
+import hashlib
+b=open(out+'/campfire-prototype.glb','rb').read();sha=hashlib.sha256(b).hexdigest()
+json.dump({'url':'/assets/campfire.'+sha+'.glb','sha256':sha,'bytes':len(b)},open(out+'/asset.json','w'))
 tri=sum(sum(len(p.vertices)-2 for p in o.data.polygons) for o in asset if o.type=='MESH')
 json.dump({'asset':'campfire-prototype','unit':'meter','blender_up':'Z','gltf_up':'Y','origin':'ground center','triangles':tri,'objects':len(asset),'materials':len({m.name for o in asset if o.type=='MESH' for m in o.data.materials if m}),'integration':'not integrated','mobile_performance':'not measured','creative_source':'original procedural geometry; no third-party textures','animation':'five flame scale tracks; sparks animated by runtime binding'},open(out+'/metrics.json','w'),indent=2)
 # Preview only: ground, lighting and camera are not exported.

@@ -129,7 +129,7 @@ export async function makeWorld(glb:string,sigils:string[],kitBase:string|null='
  const fire=new T.Group();fire.name='Fire';scene.add(fire);fire.position.set(0,.28,2);
  for(let i=0;i<3;i++){const f=new T.Mesh(new T.SphereGeometry(1,8,6),new T.MeshBasicMaterial({color:['#ef9c55','#ffd27d','#ffe6ac'][i]}));f.position.set((i-1)*.12,.18+i*.04,0);f.scale.set(.15-i*.025,.37-i*.05,.13);fire.add(f);}
  const campfireVisual=createCampfireScenePort(scene,fire);
- if(campfireOptions?.enabled) await campfireVisual.enable(campfireOptions).catch(e=>console.warn('Campfire visual fallback',e));
+ if(campfireOptions?.enabled) void campfireVisual.enable(campfireOptions).catch(e=>console.warn('Campfire visual fallback',e));
  // The rigged kit uses physical maps; without tone mapping, the earlier 1.7 sky fill would clip its palettes to white.
  scene.add(new T.HemisphereLight('#7E93B8','#101623',actors?.95:1.7));const fireLight=new T.PointLight('#FF9E45',5,10,1.7);fireLight.position.set(0,.7,2);scene.add(fireLight);
  // The commons is mostly unlit; a soft moonlight key keeps rigged Muse palettes readable at night

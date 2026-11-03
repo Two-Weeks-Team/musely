@@ -1,3 +1,6 @@
+import {readFileSync} from 'node:fs';
+const asset=readFileSync(new URL('../world-packs/campfire/campfire-prototype.glb',import.meta.url));
+globalThis.fetch=async()=>new Response(asset); // transport stub only; actual parser/scene/projection run
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as T from 'three';

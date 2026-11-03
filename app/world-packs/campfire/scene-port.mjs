@@ -1,5 +1,5 @@
 import {createCampfireView} from './renderer.mjs';
-import assetBytes from './asset-bytes.json' with {type:'json'};
+import asset from './asset.json' with {type:'json'};
 const ports = new WeakMap();
 const PLACE = 'commons:campfire';
 const disposeSource = scene => {
@@ -8,8 +8,14 @@ const disposeSource = scene => {
 };
 async function loadBundledAsset(){
  const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
- const bytes=Uint8Array.from(atob(assetBytes.base64),c=>c.charCodeAt(0));
- return (await new GLTFLoader().parseAsync(bytes.buffer,'')).scene;
+ const response=await fetch(asset.url,{credentials:'same-origin',signal:AbortSignal.timeout(8000)});
+ if(!response.ok)throw Error('Campfire asset unavailable');
+ const bytes=await response.arrayBuffer();
+ if(bytes.byteLength!==asset.bytes)throw Error('Campfire asset size mismatch');
+ const digest=await globalThis.crypto.subtle.digest('SHA-256',bytes);
+ const sha=Array.from(new Uint8Array(digest),n=>n.toString(16).padStart(2,'0')).join('');
+ if(sha!==asset.sha256)throw Error('Campfire asset integrity mismatch');
+ return (await new GLTFLoader().parseAsync(bytes,'')).scene;
 }
 /** Read-only port for makeWorld's existing Fire group. No map transform or world writes.
  * Only flame/spark meshes are retained: existing batched ring/logs/benches stay intact.

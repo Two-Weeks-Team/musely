@@ -1,7 +1,7 @@
 name: Campfire Pack
 on:
   pull_request:
-    paths: ['app/world-packs/campfire/**', 'app/src/scene.ts', 'app/src/ui/live-scene.ts', 'app/scripts/campfire-visual-port.test.mjs', '.github/workflows/campfire-pack.yml']
+    paths: ['app/world-packs/campfire/**', 'app/src/scene.ts', 'app/src/ui/live-scene.ts', 'app/scripts/campfire-visual-port.test.mjs', 'app/scripts/build.mjs', '.github/workflows/campfire-pack.yml']
   workflow_dispatch:
 permissions:
   contents: read
