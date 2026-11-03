@@ -13,8 +13,8 @@ async (page) => {
  for (const [w, h] of [[390, 844], [360, 640], [1280, 800]]) {
   const vp = `${w}x${h}`, mobile = w < 700;
   const ctx = await browser.newContext({viewport: {width: w, height: h}, isMobile: mobile, hasTouch: mobile, deviceScaleFactor: 2});
-  // Count every geolocation call the page makes (the page keeps navigator.geolocation; this wraps its method in place).
-  await ctx.addInitScript(() => { window.__geoCalls = 0; const g = navigator.geolocation; if (g) { const real = g.getCurrentPosition.bind(g); g.getCurrentPosition = (...a) => { window.__geoCalls++; return real(...a); }; } });
+  // Synthetic prompt/denial only: count calls without accessing real location or changing permissions.
+  await ctx.addInitScript(() => { window.__geoCalls = 0; Object.defineProperty(navigator, 'permissions', {value: {query: async () => ({state: 'prompt', addEventListener() {}})}}); Object.defineProperty(navigator, 'geolocation', {value: {getCurrentPosition(_ok, fail) { window.__geoCalls++; fail({code: 1}); }}}); });
   const p = await ctx.newPage();
   try {
    await p.goto(base.href, {waitUntil: 'domcontentloaded'});
@@ -46,7 +46,7 @@ async (page) => {
    await p.waitForFunction(() => !['idle', 'requesting'].includes(document.getElementById('device-location').dataset.status), null, {timeout: 70000});
    const after = await p.evaluate(() => ({calls: window.__geoCalls, status: document.getElementById('device-location').dataset.status, fallback: document.getElementById('device-location').dataset.fallback, text: document.getElementById('device-location').textContent}));
    check(vp, 'one press: exactly one geolocation call', after.calls === 1, JSON.stringify(after));
-   check(vp, 'refused without permission: the virtual-location guidance shows', ['denied', 'unavailable', 'timeout'].includes(after.status) && after.fallback === '1' && /virtual location \(demo\)/.test(after.text), JSON.stringify(after));
+   check(vp, 'refused without permission: the virtual-location guidance shows', ['denied', 'unavailable', 'timeout'].includes(after.status) && after.fallback === '1' && /virtual neighborhood/.test(after.text), JSON.stringify(after));
    await p.screenshot({path: `output/location-${vp}-device.png`});
   } catch (e) { check(vp, 'run', false, e.message); }
   await ctx.close();

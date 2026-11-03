@@ -11,6 +11,7 @@ import type {RecordedFrame, RecordedEvidence, RecordedEvent} from '../replay/pla
 //    (run id, the commit that wrote it, state hashes) from /api/world/event
 //  - Highlights are read from the server a page at a time (cursor) over a chosen period, so older moments stay reachable
 import {Marker, type Map as LibreMap} from 'maplibre-gl';
+import {areaById} from '../engine/location.ts';
 import {HARNESSES} from '../engine/harness';
 import {PLACES, PLACE_BY_ID} from '../engine/places';
 import {itemName, ITEMS, effectRule} from '../engine/items';
@@ -536,43 +537,43 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   let locDraft: {preset: string; verify: boolean} | null = null, locMsg = '';
   let locationDeviceCard: HTMLElement | null = null;
   async function renderLocation(stale: () => boolean) {
-    const frame = el('div', 'id-card'), box = el('div', 'location-owner-details');
-    locationDeviceCard ??= deviceLocationCard();
-    const see = el('button', 'secondary', 'See the preview location states (scripted)'); see.type = 'button'; see.onclick = () => { selectFlow('location-walk'); tab = 'flows'; void render(); };
-    frame.append(box, el('h4', '', 'Device location (GPS)'), locationDeviceCard, see);
+    const frame = el('div', 'id-card'), box = el('details', 'location-owner-details');
+    const summary = el('summary', '', '내 Muse의 동네 관리 / Manage my Muse’s neighborhood');
+    locationDeviceCard ??= deviceLocationCard(id => { if (tab !== 'location' || !panel.matches(':popover-open') || isolation.replay) return; const area = areaById(id); if (area) { map.easeTo({center: [area.center.lng, area.center.lat], zoom: 16.5, duration: 600}); if (panel.matches(':popover-open')) panel.hidePopover(); } });
+    frame.append(locationDeviceCard, box); // Device choice is independent from the owner/network controls.
     body.append(frame);
-    box.append(el('p', 'muted', 'Reading the owner location…'));
+    box.append(summary, el('p', 'muted', '동네 정보를 불러오고 있어요… / Loading neighborhood details…'));
     const r = await load<any>('location', '/api/owner/location');
     if (stale()) return;
-    box.replaceChildren(el('span', 'eyebrow', 'OWNER LOCATION · 13.1'));
-    if (!r.ok) { box.append(el('h4', '', 'Location unavailable'), el('p', 'muted', `The owner location could not be read (${r.error}), so it is unknown right now. It is not assumed to be the HQ commons.`)); const b = el('button', 'secondary', 'Retry'); b.type = 'button'; b.onclick = () => void render(); box.append(b); return; }
+    box.replaceChildren(summary);
+    if (!r.ok) { box.append(el('h4', '', '동네 정보를 불러오지 못했어요 / Neighborhood details are unavailable'), el('p', 'muted', '위에서 가상 동네를 골라 계속 둘러볼 수 있어요. / Choose a virtual neighborhood above to keep exploring.')); const b = el('button', 'secondary', '다시 불러오기 / Reload details'); b.type = 'button'; b.onclick = () => void render(); box.append(b); return; }
     const loc = r.data;
     const presetLabel = ((loc.presets ?? []) as {id: string; label: string}[]).find(p => p.id === loc.preset)?.label ?? loc.cell_label ?? loc.preset ?? '';
-    box.append(el('h4', '', `${loc.source === 'gps' ? 'Device-mapped neighborhood' : 'Virtual location (demo)'} · ${presetLabel}`));
+    box.append(el('h4', '', `${loc.source === 'gps' ? '기기에서 찾은 동네 / Nearby neighborhood' : '가상 동네 / Virtual neighborhood'} · ${presetLabel}`));
     const dl = el('dl', 'facts');
     const f = (k: string, v: unknown) => { if (v !== undefined && v !== null && v !== '') dl.append(el('dt', '', k), el('dd', '', String(v))); };
     const m = loc.muse ?? {};
     const held = world?.muses.find(x => x.id === m.id)?.inventory.filter(i => i === 'taxi_token').length ?? null;
-    f('Owner neighborhood area', `${loc.area?.label ?? presetLabel} · ${loc.area?.radiusM ?? '?'} m radius · ${loc.area?.placeIds?.length ?? '?'} places · ${loc.neighborhood_verified ? 'verified (virtual, demo)' : 'not verified'}`);
-    f("Muse's current place", m.place ? `${m.place.name ?? m.place.id}${m.in_owner_area ? ' · in your neighborhood' : ''}` : null);
-    f('Muse is', museLine(snapshotOf(loc, r.at), Date.now()));
-    f('Teleport', `needs the neighborhood verified and a Taxi Token${held === null ? '' : ` (holds ${held})`}; one token per teleport`);
-    box.append(dl, el('p', 'muted', 'The owner neighborhood is an area. Your Muse freely walks between its activity places. Only trips outside a neighborhood use the existing bus and verified taxi rules. Discovery, trades and the MCP world state use the Muse\'s own current place, which changes only by travelling or a verified teleport. No device GPS spoofing or VPN.'));
+    f('내 동네 / My neighborhood', `${loc.area?.label ?? presetLabel} · ${loc.area?.radiusM ?? '?'} m radius · ${loc.area?.placeIds?.length ?? '?'} places · ${loc.neighborhood_verified ? '가상 세계 인증됨 / virtual-world verified' : '미인증 / not verified'}`);
+    f('Muse가 있는 곳 / Muse’s place', m.place ? `${m.place.name ?? m.place.id}${m.in_owner_area ? ' · in your neighborhood' : ''}` : null);
+    f('Muse의 이동 / Muse’s trip', museLine(snapshotOf(loc, r.at), Date.now()));
+    f('순간이동 / Teleport', `가상 동네 인증과 Taxi Token 1개가 필요해요. / Requires virtual-world verification and one Taxi Token${held === null ? '' : ` (${held} available)`}.`);
+    box.append(dl, el('p', 'muted', 'Muse는 자기 동네 안을 자유롭게 걸어요. 다른 동네로 갈 때는 버스나 조건에 맞는 택시를 이용해요. / Your Muse walks freely within its neighborhood and uses the bus or an eligible taxi for other neighborhoods.'));
     const presets = (loc.presets ?? []) as {id: string; label: string}[];
     if (presets.length) {
-      const lab = el('label', 'fld'); lab.append(el('span', '', 'Virtual neighborhood area'));
-      const sel = el('select'); sel.setAttribute('aria-label', 'Virtual neighborhood area'); lab.append(sel);
+      const lab = el('label', 'fld'); lab.append(el('span', '', '가상 동네 / Virtual neighborhood'));
+      const sel = el('select'); sel.setAttribute('aria-label', '가상 동네 / Virtual neighborhood'); lab.append(sel);
       for (const p of presets) { const o = el('option', '', p.label); o.value = p.id; if (p.id === (locDraft?.preset ?? loc.preset)) o.selected = true; sel.append(o); }
       // Demo neighborhood verification (13.1): staged on the virtual cell, cleared when the owner moves to another cell.
       const vlab = el('label', 'fld check'); const verify = el('input'); verify.type = 'checkbox'; verify.id = 'loc-verify'; verify.checked = locDraft?.verify ?? !!loc.neighborhood_verified;
-      vlab.append(verify, el('span', '', 'Verify this neighborhood (virtual, demo)'));
-      const go = el('button', 'secondary', 'Move owner here (owner session)'); go.type = 'button';
+      vlab.append(verify, el('span', '', '가상 세계에서 이 동네 인증 / Verify this virtual-world neighborhood'));
+      const go = el('button', 'secondary', '이 동네 적용 / Apply this neighborhood'); go.type = 'button';
       const msg = el('p', 'muted', locMsg); msg.setAttribute('role', 'status');
       sel.onchange = verify.onchange = () => { locDraft = {preset: sel.value, verify: verify.checked}; };
       go.onclick = async () => {
         const res = await fetchJson<{follow?: {mode?: string; etaMs?: number} | null}>('/api/owner/location', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({source: 'virtual', preset: sel.value, verify: verify.checked})});
         const mode = res.ok ? res.data.follow?.mode : null, mins = res.ok && res.data.follow?.etaMs ? `, about ${Math.max(1, Math.round(res.data.follow.etaMs / 60_000))} min` : '';
-        msg.textContent = locMsg = res.ok ? (mode === 'paused' ? 'Owner location set. The Muse is paused (delegation revoked), so it stays where it is until the owner delegates again.' : mode === 'teleport' ? 'Teleported: the neighborhood is verified and one Taxi Token was spent.' : mode === 'roaming' ? 'Neighborhood set. The Muse is in this area and can freely walk between its places.' : mode === 'bus' ? `Moved. The Muse rides the bus${mins}.` : `Moved. The Muse walks there${mins}. Watch it on the map.`) : /HTTP 40[13]/.test(res.error) ? 'Only the owner session can move the owner. Start it in the Identity tab.' : `Could not move the owner (${res.error}). Nothing changed.`;
+        msg.textContent = locMsg = res.ok ? (mode === 'paused' ? '동네를 바꿨어요. 활동이 일시정지된 Muse는 다시 허용할 때까지 머물러요. / Neighborhood updated. Your paused Muse stays put until you allow activity again.' : mode === 'teleport' ? '동네로 순간이동했어요. Taxi Token 1개를 썼어요. / Teleported using one Taxi Token.' : mode === 'roaming' ? '동네를 바꿨어요. Muse는 이 안을 자유롭게 걸을 수 있어요. / Neighborhood updated. Your Muse can roam here.' : mode === 'bus' ? `버스로 이동해요. / Your Muse is taking the bus${mins}.` : `걸어서 이동해요. 지도에서 확인해 보세요. / Your Muse is walking${mins}. Watch the map.`) : /HTTP 40[13]/.test(res.error) ? '동네 설정을 바꾸려면 Identity에서 주인으로 로그인하세요. / Sign in as the owner in Identity to change this setting.' : '동네를 바꾸지 못했어요. 가상 동네 둘러보기는 계속할 수 있어요. / Could not update the neighborhood. You can still explore a virtual neighborhood.';
         if (res.ok) locDraft = null;
         await refresh();
       };

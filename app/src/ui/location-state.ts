@@ -91,19 +91,19 @@ export function deviceWatchdog(prev: DeviceLocation, startedAt: number, now: num
   return prev.status === 'requesting' && prev.startedAt === startedAt ? {status: 'timeout', preset: null, startedAt: null, at: now} : prev;
 }
 
-export const VIRTUAL_FALLBACK = 'You can keep using the virtual location (demo): the Muse, its trips, discovery and trades work the same.';
-/** One heading and one detail per state; `fallback` marks the states that show the virtual-location guidance. */
+export const VIRTUAL_FALLBACK = '가상 동네를 골라 계속 둘러보세요. / Choose a virtual neighborhood to keep exploring.';
+/** Easy public wording; mapping never changes ownership or verifies a neighborhood. */
 export function deviceText(d: DeviceLocation): {heading: string; detail: string; fallback: boolean} {
-  const kept = 'The coordinates were matched on this device and dropped: not sent, not stored.';
+  const kept = '좌표는 이 기기에서만 확인하고 보내거나 저장하지 않아요. / Coordinates stay on this device: not sent or stored.';
   switch (d.status) {
-    case 'idle': return {heading: 'Device location (optional)', detail: 'Your browser asks for permission. The position is matched to the nearest neighborhood area on this device only; the coordinates are not sent or stored.', fallback: false};
-    case 'requesting': return {heading: 'Asking your browser for the device location…', detail: 'Answer the browser prompt. Nothing changes in the world while this runs.', fallback: false};
-    case 'near': return {heading: `Your device is near the ${presetById(d.preset ?? '')?.label ?? d.preset} neighborhood`, detail: `${kept} Shown on this device only: choose this neighborhood in the selector to use it. Neighborhood verification is staged for virtual locations; GPS verification is phase 2.`, fallback: false};
-    case 'outside': return {heading: 'Your device is outside the Bay Area presets', detail: `${kept} ${VIRTUAL_FALLBACK}`, fallback: true};
-    case 'denied': return {heading: 'Location permission was denied', detail: `${VIRTUAL_FALLBACK} You can allow it later in the browser's site settings.`, fallback: true};
-    case 'unavailable': return {heading: 'The device location is unavailable', detail: VIRTUAL_FALLBACK, fallback: true};
-    case 'timeout': return {heading: 'The device location did not answer in time', detail: `${VIRTUAL_FALLBACK} You can try again.`, fallback: true};
-    case 'unsupported': return {heading: 'This browser has no location service', detail: VIRTUAL_FALLBACK, fallback: true};
+    case 'idle': return {heading: '내 동네 찾기 / Find my neighborhood', detail: '위치 공유는 선택이에요. / Sharing location is optional.', fallback: false};
+    case 'requesting': return {heading: '동네를 찾고 있어요… / Finding your neighborhood…', detail: '브라우저의 위치 안내에 답해 주세요. / Respond to your browser’s location prompt.', fallback: false};
+    case 'near': return {heading: `${presetById(d.preset ?? '')?.label ?? d.preset} 근처예요 / Your nearby neighborhood`, detail: `${kept} 지도에서만 보여드리며 동네 인증은 하지 않아요. / This shows the map only; it does not verify your neighborhood.`, fallback: false};
+    case 'outside': return {heading: '이 지역 밖에 계시네요 / You’re outside our Bay Area neighborhoods', detail: `${kept} ${VIRTUAL_FALLBACK}`, fallback: true};
+    case 'denied': return {heading: '위치를 공유하지 않아도 괜찮아요 / You can continue without location', detail: VIRTUAL_FALLBACK, fallback: true};
+    case 'unavailable': return {heading: '위치를 찾지 못했어요 / We couldn’t find your location', detail: VIRTUAL_FALLBACK, fallback: true};
+    case 'timeout': return {heading: '위치 확인이 오래 걸려요 / Location is taking too long', detail: VIRTUAL_FALLBACK, fallback: true};
+    case 'unsupported': return {heading: '이 브라우저에서는 위치를 찾을 수 없어요 / Location isn’t available in this browser', detail: VIRTUAL_FALLBACK, fallback: true};
   }
 }
 

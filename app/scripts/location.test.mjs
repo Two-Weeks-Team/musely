@@ -363,7 +363,7 @@ test('AC4 GPS permission flow: denied, unavailable, timeout, no answer and no se
     const txt = deviceText({status: s, preset: null, startedAt: null, at: 1});
     assert.equal(txt.fallback, true, s); assert.ok(txt.detail.includes(VIRTUAL_FALLBACK), s);
   }
-  assert.match(deviceText(near).detail, /GPS verification is phase 2/, 'GPS does not verify (phase 2)');
+  assert.match(deviceText(near).detail, /does not verify your neighborhood/, 'GPS does not verify (phase 2)');
   assert.equal(deviceText(near).fallback, false);
 });
 
