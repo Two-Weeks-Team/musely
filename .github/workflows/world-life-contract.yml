@@ -8,6 +8,11 @@ on:
       - 'app/worker/core/world-runtime.ts'
       - 'app/src/engine/**'
       - 'app/scripts/world-life*.test.mjs'
+      - 'app/scripts/test-support/world-life-harness.mjs'
+      - 'app/worker/world-do.ts'
+      - 'app/worker/core/connected.ts'
+      - 'app/worker/core/mcp-*.ts'
+      - 'app/worker/core/personal-*.ts'
       - 'app/scripts/tsconfig.world-life-contract.json'
       - 'app/docs/WORLD_LIFE_INTEGRATION.md'
       - '.github/workflows/world-life-contract.yml'
@@ -27,7 +32,7 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci --ignore-scripts
-      - run: node --test scripts/world-life-contract.test.mjs scripts/world-life-server.test.mjs
+      - run: node --test scripts/world-life-contract.test.mjs scripts/world-life-server.test.mjs scripts/world-life-mcp.test.mjs
       - run: npx tsc -p scripts/tsconfig.world-life-contract.json
       - run: npx tsc -p worker
   engine5-dependency:
@@ -47,10 +52,14 @@ jobs:
           cp app/worker/core/personal-owners.ts dependency-139/app/worker/core/
           cp app/src/identity/participant.ts dependency-139/app/src/identity/
           cp app/scripts/world-life*.test.mjs dependency-139/app/scripts/
+          cp app/scripts/test-support/world-life-harness.mjs dependency-139/app/scripts/test-support/
+          cp app/worker/world-do.ts dependency-139/app/worker/
+          cp app/worker/core/personal-session.ts dependency-139/app/worker/core/
+          cp app/worker/core/threads.ts dependency-139/app/worker/core/
       - run: npm ci --ignore-scripts
         working-directory: dependency-139/app
       - name: Offline actual server and atomic craft regressions
-        run: node --test scripts/world-life-contract.test.mjs scripts/world-life-server.test.mjs scripts/wants-use.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs
+        run: node --test scripts/world-life-contract.test.mjs scripts/world-life-server.test.mjs scripts/world-life-mcp.test.mjs scripts/wants-use.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs
         working-directory: dependency-139/app
       - run: npx tsc -p worker
         working-directory: dependency-139/app
@@ -76,6 +85,10 @@ jobs:
           cp app/worker/core/personal-owners.ts dependency-139/app/worker/core/
           cp app/src/identity/participant.ts dependency-139/app/src/identity/
           cp app/scripts/world-life*.test.mjs dependency-139/app/scripts/
+          cp app/scripts/test-support/world-life-harness.mjs dependency-139/app/scripts/test-support/
+          cp app/worker/world-do.ts dependency-139/app/worker/
+          cp app/worker/core/personal-session.ts dependency-139/app/worker/core/
+          cp app/worker/core/threads.ts dependency-139/app/worker/core/
           cp dependency-138/app/worker/core/resident-life-adapter.ts dependency-139/app/worker/core/
           cp dependency-138/app/worker/core/world-runtime.ts dependency-139/app/worker/core/
           cp dependency-138/app/src/engine/resident-life.ts dependency-139/app/src/engine/
@@ -90,7 +103,7 @@ jobs:
       - run: npm ci --ignore-scripts
         working-directory: dependency-139/app
       - name: Offline combined server, resident scheduler and craft regressions
-        run: node --test scripts/world-life-contract.test.mjs scripts/world-life-server.test.mjs scripts/resident-life.test.mjs scripts/resident-life-adapter.test.mjs scripts/resident-life-runtime.test.mjs scripts/wants-use.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs
+        run: node --test scripts/world-life-contract.test.mjs scripts/world-life-server.test.mjs scripts/world-life-mcp.test.mjs scripts/resident-life.test.mjs scripts/resident-life-adapter.test.mjs scripts/resident-life-runtime.test.mjs scripts/wants-use.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs
         working-directory: dependency-139/app
       - run: npx tsc -p worker
         working-directory: dependency-139/app

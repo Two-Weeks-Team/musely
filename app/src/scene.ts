@@ -1,13 +1,13 @@
 import * as T from 'three';
 import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {positionAt} from './activity';
 import {conversationAt} from './story';
 import {surfaceHeightAt} from './surfaces';
 import {instanceMovingMeshes} from './instances';
 import {mapMeshMaterials,paintMuseMaterial} from './materials';
-import {MaterialLibrary,loadMuseLight} from './character-kit/MaterialLibrary';
+import {MaterialLibrary} from './character-kit/MaterialLibrary';
+import {loadWorldCharacters} from './character-kit/WorldCharacters';
 import type {MuseActor,Lod} from './character-kit/MuseActor';
 import {MUSE_VARIANTS,RESIDENT_VARIANTS,variantById} from './character-kit/catalog';
 import {residentBehavior,ResidentClock,chooseLods} from './character-kit/residents';
@@ -24,7 +24,7 @@ export const PEOPLE=[
 const ENV={background:'#101623',ground:'#1B2436',path:'#2A3550',building:'#232E47',fire:'#FF9E45',core:'#FFD98A',cream:'#F2E9D8'};
 const mat=(c:string)=>new T.MeshStandardMaterial({color:c,roughness:.96,metalness:0});
 /** kitBase: shared rigged character kit URL; null keeps the earlier rigid preview characters. */
-export async function makeWorld(glb:string,sigils:string[],kitBase:string|null='/character-kit/runtime/',sharedLibrary?:MaterialLibrary){
+export async function makeWorld(glb:string,sigils:string[],kitBase:string|null='/character-kit/runtime/',sharedLibrary?:MaterialLibrary,sourceHeight?:number){
  const scene=new T.Scene(), staticRoot=new T.Group();staticRoot.name='HQCommons';scene.add(staticRoot);
  const mats=new Map<string,T.MeshBasicMaterial>(),batches=new Map<T.Material,T.BufferGeometry[]>();
  function material(c:string){if(!mats.has(c))mats.set(c,new T.MeshBasicMaterial({color:c,vertexColors:true}));return mats.get(c)!;}
@@ -82,14 +82,13 @@ export async function makeWorld(glb:string,sigils:string[],kitBase:string|null='
  // Local hand-lettered wayfinding belongs to the scene, not a fixed overlay.
  function sign(text:string,x:number,y:number,z:number,w:number){const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=256;const c=canvas.getContext('2d')!;c.clearRect(0,0,1024,256);c.fillStyle='#fff6e6';c.font='500 94px Georgia';c.textAlign='center';c.textBaseline='middle';c.fillText(text,512,130);const tx=new T.CanvasTexture(canvas);tx.colorSpace=T.SRGBColorSpace;const o=new T.Mesh(new T.PlaneGeometry(w,w/4),new T.MeshBasicMaterial({map:tx,transparent:true,depthWrite:false}));o.position.set(x,y,z);scene.add(o);}
  sign('the little commons',-3.8,2.93,-4.18,2.25);
- const source=(await new GLTFLoader().loadAsync(glb)).scene;
- const textures=await Promise.all(sigils.map(u=>new T.TextureLoader().loadAsync(u)));textures.forEach(t=>{t.colorSpace=T.SRGBColorSpace;t.flipY=false;});
  const muses:T.Group[]=[];
  const library=kitBase?(sharedLibrary??new MaterialLibrary(kitBase)):null;
  // First view waits only for LOD2 + shared clips (~0.7 MB); attachments, LOD1 and LOD0 follow in the background.
  // A resident whose light files cannot load appears as the plain base Muse; if the kit itself is unreachable,
  // the embedded rigid preview characters stand in so the commons and story still appear.
- const light=library?await Promise.all(RESIDENT_VARIANTS.map(id=>loadMuseLight(id,library).catch(e=>{console.warn('Muse variant unavailable, using base:',id,e);return loadMuseLight('00-jolly',library);}))).catch(e=>{console.warn('Rigged kit unavailable, using rigid preview characters:',e);return null;}):null;
+ const loaded=await loadWorldCharacters({glb,sigils,height:sourceHeight!},library);
+ const {light,source,textures}=loaded;
  const actors:MuseActor[]|null=light?light.map(l=>l.actor):null;
  const upgradeTimes:{attachment?:number;lod1?:number;lod0?:number;props?:number}={};
  /** Background detail: every attachment, then LOD1, then LOD0, each shared file fetched once. */
@@ -106,7 +105,7 @@ export async function makeWorld(glb:string,sigils:string[],kitBase:string|null='
  const shadows:T.Mesh[]=[];
  const selection=new T.Mesh(new T.RingGeometry(.37,.41,48),new T.MeshBasicMaterial({color:'#fdf4d9',side:T.DoubleSide,transparent:true,opacity:.92,depthWrite:false}));selection.rotation.x=-Math.PI/2;selection.position.y=.069;scene.add(selection);
  for(let i=0;i<PEOPLE.length;i++){
-  const actor=actors?.[i];const root=actor?actor.root:source.clone(true);root.name='Muse_'+i;root.userData.person=i;
+  const actor=actors?.[i];const root=actor?actor.root:source!.clone(true);root.name='Muse_'+i;root.userData.person=i;
   if(actor)root.traverse(o=>{o.userData.person=i;});
   if(!actor){
   root.traverse(o=>{if(o instanceof T.Mesh){o.userData.person=i;mapMeshMaterials(o,m=>paintMuseMaterial(m,PEOPLE[i].color,textures[i%2]));}});
@@ -150,5 +149,5 @@ export async function makeWorld(glb:string,sigils:string[],kitBase:string|null='
  /** Apply the single LOD selector from projected screen heights (px). */
  function setLods(heights:number[],priority:number[]){if(!actors)return;lods=chooseLods(heights,lods,priority);actors.forEach((a,i)=>{if(a.lod!==lods[i])a.setLod(lods[i]);});}
  function actorBounds(i:number){const a=actors?.[i];if(!a)return null;const p=a.root.position;return new T.Box3(new T.Vector3(p.x-.45,p.y,p.z-.45),new T.Vector3(p.x+.45,p.y+.95,p.z+.45));}
- return {scene,muses,selection,update,ambient,shadows,shadowTexture,actors,setLods,actorBounds,library,upgradeCharacters,upgradeTimes,catalog:MUSE_VARIANTS,sourceHeight:new T.Box3().setFromObject(source).getSize(new T.Vector3()).y};
+ return {scene,muses,selection,update,ambient,shadows,shadowTexture,actors,setLods,actorBounds,library,upgradeCharacters,upgradeTimes,catalog:MUSE_VARIANTS,sourceHeight:loaded.sourceHeight};
 }

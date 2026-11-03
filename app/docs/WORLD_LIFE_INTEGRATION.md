@@ -160,3 +160,31 @@ The equivalent local candidate passed **109/109** tests and worker strict TypeSc
 review/test composition, not a merged or deployed product. Engine semantic-version
 coordination, historical real replay evidence and final production caller ownership
 remain explicit integration gates. The root/owning team must review those before merge.
+
+
+## Latest main and authenticated MCP path, local Cloudflare host fixture
+
+Base main `7a85add2bc8eb2d8d34d70d37857950be453713d` includes the team's
+new personal-auth store. The new harness imports the **actual WorldDO class**, owner
+key route, MCP HTTP handler, ConnectedHost, Trust, command executor and server methods.
+Only the Cloudflare DurableObject base, SQLite/storage host and alarm scheduling are
+replaced with a local Node fixture. This is NOT workerd, a deployed Durable Object or
+real provider authentication. Owner claim setup is explicitly synthetic, ephemeral keys
+never leave the process, no model key is provided, and a fail-closed fetch guard checks
+zero network calls. No production constructor or route changed.
+
+Eight additional tests cover full local MCP invocation through its actual internal signed
+command path: invite/explicit peer answer/projection, concurrent duplicate command spending
+once, conflicting payload, fabricated bearer, revoked key, revoked delegation, stale world
+version, foreign invitation response and actor-argument spoofing. Real PersonalOwners
+registration confirms a private draft actor cannot inherit legacy-owner/resident authority.
+
+Two extra place IDs are rejected by the real MCP schema (`-32602`). That is the CURRENT
+product boundary, not completed multi-site support. The three-place reducer tests remain
+fixtures. Production optional-place invite wiring, actual navigation/rendering and multi-site
+consent are still unfinished. Initial test assertions were corrected to distinguish protocol
+JSON-RPC errors from tool-result isError rather than treating every refusal as a tool result.
+
+Baseline target is 42 tests; engine5 dependency target 71; combined resident+engine5 target
+117. Runtime/registry/claim fixtures, actual route logic, and real deployment are reported
+separately. Broader end-to-end claims must wait for real caller integration and credentials.

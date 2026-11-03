@@ -9,6 +9,7 @@ import {readOwnerSession, ownerOrigins, originAllowed, OWNER_COOKIE, type OwnerT
 import {handleMcpHttp} from './core/mcp-server.ts';
 import {OWNER_SLOT} from './core/trust.ts';
 import {HARNESS_IDS} from '../src/engine/harness.ts';
+import {personalRoutes, isPersonalCallback} from './core/personal-api.ts';
 export {WorldDO} from './world-do.ts';
 
 const MODEL_TIMEOUT_MS = 8000;
@@ -24,6 +25,12 @@ async function readJson(request: Request, limit: number) {
 
 async function api(request: Request, env: Env, url: URL): Promise<Response> {
   const ip = request.headers.get('cf-connecting-ip') ?? '';
+  // Separate namespace, cookie, proof and durable auth store. Never inferred from owner/judge/visitor cookies.
+  if (url.pathname.startsWith('/api/personal/') || isPersonalCallback(url)) return personalRoutes(request, url, {
+    secret: env.SESSION_SECRET ?? '', origin: new URL(env.PUBLIC_ORIGIN).origin,
+    appId: env.THREADS_APP_ID, appSecret: env.THREADS_APP_SECRET,
+    rateLimit: env.BURST ? async () => (await env.BURST!.limit({key: 'personal-auth:' + await hashIp(env.SESSION_SECRET ?? 'unset', ip)})).success : undefined,
+  }, world(env));
   const session = await readSession(env.SESSION_SECRET ?? '', cookieValue(request.headers.get('cookie')));
   // The owner session (C06) is a separate cookie and a separate check; a judge session is never an owner.
   const tokens: OwnerTokens = {owner: env.OWNER_CONTROL_TOKEN, peer: env.DEMO_PEER_CONTROL_TOKEN, reviewer: env.REVIEWER_CONTROL_TOKEN, judge: env.JUDGE_TOKEN};
