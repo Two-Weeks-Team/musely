@@ -53,8 +53,9 @@ export type ToolResult = {content: {type: 'text'; text: string}[]; structuredCon
 export class InvalidParams extends Error {}
 /** Whether this key's Muse counts as claimed for its own actions (never for another Muse's Agent Card). */
 const currentClaim = (c: ToolCtx) => c.ownerClaimedNow ? c.ownerClaimedNow() : c.ownerClaimed;
-const claimedFor = (c: ToolCtx) => !c.personal && (!!c.claimExempt || currentClaim(c));
+const claimedFor = (c: ToolCtx) => c.personal ? c.trust.personalClaim(c.key.muse,c.now()).claimed : (!!c.claimExempt || currentClaim(c));
 const CLAIMED_WRITES = new Set(['propose_trade', 'counter_trade', 'accept_trade', 'send_postcard', 'give_gift', 'propose_meetup', 'answer_candidate', 'invite_campfire', 'propose_help', 'answer_help']);
+const claimRequired = (name: string, payload: Record<string, unknown>) => CLAIMED_WRITES.has(name) || (name === 'answer_campfire' && payload.answer === 'accept');
 const OTHER_ONLY = new Set(['greet', 'say_hello', 'propose_trade', 'send_postcard', 'give_gift', 'propose_meetup']);
 
 // ---------- strict input schemas (JSON Schema subset; the same object is published in tools/list) ----------
@@ -191,6 +192,11 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
   // The recipient is the peer the tool resolved (payload `to`, or the Task's other side), else this world.
   const peer = recipientMuse ? c.trust.agentByMuse(recipientMuse) : null;
   const recipient = peer?.agentId ?? worldHandler(worldId);
+  const needsClaim = claimRequired(tool.name,content);
+  // Capture before any executor/signing await. A later false→true transition must require a new proof.
+  const callerClaim = c.personal && needsClaim ? c.trust.personalClaim(me,at) : null;
+  const peerClaim = peer?.kind === 'personal' && needsClaim ? c.trust.personalClaim(peer.museId,at) : null;
+  const signingClaim = c.personal ? (callerClaim ?? c.trust.personalClaim(me,at)).claimed : claimedFor(c);
   const exec = await c.trust.custodialExecutor(me, c.ownerRoot);
   if (!exec) {
     // Revoked before any custodial delegation existed: nothing may sign for this Muse; refuse without an envelope.
@@ -200,12 +206,22 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
     });
     return refused('delegation_revoked', {step: 'delegation', retryable: false, envelope: null, command: {command_id: opts.commandId ?? null, expected_version: opts.expectedVersion ?? null, world_version: c.runtime.state().version, duplicate: false, committed: false, applied: false}});
   }
-  const cmd = await signCommand(exec, {worldId, expectedVersion: opts.expectedVersion ?? null, action: tool.name, payload: content, recipient, scope: tool.write!.scope, ownerClaimed: claimedFor(c), now: at, commandId: opts.commandId});
+  const cmd = await signCommand(exec, {worldId, expectedVersion: opts.expectedVersion ?? null, action: tool.name, payload: content, recipient, scope: tool.write!.scope, ownerClaimed: signingClaim, now: at, commandId: opts.commandId});
   const envelope = envelopeEvidence(cmd.signed);
   const out = await executeCommand(c, cmd, {
     recipient,
     // A resident answers by rule inside this commit, so its own card and delegation are checked first.
-    counterparty: opts.counterparty ?? (peer ? () => peerCheck(c, peer.museId, at,c.personal||peer.kind==='personal'?[tool.write!.scope]:undefined) : undefined),
+    counterparty: needsClaim || opts.counterparty || peer ? async () => {
+      // executeCommand reaches this only after stored duplicate / in-flight checks.
+      if (needsClaim) await c.trust.refreshPersonalClaims([me,...(peer ? [peer.museId] : [])]);
+      return opts.counterparty ? opts.counterparty() : peer ? peerCheck(c, peer.museId, c.now(),c.personal||peer.kind==='personal'?[tool.write!.scope]:undefined,needsClaim) : {ok:true,current:()=>true};
+    } : undefined,
+    claimCurrent: needsClaim ? at2 => {
+      if (!cmd.signed.envelope.owner_claimed) return 'pending_claim';
+      if (c.personal && (!callerClaim?.claimed || !c.trust.personalClaimMatches(me,callerClaim,at2))) return c.trust.personalClaim(me,at2).claimed ? 'claim_changed' : 'pending_claim';
+      if (peer?.kind === 'personal' && (!peerClaim?.claimed || !c.trust.personalClaimMatches(peer.museId,peerClaim,at2))) return c.trust.personalClaim(peer.museId,at2).claimed ? 'counterparty_claim_changed' : 'counterparty_pending_claim';
+      return null;
+    } : undefined,
     apply: (st, emit, at2) => {
       const tag = (e: Omit<WorldEvent, 'id' | 'tick'>) => emit(tagLocation(st.owner, e));
       const live: Emit = e => tag({...e, source: 'live', data: {...(e.data ?? {}), actor: 'your Muse', actorOrigin: 'connected', tool: tool.name, ...(c.personal?{}:{key_id:c.key.id}), envelope}});
@@ -217,8 +233,8 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
       // item history refuses item writes (history_tamper) and skips the sweep; other writes still run.
       const selfRefusal = recipientMuse === me ? (tool.name === 'propose_help' ? 'self_help' : OTHER_ONLY.has(tool.name) ? 'invalid_target' : null)
         : tool.name === 'invite_campfire' && (content.to as string[]).includes(me) ? 'self_invite' : null;
-      const precondition = selfRefusal ?? (CLAIMED_WRITES.has(tool.name) && !claimedFor(c) ? 'pending_claim'
-        : ((peer?.kind === 'owner' && !currentClaim(c))||(peer?.kind==='personal'&&CLAIMED_WRITES.has(tool.name))) ? 'counterparty_pending_claim' : null);
+      const precondition = selfRefusal ?? (needsClaim && !claimedFor(c) ? 'pending_claim'
+        : ((peer?.kind === 'owner' && !currentClaim(c))||(peer?.kind==='personal'&&needsClaim&&!c.trust.personalClaim(peer.museId,at2).claimed)) ? 'counterparty_pending_claim' : null);
       const fault = precondition ? null : historyFault(st.items, false, at2);
       if (!precondition && !fault) for (const e of sweepExpired(st, at2)) upkeep(e);
       // Rejecting a help Task moves nothing, like reject_trade: it still works while the item history is held.
@@ -381,7 +397,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
   }
 
   // ---------- write tools ----------
-  const claimGate = (): Outcome | null => (CLAIMED_WRITES.has(tool.name) && !claimedFor(c) ? {ok: false, reason: 'pending_claim'} : null);
+  const claimGate = (): Outcome | null => (claimRequired(tool.name,args) && !claimedFor(c) ? {ok: false, reason: 'pending_claim'} : null);
   const write_ = (recipientMuse: string | null, content: Record<string, unknown>, apply: Apply, counterparty?: CommandOpts['counterparty']) => signedWrite(c, tool, recipientMuse, content, apply, {commandId: args.command_id as string | undefined, expectedVersion: args.expected_version as number | undefined, counterparty});
   const ownerMuse = me;
 
@@ -538,8 +554,9 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
       // Every invitee's Agent Card and delegation are checked before the commit (async) and re-checked at it (sync); one
       // that fails is unavailable for this invite instead of refusing it for everyone.
       const creds = new Map<string, Credential | null>();
-      const counterparty = async (): Promise<PeerCheck> => { for (const id of to) creds.set(id, await museCredential(c, id, now)); return {ok: true, current: () => true}; };
-      return write_(null, {kind: 'invite_campfire', to, text}, (st, live, rule, at) => claimGate() ?? inviteCampfire(st, me, {to, text}, (id, at2) => (c.trust.agentByMuse(id)?.kind === 'personal'||(c.trust.agentByMuse(id)?.kind === 'owner' && !currentClaim(c))) ? 'card_unclaimed' : credentialProblem(c.trust, creds.get(id), at2), live, rule, at), counterparty);
+      const claims = new Map(to.filter(id=>c.trust.agentByMuse(id)?.kind==='personal').map(id=>[id,c.trust.personalClaim(id,now)]));
+      const counterparty = async (): Promise<PeerCheck> => { await c.trust.refreshPersonalClaims(to); for (const id of to) creds.set(id, await museCredential(c, id, c.now(),c.personal||c.trust.agentByMuse(id)?.kind==='personal'?[tool.write!.scope]:undefined)); return {ok: true, current: () => true}; };
+      return write_(null, {kind: 'invite_campfire', to, text}, (st, live, rule, at) => claimGate() ?? inviteCampfire(st, me, {to, text}, (id, at2) => ((claims.has(id)&&!c.trust.personalClaimMatches(id,claims.get(id)!,at2))||(c.trust.agentByMuse(id)?.kind === 'owner' && !currentClaim(c))) ? 'card_unclaimed' : credentialProblem(c.trust, creds.get(id), at2), live, rule, at), counterparty);
     }
     case 'answer_campfire': {
       const id = String(args.invite_id), answer = args.answer as 'accept' | 'decline';

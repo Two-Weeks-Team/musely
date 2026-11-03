@@ -1,3 +1,5 @@
+import {losePersonalClaim} from './core/personal-claim-loss.ts';
+import {PersonalClaims,type ClaimFlowBinding} from './core/personal-claims.ts';
 import {LegacyProfile,type LegacyOwnerProof} from './core/legacy-profile.ts';
 import {PersonalWorld} from './core/personal-world.ts';
 // The single shared world Durable Object: budget and quota ledger, the heartbeat and commit point,
@@ -26,6 +28,7 @@ export class WorldDO extends DurableObject<Env> {
   private personalAuth: PersonalAuthStore;
   private personalRegistration: PersonalRegistration;
   private personalWorld: PersonalWorld;
+  private personalClaims:PersonalClaims;
   private runtime: WorldRuntime;
   private trust: Trust;
   private ritual: RitualStore;
@@ -58,6 +61,8 @@ export class WorldDO extends DurableObject<Env> {
       model: {base: env.MODEL_BASE, key: env.MODEL_API_KEY, model: env.MODEL_ID, timeoutMs: 8000},
     });
     // Stable personal/legacy ownership never falls back to resident consent when login is unavailable.
+    this.personalClaims=new PersonalClaims(ctx.storage,this.personalAuth,{secret:env.SESSION_SECRET??'',appId:env.THREADS_APP_ID??'',appSecret:env.THREADS_APP_SECRET??'',redirectUri:this.origin+'/api/threads/callback'},(actor,status,version)=>losePersonalClaim(this.runtime,this.trust,actor,status,version,Date.now()));
+    this.trust.setPersonalClaimRefresh(actor=>this.personalClaims.refresh(actor));
     this.legacyProfile=new LegacyProfile(ctx.storage,this.runtime);
     this.personalWorld=new PersonalWorld(ctx.storage,this.personalAuth,this.personalRegistration,this.runtime,this.trust,this.origin,hooks,{root:()=>this.ownerRoot,claimed:()=>this.getClaim('owner-muse')?.status==='claimed'});
     this.connected = new ConnectedHost({personal:this.personalWorld,sql: ctx.storage.sql, trust: this.trust, runtime: this.runtime, hooks, baseUrl: this.origin, ownerRoot: () => this.ownerRoot, ownerClaimed: () => this.getClaim('owner-muse')?.status === 'claimed', ownerOf: muse => this.personalWorld.ownerOf(muse)});
@@ -75,6 +80,7 @@ export class WorldDO extends DurableObject<Env> {
       ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS claims (agent TEXT PRIMARY KEY, record TEXT NOT NULL, token TEXT)');
       this.trust.init();
       this.personalWorld.init();
+      this.personalClaims.init();
       this.legacyProfile.init();
       this.connected.init();
       this.ritual.init();
@@ -86,11 +92,15 @@ export class WorldDO extends DurableObject<Env> {
       if (owner && owner.inventory.length === 0) this.runtime.commitExternal(Date.now(), 'welcome', (st, emit) => { st.muses.find(m => m.id === OWNER_SLOT)!.inventory.push('coffee', 'postage_stamp'); emit({at: Date.now(), source: 'rule', kind: 'welcome_gift', muse: OWNER_SLOT, line: 'Welcome gift: Coffee and a Postage Stamp', data: {items: ['coffee', 'postage_stamp']}, tags: []}); });
     });
   }
-  // Private auth RPCs; no provider token/code crosses into DO storage or any world commit.
+  // Private auth RPCs. Login tokens stay in memory; explicit claim tokens are stored only as private ciphertext, never in world commits.
   legacyProfileGet(owner:LegacyOwnerProof){return this.legacyProfile.get(owner);}
   legacyProfilePatch(owner:LegacyOwnerProof,input:unknown){return this.legacyProfile.patch(owner,input);}
   personalLocation(binding:PersonalBinding){return this.personalWorld.location(binding);}
   personalLocationSet(binding:PersonalBinding,input:unknown){return this.personalWorld.setLocation(binding,input);}
+  personalClaimRead(binding:PersonalBinding){return this.personalClaims.describe(binding);}
+  personalClaimRevoke(binding:PersonalBinding,input:unknown){return this.personalClaims.revoke(binding,input);}
+  personalClaimBegin(binding:PersonalBinding,input:unknown,flow:PersonalFlow){return this.personalClaims.begin(binding,input,flow);}
+  personalClaimComplete(binding:ClaimFlowBinding,code:string|null){return this.personalClaims.complete(binding,code);}
   personalStatus(binding:PersonalBinding|null){return this.personalWorld.status(binding);}
   personalAuthorityOwn(binding:PersonalBinding){return this.personalWorld.authorityOwn(binding);}
   personalAuthorityGrant(binding:PersonalBinding,input:unknown){return this.personalWorld.grant(binding,input);}

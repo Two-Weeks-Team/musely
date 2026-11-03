@@ -36,6 +36,8 @@ export type CommandHandler<T = unknown> = {
   /** Who this command must be addressed to, decided by the verifier: the peer agent, or worldHandler(worldId). */
   recipient: string;
   counterparty?: () => Promise<PeerCheck>;
+  /** Claim-required mutations only. New commit, after stored-row recheck and before nonce spending. */
+  claimCurrent?: (at: number) => string | null;
   /**
    * Work outside the transaction, bounded by the deadline. executeCommand calls the returned settle()
    * whatever happens next (C05), so a discarded answer is still paid for. think must settle its own
@@ -142,6 +144,8 @@ export async function executeCommand<T>(c: CommandCtx, cmd: WorldCommand, h: Com
         if (unauthorized) return unauthorized;
         const again = c.runtime.commandRow(cmd.actorId, cmd.commandId);
         if (again) return again.payloadHash === hash ? 'duplicate' : 'command_conflict';
+        const claim = h.claimCurrent?.(atCommit);
+        if (claim) return claim;
         if (stale()) return 'stale_world';
         if (!current() || (peer?.ok && !peer.current(atCommit))) return 'delegation_revoked';
         if (sig.delegation.exp <= atCommit) return 'delegation_expired';

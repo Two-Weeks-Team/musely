@@ -10,6 +10,7 @@ import {harnessById, SCOPES} from '../../src/engine/harness.ts';
 import {placeById, distanceM} from '../../src/engine/places.ts';
 import type {WorldRuntime} from './world-runtime.ts';
 import {Trust, OWNER_SLOT, type Executor} from './trust.ts';
+import type {CurrentPersonalClaim} from './personal-claim-state.ts';
 import type {WorldState, Hooks} from '../../src/engine/world.ts';
 import {executeCommand, signCommand, quietRefusal, type PeerCheck} from './commands.ts';
 
@@ -108,17 +109,19 @@ function lastP0Job(c: Ctx): {partner: string; give: string; want: string} | null
 
 // ---------- credentials before side effects (C04) ----------
 type CredCtx = Pick<Ctx, 'trust' | 'ownerRoot' | 'ownerClaimed' | 'baseUrl'>;
-export type Credential = {museId: string; agentId: string; card: CardCheck; delegation: {ok: true; ref: string; version: number; exp: number; signer_kind: string} | {ok: false; reason: string}};
+export type Credential = {museId: string; agentId: string; claim?: CurrentPersonalClaim; claimBound?: boolean; card: CardCheck; delegation: {ok: true; ref: string; version: number; exp: number; signer_kind: string} | {ok: false; reason: string}};
 /** Scopes a meeting can exercise: the greeting and the trade that may follow. */
 const MEETING_SCOPES = ['walk_and_greet', 'world_item_trade'];
 
 /** One Muse's Agent Card against its trusted root and its server_heartbeat delegation, both checked for real. */
-export async function museCredential(c: CredCtx, museId: string, now: number,requiredScopes:readonly string[]=MEETING_SCOPES): Promise<Credential | null> {
+export async function museCredential(c: CredCtx, museId: string, now: number,requiredScopes:readonly string[]=MEETING_SCOPES, requireClaim = true): Promise<Credential | null> {
   const agent = c.trust.agentByMuse(museId);
   if (!agent) return null;
-  let card: CardCheck;
-  try { card = await verifyCard(await c.trust.card(museId, c.ownerRoot, {claimed: c.ownerClaimed, fingerprint: null}, c.baseUrl), agent.rootJwk); } catch { card = {ok: false, reason: 'unsigned'}; }
-  const base = {museId, agentId: agent.agentId, card};
+  // Bind proof before asynchronous Card/delegation crypto; a later grant cannot upgrade this check.
+  const claim = agent.kind === 'personal' && requireClaim ? c.trust.personalClaim(museId,now) : undefined;
+  let card: CardCheck, claimBound = false;
+  try { const signed = await c.trust.card(museId, c.ownerRoot, {claimed: c.ownerClaimed, fingerprint: null}, c.baseUrl); card = await verifyCard(signed, agent.rootJwk); claimBound = !!claim?.claimed && signed['x-musely'].owner_claimed && signed['x-musely'].claim_fingerprint === claim.fingerprint; } catch { card = {ok: false, reason: 'unsigned'}; }
+  const base = {museId, agentId: agent.agentId, card, ...(claim ? {claim,claimBound} : {})};
   // While revoked, no new delegation is issued: the stored one is checked and fails.
   let exec: Executor | null = null;
   try { exec = c.trust.suspended(museId) ? await c.trust.storedExecutor(museId, 'server_heartbeat') : await c.trust.executor(museId,agent.kind==='personal'?'server_custodial':'server_heartbeat', c.ownerRoot); } catch { exec = null; }
@@ -135,14 +138,15 @@ export async function museCredential(c: CredCtx, museId: string, now: number,req
 export function credentialProblem(t: Trust, cr: Credential | null | undefined, at: number): string | null {
   if (!cr) return 'unknown_agent';
   if (!cr.card.ok) return 'card_' + cr.card.reason;
+  if (cr.claim && (!cr.claimBound || !t.personalClaimMatches(cr.museId,cr.claim,at))) return 'pending_claim';
   if (!cr.delegation.ok) return cr.delegation.reason;
   if (t.isRevoked(cr.delegation.ref) || t.delegationVersion(cr.agentId) !== cr.delegation.version) return 'delegation_revoked';
   return cr.delegation.exp <= at ? 'delegation_expired' : null;
 }
 
 /** The counterparty of a peer command (a resident answering by rule): card and delegation before the commit. */
-export async function peerCheck(c: CredCtx, museId: string, now: number,requiredScopes:readonly string[]=MEETING_SCOPES): Promise<PeerCheck> {
-  const cr = await museCredential(c, museId, now,requiredScopes);
+export async function peerCheck(c: CredCtx, museId: string, now: number,requiredScopes:readonly string[]=MEETING_SCOPES, requireClaim = true): Promise<PeerCheck> {
+  const cr = await museCredential(c, museId, now,requiredScopes,requireClaim);
   const why = credentialProblem(c.trust, cr, now);
   return why ? {ok: false, reason: 'counterparty_' + why} : {ok: true, current: at => !credentialProblem(c.trust, cr, at)};
 }
@@ -158,10 +162,16 @@ export class MeetingCheck {
   constructor(ctx: () => CredCtx) { this.ctx = ctx; }
   async prepare(s: WorldState, now: number): Promise<NonNullable<Hooks['canMeet']>> {
     const c = this.ctx();
-    const creds = new Map(await Promise.all(s.muses.map(async m => [m.id, await museCredential(c, m.id, now)] as const)));
+    // A meeting can create consent too. Refresh before capturing/signing its proof, just as an MCP write does.
+    // Confirmed loss commits against the live runtime; the heartbeat must retain that newer state.
+    await c.trust.refreshPersonalClaims(s.muses.map(m=>m.id));
+    const proofAt = Math.max(now, Date.now());
+    const creds = new Map(await Promise.all(s.muses.map(async m => [m.id, await museCredential(c, m.id, proofAt)] as const)));
     return (_st, a, b, place, at) => {
       const ca = creds.get(a.id), cb = creds.get(b.id);
-      const pa = credentialProblem(c.trust, ca, at), pb = credentialProblem(c.trust, cb, at);
+      // `at` remains the tick's logical event time; asynchronous refresh/crypto may have completed later.
+      const authorityAt = Math.max(at, Date.now());
+      const pa = credentialProblem(c.trust, ca, authorityAt), pb = credentialProblem(c.trust, cb, authorityAt);
       const view = (cr: Credential | null | undefined) => cr ? {card: cr.card, delegation: cr.delegation.ok ? {ref: cr.delegation.ref, version: cr.delegation.version, signer_kind: cr.delegation.signer_kind} : cr.delegation} : null;
       if (!pa && !pb) return {ok: true, event: {at, source: 'live', kind: 'cards_verified', muse: a.id, other: b.id, place: place.id, line: 'Agent Cards and delegations verified both ways', data: {stage: 'verify', aVerifiesB: cb!.card, bVerifiesA: ca!.card, delegations: {[a.id]: view(ca), [b.id]: view(cb)}}, tags: []}};
       const pair = [a.id, b.id].sort(), codes = pair.map(id => (id === a.id ? pa : pb) ?? 'ok').join('|');

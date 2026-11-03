@@ -344,11 +344,11 @@ test('I-12 wording: terms, About and this record tell the demo limits apart from
   // Public wording: /terms section "Limits in this demo", enforced limits first, then what is not built.
   const section = (await readFile(APP + 'static/terms.html', 'utf8')).split('<h2 id="demo-limits">')[1]?.split('<h2')[0];
   assert.ok(section, 'terms.html has the #demo-limits section');
-  const [enforced, notBuilt] = plain(section).split('Not built yet:');
+  const [enforced, notBuilt] = plain(section).split('Remaining demo limits:');
   assert.ok(notBuilt, 'the section separates what is not built');
-  for (const fact of [`${SESSION_TTL_MS / 3_600_000}-hour session`, `${HOURLY_LIMITS.visitor} live Muse Spark calls per hour`, `own ${CHALLENGE_HOURLY_LIMIT} per hour`, `spotlight requests are also ${SPOTLIGHT_REQUESTS_PER_HOUR.visitor} per hour`, `capped at ${IP_HOURLY_LIMIT} per hour`, `${HOURLY_LIMITS.judge} live calls per hour`, `US$${vars.DAILY_BUDGET_USD}`, '00:00 UTC', 'recorded replay', 'one real owner', 'two system principals']) assert.ok(enforced.includes(fact), 'enforced now: ' + fact);
+  for (const fact of [`${SESSION_TTL_MS / 3_600_000}-hour session`, `${HOURLY_LIMITS.visitor} live Muse Spark calls per hour`, `own ${CHALLENGE_HOURLY_LIMIT} per hour`, `spotlight requests are also ${SPOTLIGHT_REQUESTS_PER_HOUR.visitor} per hour`, `capped at ${IP_HOURLY_LIMIT} per hour`, `${HOURLY_LIMITS.judge} live calls per hour`, `US$${vars.DAILY_BUDGET_USD}`, '00:00 UTC', 'recorded replay', 'Personal Muse connections', 'demo peer and a directory-review Muse']) assert.ok(enforced.includes(fact), 'enforced now: ' + fact);
   assert.ok(!/probation|per-owner/.test(enforced), 'the enforced limits do not claim the unbuilt safeguards');
-  for (const fact of ['no general user accounts', 'no 24-hour probation', 'no per-owner rate limit']) assert.ok(notBuilt.includes(fact), 'not built: ' + fact);
+  for (const fact of ['Personal sign-in and connections are implemented', 'no 24-hour probation', 'no per-owner rate limit']) assert.ok(notBuilt.includes(fact), 'not built: ' + fact);
   // The About dialog points to it.
   const aboutHtml = (await readFile(APP + 'src/index.html', 'utf8')).split('<section id="about-dialog"')[1].split('</section>')[0];
   assert.ok(aboutHtml.includes('href="/terms#demo-limits"'), 'About links to the limits');
@@ -361,5 +361,5 @@ test('I-12 wording: terms, About and this record tell the demo limits apart from
   for (const fact of [`${HOURLY_LIMITS.visitor} per session per hour`, `${HOURLY_LIMITS.judge} live calls per judge session per hour`, `${IP_HOURLY_LIMIT} visitor calls per IP per hour`, `(${vars.DAILY_BUDGET_USD} at this commit)`]) assert.ok(table.includes(fact), 'record: ' + fact);
   assert.ok(unbuilt && /24-hour probation/.test(unbuilt) && /per-owner rate limits/.test(unbuilt));
   const deployment = await readFile(APP + 'docs/DEPLOYMENT.md', 'utf8');
-  assert.ok(deployment.includes('Not built: general user accounts, a 24-hour probation for new Muses and per-owner rate limits') && deployment.includes('/terms#demo-limits'));
+  assert.ok(deployment.includes('Not built: a 24-hour probation for new Muses and per-owner rate limits') && deployment.includes('Personal sign-in, explicit connections and separate ownership proof are implemented') && deployment.includes('/terms#demo-limits'));
 });

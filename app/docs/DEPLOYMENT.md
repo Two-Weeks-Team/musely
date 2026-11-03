@@ -29,7 +29,7 @@ The first deploy (2026-11-02) needed the apex parking records removed: the zone 
 
 - The Worker calls the Meta Model API directly at `MODEL_BASE=https://api.meta.ai/v1`. There is no AI Gateway. Putting one in front means turning off gateway body logging and caching for challenge and negotiate requests first (`docs/V2_VERIFICATION.md`, section 5).
 - Enforced now, in this deployment: visitor sessions after Turnstile (24 hours), 3 live calls per visitor session per hour (the ritual challenge has its own 3), 40 visitor calls per IP per hour, 120 per judge session per hour, the `BURST` rate limit, and the daily budget `DAILY_BUDGET_USD` (UTC day). At the cap the proxy answers labelled replays or scenarios and the heartbeat runs on rules. Owners: one real owner and the two system principals below.
-- Not built: general user accounts, a 24-hour probation for new Muses and per-owner rate limits (S4, G-01). Do not describe the demo limits as those. The public wording is `/terms#demo-limits`; the full table is `docs/V2_VERIFICATION.md`, section 7.1.
+- Personal sign-in, explicit connections and separate ownership proof are implemented; actual external account availability remains a separate acceptance item. Not built: a 24-hour probation for new Muses and per-owner rate limits (S4, G-01). Do not describe the demo limits as those. The public wording is `/terms#demo-limits`; the full table is `docs/V2_VERIFICATION.md`, section 7.1.
 
 ## Secrets
 
