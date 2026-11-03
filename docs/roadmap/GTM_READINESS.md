@@ -1,22 +1,51 @@
 # G-02 — directory application preparation and status
 
-**Draft packet for owner review, 2026-11-02; not submitted.** Scope is Musely's main `app/` product at `https://musely.net`, not `preview/` or preview.musely.net. This packet does not connect a Meta account, grant credentials, accept terms, submit a form or promise approval/support availability.
+**Directory application and required intake submitted (3/3), 2026-11-03.** Scope is Musely's main `app/` product at `https://musely.net`. All three required tasks are submitted; the questionnaire shows `Under review`. Approval, discovery and personal Muse end-to-end acceptance are separate. The dated initial0/3 receipt below is retained as history.
 
 ## Latest decision and independent states
 
-The 2026-11-02 app-target block of [issue #68](https://github.com/Two-Weeks-Team/musely/issues/68), reflected in [roadmap §2.1](2026-11-01-four-stage-roadmap.md#21-제출-시점과-현재-진행-2026-11-01-기준), moves the **public directory application before the deadline into S3**. The owner performs the actual submission requiring account/business details. If approved, proceed to actual connection. Approval is separate and may arrive later; the stated deadline condition is application. This overrides the older G-02 S4 placement/wording in [task-execution](task-execution.md#g-02--공개-디렉터리-요건신청심사승인-추적), while its preparation/submission/review/approval separation remains valid. Deadline: 2026-11-04 21:00 ET / 2026-11-05 11:00 KST.
+The 2026-11-02 app-target block of [issue #68](https://github.com/Two-Weeks-Team/musely/issues/68), reflected in [roadmap §2.1](2026-11-01-four-stage-roadmap.md#21-제출-시점과-현재-진행-2026-11-01-기준), moves the **public directory application before the deadline into S3**. On2026-11-03 the owner expressly authorized Codex to check the three confirmations and submit the existing reviewed packet once. The actual-Muse G16 prerequisite was waived for that submission only. New business evidence, mandatory fields and credentials were outside that initial permission. Subsequent specific authority covered the three follow-up tasks and reviewer-only secure credential entry; those tasks are now submitted. If approved, proceed to actual connection. Approval is separate and may arrive later; the stated deadline condition is application. This overrides the older G-02 S4 placement/wording in [task-execution](task-execution.md#g-02--공개-디렉터리-요건신청심사승인-추적), while its preparation/submission/review/approval separation remains valid. Deadline: 2026-11-04 21:00 ET / 2026-11-05 11:00 KST.
 
 | State | Current evidence | Next receipt, never inferred |
 |---|---|---|
-| Requirements/package | These two draft documents and code cross-check | Owner review of actual portal fields/terms and remaining disclosures |
-| Actual I-04 connection | Not connected; owner Threads claim machine-verified at the dated checkpoint | Real Muse read→move/greet→trade→inbox→accept/reject→result→revoke receipts |
-| Application | Not submitted | Portal submission acknowledgement/reference/time for this exact main-product packet |
-| Risk/tool/QA review | No outcome recorded | Actual review status, approved tool set and any requested changes |
+| Requirements/package | Existing Review matched the approved packet; all three follow-up tasks submitted, `3/3 completed` | Respond to actual reviewer requests without inferring approval |
+| Actual I-04 connection | Supported custom credential setup saved in the MacBook Muse app; actual tool-flow acceptance still pending; separate dated Threads claim | Real Muse read→move/greet→trade→inbox→accept/reject→result→revoke receipts |
+| Application | `Submitted 2026년 11월 3일`; reference `839792cd-d7cb-4bf2-bbc3-3f7481660cfd`; required intake `3/3 completed` | Review/approval receipt; no further submission action is shown |
+| Risk/tool/QA review | Data questionnaire `Under review`; actual platform discovery passed with20tools; no approval or full QA outcome | Actual review outcome, approved tool set and requested changes |
 | Approval | Not approved | Explicit approval receipt/date; no inference from a working HTTPS endpoint |
 | Discovery | One observed Settings search did not find Musely | Actual approved listing/account discovery receipt; absence is not a universal impossibility claim |
 | Featuring/ranking | Not established | Separate editorial decision, never guaranteed |
 
-Submission is still a necessary remaining S3 action; these docs do not satisfy it. No application, review outcome or personal Muse receipt was created during this work.
+The initial submission and all required follow-up intake are complete. No approval or personal Muse acceptance is inferred. The initial Submit for review remains exactly one invocation; follow-up tasks were completed under subsequent specific authority.
+
+## Follow-up intake completed — 2026-11-03
+
+Data questionnaire Submit was clicked once at **2026-11-03T04:58:13.034Z**. Exact resulting task text: `Under review` / `Questionnaire submitted for review.` The same [submission detail](https://platform.muse.ai/submissions/839792cd-d7cb-4bf2-bbc3-3f7481660cfd) then showed `Submitted 2026년 11월 3일`, `3/3 completed`, `View Business verification`, `View Data processing questionnaire` and `View Technical details`. These are actual observed status strings, not an approval claim. The overview's later stage labels alone are not treated as active status.
+
+Business verification and Technical details completed first. The platform test reported `Passed. Muse listed 20 tools.` and `Credentials submitted.`; MCP `2025-11-25`, server `musely 0.2.0`,20tools/0resources/0prompts. The reviewer-only Ember credential was entered in the secure field under separate explicit approval. This is platform discovery, not the personal Muse G16 flow. Business verification did not present an upload field, so no PDF upload is claimed.
+
+The questionnaire reflects the directly confirmed country answers (Korean headquarters/incorporation/service; declared US storage and Korean operator access), actual retention/deletion limits and separate optional browser location/image flows. Current owner-authorized request-review and transfer-management procedures are disclosed without inventing historical certifications or blanket SCC/BCR/ZDR coverage. No new legal consent appeared or was accepted. No secrets, private contacts, verification codes or business-proof contents are included here.
+
+[C10 current intake receipt](https://github.com/Two-Weeks-Team/musely/issues/68#issuecomment-6595859886); [prior technical2/3 receipt](https://github.com/Two-Weeks-Team/musely/issues/68#issuecomment-6595668412). Sanitized local final-intake receipt SHA256: `4d2292029f1192011ae4bfa033432218b835f4a09ce1ff3dfa3a2fb1233531d5`. The initial0/3 checkpoint below remains historical evidence and is superseded only for current status. Initial application, completed intake, review, approval and actual Muse acceptance are distinct.
+
+## Initial submission receipt — 2026-11-03
+
+Actual portal URL: [submission detail](https://platform.muse.ai/submissions/839792cd-d7cb-4bf2-bbc3-3f7481660cfd). Reference `839792cd-d7cb-4bf2-bbc3-3f7481660cfd` is read from that URL. Exact portal wording:
+
+```text
+Submitted 2026년 11월 3일
+You have 3 open tasks
+Business verification — Not started
+Data processing questionnaire — Not started
+Technical details — Not started
+0/3 completed
+```
+
+The button was invoked once at2026-11-03T03:39:05.852049Z (12:39:05.852049KST). Detail status was observed at03:42:48.217803Z (12:42:48.217803KST). The portal displays the date only; these local times are not a claimed server reception time. It also lists In review, Testing and Approved as later progress stages; their presence does not establish that any of those stages is active.
+
+The three previously unchecked confirmations were each checked once under explicit consent. Review values were compared read-only against the approved packet and were not edited. Submit for review was clicked exactly once. The initial confirmation route rendered blank; a single read-only GET to that same generated confirmation URL resolved to the detail page. No second submission was attempted. No new task Start link was opened, credential entered, document uploaded or business/personal proof copied. Execution stopped because the portal introduced the three required tasks above.
+
+C10 and exact release/deployment/config evidence are retained in [issue68 receipt](https://github.com/Two-Weeks-Team/musely/issues/68#issuecomment-6594888857). The submitted endpoint was the a31c9c9 main-product deployment. The sanitized local receipt has SHA256 `5f7e3dfb15ecf3004d1597085efd81150996263f35c100056703aaf972098a84`. The submitted text explicitly disclosed that actual personal Muse installation was unverified. Initial submission, completed intake, actual G16 connection, review, approval and directory discovery remain separate states.
 
 ## Official primary source and questionnaire map
 
@@ -26,7 +55,7 @@ Submission is still a necessary remaining S3 action; these docs do not satisfy i
 |---|---|---|
 | 1.1–1.2 task completion/value | Actual in-world actions, Task inbox/continuation, atomic item transfer, evidence and retry behavior exceed a public-links wrapper | Actual Muse end-to-end receipts; no external booking/payment/scheduling capability is offered |
 | 3 tool classification/approval | [20-tool mapping and effects](../../app/docs/CONNECTOR_VERIFICATION.md#all-20-tools-proposed-review-classification-and-actual-effects), full [MCP schemas](../../app/docs/MCP_TOOLS.md) | Meta's actual Read/Write/Sensitive review and account HITL observation; no invented Always allow grant |
-| 4.1 terms | Existing public [product terms](https://musely.net/terms); platform terms are distinct | Owner reads current connector/developer terms in portal; no acceptance asserted here |
+| 4.1 terms | Existing public [product terms](https://musely.net/terms); platform terms are distinct | The three initial-submit confirmations, including current connector terms, were accepted once with explicit consent; follow-up intake is now3/3 submitted and no new legal consent appeared |
 | 4.2–4.4 data/security | Scoped key, signed guards, one-Muse principal, minimum in-world fields, deletion/retention table below | Disclose residual public history and revocation-vs-purge honestly; security/compliance is not self-certified |
 | 4.7 transactions | In-world items have no monetary value; no charges, reservations or external invites | Do not answer as a financial trading/checkout connector; platform classification still belongs to review |
 | 4.8 incident handling | Official text requires Meta notice to vendor-incident@meta.com within48h for relevant incidents | Owner reviews applicable terms, assigns actual responsibility/contact and confirms readiness; this is a requirement, not a new SLA or consent |
