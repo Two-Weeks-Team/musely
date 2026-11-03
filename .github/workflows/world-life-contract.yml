@@ -1,0 +1,26 @@
+name: World Life Contract
+on:
+  pull_request:
+    paths:
+      - 'app/worker/core/world-life-contract.ts'
+      - 'app/scripts/world-life-contract.test.mjs'
+      - 'app/docs/WORLD_LIFE_INTEGRATION.md'
+      - '.github/workflows/world-life-contract.yml'
+permissions:
+  contents: read
+jobs:
+  offline-contract:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: node --test scripts/world-life-contract.test.mjs
+      - run: npx tsc --noEmit --strict --target ES2022 --module ESNext --lib ES2022,DOM worker/core/world-life-contract.ts
