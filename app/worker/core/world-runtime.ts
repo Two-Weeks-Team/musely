@@ -17,6 +17,7 @@
 //   input row. Reads of the log (highlight pages, period samples, one event with its commit) are below.
 import {createWorld, tick, spotlightFor, spotlightInput, encounterInput, requestSpotlight, TICK_MS, type WorldState, type WorldEvent, type Decision, type EncounterReply, type Hooks} from '../../src/engine/world.ts';
 import {validate, buildMessages, maxCostUsd, actualCostUsd, failureCostUsd, checkOutput} from './actions.ts';
+import {completeResidentGoalsInTransaction,residentGoalIdleIds,createResidentServices,runResidentGoalTurn,type ResidentGoalLoopPolicy} from './resident-goal-loop.ts';
 import {runResidentWantsTurn,type ResidentWantsCallerPolicy} from './resident-wants-caller.ts';
 import {callModel, type ModelConfig} from './model.ts';
 import {replayFor} from './replay.ts';
@@ -47,6 +48,9 @@ export type SpotlightOrigin = 'visitor' | 'judge' | 'connected';
 export type SpotlightRequestResult = {ok: true; muse: string; position: number; already: boolean; eventIds: string[]} | {ok: false; reason: 'unknown_muse' | 'paused' | 'queue_full' | 'hourly_limit'};
 
 export type RuntimeOptions = {
+  residentGoals?:ResidentGoalLoopPolicy;
+  /** Synchronous observer inside every successful commit transaction; throwing rolls back. */
+  onCommit?:(before:WorldState,after:WorldState,events:readonly WorldEvent[],now:number)=>void;
   /** Feature OFF; server-only policy, no WorldDO installation. */
   residentWants?:ResidentWantsCallerPolicy;
   worldId: string;
@@ -102,6 +106,16 @@ export class WorldRuntime {
   /** The versioned run record and the ordered inputs of every commit (run-log.ts). */
   readonly runLog: RunLog;
   // Campfire invites close (gathered, expired, cancelled) on every tick: the invite upkeep joins the hooks here (I-13).
+  private goalIdle(s:WorldState,now:number){const p=this.opts.residentGoals;if(!p||p.enabled!==true)return [];if(!this.ownsResidentGoalStore(p.goals))throw Error('resident goal storage mismatch');return residentGoalIdleIds({...p,authorize:(s,a,b,at)=>p.authorize(s,a,b,at)&&(!this.opts.delegationValid||this.opts.delegationValid(a)),ownership:id=>{const r=(this.opts as RuntimeOptions & {residentLife?:{enabled:boolean;ownershipKind:(id:string)=>'resident'|'personal'|'legacy'|'unknown'}}).residentLife;return r?.enabled?r.ownershipKind(id):'unknown';}},s,now);}
+
+  private notifyCommit(before:WorldState,after:WorldState,events:readonly WorldEvent[],now:number){
+    const p=this.opts.residentGoals;
+    if(p?.enabled){if(!this.ownsResidentGoalStore(p.goals))throw Error('resident goal storage mismatch');completeResidentGoalsInTransaction({...p,ownership:id=>{const r=(this.opts as RuntimeOptions & {residentLife?:{enabled:boolean;ownershipKind:(id:string)=>'resident'|'personal'|'legacy'|'unknown'}}).residentLife;return r?.enabled?r.ownershipKind(id):'unknown';},authorize:(s,a,b,at)=>p.authorize(s,a,b,at)&&(!this.opts.delegationValid||this.opts.delegationValid(a))},before,after,events,now);}
+    synchronous(this.opts.onCommit?.(structuredClone(before),structuredClone(after),structuredClone(events),now));
+  }
+
+  static createResidentServices=createResidentServices;
+
   ownsResidentGoalStore(store:{sharesStorage:(sql:TxSql)=>boolean}):boolean{return store.sharesStorage(this.sql);}
 
   constructor(sql: TxSql, opts: RuntimeOptions) { this.sql = sql; this.opts = {...opts, hooks: withMessageHooks(opts.hooks)}; this.runLog = new RunLog(sql, opts.worldId); }
@@ -159,6 +173,8 @@ export class WorldRuntime {
     if (this.tickTaken(before)) return {status: 'skipped_duplicate', tick: before.tick, events: 0};
     const originalTickReservation=this.reservationId(before);
     try {
+      const goals=this.opts.residentGoals;
+      const goalResult=goals?.enabled?runResidentGoalTurn(this,{...goals,authorize:(s,a,b,at)=>goals.enabled===true&&goals.authorize(s,a,b,at)&&(!this.opts.delegationValid||(this.opts.delegationValid(a)&&(!b||this.opts.delegationValid(b)))),ownership:id=>{const registry=(this.opts as RuntimeOptions & {residentLife?:{enabled:boolean;ownershipKind:(id:string)=>'resident'|'personal'|'legacy'|'unknown'}}).residentLife;return registry?.enabled===true?registry.ownershipKind(id):'unknown';}},now,this.opts.hooks):null;
       const wants=this.opts.residentWants;
       // Never allow a plugin to substitute a second budget/model/registry or ignore revocation.
       const clock=()=>Math.max(now,wants?.context.now()??now);
@@ -166,7 +182,7 @@ export class WorldRuntime {
       const refreshed=this.state();
       if(refreshed.tick!==before.tick||refreshed.day!==before.day)return {status:'skipped_duplicate',tick:refreshed.tick,events:0};
       before=refreshed;now=Math.max(clock(),before.lastTickAt);
-      const wantsConsumedTurn=negotiated?.ok===true||['turn_already_consumed','already_reserved','timeout','network','upstream','bad_output','rate_limited','output_rejected','invalid_trade_choice','stale_authority_or_state','stale_task','trade_precondition_changed'].includes(negotiated?.reason??'');
+      const wantsConsumedTurn=goalResult?.ok===true||goalResult?.reason==='turn_already_consumed'||negotiated?.ok===true||['turn_already_consumed','already_reserved','timeout','network','upstream','bad_output','rate_limited','output_rejected','invalid_trade_choice','stale_authority_or_state','stale_task','trade_precondition_changed'].includes(negotiated?.reason??'');
       // The turn is fixed here and passed to the commit: queue requests made while the model answers wait for the next tick.
       const spot = spotlightFor(before, now), turn = {muse: spot.muse, priority: spot.priority};
       const [{decision, info}, canMeet] = await Promise.all([wantsConsumedTurn?Promise.resolve({decision:null,info:{source:'rule',reason:negotiated?.ok===true||negotiated?.reason==='turn_already_consumed'?'resident_trade_turn':'resident_trade_attempt'}}):this.liveSpotlight(before, spot.muse, spot.freedom, now), this.meetingGate(before, now)]);
@@ -192,7 +208,8 @@ export class WorldRuntime {
         discard(r, why);
         return {muse: r.muse, other: r.other, place: r.place, encounterId: r.encounterId, source: 'rule' as const, output: null, reason: 'discarded: ' + why};
       });
-      const {state, events} = tick(current, {now, decision: usable, replies, spot: turn}, canMeet ? {...this.opts.hooks, canMeet: this.dedupMeetings(canMeet)} : this.opts.hooks);
+      const committedGoalIdle=this.goalIdle(current,now);
+      const {state, events} = tick(current, {now, decision: usable, replies, spot: turn,residentGoalIdle:committedGoalIdle}, canMeet ? {...this.opts.hooks, canMeet: this.dedupMeetings(canMeet)} : this.opts.hooks);
       // Task records (C06, I-07): revision and contentHash follow any content change the tick made.
       syncTasks(state.inbox);
       // A model answer to a meeting that did not happen in the committed tick is not used.
@@ -207,12 +224,13 @@ export class WorldRuntime {
       // The tick's recorded inputs (8.1: not reproducible from the seed): the spotlight answer, used or discarded, and
       // every meeting answer with its source; ids of the model calls, never the prompt.
       const tickInput = {
-        seed: state.seed, gate: canMeet ? 'checked' : 'off',
+        residentGoalIdle:committedGoalIdle,seed: state.seed, gate: canMeet ? 'checked' : 'off',
         spotlight: {muse: turn.muse, priority: turn.priority, source: info.source, reason: reasonCode(info.reason), freedom: spot.freedom, used: !!usable, discarded: decision && lost ? reasonCode(lost) : null,
           decision: decision ? {source: decision.source, freedom: decision.freedom, output: outputFields(decision.output), evidence: evidenceIds(decision.evidence)} : null},
         replies: answers.map(r => ({muse: r.muse, other: r.other, encounterId: r.encounterId, source: r.source, reason: reasonCode(r.reason), output: outputFields(r.output), evidence: evidenceIds(r.evidence), used: r.source === 'rule' || (replies.find(x => x.encounterId === r.encounterId && x.muse === r.muse)?.source !== 'rule' && answered.has(`${r.encounterId}>${r.muse}`))})),
       };
       this.logCommit({at: now, kind: 'tick', label: `${current.day}:${current.tick}`, beforeRaw: raw, before: current, after: state, changed: true, events: all, input: tickInput});
+      this.notifyCommit(current,state,all,now);
       const said = all.filter(e => e.kind === 'encounter_reply');
       return {status: 'committed' as const, tick: current.tick, events: all.length, spotlight: {muse: turn.muse, priority: turn.priority, ...info}, replies: {live: said.filter(e => e.source === 'live').length, rule: said.filter(e => e.source === 'rule').length}};
       });
@@ -337,7 +355,7 @@ export class WorldRuntime {
    */
   private async encounterReplies(s: WorldState, now: number, decision: Decision | null, canMeet: Hooks['canMeet'], turn: {muse: string; priority: boolean}): Promise<EncounterReply[]> {
     let dry: WorldEvent[];
-    try { dry = tick(s, {now, decision, replies: [], spot: turn}, canMeet ? {...this.opts.hooks, canMeet} : this.opts.hooks).events; } catch (e) {
+    try { dry = tick(s, {now, decision, replies: [], spot: turn,residentGoalIdle:this.goalIdle(s,now)}, canMeet ? {...this.opts.hooks, canMeet} : this.opts.hooks).events; } catch (e) {
       console.error('encounter dry run failed', e);
       return [];
     }
@@ -449,6 +467,7 @@ export class WorldRuntime {
     if (changed || bumped) this.sql.exec('UPDATE world SET state = ?, version = ? WHERE id = 1', afterRaw, s.version);
     after?.(s, out);
     this.logCommit({at: now, kind, label, beforeRaw: raw, before: JSON.parse(raw), after: s, afterRaw, changed: changed || bumped, events: out, input: input?.() ?? null});
+    this.notifyCommit(JSON.parse(raw),s,out,now);
     return {state: s, events: out};
   }
 

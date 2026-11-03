@@ -11,7 +11,7 @@ import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-5: atomic consumed-ingredient validation at beat completion; needs remain start conditions. */
+/** engine-5: atomic consumed ingredients and opt-in goal idle handoff; needs remain start conditions (unreleased bundle). */
 export const ENGINE_VERSION = 'engine-5';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
@@ -211,7 +211,7 @@ export function tripMs(from: Place, to: Place, speed: Speed) {
  * With `replies` (the runtime passes it, possibly empty) every meeting gets the other Muse's answer: the recorded
  * live answer for that meeting, or a rule answer. Without it (pure scenario runs) no answers are emitted.
  */
-export function tick(prev: WorldState, input: {now: number; decision?: Decision | null; replies?: EncounterReply[]; spot?: {muse: string; priority: boolean}}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
+export function tick(prev: WorldState, input: {now: number; decision?: Decision | null; replies?: EncounterReply[]; spot?: {muse: string; priority: boolean};residentGoalIdle?:readonly string[]}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
   const now = input.now, clock = localClock(now);
   const s: WorldState = structuredClone(prev);
   const events: WorldEvent[] = [];
@@ -273,7 +273,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       const speed = m.travel.speed, chosen = !!m.travel.chosen;
       m.place = place.id; m.travel = null;
       // A Muse that chose this place itself stays for a beat instead of wandering off at once.
-      if (chosen && !connected) { const b = weightedPick(rand, eligibleBeats(m, place, clock.hour), x => beatWeight(x, m.id)); if (b) { emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed, chosen}, tags: speed === 'taxi' ? ['teleport'] : []}); for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e); startBeat(m, b, place, now, 'rule', emit, s); continue; } }
+      if (chosen && !connected && !input.residentGoalIdle?.includes(m.id)) { const b = weightedPick(rand, eligibleBeats(m, place, clock.hour), x => beatWeight(x, m.id)); if (b) { emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed, chosen}, tags: speed === 'taxi' ? ['teleport'] : []}); for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e); startBeat(m, b, place, now, 'rule', emit, s); continue; } }
       emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed}, tags: speed === 'taxi' ? ['teleport'] : []});
       for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e);
     }
@@ -297,6 +297,8 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       }
       continue;
     }
+    // Trusted goal scheduler owns idle boundaries, never personal commands or live decisions.
+    if(input.residentGoalIdle?.includes(m.id)&&!m.intent&&input.decision?.muse!==m.id)continue;
     const place = placeById(m.place);
     const stay = eligibleBeats(m, place, clock.hour);
     // Intent from a spotlight decision takes priority over wandering.
@@ -493,3 +495,15 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
 }
 
 export const placeOf = (id: string) => PLACE_BY_ID.get(id) ?? null;
+
+/** Trusted resident rule intent. Uses the same engine travel/activity implementation.
+ * Host must additionally verify current server ownership and delegation. No user/model prose. */
+export function startResidentGoalActivity(s:WorldState,id:string,beatId:string,now:number,emit:(e:Omit<WorldEvent,'id'|'tick'>)=>void,hooks:Hooks={}):'move'|'activity'|null {
+ const m=s.muses.find(x=>x.id===id),beat=BEATS.find(x=>x.id===beatId);
+ if(!m||!beat?.result?.craft||m.travel||m.beat||m.intent||s.paused?.[id]||isRuntimeControlled(s,id,now)||historyFault(s.items,false,now))return null;
+ if((beat.needs??[]).some(item=>!m.inventory.includes(item)||isExpired(s.items,id,item,now))||!inHours(beat,localClock(now).hour))return null;
+ const from=placeById(m.place);if(from.zone!=='commons')return null;
+ if(beat.kinds.includes(from.kind)){startBeat(m,beat,from,now,'rule',emit,s);return 'activity';}
+ const to=PLACES.filter(p=>p.zone==='commons'&&sameArea(from,p)&&beat.kinds.includes(p.kind)).sort((a,b)=>distanceM(from,a)-distanceM(from,b)||a.id.localeCompare(b.id))[0];
+ if(!to)return null;startTrip(s,m,from,to,now,'rule',emit,hooks);return m.travel?'move':null;
+}
