@@ -288,3 +288,20 @@ full Worker HTTP integration. CI now overlays current main index, asset-encoding
 personal modules/tests, retains all shared3-way merges and pins reviewed-main188fcb7.
 Existing main-team code is copied only into ephemeral test checkouts; this PR does not
 rewrite or fork their registration implementation. No provider calls or deployment.
+
+## Actual resident negotiation caller composition
+
+PR139 pin now f9b427b91d81ab96f5ee17cff56a49a32eb52264. Its optional heartbeat
+caller can commit existing trade accept/counter/reject and associated goal decision records
+in the actual WorldRuntime transaction, using the existing model parser/budget/slot and
+server trade implementation. The transport in these tests is mocked; no model quality,
+provider response, autonomous goal creation, movement/craft loop or production enablement
+is claimed. WorldDO still supplies neither resident policy. System model events explicitly
+carry actorOrigin=system and decisionSource=resident_model, not personal agent provenance.
+
+mcp-tools.ts is now three-way composed to retain both optional-place changes and the new
+completeTrade export. world-runtime.ts also needs three-way composition: the one reviewed
+conflict is the adjacent addition of residentWants and residentLife RuntimeOptions. A small
+composition helper accepts only those exact two blocks and preserves both; other conflicts
+fail closed. Three synthetic helper regressions verify preservation, ordinary clean merge
+and rejection of an unreviewed conflict. No branch is merged by this script.
