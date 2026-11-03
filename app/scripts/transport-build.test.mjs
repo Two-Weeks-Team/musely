@@ -38,9 +38,16 @@ test('release HTML delegates to hashed same-origin code, not a megabyte inline p
  assert.ok(script,'production app is a same-origin deferred hash script');
  assert.match(html,/<link rel="stylesheet" href="\/assets\/[^"<>]+\.css">/);
  assert.ok(Buffer.byteLength(html)<20000,'small document alone is not an entry-completion claim');
- const js=await readFile('dist'+script[1],'utf8');assert.ok(js.includes('arrival-overview'),'overview stays in A');
+ const js=await readFile('dist'+script[1],'utf8');assert.ok(js.includes('arrival-overview'),'lazy source retains existing map layer identity');
  assert.ok(!js.includes('data:model/gltf-binary;base64,'),'legacy model is not eagerly transmitted');
  for(const path of['variant_a.png','variant_b.png'])assert.ok(!js.includes((await readFile('assets/'+path)).toString('base64').slice(0,160)),'actual legacy sigil bytes are not eagerly transmitted');
+});
+test('overview source bytes are a hash-pinned deferred JSON, absent from production code',async()=>{
+ const m=JSON.parse(await readFile('dist/asset-manifest.json','utf8')),overview=m.files.find(f=>f.role==='arrival-overview');
+ assert.ok(overview,'overview is a declared resource');assert.match(overview.path,/^assets\/arrival-overview\.[a-f0-9]{64}\.json$/);
+ const source=await readFile('assets/arrival-map.json'),served=await readFile('dist/'+overview.path);assert.deepEqual(served,source);assert.equal(overview.sha256,sha(source));assert.equal(overview.phase,'deferred');assert.ok(!m.critical.paths.includes(overview.path));assert.ok(m.dynamicReferences.includes(overview.path));
+ const js=await readFile('dist/'+m.files.find(f=>f.role==='app').path,'utf8');assert.ok(js.includes('/'+overview.path));
+ const features=JSON.parse(source).features;const coordinates=features.find(f=>JSON.stringify(f.geometry.coordinates).length>200).geometry.coordinates;assert.ok(!js.includes(JSON.stringify(coordinates)),'actual overview geometry is not part of the app payload');
 });
 test('manifest binds full initial closure and every legacy/runtime byte, not only the small HTML',async()=>{
  const m=JSON.parse(await readFile('dist/asset-manifest.json','utf8'));
@@ -109,7 +116,7 @@ test('relative workers and explicit URL constructors must resolve to listed reso
 test('a plain relative Worker uses its document directory while import.meta.url uses the script',async()=>{
  const original=JSON.parse(await readFile('dist/asset-manifest.json','utf8')),worker=original.files.find(f=>f.role==='map-worker'),name=worker.path.split('/').at(-1);
  for(const [role,suffix]of [['app','new Worker('+JSON.stringify(worker.path)+');'],['character-viewer','new Worker('+JSON.stringify('../'+worker.path)+');'],['character-viewer','new Worker(new URL('+JSON.stringify('./'+name)+',import.meta.url));']]){
-  const {manifest,read}=await scriptWithSuffix(suffix,role);assert.equal((await verifyAssetManifest(manifest,read)).files,29);
+  const {manifest,read}=await scriptWithSuffix(suffix,role);assert.equal((await verifyAssetManifest(manifest,read)).files,30);
  }
  const {manifest,read}=await scriptWithSuffix('new Worker('+JSON.stringify('./'+name)+');');
  await assert.rejects(verifyAssetManifest(manifest,read),/Unlisted runtime reference/);
