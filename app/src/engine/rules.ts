@@ -5,7 +5,7 @@ import type {Hooks, MuseState, WorldEvent, WorldState} from './world.ts';
 import {discover, receiveDiscovery, grantItem, checkTrade, commitTrade, speedFor, abilityGain, itemName, canCraftTransitPass, historyFault, type Ledger} from './items.ts';
 import {harnessById, HARNESSES} from './harness.ts';
 import type {Place} from './places.ts';
-import {isConnected, nextId, deliverMessage, notifyOwner, TASK_TTL_MS, emptyInbox} from './inbox.ts';
+import {isRuntimeControlled, nextId, deliverMessage, notifyOwner, TASK_TTL_MS, emptyInbox} from './inbox.ts';
 import {teleportCheck, sameArea} from './location.ts';
 
 type E = Omit<WorldEvent, 'id' | 'tick'>;
@@ -49,13 +49,13 @@ function pickTrade(a: MuseState, b: MuseState): {give: string; want: string} | n
 /** Meeting stages 3–8 (12.3) for the offline rule path: greet → propose → negotiate → lock/swap → ability → reflect. */
 export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: MuseState, place: Place, rand: () => number, at: number): E[] {
   const out: E[] = [];
-  const greeting = `Hi ${harnessById(b.id).name}!`;
-  out.push({at, source: 'rule', kind: 'greet', muse: a.id, other: b.id, place: place.id, line: greeting, data: {stage: 'greet', public: true}, tags: []});
   // A connected Muse (7.2, 8.8) thinks in its owner's runtime: the rule engine never decides for it.
   // Its initiations come only through MCP tools, and proposals to it wait in its inbox as Tasks.
   const inbox = (s.inbox ??= emptyInbox());
-  if (isConnected(inbox, a.id, at)) return out;
-  const toConnected = isConnected(inbox, b.id, at);
+  if (isRuntimeControlled(s, a.id, at)) return out;
+  const greeting = `Hi ${harnessById(b.id).name}!`;
+  out.push({at, source: 'rule', kind: 'greet', muse: a.id, other: b.id, place: place.id, line: greeting, data: {stage: 'greet', public: true}, tags: []});
+  const toConnected = isRuntimeControlled(s, b.id, at);
   if (toConnected) deliverMessage(inbox, {from: a.id, to: b.id, kind: 'greet', at, text: greeting});
   const t = a.intent?.kind === 'trade' && a.intent.target === b.id && a.intent.give && a.intent.want ? {give: a.intent.give, want: a.intent.want} : pickTrade(a, b);
   if (!t) return out;
