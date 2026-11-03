@@ -1,15 +1,72 @@
-import {test} from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import {ORIGIN,toLocal,toWgs84,gridToLocal} from './coordinates.mjs';
-import {buildRoads} from './build.mjs';
-const source=JSON.parse(fs.readFileSync(new URL('./overview.geojson',import.meta.url)));
-test('origin is exact zero',()=>assert.deepEqual(toLocal(...ORIGIN),{x:0,z:-0}));
-test('east +x and north -z',()=>{assert.ok(toLocal(ORIGIN[0]+.001,ORIGIN[1]).x>0);assert.ok(toLocal(ORIGIN[0],ORIGIN[1]+.001).z<0)});
-test('geographic roundtrip',()=>{for(const p of [[20,10],[-100,400],[0,0]]){const r=toLocal(...toWgs84(...p));assert.ok(Math.abs(r.x-p[0])<1e-7&&Math.abs(r.z-p[1])<1e-7)}});
-test('grid rotation explicit and length preserving',()=>{const p=gridToLocal(3,4);assert.ok(Math.abs(Math.hypot(p.x,p.z)-5)<1e-12);assert.deepEqual(gridToLocal(3,4,0),{x:3,z:4})});
-test('reject invalid and distant coordinates',()=>{for(const p of [[NaN,0],[180,90],[181,0],[0,Infinity]])assert.throws(()=>toLocal(...p));assert.throws(()=>toWgs84(5001,0))});
-test('source attribution and bounded segment-only dataset',()=>{assert.match(source.metadata.attribution,/ODbL/);assert.ok(source.features.length>0);for(const f of source.features){assert.equal(f.geometry.type,'LineString');assert.equal(f.geometry.coordinates.length,2);for(const p of f.geometry.coordinates){const a=toLocal(...p);assert.ok(Math.hypot(a.x,a.z)<=1500)}}});
-test('mesh indices and buffer bounds',()=>{const g=buildRoads(source), b=Buffer.from(g.buffers[0].uri.split(',')[1],'base64');assert.equal(b.length,g.buffers[0].byteLength);assert.equal(g.accessors[1].count,source.features.length*6);for(let k=g.bufferViews[1].byteOffset;k<b.length;k+=4)assert.ok(b.readUInt32LE(k)<g.accessors[0].count);assert.equal(g.extras.notNavigable,true)});
-test('deterministic asset generation',()=>{assert.equal(JSON.stringify(buildRoads(source)),JSON.stringify(buildRoads(source)));assert.equal(fs.readFileSync(new URL('./roads-preview.gltf',import.meta.url),'utf8'),JSON.stringify(buildRoads(source)))});
-test('no invented roads when dataset empty',()=>assert.throws(()=>buildRoads({features:[],metadata:{}})));
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import { ORIGIN, toLocal, toWgs84, gridToLocal } from "./coordinates.mjs";
+import { buildRoads } from "./build.mjs";
+const source = JSON.parse(
+  fs.readFileSync(new URL("./overview.geojson", import.meta.url)),
+);
+test("origin is exact zero", () =>
+  assert.deepEqual(toLocal(...ORIGIN), { x: 0, z: -0 }));
+test("east +x and north -z", () => {
+  assert.ok(toLocal(ORIGIN[0] + 0.001, ORIGIN[1]).x > 0);
+  assert.ok(toLocal(ORIGIN[0], ORIGIN[1] + 0.001).z < 0);
+});
+test("geographic roundtrip", () => {
+  for (const p of [
+    [20, 10],
+    [-100, 400],
+    [0, 0],
+  ]) {
+    const r = toLocal(...toWgs84(...p));
+    assert.ok(Math.abs(r.x - p[0]) < 1e-7 && Math.abs(r.z - p[1]) < 1e-7);
+  }
+});
+test("grid rotation explicit and length preserving", () => {
+  const p = gridToLocal(3, 4);
+  assert.ok(Math.abs(Math.hypot(p.x, p.z) - 5) < 1e-12);
+  assert.deepEqual(gridToLocal(3, 4, 0), { x: 3, z: 4 });
+});
+test("reject invalid and distant coordinates", () => {
+  for (const p of [
+    [NaN, 0],
+    [180, 90],
+    [181, 0],
+    [0, Infinity],
+  ])
+    assert.throws(() => toLocal(...p));
+  assert.throws(() => toWgs84(5001, 0));
+});
+test("source attribution and bounded segment-only dataset", () => {
+  assert.match(source.metadata.attribution, /ODbL/);
+  assert.ok(source.features.length > 0);
+  for (const f of source.features) {
+    assert.equal(f.geometry.type, "LineString");
+    assert.equal(f.geometry.coordinates.length, 2);
+    for (const p of f.geometry.coordinates) {
+      const a = toLocal(...p);
+      assert.ok(Math.hypot(a.x, a.z) <= 1500);
+    }
+  }
+});
+test("mesh indices and buffer bounds", () => {
+  const g = buildRoads(source),
+    b = Buffer.from(g.buffers[0].uri.split(",")[1], "base64");
+  assert.equal(b.length, g.buffers[0].byteLength);
+  assert.equal(g.accessors[1].count, source.features.length * 6);
+  for (let k = g.bufferViews[1].byteOffset; k < b.length; k += 4)
+    assert.ok(b.readUInt32LE(k) < g.accessors[0].count);
+  assert.equal(g.extras.notNavigable, true);
+});
+test("deterministic asset generation", () => {
+  assert.equal(
+    JSON.stringify(buildRoads(source)),
+    JSON.stringify(buildRoads(source)),
+  );
+  assert.equal(
+    fs.readFileSync(new URL("./roads-preview.gltf", import.meta.url), "utf8"),
+    JSON.stringify(buildRoads(source)),
+  );
+});
+test("no invented roads when dataset empty", () =>
+  assert.throws(() => buildRoads({ features: [], metadata: {} })));

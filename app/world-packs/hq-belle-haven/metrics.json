@@ -5,25 +5,29 @@
   "reports": [
     {
       "lod": 0,
-      "buildings": 4378,
+      "buildings": 4136,
       "hiddenBuildings": 20,
-      "triangles": 91120,
-      "vertices": 73720,
-      "drawCalls": 3,
+      "windows": 690,
+      "trees": 80,
+      "triangles": 97888,
+      "vertices": 109135,
+      "drawCalls": 12,
       "file": "region-lod0.glb",
-      "bytes": 1980516,
-      "sha256": "610874b902058e5163deae066e54431d3c7e7068b20c5140aa413ae13f568ab5"
+      "bytes": 2491968,
+      "sha256": "8c2cc119e62631b4ba8484cae3b140b7cbbde5ee093167ea086dd4c7da804335"
     },
     {
       "lod": 1,
-      "buildings": 4378,
+      "buildings": 4136,
       "hiddenBuildings": 20,
-      "triangles": 29978,
-      "vertices": 43886,
-      "drawCalls": 3,
+      "windows": 0,
+      "trees": 0,
+      "triangles": 34630,
+      "vertices": 42995,
+      "drawCalls": 8,
       "file": "region-lod1.glb",
-      "bytes": 888796,
-      "sha256": "3b05e0082515f4b1a4a79820f40b8c0ca2674ce7cac7b3697508a3680484f32c"
+      "bytes": 936880,
+      "sha256": "ac56b523614aae46c24192c5671c624a150fda7f5584cd0f626b0b0c04d85f8f"
     }
   ]
 }

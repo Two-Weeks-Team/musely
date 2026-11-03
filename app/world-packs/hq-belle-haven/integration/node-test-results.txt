@@ -1,0 +1,28 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> test
+> node --test integration.test.mjs
+
+(node:26) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS exact Three and MapLibre application versions; actual fixture provenance (3.299509ms)
+PASS disabled feature flag never parses bytes or mutates real scene (0.476806ms)
+PASS application geography and origin changes fail closed (0.957458ms)
+PASS all actual neighborhood places align with the live scene reference (1.707131ms)
+PASS app custom-layer matrix exactly matches candidate, no extra grid rotation (1.144749ms)
+PASS actual GLB LOD0 loads with exact Three, scene scale and coordinate agreement (139.690817ms)
+PASS actual GLB LOD1 loads with exact Three, scene scale and coordinate agreement (29.649771ms)
+PASS commons places retain authored scene positions, not geographic pack positions (0.420554ms)
+PASS concurrent enabled mounts permit exactly one owner (55.000054ms)
+PASS external buffer/image and data URI reject before loader can fetch (25.221997ms)
+PASS header and coordinate contract reject before parsing; failure releases mount guard (62.043602ms)
+PASS conversion failure disposes all parsed resources once and leaves no mount (71.411722ms)
+PASS partial parse rejection disposes late geometry and material dependencies (30.7961ms)
+INFO tests 13
+INFO suites 0
+INFO pass 13
+INFO fail 0
+INFO cancelled 0
+INFO skipped 0
+INFO todo 0
+INFO duration_ms 854.813925

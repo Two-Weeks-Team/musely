@@ -1,0 +1,18 @@
+{
+  "stage": "chromium-launch",
+  "status": "blocked",
+  "bundleBuild": "passed",
+  "nodeIntegrationTests": {
+    "pass": 13,
+    "fail": 0
+  },
+  "browserScreenshots": false,
+  "webglExecuted": false,
+  "error": "process_singleton_posix.cc:297 socket() failed: Operation not permitted; SIGABRT",
+  "attempts": [
+    "ordinary sandboxed execution",
+    "reviewed require_escalated with writable temporary HOME"
+  ],
+  "chromiumSandbox": true,
+  "externalNetwork": "none intended; launch failed before page creation"
+}

@@ -20,3 +20,9 @@ jobs:
         working-directory: app/world-packs/hq-belle-haven/authoring
       - run: npm test
         working-directory: app/world-packs/hq-belle-haven/authoring
+      - run: npm ci --ignore-scripts
+        working-directory: app/world-packs/hq-belle-haven/integration
+      - run: npm test
+        working-directory: app/world-packs/hq-belle-haven/integration
+      - run: npm run browser:build
+        working-directory: app/world-packs/hq-belle-haven/integration

@@ -15,7 +15,11 @@
     "@mapbox/vector-tile": "3.0.0",
     "earcut": "3.2.4",
     "gltf-validator": "2.0.0-dev.3.10",
-    "pbf": "5.1.2"
+    "pbf": "5.1.2",
+    "polygon-clipping": "0.15.7"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "prettier": "3.9.10"
+  }
 }

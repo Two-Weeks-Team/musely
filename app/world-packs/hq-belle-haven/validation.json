@@ -4,7 +4,7 @@
     "uri": "region-lod0.glb",
     "mimeType": "model/gltf-binary",
     "validatorVersion": "2.0.0-dev.3.10",
-    "validatedAt": "2026-11-03T07:32:55.264Z",
+    "validatedAt": "2026-11-03T07:48:44.756Z",
     "issues": {
       "numErrors": 0,
       "numWarnings": 0,
@@ -21,18 +21,18 @@
           "pointer": "/buffers/0",
           "mimeType": "application/gltf-buffer",
           "storage": "glb",
-          "byteLength": 1978080
+          "byteLength": 2484276
         }
       ],
       "animationCount": 0,
-      "materialCount": 3,
+      "materialCount": 12,
       "hasMorphTargets": false,
       "hasSkins": false,
       "hasTextures": false,
       "hasDefaultScene": true,
-      "drawCallCount": 3,
-      "totalVertexCount": 73720,
-      "totalTriangleCount": 91120,
+      "drawCallCount": 12,
+      "totalVertexCount": 109135,
+      "totalTriangleCount": 97888,
       "maxUVs": 0,
       "maxInfluences": 0,
       "maxAttributes": 1
@@ -43,7 +43,7 @@
     "uri": "region-lod1.glb",
     "mimeType": "model/gltf-binary",
     "validatorVersion": "2.0.0-dev.3.10",
-    "validatedAt": "2026-11-03T07:32:55.286Z",
+    "validatedAt": "2026-11-03T07:48:44.782Z",
     "issues": {
       "numErrors": 0,
       "numWarnings": 0,
@@ -60,18 +60,18 @@
           "pointer": "/buffers/0",
           "mimeType": "application/gltf-buffer",
           "storage": "glb",
-          "byteLength": 886368
+          "byteLength": 931500
         }
       ],
       "animationCount": 0,
-      "materialCount": 3,
+      "materialCount": 8,
       "hasMorphTargets": false,
       "hasSkins": false,
       "hasTextures": false,
       "hasDefaultScene": true,
-      "drawCallCount": 3,
-      "totalVertexCount": 43886,
-      "totalTriangleCount": 29978,
+      "drawCallCount": 8,
+      "totalVertexCount": 42995,
+      "totalTriangleCount": 34630,
       "maxUVs": 0,
       "maxInfluences": 0,
       "maxAttributes": 1

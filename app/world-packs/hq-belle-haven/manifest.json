@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "hq-belle-haven-authoring-v1",
-  "status": "authoring-validated-runtime-disabled",
+  "status": "draft-webgl-validation-blocked",
   "runtimeEnabled": false,
   "sourceCommit": "a31c9c9fb0d364f8e7ab8ec0fff2cfb647647620",
   "originWgs84": [
@@ -36,15 +36,32 @@
   },
   "runtimePlaces": [],
   "validation": {
-    "focusedTests": 16,
+    "focusedTests": 19,
     "gltfValidator": "0 errors / 0 warnings for both LODs",
-    "visualQA": "Blender 4.3.2 import and offscreen overview inspected",
+    "visualQA": "Blender 4.3.2: both far LODs and 550m-wide near view inspected",
     "mobilePerformance": "not-run",
-    "productCheck": "not-run"
+    "productCheck": "not-run",
+    "nodeIntegrationTests": 13,
+    "browserBundle": "built",
+    "webgl": "not-executed: Chromium socket() Operation not permitted"
   },
   "lodPolicy": {
     "lod0": "under 500m suggested camera range, unmeasured",
     "lod1": "over 500m suggested camera range, unmeasured",
     "runtimeSwitching": "integration issue #134"
-  }
+  },
+  "integration": {
+    "entry": "integration/adapter.mjs",
+    "enabledByDefault": false,
+    "frame": "must reproject to actual Musely Mercator+commons grid; do not scene.add raw mesh",
+    "productionImported": false
+  },
+  "stylizedDetails": {
+    "roofColors": "fictional art direction",
+    "windows": 690,
+    "treeMarkers": 80,
+    "treePositions": "fictional markers in mapped green polygons",
+    "roadWidths": "class-dependent estimates 1.8m\u201316m"
+  },
+  "verifiedCompatibleMain": "9e34467b22c6e116ce4c2d990bb428fbdf234a24"
 }
