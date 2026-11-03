@@ -1,6 +1,6 @@
 # World-02 campfire visual pack
 
-Related #131 / PR137. Default OFF, draft, not visually accepted. No merge or deployment. The latest integration follows main151 (`d4521aa70467fb2e18705dcd26816ba482ec3892`) and preserves its personal Muse onboarding, profile priority and original character-body loader.
+Related #131 / PR137. Default OFF, draft; scoped Mac functional checks are recorded below, but performance acceptance is incomplete. No merge or deployment. The runtime at `373ad77c37797d63775f901eb8bd20f7f3aec7dd` follows main151 (`d4521aa70467fb2e18705dcd26816ba482ec3892`) and preserves its personal Muse onboarding, profile priority and original character-body loader.
 
 ## What is connected
 
@@ -32,7 +32,23 @@ The tests parse the real checked-in GLB with Three.js and execute the actual sce
 
 Khronos validator: 0 errors / 0 warnings. GLB: 120160 bytes, 972 triangles, 44 meshes, 5 materials, 5 animation tracks. SHA256: `88a12de90b22b022f0baf5b3900e897320004397e54b55eabae6533a4e35fd3b`. The renderer uses procedural updates, not the exported animation tracks; do not run both animation systems on the same instance.
 
-Real WebGL frames, original-ring alignment under zoom/pitch/terrain, browser OFF network tracing, mobile performance, user-facing enable/disable control and final #130 coexistence acceptance remain open. Keep the feature OFF and this PR draft until accepted. Production activation and merge need separate approval.
+## Scoped Mac functional evidence
+
+- **373ad77c / main d4521aa:** the latest Mac `FRESHNESS-VERIFICATION.md` records attendance retained over a 109.2-second heartbeat sample, expiry after pause/offline resume, replay-to-empty-live cleanup and disable/re-enable. That report also records 952 app +27 pack tests, typechecks and build passing.
+- **821843c / main188fcb7:** the earlier Mac check covered replacement/restoration, position and seating, HTTP/hash/timeout recovery, zoom and a 390×844 emulated viewport. These older scenarios were **not all rerun on 373ad77c**. A Mac viewport emulation is not a physical mobile test.
+- These are functional observations. The heartbeat duration is not an FPS sampling window. The source assets/renderer are unchanged between those runtime heads, but that does not retag older browser evidence as a fresh run.
+
+## Performance acceptance remains open
+
+The latest Mac report includes **one same-camera Three.js snapshot** on 373ad77c: OFF→ON draw calls **91→101 (+10)** and triangles **110866→110986 (+120)**. Conditions: Chrome/WebGL2, reported size 2056×1066, zoom 22.7, pitch 54, bearing 12, distance 14.56 m, one synthetic attendee. This excludes MapLibre rendering, is not a sustained time series, and does not establish real-arrival or physical-phone performance. DPR and CSS-versus-buffer size details were not provided with this snapshot.
+
+**Campfire ON/OFF FPS, raw frame intervals/p95, sustained draw-call distributions, memory and GPU execution time remain unmeasured. Physical-mobile performance is also unmeasured for this change.** The snapshot, asset counts, CPU tests and functional screenshots do not complete issue #131's performance criterion. No performance pass is claimed.
+
+The existing `?perf=1` overlay reports browser requestAnimationFrame cadence, not GPU execution time. `window.__world.getMetrics().drawCalls`/`triangles` count the Three.js render only, excluding MapLibre's own work in the shared canvas. The overlay's copied 30-second report omits draw calls and triangles, so it alone cannot supply the requested comparison.
+
+[PERFORMANCE_ACCEPTANCE.md](PERFORMANCE_ACCEPTANCE.md) records a reproducible paired ON/OFF measurement plan, existing offline preparation command, exact evidence fields and hardware/browser requirements. No measurements are fabricated from that preparation.
+
+Remaining gates: paired performance measurements, physical-mobile performance, customer-facing enable/disable control, broader corrected-head zoom/pitch/terrain coverage and final #130 coexistence acceptance. Keep the feature OFF and this PR draft until accepted. Production activation and merge need separate approval.
 
 ## Asset provenance
 
