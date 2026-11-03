@@ -8,13 +8,13 @@
       "buildings": 4136,
       "hiddenBuildings": 20,
       "windows": 690,
-      "trees": 80,
-      "triangles": 97888,
-      "vertices": 109135,
+      "trees": 78,
+      "triangles": 97864,
+      "vertices": 109104,
       "drawCalls": 12,
       "file": "region-lod0.glb",
-      "bytes": 2491968,
-      "sha256": "8c2cc119e62631b4ba8484cae3b140b7cbbde5ee093167ea086dd4c7da804335"
+      "bytes": 2494436,
+      "sha256": "d878a03f9a8c1ad1e61198b0d9f7d7e15c7ef74ec1088865ea593c8c49e96d56"
     },
     {
       "lod": 1,
@@ -26,8 +26,8 @@
       "vertices": 42995,
       "drawCalls": 8,
       "file": "region-lod1.glb",
-      "bytes": 936880,
-      "sha256": "ac56b523614aae46c24192c5671c624a150fda7f5584cd0f626b0b0c04d85f8f"
+      "bytes": 936932,
+      "sha256": "0223d59d26c53058eaba83653263b448b01c293f1cb84d0ffdbd0d211f5c2f7e"
     }
   ]
 }

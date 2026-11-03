@@ -113,6 +113,7 @@ export function region(source, lod = 0) {
     hidden = 0,
     windows = 0,
     trees = 0;
+  const treeCenters = [];
   const roadPolygons = new Map();
   function triangle(g, a, b, c) {
     const u = b.map((v, k) => v - a[k]),
@@ -256,7 +257,12 @@ export function region(source, lod = 0) {
           )
             inside = !inside;
         }
-        if (inside && Math.hypot(cx, cz) < 700 && trees < 80) {
+        if (
+          inside &&
+          Math.hypot(cx, cz) > 30 &&
+          Math.hypot(cx, cz) < 700 &&
+          trees < 80
+        ) {
           for (let i = 0; i < 6; i++) {
             const a = (i * Math.PI) / 3,
               b = ((i + 1) * Math.PI) / 3;
@@ -273,6 +279,7 @@ export function region(source, lod = 0) {
               [cx, 3, cz],
             );
           }
+          treeCenters.push([cx, cz]);
           trees++;
         }
       }
@@ -418,6 +425,8 @@ export function region(source, lod = 0) {
         hiddenBuildings: hidden,
         coordinateSystem:
           "ENU-derived: east +X, up +Y, south +Z; geographic rotation 0",
+        commonsDecorationClearanceM: 30,
+        treeCenters,
         proceduralDetails:
           "Colors, windows, green-area tree markers and road widths are stylized, not surveyed",
         heightSource:

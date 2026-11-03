@@ -144,3 +144,12 @@ test("LOD1 removes procedural near details and unused materials", () => {
   const used = new Set(out.gltf.meshes[0].primitives.map((p) => p.material));
   assert.equal(used.size, out.gltf.materials.length);
 });
+
+test("procedural tree markers preserve the authored commons clearance", () => {
+  const out = region(source, 0);
+  assert.equal(out.gltf.extras.commonsDecorationClearanceM, 30);
+  assert.equal(out.gltf.extras.treeCenters.length, out.metrics.trees);
+  assert.ok(
+    out.gltf.extras.treeCenters.every(([x, z]) => Math.hypot(x, z) > 30),
+  );
+});

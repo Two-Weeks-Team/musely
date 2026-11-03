@@ -36,12 +36,12 @@
   },
   "runtimePlaces": [],
   "validation": {
-    "focusedTests": 19,
+    "focusedTests": 20,
     "gltfValidator": "0 errors / 0 warnings for both LODs",
-    "visualQA": "Blender 4.3.2: both far LODs and 550m-wide near view inspected",
+    "visualQA": "Blender wide/550m-near/70m-entry views; not browser FOV proof",
     "mobilePerformance": "not-run",
     "productCheck": "not-run",
-    "nodeIntegrationTests": 13,
+    "nodeIntegrationTests": 14,
     "browserBundle": "built",
     "webgl": "not-executed: Chromium socket() Operation not permitted"
   },
@@ -54,14 +54,21 @@
     "entry": "integration/adapter.mjs",
     "enabledByDefault": false,
     "frame": "must reproject to actual Musely Mercator+commons grid; do not scene.add raw mesh",
-    "productionImported": false
+    "productionImported": false,
+    "entryCamera": {
+      "zoom": 21.2,
+      "pitch": 54,
+      "bearing": 12,
+      "autoplay": false
+    }
   },
   "stylizedDetails": {
     "roofColors": "fictional art direction",
     "windows": 690,
-    "treeMarkers": 80,
+    "treeMarkers": 78,
     "treePositions": "fictional markers in mapped green polygons",
-    "roadWidths": "class-dependent estimates 1.8m\u201316m"
+    "roadWidths": "class-dependent estimates 1.8m\u201316m",
+    "commonsTreeClearanceM": 30
   },
-  "verifiedCompatibleMain": "9e34467b22c6e116ce4c2d990bb428fbdf234a24"
+  "verifiedCompatibleMain": "bd6d9d5bab9a6c3e5653ed1b195e76f16b67d21b"
 }

@@ -27,3 +27,19 @@ test('external buffer/image and data URI reject before loader can fetch',async()
 test('header and coordinate contract reject before parsing; failure releases mount guard',async()=>{const scene=new T.Scene();const invalid=bytes(0);new DataView(invalid).setUint32(0,0,true);await assert.rejects(mountRegionPack({parent:scene,bytes:invalid,geography,enabled:true}),/header/);await assert.rejects(mountRegionPack({parent:scene,bytes:alteredGlb(j=>j.extras.coordinateSystem='already rotated'),geography,enabled:true}),/contract/);const ok=await mountRegionPack({parent:scene,bytes:bytes(0),geography,enabled:true});ok.dispose();assert.equal(scene.children.length,0)});
 test('conversion failure disposes all parsed resources once and leaves no mount',async()=>{const geometryDispose=T.BufferGeometry.prototype.dispose,materialDispose=T.Material.prototype.dispose,geometryCounts=new Map(),materialCounts=new Map();T.BufferGeometry.prototype.dispose=function(){geometryCounts.set(this,(geometryCounts.get(this)||0)+1);geometryDispose.call(this)};T.Material.prototype.dispose=function(){materialCounts.set(this,(materialCounts.get(this)||0)+1);materialDispose.call(this)};try{const scene=new T.Scene();await assert.rejects(mountRegionPack({parent:scene,bytes:alteredGlb(j=>j.nodes[0].translation=[1,0,0]),geography,enabled:true}),/Nonidentity/);await new Promise(resolve=>setImmediate(resolve));assert.equal(scene.children.length,0);assert.ok(geometryCounts.size>0);assert.ok(materialCounts.size>0);assert.ok([...geometryCounts.values(),...materialCounts.values()].every(n=>n===1));const ok=await mountRegionPack({parent:scene,bytes:bytes(0),geography,enabled:true});ok.dispose();ok.dispose();assert.ok([...geometryCounts.values(),...materialCounts.values()].every(n=>n===1))}finally{T.BufferGeometry.prototype.dispose=geometryDispose;T.Material.prototype.dispose=materialDispose}});
 test('partial parse rejection disposes late geometry and material dependencies',async()=>{const gd=T.BufferGeometry.prototype.dispose,md=T.Material.prototype.dispose,geometries=new Set(),materials=new Set();T.BufferGeometry.prototype.dispose=function(){geometries.add(this);gd.call(this)};T.Material.prototype.dispose=function(){materials.add(this);md.call(this)};try{const scene=new T.Scene();await assert.rejects(mountRegionPack({parent:scene,bytes:alteredGlb(j=>j.scenes[0].nodes.push(999999)),geography,enabled:true}));await new Promise(resolve=>setTimeout(resolve,20));assert.equal(scene.children.length,0);assert.ok(geometries.size>0,'late geometry disposed');assert.ok(materials.size>0,'late material disposed');}finally{T.BufferGeometry.prototype.dispose=gd;T.Material.prototype.dispose=md}});
+
+test('latest ordinary live entry camera matches main without implicitly starting autoplay', async()=>{
+  const {LIVE_ENTRY_VIEW,viewFor}=await import('./view-policy.mjs');
+  const entryDeclarations=mainSource.split('\n').filter(l=>/^const (entryParams=|autoplay=)/.test(l)).join('\n');
+  const camera=mainSource.match(/const map=new LibreMap\(\{[^\n]*?zoom:([^,]+),pitch:([^,]+),bearing:BEARING/);
+  assert.ok(camera,'latest main initial camera must remain inspectable; review upstream changes');
+  const actual=Function('location','innerWidth',entryDeclarations+`;return {autoplay,entryPreview,zoom:(${camera[1]}),pitch:(${camera[2]})};`);
+  for(const width of [390,1280]){
+    const live=actual({search:''},width);assert.equal(live.autoplay,false);assert.equal(live.entryPreview,false);
+    assert.equal(live.zoom,LIVE_ENTRY_VIEW.zoom);assert.equal(live.pitch,LIVE_ENTRY_VIEW.pitch);
+    assert.equal(actual({search:'?autoplay=0'},width).zoom,21.2);
+    for(const search of ['?autoplay=1','?entryPreview=1'])assert.equal(actual({search},width).zoom,width<700?9.6:10.25);
+  }
+  assert.equal(viewFor('entry').zoom,21.2);assert.equal(viewFor('near').zoom,21.2);
+  assert.equal(viewFor('overview').zoom,16);assert.equal(LIVE_ENTRY_VIEW.bearing,geography.cameraBearingDeg);
+});

@@ -59,8 +59,8 @@ accuracy remain limitations. No inference of public access or safe navigation is
 
 | Asset | Bytes | Triangles | Indexed vertices | Authored draw calls* |
 | --- | ---: | ---: | ---: | ---: |
-| region-lod0.glb | 2,491,968 | 97,888 | 109,135 | 12 |
-| region-lod1.glb | 936,880 | 34,630 | 42,995 | 8 |
+| region-lod0.glb | 2,494,436 | 97,864 | 109,104 | 12 |
+| region-lod1.glb | 936,932 | 34,630 | 42,995 | 8 |
 
 LOD1 retains roof silhouettes and omits vertical walls. It is a far-view map LOD,
 not a low-poly close-up building model. Close or low-angle views can expose floating roof edges; do not use LOD1 there. Suggested 500m switch is **unmeasured** and
@@ -87,7 +87,7 @@ This is not a license change to the application's code. No third-party logos or 
 
 ## Validation and evidence
 
-- 19 focused tests pass: coordinate axes/roundtrip/rotation, source receipts, bounds,
+- 20 focused tests pass: coordinate axes/roundtrip/rotation, source receipts, bounds,
   deterministic GLB bytes, holes, height assumptions, disabled integration and budgets.
 - Khronos glTF Validator 2.0.0-dev.3.10: **0 errors, 0 warnings for both GLBs**;
   machine-readable result in `validation.json`, SHA-256 and geometry counts in `metrics.json`.
@@ -115,7 +115,7 @@ on Android/iOS. Do not treat fictional commons or map footprints as access permi
 
 The first revision was an inadequate gray authoring view, not evidence of product fit.
 This revision adds mapped water, a bounded ground layer, warm walls, three roof palettes,
-class-dependent roads and paths, 690 decorative window units and 80 low-poly tree markers.
+class-dependent roads and paths, 690 decorative window units and 78 low-poly tree markers.
 **Colors, facade details and tree positions are invented art direction**, not real-world
 survey facts. Near details are limited to the HQ area to bound geometry cost.
 
@@ -127,13 +127,39 @@ The production application still does not import this pack. This is not a live d
 
 ### Blocking validation gate
 
-The opt-in adapter passes 13 Node integration tests, including the actual Three loader,
+The opt-in adapter passes 14 Node integration tests, including the actual Three loader,
 79 place coordinates, exact main matrix, concurrency guard, rejected external GLB URIs
 and failure cleanup. The localhost browser proof bundles successfully, but Chromium
 launch fails at `socket() failed: Operation not permitted` (SIGABRT), including the
 reviewed execution attempt. No security setting was weakened and no alternate route
-was used after the blocker. **No WebGL frame or browser screenshot exists.**
+was used after the blocker. **This Linux workspace produced no WebGL frame or browser screenshot.**
 Keep this PR draft: real browser/mobile visual integration remains a gate, and neither
 Blender output nor green Node CI substitutes for it. Production remains untouched.
 
 Latest main recheck: `9e34467b22c6e116ce4c2d990bb428fbdf234a24` changed only connector/roadmap docs. All six integration fixture Git blob SHAs remain identical; no product source conflict detected.
+
+Main #136 refresh: `bd6d9d5bab9a6c3e5653ed1b195e76f16b67d21b` changes ordinary entry to zoom 21.2/pitch54 with autoplay OFF. Updated main.ts fixture and browser camera policy; 14 Node integration tests pass. Coordinate declarations and other five source files remain unchanged. Mac/browser execution is still pending; no approval bypass attempted.
+
+### Latest entry-scale risk found and corrected
+
+A new 70m-wide Blender `preview-entry.png` exposed a possible overlap between
+procedural tree markers and the already-authored commons. Tree centers now exclude
+a conservative 30m radius around the commons origin, leaving 78 markers. The new
+regression test verifies all generated tree centers. This does not prove real-world
+clearance or remove the need to inspect map-layer/ground overlap in the actual app.
+The 70m orthographic view is an authoring inspection, not a claim to reproduce the
+MapLibre camera's exact perspective. No Mac/browser permission was used or bypassed.
+
+### Separate Mac evidence, not a pass for this refreshed asset set
+
+A separate Mac validation reported Chrome WebGL2 rendering for earlier PR head
+`0355ec17526f5c583bf1534799d6f8e098303807` with main
+`bd6d9d5bab9a6c3e5653ed1b195e76f16b67d21b`: LOD0 near/wide and LOD1 wide,
+12/8 render calls and OFF=0; 13 integration tests and 672 product tests plus typecheck
+and build passed. That report did not establish actual product-scene coexistence or
+mobile validation; its near-view assertion included off-screen coordinates.
+
+The refreshed GLBs, 14th integration test and entry-camera policy in this revision
+were **not** covered by that earlier Mac run. Do not generalize its result to this
+revision. A matching-head Mac rerun is pending. The Linux launch failure above is
+a historical environment-specific failure, not a claim that Mac rendering failed.

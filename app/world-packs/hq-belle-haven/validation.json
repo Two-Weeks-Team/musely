@@ -4,7 +4,7 @@
     "uri": "region-lod0.glb",
     "mimeType": "model/gltf-binary",
     "validatorVersion": "2.0.0-dev.3.10",
-    "validatedAt": "2026-11-03T07:48:44.756Z",
+    "validatedAt": "2026-11-03T08:25:16.355Z",
     "issues": {
       "numErrors": 0,
       "numWarnings": 0,
@@ -21,7 +21,7 @@
           "pointer": "/buffers/0",
           "mimeType": "application/gltf-buffer",
           "storage": "glb",
-          "byteLength": 2484276
+          "byteLength": 2483616
         }
       ],
       "animationCount": 0,
@@ -31,8 +31,8 @@
       "hasTextures": false,
       "hasDefaultScene": true,
       "drawCallCount": 12,
-      "totalVertexCount": 109135,
-      "totalTriangleCount": 97888,
+      "totalVertexCount": 109104,
+      "totalTriangleCount": 97864,
       "maxUVs": 0,
       "maxInfluences": 0,
       "maxAttributes": 1
@@ -43,7 +43,7 @@
     "uri": "region-lod1.glb",
     "mimeType": "model/gltf-binary",
     "validatorVersion": "2.0.0-dev.3.10",
-    "validatedAt": "2026-11-03T07:48:44.782Z",
+    "validatedAt": "2026-11-03T08:25:16.388Z",
     "issues": {
       "numErrors": 0,
       "numWarnings": 0,

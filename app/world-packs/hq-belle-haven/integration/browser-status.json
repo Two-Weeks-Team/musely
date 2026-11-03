@@ -3,7 +3,7 @@
   "status": "blocked",
   "bundleBuild": "passed",
   "nodeIntegrationTests": {
-    "pass": 13,
+    "pass": 14,
     "fail": 0
   },
   "browserScreenshots": false,
@@ -14,5 +14,28 @@
     "reviewed require_escalated with writable temporary HOME"
   ],
   "chromiumSandbox": true,
-  "externalNetwork": "none intended; launch failed before page creation"
+  "externalNetwork": "none intended; launch failed before page creation",
+  "verifiedMain": "bd6d9d5bab9a6c3e5653ed1b195e76f16b67d21b",
+  "cameraPolicy": "latest main ordinary entry: zoom21.2/pitch54, not executed in browser",
+  "environment": "isolated Linux workspace; historical launch result",
+  "separateMacReport": {
+    "head": "0355ec17526f5c583bf1534799d6f8e098303807",
+    "main": "bd6d9d5bab9a6c3e5653ed1b195e76f16b67d21b",
+    "webglReported": true,
+    "renderCalls": [
+      12,
+      8,
+      0
+    ],
+    "integrationTests": 13,
+    "productTests": 672,
+    "typecheck": "passed",
+    "build": "passed",
+    "coversCurrentRefresh": false,
+    "unverified": [
+      "product-scene coexistence",
+      "mobile",
+      "updated asset set and entry camera"
+    ]
+  }
 }
