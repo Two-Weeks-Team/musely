@@ -188,3 +188,37 @@ JSON-RPC errors from tool-result isError rather than treating every refusal as a
 Baseline target is 42 tests; engine5 dependency target 71; combined resident+engine5 target
 117. Runtime/registry/claim fixtures, actual route logic, and real deployment are reported
 separately. Broader end-to-end claims must wait for real caller integration and credentials.
+
+
+## Latest pinned branch and conflict audit (2026-11-03)
+
+Current CI pins PR138 `e65b6a1b193d01d568d5cdf3a9af7b0d48f7828b` and
+PR139 `5818030f773f842eb64af36d48f59b7688663dd3`, on main `7a85add2`.
+All pinned source/test file Git blob hashes matched the local tested bytes. PR138's
+subsequently edited documentation is not treated as executed code evidence.
+
+Latest five-PR heads inspected:
+- #135 b121902302fd7971bee7393cc1f7a0c9d6964bc3
+- #137 57d8c636932f18f3bad78da3e56d826f65d7f99f
+- #138 e65b6a1b193d01d568d5cdf3a9af7b0d48f7828b
+- #139 5818030f773f842eb64af36d48f59b7688663dd3
+- #140 11a1c5d4a80cd1faf0a5b1da91f4da9e57ea9e41 before this test-only update
+
+GitHub reported each branch mergeable individually. Changed-path comparison across all
+five finds only two shared paths, `app/src/engine/world.ts` and `rules.ts`, both shared by
+#138/#139. Three-way text composition against current-main versions returned success for
+both, retaining actor-label/control isolation alongside atomic craft and truthful trade
+refusal attribution. CI now uses that same three-way composition rather than overwriting
+shared files. No branch was merged or published to main. File-disjoint assets do NOT prove
+render/runtime coexistence, and textual merge success is not semantic integration proof.
+
+Fresh combined offline run: **185/185**, full worker strict types passed. This covers
+60 resident, 83 Wants/craft/journey/replay, and 42 integration tests. CI also retains
+separate main and engine5-only combinations (42 and 125 tests respectively).
+
+The neutral display helper is not a persona, role, login or ownership implementation.
+Unknown actors remain runtime-controlled; a registered actor's profile does not authorize
+resident decisions. Main-team dynamic onboarding/world-entry and identity/appearance
+integration still need their owning team. Test fixtures do not establish live personal
+Muse participation or autonomous model decisions. Production callers, multi-site MCP,
+real rendering and the shared semantic-version decision remain activation gates.

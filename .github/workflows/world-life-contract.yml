@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          ref: 2e7629976c6f53d15fdb7c586aa355cc28a431df
+          ref: 5818030f773f842eb64af36d48f59b7688663dd3
           path: dependency-139
       - uses: actions/setup-node@v4
         with:
@@ -59,7 +59,7 @@ jobs:
       - run: npm ci --ignore-scripts
         working-directory: dependency-139/app
       - name: Offline actual server and atomic craft regressions
-        run: node --test scripts/world-life-contract.test.mjs scripts/world-life-server.test.mjs scripts/world-life-mcp.test.mjs scripts/wants-use.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs
+        run: node --test scripts/world-life-contract.test.mjs scripts/world-life-server.test.mjs scripts/world-life-mcp.test.mjs scripts/wants-use.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs scripts/wants-journey.test.mjs scripts/trade-decision-provenance.test.mjs scripts/run-log.test.mjs scripts/run-replay.test.mjs
         working-directory: dependency-139/app
       - run: npx tsc -p worker
         working-directory: dependency-139/app
@@ -69,16 +69,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          ref: 2e7629976c6f53d15fdb7c586aa355cc28a431df
+          ref: 5818030f773f842eb64af36d48f59b7688663dd3
           path: dependency-139
       - uses: actions/checkout@v4
         with:
-          ref: 234bbd25c64413df3d20611686c667bc9fd37018
+          ref: e65b6a1b193d01d568d5cdf3a9af7b0d48f7828b
           path: dependency-138
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Compose reviewed seams without overwriting engine5 consumption fix
+      - name: Three-way compose resident and craft changes without overwriting either branch
         shell: bash
         run: |
           cp app/worker/core/world-life*.ts dependency-139/app/worker/core/
@@ -93,17 +93,19 @@ jobs:
           cp dependency-138/app/worker/core/world-runtime.ts dependency-139/app/worker/core/
           cp dependency-138/app/src/engine/resident-life.ts dependency-139/app/src/engine/
           cp dependency-138/app/scripts/resident-life*.test.mjs dependency-139/app/scripts/
-          python3 - <<'PY'
-          from pathlib import Path
-          for source,target in [('app/src/engine/world.ts','base-world.ts'),('dependency-138/app/src/engine/world.ts','resident-world.ts')]:
-              Path(target).write_text(Path(source).read_text().rstrip()+'\n')
-          PY
-          diff -u --label src/engine/world.ts --label src/engine/world.ts base-world.ts resident-world.ts > resident-seam.patch || test "$?" = 1
-          patch --fuzz=0 -p0 -d dependency-139/app < resident-seam.patch
+          cp dependency-138/app/src/engine/actor-display.ts dependency-139/app/src/engine/
+          cp dependency-138/app/src/engine/inbox.ts dependency-139/app/src/engine/
+          cp dependency-138/app/worker/core/messages.ts dependency-139/app/worker/core/
+          cp dependency-138/app/worker/core/encounters.ts dependency-139/app/worker/core/
+          # Keep BOTH branches' changes. Any textual conflict fails this test composition.
+          for file in world.ts rules.ts; do
+            git merge-file -p "dependency-139/app/src/engine/$file" "app/src/engine/$file" "dependency-138/app/src/engine/$file" > "combined-$file"
+            mv "combined-$file" "dependency-139/app/src/engine/$file"
+          done
       - run: npm ci --ignore-scripts
         working-directory: dependency-139/app
       - name: Offline combined server, resident scheduler and craft regressions
-        run: node --test scripts/world-life-contract.test.mjs scripts/world-life-server.test.mjs scripts/world-life-mcp.test.mjs scripts/resident-life.test.mjs scripts/resident-life-adapter.test.mjs scripts/resident-life-runtime.test.mjs scripts/wants-use.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs
+        run: node --test scripts/world-life-contract.test.mjs scripts/world-life-server.test.mjs scripts/world-life-mcp.test.mjs scripts/resident-life*.test.mjs scripts/wants-use.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs scripts/wants-journey.test.mjs scripts/trade-decision-provenance.test.mjs scripts/run-log.test.mjs scripts/run-replay.test.mjs
         working-directory: dependency-139/app
       - run: npx tsc -p worker
         working-directory: dependency-139/app
