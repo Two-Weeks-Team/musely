@@ -10,7 +10,7 @@ const shim='data:text/javascript,'+encodeURIComponent('export class DurableObjec
 const hook=registerHooks({resolve(specifier,context,next){return specifier==='cloudflare:workers'?{url:shim,shortCircuit:true}:next(specifier,context);}});
 const {WorldDO}=await import('../../worker/world-do.ts');hook.deregister();
 export const HOST='https://musely.net',FIRE='commons:campfire',OWNER='00-jolly',PEER='09-copper';
-export async function bootWorldDo(t){
+export async function bootWorldDo(t,{campfires}={}){
  const db=new DatabaseSync(':memory:');t.after(()=>db.close());let tx=false,alarm=null,ready;
  const sql={exec(q,...args){const rows=db.prepare(q).all(...args);return {toArray:()=>rows};}};
  const transactionSync=fn=>{assert.equal(tx,false,'fixture disallows nested transactions');db.exec('BEGIN');tx=true;try{const r=fn();db.exec('COMMIT');return r;}catch(e){db.exec('ROLLBACK');throw e;}finally{tx=false;}};
@@ -21,6 +21,8 @@ export async function bootWorldDo(t){
  const tokens={owner:'fixture-owner-control-token-000001',peer:'fixture-peer-control-token-000002'};
  const env={PUBLIC_ORIGIN:HOST,DAILY_BUDGET_USD:'0.00001',OWNER_ROOT_JWK:JSON.stringify(root),OWNER_CONTROL_TOKEN:tokens.owner,DEMO_PEER_CONTROL_TOKEN:tokens.peer,MODEL_BASE:'https://invalid.test',MODEL_ID:'offline-fixture',MODEL_API_KEY:undefined};
  const world=new WorldDO(ctx,env);await ready;
+ // Test-only server configuration injection; production WorldDO never enables this policy.
+ if(campfires)world.connected.d.campfires=campfires;
  // Claim is deliberately a setup fixture, not a real external identity verification result.
  world.setClaim('owner-muse',{status:'claimed',path:'fixture',fingerprint:'fixture-only',machineVerified:false});
  const cfg={secret:'fixture-owner-session-secret',tokens,origins:[HOST]};

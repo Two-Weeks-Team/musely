@@ -228,3 +228,46 @@ future-main risk: using changed main as a three-way base could silently drop cha
 unknown to both pinned branches. CI now asserts exact reviewed-main Git blob hashes
 for all six existing source files replaced/merged from PR138 before composition;
 a moved baseline fails closed and requires a fresh reviewed integration.
+
+## Actual optional-place MCP implementation, default OFF
+
+This increment changes four narrow existing server files: connected.ts carries an optional
+server-only policy into ToolCtx; mcp-tools.ts accepts optional place_id and includes it in
+the signed payload; messages.ts selects the validated venue; run-log.ts preserves place_id
+in the redacted command record. A new campfire-policy.ts validates the server allowlist.
+WorldDO production configuration is unchanged and never enables the option. No browser or
+tool argument can enable it; policy is re-read at the synchronous signed-command commit.
+
+Omitted place_id and explicit commons:campfire preserve legacy behavior. Additional venues
+must be existing allowed commons places; the host and eligible recipients must be arrived
+within100m, and remote/travelling participants fail closed. Open-invitation uniqueness is
+per host+place only when the policy is enabled, otherwise the old one-open-invite restriction
+remains. Each invitation spends its own token, has its own30-minute deadline and explicit
+answers; proximity/arrival still does not imply personal consent. Turning the policy off
+blocks new nonlegacy invites but does not erase or rewrite already committed invitations.
+
+Thirteen new actual in-process MCP tests cover three venue IDs, place-bound signed-command
+idempotency/conflicts, recorded venue evidence, same-site uniqueness, unknown/disallowed/
+remote/travelling rejection, policy withdrawal before commit, explicit consent, actual signed
+movement+heartbeat arrival at the selected venue, per-invite expiry and owner revocation
+cancelling both sites. Existing11 messages tests are also run for legacy compatibility.
+Initial OFF tests were corrected to use separate command IDs for separate refused payloads:
+reusing the same ID with a changed venue correctly returns command_conflict.
+
+The logical test venues reuse commons:garden and commons:benches. This does not install a
+visual fire there, create real-world gatherings or assert render/navigation pack integration.
+The Node harness injects trusted server configuration for tests; it is not a production
+configuration route. Model key absent, all network blocked. No actualHTTP/TLS/workerd or
+provider login, deployment, user account mutation or paid experiment.
+
+Shared messages.ts actor-label/control changes from #138 are composed using an exact
+reviewed-main base and three-way merge, not overwritten. The reviewed-main blob is pinned;
+world/rules still retain both #138 control and #139 inventory/consent changes. CI overlays
+all new adapter/server files and runs the multisite test file in every composition.
+
+
+Final multi-venue dependency pin advances PR139 to
+`74befdd9ad08d11ded9e0a5d965de184277cc7c3`, retaining PR138 e65b6a1b.
+Its14 mocked-transport callModel/Ledger/SQLite goal tests are included in the combined
+checks. The new resident trade bridge remains proposal-only with no production caller;
+this integration does not imply autonomous negotiations or real paid provider execution.

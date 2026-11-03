@@ -15,6 +15,7 @@
 //              supplies. The helper (a resident by rule, a connected Muse live with answer_help) asks for the part it
 //              needs (input-required), accepts or rejects. On completion the part is spent, the result is granted through
 //              the item history (grantItem) and both sides record a reflection.
+import {campfireVenue, campfireInviteeNear, type CampfirePolicy} from './campfire-policy.ts';
 import {detectInjection, INJECTION_LIMIT_NOTE, wrapUntrusted} from '../../src/identity/untrusted.ts';
 import {harnessById} from '../../src/engine/harness.ts';
 import {placeById, distanceM, WALK_MPS} from '../../src/engine/places.ts';
@@ -108,18 +109,21 @@ export type InviteeCheck = (museId: string, at: number) => string | null;
  * invite_campfire: spends one Invite Token. Invitees that are paused (owner revoked) or whose credentials fail are
  * `unavailable` and get nothing; if none is available the call is refused and the token kept.
  */
-export function inviteCampfire(st: WorldState, me: string, a: {to: string[]; text: string | null}, check: InviteeCheck, live: Emit, rule: Emit, at: number): Outcome {
+export function inviteCampfire(st: WorldState, me: string, a: {to: string[]; text: string | null}, check: InviteeCheck, live: Emit, rule: Emit, at: number, options?:{placeId?:string;policy?:CampfirePolicy}): Outcome {
   const inbox = inboxOf(st), m = museOf(st, me);
   if (a.to.includes(me)) return {ok: false, reason: 'self_invite'};
+  const venue=campfireVenue(st,me,options?.placeId,options?.policy);
+  if(!venue.ok)return venue;
+  const placeId=venue.place.id;
   const blocked = blockedText(a.text, me, null, 'An invitation line', live, at); if (blocked) return blocked;
   if (!m.inventory.includes('invite_token')) return {ok: false, reason: 'needs_invite_token'};
-  if (invitesOf(inbox).some(x => x.from === me && x.status === 'open' && x.expiresAt > at)) return {ok: false, reason: 'open_invite_exists'};
-  const unavailable = a.to.filter(id => !!st.paused?.[id] || check(id, at) !== null);
+  if (invitesOf(inbox).some(x => x.from === me && x.status === 'open' && x.expiresAt > at && (!venue.scoped || x.place === placeId))) return {ok: false, reason: 'open_invite_exists'};
+  const unavailable = a.to.filter(id => !!st.paused?.[id] || check(id, at) !== null || (placeId!==CAMPFIRE&&!campfireInviteeNear(st,id,venue.place)));
   if (unavailable.length === a.to.length) return {ok: false, reason: 'no_invitee_available'};
   m.inventory.splice(m.inventory.indexOf('invite_token'), 1);
-  const inv: CampfireInvite = {id: nextId(inbox, 'invite'), from: me, to: [...a.to], place: CAMPFIRE, note: a.text, at, expiresAt: at + INVITE_TTL_MS, status: 'open', answers: {}};
-  live({at, source: 'live', kind: 'campfire_invite', muse: me, other: a.to.length === 1 ? a.to[0] : null, place: m.place, line: `Invited ${a.to.map(name).join(', ')} to a campfire talk`, data: {invite_id: inv.id, to: inv.to, place: CAMPFIRE, spent: 'invite_token', note: a.text, deadline: inv.expiresAt, stage: 'invite'}, tags: ['campfire_invite']});
-  const campfire = placeById(CAMPFIRE);
+  const inv: CampfireInvite = {id: nextId(inbox, 'invite'), from: me, to: [...a.to], place: placeId, note: a.text, at, expiresAt: at + INVITE_TTL_MS, status: 'open', answers: {}};
+  live({at, source: 'live', kind: 'campfire_invite', muse: me, other: a.to.length === 1 ? a.to[0] : null, place: m.place, line: `Invited ${a.to.map(name).join(', ')} to a campfire talk`, data: {invite_id: inv.id, to: inv.to, place: placeId, spent: 'invite_token', note: a.text, deadline: inv.expiresAt, stage: 'invite'}, tags: ['campfire_invite']});
+  const campfire = venue.place;
   for (const id of a.to) {
     if (unavailable.includes(id)) { inv.answers[id] = {answer: 'unavailable', via: 'rule', at}; continue; }
     // A connected Muse decides in its owner's runtime: the invite waits in its inbox, and coming to the campfire is its answer.
@@ -127,7 +131,7 @@ export function inviteCampfire(st: WorldState, me: string, a: {to: string[]; tex
     const yes = residentAccepts(st, id, inv.id), r = museOf(st, id);
     inv.answers[id] = {answer: yes ? 'accept' : 'decline', via: 'rule', at};
     rule({at, source: 'rule', kind: 'campfire_invite_answer', muse: id, other: me, place: r.place, line: yes ? 'See you at the campfire.' : 'Not tonight.', data: {invite_id: inv.id, answer: yes ? 'accept' : 'decline'}, tags: []});
-    if (yes && !(r.travel ? r.travel.to === CAMPFIRE : r.place === CAMPFIRE)) beginTrip(r, campfire, at, 'rule', rule, 'campfire invite');
+    if (yes && !(r.travel ? r.travel.to === placeId : r.place === placeId)) beginTrip(r, campfire, at, 'rule', rule, 'campfire invite');
   }
   invitesOf(inbox).push(inv);
   trimInvites(inbox);

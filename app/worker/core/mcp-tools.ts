@@ -11,6 +11,7 @@
 // Postcards, gifts, campfire invites and help requests (I-13) are in messages.ts; this file signs and routes them.
 // Inputs are validated strictly (catalog ids, bounded text); text from another agent arrives wrapped as
 // untrusted data, and text that tries to instruct is blocked (detectInjection).
+import type {CampfirePolicy} from './campfire-policy.ts';
 import {verifyCard} from '../../src/identity/card.ts';
 import {detectInjection, INJECTION_LIMIT_NOTE} from '../../src/identity/untrusted.ts';
 import {HARNESS_IDS, harnessById, type ScopeId} from '../../src/engine/harness.ts';
@@ -32,6 +33,8 @@ import {sendPostcard, giveGift, inviteCampfire, answerCampfire, recordCampfireAp
 import {encounterOpportunities, encounterNotices, introduced, startIntroduction, PERSONAL_CONTINUATION} from './encounters.ts';
 
 export type ToolCtx = {
+  /** Server-owned policy re-read at commit; default absent/OFF. */
+  campfires?:()=>CampfirePolicy|undefined;
   trust: Trust; runtime: WorldRuntime; hooks: Hooks; ownerRoot: JsonWebKey | null;
   /** The owner's real Threads claim (Agent Cards and credential checks use this). */
   ownerClaimed: boolean;
@@ -125,7 +128,7 @@ export const TOOLS: ToolDef[] = [
   write('give_gift', 'Give gift', 'Give an item you hold to a nearby Muse (within 100 m). Up to 3 a day.', obj({to: museProp('Nearby Muse'), item: itemProp('Item to give')}, ['to', 'item']), 'world_item_gift'),
   write('propose_meetup', 'Propose meetup', `Ask Musely for up to ${MAX_CANDIDATES} meetup candidates (time and place) with another Muse, built only from public information. Each side answers accept or reject; then both owners approve one candidate (a resident approves by rule) before anything is confirmed. Calling it again for the same Muse while your meetup Task is open replaces the candidates: a new revision, and earlier answers and owner approvals no longer apply.`, obj({to: museProp('Muse to meet')}, ['to']), 'propose_public_candidate'),
   write('answer_candidate', 'Answer candidate', 'Answer the meetup candidates waiting for you: accept or reject only (no reasons). When both sides accept, the owners decide.', obj({task_id: taskProp, answer: {type: 'string', enum: ['accept', 'reject']}}, ['task_id', 'answer']), 'answer_yes_no'),
-  write('invite_campfire', 'Invite to campfire', 'Invite Muses to a campfire talk at the commons campfire: an in-world gathering, never a real-world invitation. Spends one Invite Token; the invite closes after 30 minutes. Residents answer at once by rule and walk over if they accept; a connected Muse gets it in its inbox and answers by coming. Three or more of you and your accepted invitees at the campfire together make a highlight.', obj({to: {type: 'array', items: {type: 'string', enum: HARNESS_IDS}, minItems: 1, maxItems: 8, uniqueItems: true, description: 'Muses to invite (1 to 8, no repeats)'}, text: textProp(140, 'Optional short public invitation line')}, ['to']), 'world_invite'),
+  write('invite_campfire', 'Invite to campfire', 'Invite Muses to a campfire talk at commons:campfire by default, or a server-enabled place_id: an in-world gathering, never a real-world invitation. Spends one Invite Token; the invite closes after 30 minutes. Residents answer at once by rule and walk over if they accept; a connected Muse gets it in its inbox and answers by coming. Three or more of you and your accepted invitees at the campfire together make a highlight.', obj({to: {type: 'array', items: {type: 'string', enum: HARNESS_IDS}, minItems: 1, maxItems: 8, uniqueItems: true, description: 'Muses to invite (1 to 8, no repeats)'}, text: textProp(140, 'Optional short public invitation line'), place_id:{type:'string',pattern:'^[A-Za-z0-9:/_.-]{1,80}$',description:'Optional server-approved campfire venue; defaults to commons:campfire. Extra venues require server feature policy.'}}, ['to']), 'world_invite'),
   write('answer_campfire', 'Answer campfire invitation', 'Choose accept or decline for an in-world campfire invitation addressed to you. Useful when you are already there: position alone is never your consent. Accepting does not move you; a gathering needs actual arrival. No private reasons. Duplicate command IDs return the original answer.', obj({invite_id: {type: 'string', pattern: '^invite_[0-9a-z]{1,10}$', description: 'Invitation id from heartbeat_check'}, answer: {type: 'string', enum: ['accept', 'decline']}}, ['invite_id', 'answer']), 'world_invite'),
   write('propose_help', 'Propose help', 'Ask a nearby Muse (within 100 m) for its help service with an item you hold: Copper repairs a role tool or crafted item (needs a Spark, gives a Repaired Gadget), Ember writes a story for a postcard (needs a Pastry, gives a Story Scroll). Opens a help Task with a 30-minute deadline. Name the part you supply in `needs`, or the helper asks for it (input-required) and you answer_help accept to hand it over.', obj({to: museProp('Nearby Muse to ask'), item: itemProp('Item you hold that the help is about (you keep it)'), needs: itemProp('Optional part you supply for the work (you hold it; spent when the help completes)'), text: textProp(140, 'Optional short public request line')}, ['to', 'item']), 'world_item_trade'),
   write('answer_help', 'Answer help', 'Answer a help Task waiting for you (no reasons). As the helper: need_item with `item` asks for the part you need, accept does the work (the part is spent, the result goes to the requester), reject declines. As the requester, after the helper asked: accept hands over the asked item, reject withdraws.', obj({task_id: taskProp, answer: {type: 'string', enum: ['accept', 'reject', 'need_item']}, item: itemProp('With need_item: the item you need from the requester')}, ['task_id', 'answer']), 'world_item_trade'),
@@ -524,11 +527,12 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
     }
     case 'invite_campfire': {
       const to = [...(args.to as string[])], text = args.text === undefined ? null : cleanText(String(args.text)) || null;
+      const placeId=args.place_id===undefined?undefined:String(args.place_id);
       // Every invitee's Agent Card and delegation are checked before the commit (async) and re-checked at it (sync); one
       // that fails is unavailable for this invite instead of refusing it for everyone.
       const creds = new Map<string, Credential | null>();
       const counterparty = async (): Promise<PeerCheck> => { for (const id of to) creds.set(id, await museCredential(c, id, now)); return {ok: true, current: () => true}; };
-      return write_(null, {kind: 'invite_campfire', to, text}, (st, live, rule, at) => claimGate() ?? inviteCampfire(st, me, {to, text}, (id, at2) => c.trust.agentByMuse(id)?.kind === 'owner' && !currentClaim(c) ? 'card_unclaimed' : credentialProblem(c.trust, creds.get(id), at2), live, rule, at), counterparty);
+      return write_(null, {kind: 'invite_campfire', to, text,...(placeId===undefined?{}:{place_id:placeId})}, (st, live, rule, at) => claimGate() ?? inviteCampfire(st, me, {to, text}, (id, at2) => c.trust.agentByMuse(id)?.kind === 'owner' && !currentClaim(c) ? 'card_unclaimed' : credentialProblem(c.trust, creds.get(id), at2), live, rule, at,{placeId,policy:c.campfires?.()}), counterparty);
     }
     case 'answer_campfire': {
       const id = String(args.invite_id), answer = args.answer as 'accept' | 'decline';

@@ -127,7 +127,7 @@ export const COMMAND_FIELDS: Record<string, readonly string[]> = {
   propose_trade: ['kind', 'to', 'give', 'want'], counter_trade: ['kind', 'task_id', 'give', 'want'], accept_trade: ['kind', 'task_id'], reject_trade: ['kind', 'task_id'],
   send_postcard: ['kind', 'to', 'item'], give_gift: ['kind', 'to', 'item'], propose_meetup: ['kind', 'to'], answer_candidate: ['kind', 'task_id', 'answer'], update_wants: ['kind', 'items'],
   // I-13: the invitation and request lines (`text`) are never kept.
-  invite_campfire: ['kind', 'to'], answer_campfire: ['kind', 'invite_id', 'answer'], propose_help: ['kind', 'to', 'item', 'needs'], answer_help: ['kind', 'task_id', 'answer', 'item'],
+  invite_campfire: ['kind', 'to', 'place_id'], answer_campfire: ['kind', 'invite_id', 'answer'], propose_help: ['kind', 'to', 'item', 'needs'], answer_help: ['kind', 'task_id', 'answer', 'item'],
 };
 /** The allowed fields of a command payload whose values are ids (or lists of ids); every other key is only named in `omitted`. */
 export function commandFields(action: string, payload: unknown): {fields: Record<string, unknown>; omitted: string[]} {
