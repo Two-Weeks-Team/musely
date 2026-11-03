@@ -63,17 +63,29 @@ export function verifyUse(goal: UseGoal, before: WorldState, after: WorldState, 
   if (before.worldId!==after.worldId || after.version<=before.version) return no('stale_world');
   if (!verifyHistory(after.items).ok || after.items.tamper) return no('item_history_untrusted');
   const a=before.muses.find(x=>x.id===goal.muse), b=after.muses.find(x=>x.id===goal.muse), beat=BEATS.find(x=>x.id===goal.beat);
-  if (!a||!b||!beat?.result?.craft||a.beat?.id!==beat.id||a.beat.endsAt>now) return no('no_started_activity');
-  if (before.paused?.[a.id] || after.paused?.[a.id]) return no('revoked');
+  if (!a||!b||!beat?.result?.craft) return no('no_started_activity');
   const count=(xs:readonly string[],id:string)=>xs.filter(x=>x===id).length;
   const consumed = new Map<string, number>();
   for (const id of beat.result.consume ?? []) consumed.set(id, (consumed.get(id) ?? 0) + 1);
-  if ([...consumed].some(([id,n])=>count(a.inventory,id)<n||isExpired(before.items,a.id,id,now))) return no('lost_prerequisite');
+  if ([...consumed].some(([id,n])=>count(a.inventory,id)<n)) return no('lost_prerequisite');
+  const startedBeat = a.beat?.id===beat.id && a.beat.endsAt<=now;
+  // A committed signed craft tool is immediate and intentionally has no beat.
+  // This checks trusted server-event provenance, not a peer-supplied signature.
+  const signedCraft = (e: WorldEvent) => {
+    const env=e.data?.envelope as Record<string,unknown>|undefined;
+    return e.source==='live' && e.data?.tool==='craft' && e.data?.actorOrigin==='connected' &&
+      env?.scope==='world_item_discover' && typeof env.message_id==='string' && env.message_id.length>0;
+  };
+  const e=[...events].reverse().find(x=>after.items.history.some(h=>h.via==='craft'&&h.to===a.id&&h.item===beat.result!.craft&&h.at===x.at&&h.place===a.place&&h.seq!==undefined&&h.seq>(before.items.chain?.seq??0))&&x.kind==='craft'&&x.muse===a.id&&x.place===a.place&&x.at>=goal.createdAt&&x.at<goal.expiresAt&&x.at<=now&&x.data?.item===beat.result!.craft&&
+    ((startedBeat && x.source==='rule' && x.at>=a.beat!.endsAt) || signedCraft(x)));
+  if (!e) return no(startedBeat?'no_engine_evidence':'no_started_activity');
+  if (signedCraft(e) && (!beat.kinds.includes(placeById(a.place).kind) || (beat.needs??[]).some(id=>!a.inventory.includes(id)||isExpired(before.items,a.id,id,e.at)))) return no('lost_prerequisite');
+  if (before.paused?.[a.id] || after.paused?.[a.id]) return no('revoked');
+  if ([...consumed].some(([id,n])=>count(a.inventory,id)<n||isExpired(before.items,a.id,id,e.at))) return no('lost_prerequisite');
   const result=beat.result.craft;
   for (const id of new Set([...consumed.keys(), result])) {
     if (count(b.inventory,id)!==count(a.inventory,id)-(consumed.get(id)??0)+(id===result?1:0)) return no('no_verified_inventory_delta');
   }
-  const e=events.find(x=>x.kind==='craft'&&x.muse===a.id&&x.place===a.place&&x.at>=a.beat!.endsAt&&x.at>=goal.createdAt&&x.at<goal.expiresAt&&x.at<=now&&x.data?.item===result);
   const history=after.items.history.find(x=>x.via==='craft'&&x.to===a.id&&x.item===result&&x.at===e?.at&&x.place===a.place&&x.seq!==undefined&&x.seq>(before.items.chain?.seq??0));
   if (!e||!history) return no('no_engine_evidence');
   return {fulfilled:true,evidenceId:e.id,item:result,source:e.source};

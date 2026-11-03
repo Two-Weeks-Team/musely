@@ -37,3 +37,11 @@ Run-log fixtures previously defaulted to a real model URL with key='k' and no fa
 ## Design references (inspiration, not reproduced results)
 
 [Generative Agents](https://arxiv.org/abs/2304.03442): separate observations, memory and plans. [CICERO](https://ai.meta.com/research/cicero/): negotiation must connect intentions and actions. [Voyager](https://voyager.minedojo.org/): actions require environmental feedback. Here this means public declarations are not facts about private motives, agreement is not execution, and an acquired item is not a demonstrated benefit.
+
+## Customer journey increment
+
+The actual in-process WorldDO / MCP handler / signed-command path now tests public Wants, greeting, counteroffer, accepted exchange and immediate Bloom craft. A real bug was reproduced: the verifier required a running beat and rejected a successful direct MCP craft. It now recognizes trusted committed craft-tool provenance plus inventory/chain evidence. This is not independent verification of arbitrary JSON signatures. A second bug selecting an earlier craft from full history was fixed by matching newer ledger evidence with the event.
+
+Seven authenticated-path tests include rejection, task expiry, delegation revocation, concurrent craft idempotency, actor argument spoofing, injection rejection, missing provenance and repeated craft attribution. The local fixture supplies only Cloudflare base/storage/alarm hosting, test claim setup and ephemeral test credentials. No actual HTTP server/TLS, provider authentication, external personal Muse, AI-decided negotiation, persistent goal executor or deployment is established. Calls are manually selected by the test. Network is blocked and unexpected calls must remain zero.
+
+Main7a85add, PR138acf8024 and PR14011a1c5 were read for integration boundaries; test composition is not a merge. Existing app/runtime authority remains in charge. Production activation is still off.
