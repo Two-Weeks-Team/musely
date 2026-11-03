@@ -1,7 +1,7 @@
 name: Campfire Pack
 on:
   pull_request:
-    paths: ['app/world-packs/campfire/**', 'app/src/scene.ts', 'app/src/ui/live-scene.ts', 'app/scripts/campfire-visual-port.test.mjs', 'app/scripts/build.mjs', '.github/workflows/campfire-pack.yml']
+    paths: ['app/world-packs/campfire/**', 'app/src/scene.ts', 'app/src/ui/live-scene.ts', 'app/scripts/campfire-visual-port.test.mjs', 'app/scripts/campfire-composition.test.mjs', 'app/scripts/build.mjs', 'app/scripts/boundaries.test.mjs', 'app/scripts/character-proof-build.test.mjs', 'app/scripts/transport-build.test.mjs', '.github/workflows/campfire-pack.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -32,5 +32,6 @@ jobs:
           node-version: '24'
       - run: npm ci --ignore-scripts
       - run: npm run typecheck
-      - run: node --test scripts/campfire-visual-port.test.mjs scripts/live-scene.test.mjs scripts/campfire-consent.test.mjs
+      - run: node --test scripts/campfire-visual-port.test.mjs scripts/live-scene.test.mjs scripts/campfire-consent.test.mjs scripts/campfire-composition.test.mjs scripts/asset-encoding.test.mjs scripts/asset-representations.test.mjs
+      - run: node --test scripts/boundaries.test.mjs scripts/character-proof-build.test.mjs scripts/transport-build.test.mjs
       - run: npm run build

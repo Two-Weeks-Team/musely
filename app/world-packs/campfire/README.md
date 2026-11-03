@@ -62,3 +62,9 @@ Removed asset-bytes.json and all inline base64. The build now emits the validate
 23 isolated tests pass, including deferred emitter, OFF zero requests, correct hash path, corrupt response rejection and ownership recreation. The two app-level tests stub transport only: actual GLB parser, scene port and live projection execute. This is not an HTTP/browser acceptance claim. Customer-visible toggle and visual usability still need a separate acceptance pass; no Mac UI was touched while #130 owns that screen.
 
 Review found optional asset loading could stall makeWorld. Startup is now fire-and-forget with legacy fire retained, and fetch/body use an 8-second abort signal. A failed optional prop cannot block the commons load. Timeout is a loading bound, not a performance measurement.
+
+## Fixture regression and compression-main follow-up
+
+Latest main188fcb7 includes team PR145/146. build.mjs is composed to retain both critical GLB br/gzip representations and campfire deferred emission. No team PR changed. Their encoding allowlist excludes campfire, so the exact hashed raw URL and client SHA check remain intact.
+
+Our previous fixture tests copied src but omitted world-packs, causing character-proof module resolution failure. Fixed the three boundaries/character-proof/transport fixture copy lists; preserved team's representation helper copies. These three suites now run in this PR's CI, alongside compression and route+scene regression tests. Local character-proof failed before/fixed after; full local transport test remains blocked by the verification mirror's empty lod0, with exact repository CI required.

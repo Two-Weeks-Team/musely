@@ -96,9 +96,9 @@ test('I-12 bundle: fake secrets in the build environment and local secret files 
   const env = {...process.env, ...FAKE, OWNER_ROOT_JWK: root.text, THREADS_APP_ID: '424242', WRANGLER_SEND_METRICS: 'false', CI: '1'};
   const temp = await mkdtemp(join(tmpdir(), 'musely-i12-bundle-'));
   try {
-    for (const dir of ['src', 'assets', 'fixtures', 'static', 'worker', 'character-kit/runtime']) await cp(APP + dir, join(temp, dir), {recursive: true});
+    for (const dir of ['src', 'assets', 'fixtures', 'static', 'worker', 'world-packs/campfire', 'character-kit/runtime']) await cp(APP + dir, join(temp, dir), {recursive: true});
     await mkdir(join(temp, 'scripts'));
-    for (const f of ['build.mjs', 'prepare-assets.mjs', 'embedding.mjs', 'clips-glb.mjs', 'asset-files.mjs', 'device-metrics.mjs']) await copyFile(APP + 'scripts/' + f, join(temp, 'scripts', f));
+    for (const f of ['build.mjs', 'prepare-assets.mjs', 'embedding.mjs', 'clips-glb.mjs', 'asset-files.mjs','asset-representations.mjs', 'device-metrics.mjs']) await copyFile(APP + 'scripts/' + f, join(temp, 'scripts', f));
     for (const f of ['package.json', 'wrangler.jsonc', 'character-kit/manifest.json']) await copyFile(APP + f, join(temp, f));
     await symlink(APP + 'node_modules', join(temp, 'node_modules'), 'dir');
     // Where developers keep secrets locally: neither file may be read into a deploy build.

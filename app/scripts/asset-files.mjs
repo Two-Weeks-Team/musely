@@ -1,3 +1,4 @@
+import {verifyRepresentations} from './asset-representations.mjs';
 import {readFile,writeFile,mkdir,readdir} from 'node:fs/promises';
 import {join} from 'node:path';import {createHash} from 'node:crypto';
 import {externalCodePaths} from './device-metrics.mjs';
@@ -60,6 +61,7 @@ export async function verifyAssetManifest(manifest,read,{requiredRuntimePaths=[]
    // Generated descriptors use these literal namespaces. Dynamic kit members are independently enumerated below.
    for(const match of text.matchAll(/\/(assets\/[A-Za-z0-9_.-]+\.[A-Za-z0-9]+|character-kit\/runtime\/[A-Za-z0-9_./-]+\.(?:glb|png|ktx2))/g))requirePath(match[1]);
  }
+ await verifyRepresentations(manifest,read);
  const critical=manifest.critical;
  if(new Set(critical.paths).size!==critical.paths.length)throw Error('Duplicate critical resource');
  for(const path of critical.paths)requirePath(path);

@@ -10,9 +10,9 @@ const readFile=(path,...args)=>sourceRead(join(fixture,path),...args);
 before(async()=>{
  fixture=await mkdtemp(join(tmpdir(),'musely-transport-build-'));
  await mkdir(join(fixture,'scripts'));await mkdir(join(fixture,'character-kit'));
- for(const dir of ['src','assets','fixtures','static'])await cp(dir,join(fixture,dir),{recursive:true});
+ for(const dir of ['src','assets','fixtures','static','world-packs/campfire'])await cp(dir,join(fixture,dir),{recursive:true});
  await cp('character-kit/runtime',join(fixture,'character-kit/runtime'),{recursive:true});await copyFile('character-kit/manifest.json',join(fixture,'character-kit/manifest.json'));
- for(const file of ['build.mjs','prepare-assets.mjs','embedding.mjs','asset-files.mjs','device-metrics.mjs','clips-glb.mjs'])await copyFile('scripts/'+file,join(fixture,'scripts',file));
+ for(const file of ['build.mjs','prepare-assets.mjs','embedding.mjs','asset-files.mjs','asset-representations.mjs','device-metrics.mjs','clips-glb.mjs'])await copyFile('scripts/'+file,join(fixture,'scripts',file));
  await symlink(resolve('node_modules'),join(fixture,'node_modules'),'dir');
  const result=spawnSync(process.execPath,['scripts/build.mjs'],{cwd:fixture,encoding:'utf8'});assert.equal(result.status,0,result.stderr+result.stdout);
 });
@@ -116,7 +116,7 @@ test('relative workers and explicit URL constructors must resolve to listed reso
 test('a plain relative Worker uses its document directory while import.meta.url uses the script',async()=>{
  const original=JSON.parse(await readFile('dist/asset-manifest.json','utf8')),worker=original.files.find(f=>f.role==='map-worker'),name=worker.path.split('/').at(-1);
  for(const [role,suffix]of [['app','new Worker('+JSON.stringify(worker.path)+');'],['character-viewer','new Worker('+JSON.stringify('../'+worker.path)+');'],['character-viewer','new Worker(new URL('+JSON.stringify('./'+name)+',import.meta.url));']]){
-  const {manifest,read}=await scriptWithSuffix(suffix,role);assert.equal((await verifyAssetManifest(manifest,read)).files,30);
+  const {manifest,read}=await scriptWithSuffix(suffix,role);assert.equal((await verifyAssetManifest(manifest,read)).files,original.files.length);
  }
  const {manifest,read}=await scriptWithSuffix('new Worker('+JSON.stringify('./'+name)+');');
  await assert.rejects(verifyAssetManifest(manifest,read),/Unlisted runtime reference/);
