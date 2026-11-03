@@ -305,3 +305,67 @@ conflict is the adjacent addition of residentWants and residentLife RuntimeOptio
 composition helper accepts only those exact two blocks and preserves both; other conflicts
 fail closed. Three synthetic helper regressions verify preservation, ordinary clean merge
 and rejection of an unreviewed conflict. No branch is merged by this script.
+
+## Opt-in WorldDO installation and durable projection (supersedes earlier caller limitations)
+
+The new installation is absent/OFF by default. No deployment configuration enables it.
+Only the server environment value WORLD_LIFE_MODE=sandbox-v1 installs the controller;
+unknown values fail closed. HTTP parameters and public requests cannot enable it. An
+installation without the resident service factory or resident-life storage fails explicitly.
+Standalone main plus this PR must still boot OFF without either dependent PR or new tables.
+
+The controller supplies actual WorldRuntime services on the same SQL handle, fresh personal
+owner registry classification, delegation checks and the existing signed meeting gate.
+Goal selection is deterministic and restricted to existing role-matched craft recipes.
+It does not create dozens of actors, invent personal desires, accept offers for a user,
+or provide free-form conversation. Existing signed personal Wants and accept_trade can
+participate; the personal actor's priority is respected before NPC activity proceeds.
+Actual heartbeat activity uses existing travel/activity/craft and mandatory verified receipts.
+Model negotiation tests inject an offline transport into the existing model pipeline.
+
+Committed invitation projections persist in per-invitation SQL rows with a unique consumed
+receipt token. The installed reader selects matching committed event evidence directly,
+rather than truncating all world history at 20,000 rows. Projection writes execute in the
+same world transaction: forced SQL failure rolls back world state, receipts, inventory and
+signed-command acknowledgement, allowing the same command to retry. The read-only
+/api/world/life route exposes public invitation and NPC goal summaries; it returns 404 OFF.
+
+### Failures found and regression coverage
+
+An initial implementation attempted to re-project overdue open invitations at restart time.
+After an unrelated world-version advance this rejected an expired invitation before upkeep
+could run, preventing boot. Boot now leaves overdue open world records unchanged and waits
+for actual upkeep; existing projection rows explicitly indicate awaitingUpkeep. First
+OFF-to-ON installation follows the same rule. Only the real expiry commit updates projection.
+Forced expiry-projection failure rolls back and a subsequent heartbeat retries successfully.
+
+An initial withdrawal guard disabled endpoints but left resident scheduling/state writes
+active. The controller now reads enabled dynamically, and the resident runtime also guards
+its save path. OFF alarm/restart keeps resident state and revision unchanged; reinstalling
+ON resumes it. Withdrawal while a mocked model response is pending rejects the late trade
+and does not write a resident decision. The runtime guard belongs to PR138 and must be
+present at the exact pinned dependency head, not merely patched in a local test checkout.
+
+The new installed suite exercises real WorldDO class, Worker Request/Response routes,
+signed MCP, SQLite transactions, alarms and persisted restart. This is an in-process
+Cloudflare shim, not workerd, provider OAuth, live network/TLS, mobile, production rendering,
+real paid model inference or deployment. Global fetch is forbidden by the fixture.
+Setup inventory/cursor/task inputs and ephemeral signing keys are explicit test fixtures.
+
+Full composition also exposed a PR139 test fixture supplying only part of the PR138 life
+policy: absent initialState/allowedPlaceIds failed actual initialization. This is not treated
+as a passing integrated suite; the dependency fixture must be corrected and the complete
+suite rerun before publishing final evidence. Shared world/runtime additions are composed
+from exact reviewed conflict pairs, retaining goal priority, resident control and run-log
+metadata; any other conflict fails closed. This script prepares isolated test checkouts,
+never merges a branch or changes production configuration.
+
+Current reviewed pins are main d2892ebebde56d495341493b2317a40c7a5d0658
+(team PR147 presentation-only changes), PR138 ca17e3ee15bda46f4b2101605d7f761b39fb9465,
+and PR139 fbecb3e61da28905fa903b5c4d81dc176ef1c608. PR138 includes the published
+save guard and fresh registry/context authority checks; PR139 fixes the complete life-policy
+fixture. Local installed 17/17 and worker strict pass. The expanded local run reports
+373/377 passing: four new main147 personal-scene rendering tests lack valid local lod0/lod1
+binary files (both zero-byte fixture placeholders). They are not declared passed or blamed
+on main; CI uses the repository checkout assets to establish the result. No placeholder
+assets are committed by this PR.

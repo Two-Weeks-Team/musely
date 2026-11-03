@@ -7,10 +7,11 @@ export const INTEGRATION_ENABLED = false;
 export const ACTIVATION_BLOCKERS = Object.freeze([
   'world-and-life-dependencies-unmerged',
   'craft-fix-unmerged-and-live-unverified',
-  'joint-world-life-transaction-unwired',
+  'production-installation-not-approved',
   'real-render-and-muse-validation-pending',
 ]);
-/** No environment variable or model output can turn this prototype into production execution. */
+/** Pure proposal-validator status only, not the installed controller status. This module
+ * never executes commands. WorldDO reports its own trusted OFF-default installation view. */
 export function activationStatus() { return {enabled: INTEGRATION_ENABLED, blockers: [...ACTIVATION_BLOCKERS]}; }
 
 export type AuthorityView = {

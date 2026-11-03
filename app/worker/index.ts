@@ -1,3 +1,4 @@
+import {serveCriticalAsset} from './asset-encoding.ts';
 // Musely main product Worker (musely.net): static assets plus the /api surface (direction v2, 15 and 20.2).
 import {handleMuse} from './core/proxy.ts';
 import {issueSession, readSession, cookieValue, sessionCookie, hashIp, timingSafeEqual, verifyTurnstile} from './core/session.ts';
@@ -103,6 +104,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
 
   // Shared world (direction v2, 8): read-only views for every visitor.
   if (url.pathname === '/api/world' && request.method === 'GET') return json(await world(env).worldView());
+  if (url.pathname === '/api/world/life' && request.method === 'GET') {const view=await world(env).worldLifeView();return view?json(view):json({error:'not_found'},404);}
   if (url.pathname === '/api/world/events' && request.method === 'GET') return json(await world(env).worldEvents(Number(url.searchParams.get('since')) || 0, Number(url.searchParams.get('limit')) || 200, {runId: url.searchParams.get('runId') ?? undefined, day: url.searchParams.get('day') ?? undefined, tail: Number(url.searchParams.get('tail')) || undefined}));
   // Visitor priority (8.2): a session asks for a Muse's next spotlight turn, ahead of the rotation (3 per hour for visitors).
   if (url.pathname === '/api/world/spotlight' && request.method === 'POST') {
@@ -314,6 +316,6 @@ export default {
         return json({error: 'internal'}, 500);
       }
     }
-    return env.ASSETS.fetch(request);
+    return serveCriticalAsset(request, env.ASSETS);
   },
 } satisfies ExportedHandler<Env>;

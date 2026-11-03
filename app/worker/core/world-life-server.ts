@@ -1,4 +1,4 @@
-/** Server-only, feature-off adapter. No caller is installed in WorldDO or WorldRuntime.
+/** Server-only adapter, installed only by the trusted OFF-default WorldDO controller.
  * Reads real registry/world/event structures; does not authenticate clients or execute proposals.
  */
 import type {WorldState, WorldEvent} from '../../src/engine/world.ts';
@@ -92,5 +92,21 @@ export class WorldLifeProjectionStore {
 export function projectRuntimeInvite(projection:Projection,runtime:WorldRuntime,inviteId:string,now:number):Projection {
   if(!(runtime instanceof WorldRuntime)||runtime.worldId!==projection.worldId)throw Error('trusted_runtime_required');
   return projectCommittedServerInvite(projection,runtime.state(),inviteId,runtime.events(0,20_000),now);
+}
+
+/** Installed observer reads only matching committed events from the SAME runtime SQL handle.
+ * No client-supplied event arrays and no first-20k truncation. The index is opt-in at installation.
+ */
+export class WorldLifeEventReader {
+  private sql:Sql;
+  constructor(sql:Sql){this.sql=sql;}
+  sharesStorage(sql:Sql){return sql===this.sql;}
+  init(){this.sql.exec("CREATE INDEX IF NOT EXISTS world_life_invite_evidence ON events(json_extract(data,'$.invite_id')) WHERE kind IN ('campfire_invite','campfire_gathering','campfire_invite_expired','campfire_invite_cancelled')");}
+  read(inviteId:string):WorldEvent[]{return this.sql.exec("SELECT id,tick,at,source,kind,muse,other,place,line,data,tags FROM events WHERE json_extract(data,'$.invite_id')=? AND kind IN ('campfire_invite','campfire_gathering','campfire_invite_expired','campfire_invite_cancelled') ORDER BY seq",inviteId).toArray().map(r=>({...r,data:JSON.parse(String(r.data)),tags:JSON.parse(String(r.tags))}) as WorldEvent);}
+}
+export function projectStoredRuntimeInvite(projection:Projection,runtime:WorldRuntime,reader:WorldLifeEventReader,inviteId:string,now:number):Projection {
+  const same=(runtime as WorldRuntime & {ownsResidentGoalStore?:(s:{sharesStorage:(sql:Sql)=>boolean})=>boolean}).ownsResidentGoalStore;
+  if(!(runtime instanceof WorldRuntime)||!(reader instanceof WorldLifeEventReader)||runtime.worldId!==projection.worldId||!same?.call(runtime,reader))throw Error('trusted_runtime_storage_required');
+  return projectCommittedServerInvite(projection,runtime.state(),inviteId,reader.read(inviteId),now);
 }
 export {createProjection};
