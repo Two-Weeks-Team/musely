@@ -1,0 +1,1 @@
+{"name":"musely-campfire-authoring","private":true,"type":"module","scripts":{"test":"node --test *.test.mjs","typecheck":"tsc --noEmit --strict --skipLibCheck --target ES2022 --module NodeNext --moduleResolution NodeNext controller.ts","validate":"node validate.mjs"},"dependencies":{"three":"0.186.1"},"devDependencies":{"typescript":"7.0.2","gltf-validator":"2.0.0-dev.3.10"}}

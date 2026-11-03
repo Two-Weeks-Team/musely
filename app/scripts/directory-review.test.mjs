@@ -178,6 +178,7 @@ test('reviewer key: every /mcp write tool acts as the reviewer Muse, without wai
   await c.init();
   const now = Date.now();
   t.edit(st => {
+    (st.inbox.invites ??= []).push({id: 'invite_r1', from: '01-sunny', to: [REVIEWER], place: 'commons:campfire', note: null, at: now, expiresAt: now + 1800000, status: 'open', answers: {[REVIEWER]: {answer: 'pending', via: null, at: now}}});
     for (const [id, p] of [['01-sunny', 'commons:cafe'], ['02-moss', 'commons:garden'], ['05-bloom', 'commons:garden'], ['06-ink', 'commons:bookshelf'], ['07-tempo', 'commons:bookshelf'], ['09-copper', 'commons:workbench']]) place(st, id, p);
     st.inbox.tasks.push(
       task('task_r1', 'trade', '05-bloom', REVIEWER, now, {offer: {by: '05-bloom', give: 'tea', want: 'coffee'}}),
@@ -191,6 +192,8 @@ test('reviewer key: every /mcp write tool acts as the reviewer Muse, without wai
   const agent = t.agent(REVIEWER), postcard = t.muse(REVIEWER).inventory.find(i => i.startsWith('postcard:'));
   const calls = [
     ['greet', {text: 'Hello from the review', to: '01-sunny'}],
+    ['say_hello', {to: '01-sunny'}],
+    ['answer_campfire', {invite_id: 'invite_r1', answer: 'decline'}],
     ['update_wants', {goal: 'Find a story for tonight', items: ['pastry']}],
     ['discover', {}],
     ['accept_trade', {task_id: 'task_r1'}],
@@ -214,6 +217,9 @@ test('reviewer key: every /mcp write tool acts as the reviewer Muse, without wai
   for (const call of calls) {
     if (call === 'arrive') { await t.dobj.runtime.heartbeat(Math.max(Date.now(), t.state().lastTickAt) + 2 * TICK); assert.equal(t.muse(REVIEWER).place, 'commons:garden'); continue; }
     const [name, rawArgs] = call;
+    // The arrival heartbeat can start Copper's ordinary resident trip. This tool-authorization
+    // matrix needs an available helper; resident scheduling is covered separately.
+    if (name === 'propose_help') t.edit(st => place(st, '09-copper', 'commons:workbench'));
     const args = typeof rawArgs === 'function' ? rawArgs() : rawArgs;
     const r = await c.tool(name, args);
     assert.equal(r.isError, false, `${name}: ${JSON.stringify(r.structuredContent)}`);

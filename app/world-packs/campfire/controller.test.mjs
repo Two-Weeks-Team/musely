@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {campfireLod, campfireFrame, createCampfireController} from '../src/world-packs/campfire.ts';
+import {campfireLod, campfireFrame, createCampfireController} from './controller.ts';
 const snap = {placeId:'commons:campfire', observedAt:1000, receiptId:'arrival:1', arrivedMuseIds:['a','b','a']};
 test('distance boundaries and invalid distances fail closed',()=>{
  assert.deepEqual([0,18,18.1,60,60.1,200,201,NaN,-1,Infinity].map(campfireLod), ['near','near','mid','mid','far','far','hidden','hidden','hidden','hidden']);
@@ -29,4 +29,11 @@ test('failing resource does not prevent remaining cleanup',()=>{
 });
 test('snapshot arrays are not mutated and input IDs remain separate from role names',()=>{
  const ids=Object.freeze(['resident-1','resident-2']); assert.equal(campfireFrame('p',0,0,{placeId:'p',observedAt:0,receiptId:'r',arrivedMuseIds:ids}).attendees,2);
+});
+
+test('malformed adapter arrival arrays fail closed',()=>{
+ for(const arrivedMuseIds of [null,undefined,{},'a']) {
+  const f=campfireFrame('commons:campfire',1,1000,{...snap,arrivedMuseIds});
+  assert.equal(f.attendees,0);assert.equal(f.sparksVisible,false);
+ }
 });

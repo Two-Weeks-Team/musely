@@ -1,0 +1,22 @@
+name: Campfire Pack
+on:
+  pull_request:
+    paths: ['app/world-packs/campfire/**', '.github/workflows/campfire-pack.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/world-packs/campfire
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run validate

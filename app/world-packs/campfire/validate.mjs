@@ -1,0 +1,10 @@
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import {validateBytes} from 'gltf-validator';
+const file=new URL('./campfire-prototype.glb',import.meta.url),b=fs.readFileSync(file);
+const validation=await validateBytes(new Uint8Array(b),{uri:'campfire-prototype.glb'});
+const len=b.readUInt32LE(12),g=JSON.parse(b.subarray(20,20+len).toString());
+const triangles=g.meshes.reduce((s,m)=>s+m.primitives.reduce((n,p)=>n+g.accessors[p.indices].count/3,0),0);
+const summary={bytes:b.length,triangles,meshes:g.meshes.length,materials:g.materials.length,animations:g.animations.length,sha256:crypto.createHash('sha256').update(b).digest('hex'),errors:validation.issues.numErrors,warnings:validation.issues.numWarnings};
+console.log(JSON.stringify(summary,null,2));
+if(summary.errors||summary.warnings||summary.bytes>200000||triangles>2000)process.exitCode=1;

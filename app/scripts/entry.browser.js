@@ -1,7 +1,7 @@
 // Playwright CLI run-code callback. Open the target preview URL first.
 // This browser check is separate from the Node unit-test suite.
 async (page)=>{
- const browser=page.context().browser(),target=new URL(page.url());target.search='';
+ const browser=page.context().browser(),target=new URL(page.url());target.search='?autoplay=1&entryPreview=1';
  const cases=[];
  for(const mobile of [false,true]){
   const ctx=await browser.newContext({viewport:mobile?{width:390,height:844}:{width:1440,height:900},isMobile:mobile,hasTouch:mobile});

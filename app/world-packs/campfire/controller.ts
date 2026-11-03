@@ -18,7 +18,7 @@ export interface CampfireBinding {
   detach(): void;
 }
 export const CAMPFIRE_VISUAL = Object.freeze({
-  asset: '/world-packs/campfire/campfire-prototype.glb',
+  asset: './campfire-prototype.glb',
   units: 'meters', up: 'Y', origin: 'ground-center',
   nearM: 18, midM: 60, farM: 200, snapshotTtlMs: 60_000,
   maxSeats: 8,
@@ -31,6 +31,7 @@ export function campfireFrame(placeId: string, distanceM: number, now: number, s
   const age = snapshot ? now - snapshot.observedAt : Infinity;
   const valid = Number.isFinite(now) && snapshot?.placeId === placeId &&
     typeof snapshot.receiptId === 'string' && snapshot.receiptId.trim().length > 0 &&
+    Array.isArray(snapshot.arrivedMuseIds) &&
     Number.isFinite(age) && age >= 0 && age <= CAMPFIRE_VISUAL.snapshotTtlMs;
   const attendees = valid ? new Set(snapshot!.arrivedMuseIds.filter(id => typeof id === 'string' && id.trim().length > 0)).size : 0;
   const lod = campfireLod(distanceM);

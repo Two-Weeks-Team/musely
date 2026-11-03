@@ -17,6 +17,31 @@ function record() {
 }
 const rejects = (r, code) => assert.throws(() => loadRun(r), e => e instanceof ReplayRecordError && e.code === code);
 
+test('the exact historical a31 engine3 checkpoint tuple stays readable after the encounter engine changes', () => {
+ for (const [engineVersion, catalogVersion] of [['engine-3', 'catalog-c7068bfa0238'], ['engine-2', 'catalog-d69858ec160f']]) {
+  const r = record();
+  Object.assign(r, {schemaVersion: 'run-log-2', engineVersion, harnessVersion: 'harness-c0c69e98b5e8', catalogVersion});
+  const player = loadRun(r); player.seek(2);
+  assert.equal(player.getFrame().publicState.muses[0].place, 'commons:campfire');
+  const invalid = structuredClone(r); invalid.catalogVersion = 'catalog-not-the-historical-a31-content';
+  rejects(invalid, 'incompatible_record');
+ }
+});
+
+test('recorded introductions and the inbox meeting signal survive checkpoint playback without an executor', () => {
+ const r = record(), last = r.inputs.at(-1), state = JSON.parse(last.afterSnapshot.body);
+ const introduction = {id: 'w:hello:00-jolly|09-copper:recorded', at: T0 + 1000, place: 'commons:cafe'};
+ state.muses[0].introductions = {'09-copper': introduction};
+ state.muses[9].introductions = {'00-jolly': introduction};
+ state.inbox.messages.push({id: 'm_intro', from: '00-jolly', to: '09-copper', kind: 'greet', at: T0 + 1000, text: null, read: false, encounter: {id: introduction.id, place: introduction.place, first_contact: true}});
+ last.afterSnapshot = snapshot(state); last.afterHash = last.afterSnapshot.hash;
+ const player = loadRun(r); player.seek(2);
+ const restored = player.getFrame().publicState;
+ assert.deepEqual(restored.muses[0].introductions['09-copper'], introduction);
+ assert.equal(restored.inbox.messages.at(-1).encounter.first_contact, true);
+ assert.equal(restored.inbox.messages.at(-1).encounter.id, introduction.id);
+});
+
 test('recorded1x/10x/60x finish at the exact stored public after-state and seek restores the same snapshots', () => {
  const r = record(), end = JSON.parse(r.inputs[1].afterSnapshot.body), original = structuredClone(r), finals = [];
  for (const speed of [1, 10, 60]) {

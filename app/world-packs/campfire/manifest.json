@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "id": "campfire-visual-v1",
+  "runtimeEnabled": false,
+  "asset": "campfire-prototype.glb",
+  "units": "metre",
+  "axes": {
+    "x": "east",
+    "y": "up",
+    "z": "south"
+  },
+  "origin": "local-ground-centre",
+  "coordinateContract": "World-01 PR135 0355ec17526f5c583bf1534799d6f8e098303807 (draft; may change)",
+  "transformPolicy": "Anchor position from Place; no baked WGS84 offset or 30-degree grid rotation; integration applies orientation once",
+  "lodDistancesM": {
+    "near": 18,
+    "mid": 60,
+    "far": 200
+  },
+  "placeId": "supplied-by-authoritative-adapter",
+  "stateWrites": false,
+  "visualAttendance": "trusted arrived snapshot only; no generated avatars",
+  "license": "MIT for these original procedural assets and code; no Muse/Jolly assets included",
+  "integrationStatus": "isolated asset only; no production import or World-01 scene adapter"
+}

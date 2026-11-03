@@ -22,7 +22,7 @@ import {itemSpec, itemName, appendHistory, takeTimed, transferItem, grantItem, R
 import {placeCell} from '../../src/engine/location.ts';
 import {beginTrip} from '../../src/engine/travel.ts';
 import {rngFor} from '../../src/engine/rng.ts';
-import {emptyInbox, nextId, deliverMessage, sentToday, isConnected, taskView, TASK_TTL_MS, DAILY, type Inbox, type Task, type CampfireInvite} from '../../src/engine/inbox.ts';
+import {emptyInbox, nextId, deliverMessage, sentToday, isRuntimeControlled, taskView, TASK_TTL_MS, DAILY, type Inbox, type Task, type CampfireInvite} from '../../src/engine/inbox.ts';
 import type {WorldState, MuseState, WorldEvent, Hooks} from '../../src/engine/world.ts';
 import {findTask, statusOf, transitionTask, registerTaskKind} from './tasks.ts';
 
@@ -80,7 +80,7 @@ export function giveGift(st: WorldState, me: string, a: {to: string; item: strin
   if (count.gifts >= DAILY.gifts) return {ok: false, reason: 'daily_limit'};
   transferItem(st.items, m, r, item, at); count.gifts += 1;
   live({at, source: 'live', kind: 'gift', muse: me, other: to, place: m.place, line: `A ${itemName(item)} for ${name(to)}`, data: {item}, tags: []});
-  if (isConnected(inbox, to, at)) deliverMessage(inbox, {from: me, to, kind: 'gift', at, text: null, item});
+  if (isRuntimeControlled(st, to, at)) deliverMessage(inbox, {from: me, to, kind: 'gift', at, text: null, item});
   return {ok: true, data: {gave: item, to, gifts_today: count.gifts}};
 }
 
@@ -123,7 +123,7 @@ export function inviteCampfire(st: WorldState, me: string, a: {to: string[]; tex
   for (const id of a.to) {
     if (unavailable.includes(id)) { inv.answers[id] = {answer: 'unavailable', via: 'rule', at}; continue; }
     // A connected Muse decides in its owner's runtime: the invite waits in its inbox, and coming to the campfire is its answer.
-    if (isConnected(inbox, id, at)) { inv.answers[id] = {answer: 'pending', via: null, at}; deliverMessage(inbox, {from: me, to: id, kind: 'invite', at, text: a.text, item: 'invite_token'}); continue; }
+    if (isRuntimeControlled(st, id, at)) { inv.answers[id] = {answer: 'pending', via: null, at}; deliverMessage(inbox, {from: me, to: id, kind: 'invite', at, text: a.text, item: 'invite_token'}); continue; }
     const yes = residentAccepts(st, id, inv.id), r = museOf(st, id);
     inv.answers[id] = {answer: yes ? 'accept' : 'decline', via: 'rule', at};
     rule({at, source: 'rule', kind: 'campfire_invite_answer', muse: id, other: me, place: r.place, line: yes ? 'See you at the campfire.' : 'Not tonight.', data: {invite_id: inv.id, answer: yes ? 'accept' : 'decline'}, tags: []});
@@ -142,9 +142,34 @@ function present(st: WorldState, inv: CampfireInvite, now: number) {
     const m = st.muses.find(x => x.id === id);
     if (!m || st.paused?.[id] || m.travel || m.place !== inv.place) return false;
     if (id === inv.from) return true;
-    const answer = inv.answers[id]?.answer;
-    return answer === 'accept' || (answer === 'pending' && isConnected(st.inbox, id, now));
+    const answer = inv.answers[id];
+    return answer?.answer === 'accept' || (answer?.answer === 'pending' && isRuntimeControlled(st, id, now) && answer.comingAt !== undefined && answer.comingAt >= inv.at);
   });
+}
+
+/** A signed move may express coming to an existing invitation; presence alone never does. No answer yet. */
+export function recordCampfireApproach(st: WorldState, me: string, place: string, at: number): string[] {
+  const ids: string[] = [];
+  for (const inv of st.inbox?.invites ?? []) {
+    const answer = inv.answers[me];
+    if (inv.status !== 'open' || inv.expiresAt <= at || inv.at > at || inv.place !== place || !inv.to.includes(me) || answer?.answer !== 'pending') continue;
+    answer.comingAt = at; ids.push(inv.id);
+  }
+  return ids;
+}
+
+/** An invitee already at the fire can choose explicitly; this never moves it or acts for another participant. */
+export function answerCampfire(st: WorldState, me: string, id: string, answer: 'accept' | 'decline', live: Emit, rule: Emit, at: number): Outcome {
+  const inv = st.inbox?.invites?.find(invite => invite.id === id);
+  if (!inv) return {ok: false, reason: 'unknown_invite'};
+  if (!inv.to.includes(me)) return {ok: false, reason: 'not_your_invite'};
+  if (inv.status !== 'open') return {ok: false, reason: 'invite_closed'};
+  if (inv.expiresAt <= at) return {ok: false, reason: 'invite_expired'};
+  if (inv.answers[me]?.answer !== 'pending') return {ok: false, reason: 'already_answered'};
+  inv.answers[me] = {answer, via: 'live', at};
+  live({at, source: 'live', kind: 'campfire_invite_answer', muse: me, other: inv.from, place: museOf(st, me).place, line: answer === 'accept' ? 'I will join the campfire talk.' : 'I will pass this time.', data: {invite_id: id, answer, via: 'live'}, tags: []});
+  const gathered = gatherIf(st, inv, at, rule);
+  return {ok: true, data: {answer, invite: inviteView(inv, me), gathered}};
 }
 
 /** Closes the invite as gathered when three or more are there (one highlight); a connected invitee who came is recorded as a live accept. */
@@ -263,7 +288,7 @@ export function proposeHelp(st: WorldState, me: string, a: {to: string; item: st
   inbox.tasks.push(t);
   live({at, source: 'live', kind: 'help_requested', muse: me, other: a.to, place: m.place, line: `Asked ${name(a.to)} for help with ${itemName(a.item)}`, data: {task_id: t.id, service: svc.service, item: a.item, part: a.needs, note: a.text, deadline: t.deadline, stage: 'propose'}, tags: []});
   // A resident answers by rule at once; a connected helper sees the Task in its own inbox and answers with answer_help.
-  const result = isConnected(inbox, a.to, at) ? 'pending' : residentHelps(st, t, rule, at);
+  const result = isRuntimeControlled(st, a.to, at) ? 'pending' : residentHelps(st, t, rule, at);
   return {ok: true, data: {task: taskView(t, me), status: statusOf(t), result}};
 }
 
@@ -334,7 +359,7 @@ export function answerHelp(st: WorldState, me: string, a: {taskId: string; answe
     help.part = part;
     transitionTask(t, 'input-required', {by: me, action: 'answer', at, via: 'live', awaiting: t.to, deadline: at + TASK_TTL_MS});
     live({at, source: 'live', kind: 'help_input_provided', muse: me, other, place: req.place, line: `Here is the ${itemName(part)}.`, data: {task_id: t.id, part, deadline: t.deadline, stage: 'negotiate'}, tags: []});
-    return done({result: isConnected(st.inbox, t.to, at) ? 'pending' : residentHelps(st, t, rule, at)});
+    return done({result: isRuntimeControlled(st, t.to, at) ? 'pending' : residentHelps(st, t, rule, at)});
   }
   if (a.answer === 'need_item') {
     const need = a.item!;

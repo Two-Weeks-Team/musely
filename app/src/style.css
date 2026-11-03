@@ -169,3 +169,11 @@ body[data-mode="world"] #story-heading,body[data-mode="world"] #story-scrubber{d
 #welcome{--welcome-top:max(150px,calc(var(--header-h,100px) + 10px));top:var(--welcome-top);max-height:calc(100dvh - var(--welcome-top) - var(--footer-h,118px) - 42px);overflow-y:auto;overscroll-behavior:contain}
 @media(max-width:1180px){#welcome{--welcome-top:calc(var(--header-h,125px) + 10px)}}
 @media(max-width:700px){#welcome{max-height:calc(100dvh - var(--welcome-top) - var(--footer-h,134px) - 39px)}}
+
+/* The ordinary entry is a small invitation. Only a future real own-Muse receipt may retire it. */
+.entry-door{width:44px;height:44px;min-width:44px;min-height:44px;flex:0 0 44px;justify-content:center;align-items:center;gap:0;padding:10px;border:1px solid #ffb36b80;border-radius:14px;color:#ffd5a3;background:#151f32f2;animation:entry-invitation 4s ease-in-out infinite}
+.entry-door svg{display:block;width:24px;height:24px}
+.entry-door .entry-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+.entry-setup-text{display:block;width:100%;box-sizing:border-box;min-height:130px;max-height:220px;resize:vertical;border:1px solid #53607b;border-radius:10px;background:#101623;color:#f5efe3;padding:12px;font:11px/1.6 system-ui}
+@keyframes entry-invitation{0%,100%{box-shadow:0 0 0 1px #ffb36b35,0 0 9px #ffb36b12}50%{box-shadow:0 0 0 2px #ffb36b65,0 0 18px #ffb36b32}}
+@media(prefers-reduced-motion:reduce){.entry-door{animation:none;box-shadow:0 0 0 2px #ffb36b55,0 0 10px #ffb36b20}}
