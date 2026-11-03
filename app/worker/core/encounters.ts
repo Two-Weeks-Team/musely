@@ -1,5 +1,5 @@
 // Public facts that help a personal Muse decide what interests it next. No model, schedule or actions run here.
-import {harnessById} from '../../src/engine/harness.ts';
+import {actorLabel,actorRole} from '../../src/engine/actor-display.ts';
 import {distanceM, placeById, type Place} from '../../src/engine/places.ts';
 import {areaContains, nearbyPlaces, ownerArea} from '../../src/engine/location.ts';
 import {RULES} from '../../src/engine/items.ts';
@@ -21,7 +21,7 @@ export function startIntroduction(s: WorldState, from: string, to: string, at: n
     if (notices) s.inbox!.encounters![recipient] = notices.filter(notice => notice.other !== peer);
   }
   const remember = (m: MuseState, peer: MuseState) => {
-    const line = `Introduced to ${harnessById(peer.id).name} at ${placeById(a.place).name}`;
+    const line = `Introduced to ${actorLabel(peer.id)} at ${placeById(a.place).name}`;
     m.memory = [line, ...m.memory.filter(value => value !== line)].slice(0, 6);
   };
   remember(a, b); remember(b, a);
@@ -36,7 +36,7 @@ export function encounterOpportunities(s: WorldState, museId: string, _now: numb
     .map(other => ({other, distance: distanceM(here, placeById(other.place))}))
     .filter(row => row.distance <= RULES.tradeRangeM)
     .sort((a, b) => a.distance - b.distance || a.other.id.localeCompare(b.other.id))
-    .map(({other, distance}) => ({id: other.id, name: harnessById(other.id).name, role: harnessById(other.id).role, place: placeView(placeById(other.place)), distance_m: Math.round(distance), public_wants: {goal: wrapUntrusted(other.wants.goal, 'other_agent_public_wants'), items: [...other.wants.items]}})) : [];
+    .map(({other, distance}) => ({id: other.id, name: actorLabel(other.id), role: actorRole(other.id), place: placeView(placeById(other.place)), distance_m: Math.round(distance), public_wants: {goal: wrapUntrusted(other.wants.goal, 'other_agent_public_wants'), items: [...other.wants.items]}})) : [];
   return {
     here: placeView(here), can_act: !!canAct,
     new_muses: newMuses,
@@ -51,7 +51,7 @@ export function encounterNotices(s: WorldState, museId: string) {
   return (s.inbox?.encounters?.[museId] ?? []).filter(notice => s.muses.some(other => other.id === notice.other) && !introduced(s, museId, notice.other))
     .map(notice => {
       const other = participant(s, notice.other);
-      return {...notice, name: harnessById(other.id).name, current_place: placeView(placeById(other.place)),
+      return {...notice, name: actorLabel(other.id), current_place: placeView(placeById(other.place)),
         can_say_hello_now: !me.travel && !other.travel && !s.paused?.[museId] && !s.paused?.[other.id] && distanceM(placeById(me.place), placeById(other.place)) <= RULES.tradeRangeM};
     });
 }
