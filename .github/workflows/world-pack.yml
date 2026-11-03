@@ -1,0 +1,22 @@
+name: World pack validation
+on:
+  pull_request:
+    paths:
+      - 'app/world-packs/hq-belle-haven/**'
+      - '.github/workflows/world-pack.yml'
+permissions:
+  contents: read
+jobs:
+  world-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: app/world-packs/hq-belle-haven/authoring/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: app/world-packs/hq-belle-haven/authoring
+      - run: npm test
+        working-directory: app/world-packs/hq-belle-haven/authoring

@@ -1,0 +1,29 @@
+{
+  "status": "static-generation-only",
+  "runtimeLoaded": false,
+  "mobileMeasured": false,
+  "reports": [
+    {
+      "lod": 0,
+      "buildings": 4378,
+      "hiddenBuildings": 20,
+      "triangles": 91120,
+      "vertices": 73720,
+      "drawCalls": 3,
+      "file": "region-lod0.glb",
+      "bytes": 1980516,
+      "sha256": "610874b902058e5163deae066e54431d3c7e7068b20c5140aa413ae13f568ab5"
+    },
+    {
+      "lod": 1,
+      "buildings": 4378,
+      "hiddenBuildings": 20,
+      "triangles": 29978,
+      "vertices": 43886,
+      "drawCalls": 3,
+      "file": "region-lod1.glb",
+      "bytes": 888796,
+      "sha256": "3b05e0082515f4b1a4a79820f40b8c0ca2674ce7cac7b3697508a3680484f32c"
+    }
+  ]
+}

@@ -1,16 +1,50 @@
 {
   "schemaVersion": 1,
   "id": "hq-belle-haven-authoring-v1",
-  "status": "draft-unintegrated",
+  "status": "authoring-validated-runtime-disabled",
   "runtimeEnabled": false,
   "sourceCommit": "a31c9c9fb0d364f8e7ab8ec0fff2cfb647647620",
-  "originWgs84": [-122.14991969950646, 37.48313116566372],
+  "originWgs84": [
+    -122.14991969950646,
+    37.48313116566372
+  ],
   "unit": "metre",
-  "axes": {"x": "east", "y": "up", "z": "south"},
+  "axes": {
+    "x": "east",
+    "y": "up",
+    "z": "south"
+  },
   "geographicMeshRotationDeg": 0,
   "authoredCommonsGridBearingDeg": 30,
-  "roads": {"asset": "roads-preview.gltf", "source": "overview.geojson", "widthM": 3, "widthStatus": "stylistic-estimate", "navigable": false},
-  "buildings": {"status": "not-acquired", "asset": null},
+  "roads": {
+    "asset": "roads-preview.gltf",
+    "source": "overview.geojson",
+    "widthM": 3,
+    "widthStatus": "stylistic-estimate",
+    "navigable": false
+  },
+  "buildings": {
+    "status": "mapped-footprints-estimated-heights",
+    "assets": [
+      "region-lod0.glb",
+      "region-lod1.glb"
+    ],
+    "source": "detail.geojson.gz",
+    "surveyed": false,
+    "heightSource": "OpenMapTiles render_height; may be derived from levels or defaults, not surveyed",
+    "terrainElevation": "flat baseline; unknown"
+  },
   "runtimePlaces": [],
-  "validation": {"focusedTests": 9, "visualQA": "not-run", "mobilePerformance": "not-run", "productCheck": "not-run"}
+  "validation": {
+    "focusedTests": 16,
+    "gltfValidator": "0 errors / 0 warnings for both LODs",
+    "visualQA": "Blender 4.3.2 import and offscreen overview inspected",
+    "mobilePerformance": "not-run",
+    "productCheck": "not-run"
+  },
+  "lodPolicy": {
+    "lod0": "under 500m suggested camera range, unmeasured",
+    "lod1": "over 500m suggested camera range, unmeasured",
+    "runtimeSwitching": "integration issue #134"
+  }
 }

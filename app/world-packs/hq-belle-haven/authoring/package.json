@@ -1,0 +1,21 @@
+{
+  "name": "musely-hq-world-authoring",
+  "version": "1.0.0",
+  "description": "Isolated reproducible HQ / Belle Haven world asset tooling",
+  "scripts": {
+    "build": "node build-region.mjs",
+    "validate": "node validate.mjs",
+    "test": "node --test ../contract.test.mjs region.test.mjs",
+    "acquire": "node acquire.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "type": "module",
+  "dependencies": {
+    "@mapbox/vector-tile": "3.0.0",
+    "earcut": "3.2.4",
+    "gltf-validator": "2.0.0-dev.3.10",
+    "pbf": "5.1.2"
+  },
+  "private": true
+}
