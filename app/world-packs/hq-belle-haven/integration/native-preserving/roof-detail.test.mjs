@@ -116,6 +116,13 @@ test('source loading hides immediately, new source never displays stale data, id
   h.features=[square(2,140)];h.idle();assert.equal(h.getSource(ROOF_SOURCE_ID),old);
   h.loaded=true;h.emit('sourcedata',{sourceId:'openmaptiles'});h.idle();assert.notEqual(h.getSource(ROOF_SOURCE_ID),old);h.idle();h.idle();assert.equal(c.active,true);c.dispose();
 });
+test('continuous actual-main repaint loop progresses without any idle event', () => {
+  const main=fs.readFileSync(new URL('latest-main.ts',import.meta.url),'utf8');assert.ok(main.includes('map.triggerRepaint()'));
+  const h=new Harness(),c=createNativeRoofDetails(h);c.enable();h.emit('render');h.emit('render');assert.equal(c.active,true);
+  const source=h.getSource(ROOF_SOURCE_ID);for(let i=0;i<120;i++)h.emit('render');assert.equal(h.getSource(ROOF_SOURCE_ID),source,'stable frames must not rebuild source');
+  h.moving=true;h.emit('movestart');h.emit('render');assert.equal(c.active,false);
+  h.moving=false;h.emit('moveend');h.emit('render');h.emit('render');h.emit('render');assert.equal(c.active,true);c.dispose();
+});
 test('cached-tile movement hides and re-queries even without source events', () => {
   const h=new Harness(),c=createNativeRoofDetails(h);activate(h,c);
   h.moving=true;h.emit('movestart');assert.equal(c.active,false);h.features=[];h.moving=false;h.emit('moveend');h.idle();

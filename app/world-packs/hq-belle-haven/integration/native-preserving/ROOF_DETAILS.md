@@ -43,13 +43,16 @@ geometric separation is not a substitute for actual product coexistence inspecti
 - Exact native fill-extrusion layer/source/filter/height/base contract; no translated
   or rounded native extrusion, opacity changes, hidden native layer or globe mode.
 - Terrain must be OFF. Heights are source render_height, potentially estimated.
-- Zoom must be at least 17. Movement hides detail and rebuilds on idle, including
+- Zoom must be at least 17. Movement hides detail and rebuilds on a stable frame, including
   transitions to cached tiles that produce no source-loading event.
 - Native tile changes, terrain/projection events and contract drift hide immediately.
 - Tile errors and style reload require explicit re-enable. No automatic fallback
   to guessed geometry or old source data.
 - A fresh owned GeoJSON source is created on rebuild, never an async stale setData.
-  First idle reveals it; a later idle confirms visible source loading. `active`
+  A stable render/idle event reveals it; later events confirm visible source loading.
+  Render events are required because the real Musely custom layer calls
+  triggerRepaint continuously, so idle may never fire. Stable frames do not rebuild.
+  `active`
   describes controller/source state, not proof of visible pixels or GPU quality.
 - Disable/dispose removes only owned layer/source and preserves concurrent edits.
 - At most 180 components / 360 features. Inputs above 20,000 components or 200,000

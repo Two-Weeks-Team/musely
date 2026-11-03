@@ -25,7 +25,8 @@ export function nativeRoofContract(map) {
 
 /** Isolated opt-in seam. Uses the map's current native features, not the static
  * regional asset. No fetch, no native property edits, no terrain approximation.
- * Source/style/terrain changes hide the owned layer before rebuilding on idle.
+ * Source/style/terrain changes hide the owned layer before rebuilding on a
+ * stable render/idle event. Musely's animated custom layer may never become idle.
  */
 export function createNativeRoofDetails(map, {enabled = false, radius = 500} = {}) {
   radiusCheck(radius);
@@ -66,12 +67,14 @@ export function createNativeRoofDetails(map, {enabled = false, radius = 500} = {
       if (!data.features.length) { reason = 'no-admitted-roofs'; pending = false; return status(); }
       map.addSource(ROOF_SOURCE_ID, {type:'geojson', data, maxzoom:22, tolerance:0, buffer:64});
       ownedSource = map.getSource(ROOF_SOURCE_ID);
+      if (!ownedSource) throw Error('Roof source was not created');
       map.addLayer({id:ROOF_LAYER_ID, type:'fill-extrusion', source:ROOF_SOURCE_ID, minzoom:ROOF_POLICY.minZoom,
         layout:{visibility:'none'}, paint:{'fill-extrusion-color':['get','color'], 'fill-extrusion-base':['get','base'], 'fill-extrusion-height':['get','top'], 'fill-extrusion-opacity':1, 'fill-extrusion-vertical-gradient':true}}, map.getLayer('musely-world') ? 'musely-world' : undefined);
       ownedLayer = map.getLayer(ROOF_LAYER_ID);
+      if (!ownedLayer) throw Error('Roof layer was not created');
       pending = false; reason = 'detail-tiles-pending';
-      // The next idle reveals only this fresh source. Hidden sources need not
-      // have GPU tiles yet; a further idle confirms the visible source is loaded.
+      // The next stable frame reveals only this fresh source. Hidden sources need
+      // not have GPU tiles yet; later frames confirm the visible source is loaded.
       return status();
     } catch (error) {
       try { hide('error'); removeOwned(); } catch { conflicts.push('cleanup-failed'); }
@@ -107,7 +110,7 @@ export function createNativeRoofDetails(map, {enabled = false, radius = 500} = {
   }
   function onStyleLoad() { hide('style-reloaded-explicit-reenable-required'); requested = false; pending = false; removeOwned(); }
   function onRemove() { requested = false; active = false; disposed = true; pending = false; ownedLayer = null; ownedSource = null; reason = 'map-removed'; for (const [event,listener] of Object.entries(listeners)) map.off(event,listener); }
-  const listeners = {idle:onIdle, sourcedataloading:onNativeLoading, sourcedata:onNativeLoading, styledata:onStyleData, terrain:onStyleData, projectiontransition:onStyleData, zoom:onZoom, movestart:onMove, moveend:onMove, error:onSourceError, 'style.load':onStyleLoad, remove:onRemove};
+  const listeners = {idle:onIdle, render:onIdle, sourcedataloading:onNativeLoading, sourcedata:onNativeLoading, styledata:onStyleData, terrain:onStyleData, projectiontransition:onStyleData, zoom:onZoom, movestart:onMove, moveend:onMove, error:onSourceError, 'style.load':onStyleLoad, remove:onRemove};
   for (const [event, listener] of Object.entries(listeners)) map.on(event, listener);
   function status() { return {enabled:requested, active, reason, report:last, conflicts:[...conflicts]}; }
   function disable() { requested = false; pending = false; hide('disabled'); removeOwned(); return status(); }
