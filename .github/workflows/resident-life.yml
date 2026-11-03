@@ -4,6 +4,8 @@ on:
     paths:
       - 'app/src/engine/**'
       - 'app/worker/core/resident-life-adapter.ts'
+      - 'app/worker/core/world-runtime.ts'
+      - 'app/docs/RESIDENT_LIFE.md'
       - 'app/scripts/resident-life*.test.mjs'
       - '.github/workflows/resident-life.yml'
 permissions:
