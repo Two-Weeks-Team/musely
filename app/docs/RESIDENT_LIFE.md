@@ -30,3 +30,19 @@ The earlier full existing-suite attempt was blocked pending verification of exte
 4. Real model planning, visitor response/fairness/cost measurement, connection E2E and actual DO restart/rollback remain unverified. No automatic merge/deployment.
 
 The event intake accepts only trusted committed server events and stores small factual summaries, never raw event lines/data or private Wants. It is not a client authentication endpoint. Bounded memories are not an indefinite event ledger. Promise closure requires authoritative execution evidence and is not inferred from a movement proposal.
+
+## Follow-up integration evidence (2026-11-03, not a production acceptance)
+
+Pinned sources: main 7a85add2bc8eb2d8d34d70d37857950be453713d; PR138 234bbd25c64413df3d20611686c667bc9fd37018; PR139 2e7629976c6f53d15fdb7c586aa355cc28a431df; PR140 6bcc218f7bbb47a6fb49f7e4cb8536022108ee2f. Locally composed PR139 engine-5 with the two zero-fuzz resident tick hunks, preserving the ingredient fix, plus PR140 contract/server code. This is isolated composition, not a branch merge or an agreed combined engine semantic version.
+
+- 51 resident tests pass, including five additional actual-registry, two-runtime/two-SQLite-connection concurrency, competing life revision, dynamic-entry failure boundary, and current-run replay checks.
+- The named combined offline set passes 114/114 (51 resident + 34 contract/server + 29 craft/Wants/replay). App/worker strict types were checked after the latest main's prepare-assets generated the required local asset descriptor. This does not establish rendering or asset equivalence.
+- Actual local execution was recorded into the real run log for 25 heartbeats. Checkpoint playback at 1x/10x/60x and rewind preserve recorded world state/hash, original record, world and LifeStore; no network call. This is a captured current offline run, NOT a historical production engine4 recording and NOT engine re-execution.
+- Two WorldRuntime instances with separate SQLite connections race the same tick: one commit and one duplicate, one life revision, no repeated event IDs or model calls.
+- A competing life revision invalidates the old movement while preserving the newer edit. Legacy and unknown actors are excluded by the actual registry adapter.
+
+### Reproduced dynamic-personal limitation
+
+The latest main supports personal registry/auth but has no verified dynamic world-entry integration. In a synthetic future-entry fixture, inserting a registered `pm_*` personal actor into WorldState and allowing encounters reaches `replyTo -> harnessById(pm_*)`, which throws `Unknown Muse harness`. The entire heartbeat (world, life and event rows) rolls back. The regression test asserts this safe FAILURE, not successful personal participation. Identity/appearance/harness resolution must be fixed with the owning development team before dynamic personal world entry can be enabled. No production identity code was changed here.
+
+WorldDO policy remains OFF; signed MCP, real account/model, actual Durable Object, normal dynamic personal participation, engine-version agreement, historical real recordings and deployment remain separate gates.
