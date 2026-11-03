@@ -16,9 +16,11 @@ import {resetMuse} from './core/muse-reset.ts';
 import {initRetention, pruneCommands, RETENTION_CHECK_MS} from './core/data-retention.ts';
 import {migrateTaskStore, type DecisionInput} from './core/tasks.ts';
 import {ownerIdForMuse} from './core/owner-session.ts';
+import {PersonalAuthStore, type PersonalFlow, type PersonalSessionRow} from './core/personal-session.ts';
 
 export class WorldDO extends DurableObject<Env> {
   private ledger: Ledger;
+  private personalAuth: PersonalAuthStore;
   private runtime: WorldRuntime;
   private trust: Trust;
   private ritual: RitualStore;
@@ -31,6 +33,7 @@ export class WorldDO extends DurableObject<Env> {
     super(ctx, env);
     this.origin = env.PUBLIC_ORIGIN;
     if (!this.origin) throw new Error('PUBLIC_ORIGIN is not set');
+    this.personalAuth = new PersonalAuthStore(ctx.storage);
     this.ledger = new Ledger(ctx.storage.sql, {dailyCapUsd: Number(env.DAILY_BUDGET_USD) || 20});
     this.trust = new Trust(ctx.storage.sql);
     this.ritual = new RitualStore(ctx.storage.sql);
@@ -54,6 +57,7 @@ export class WorldDO extends DurableObject<Env> {
     this.connected = new ConnectedHost({sql: ctx.storage.sql, trust: this.trust, runtime: this.runtime, hooks, baseUrl: this.origin, ownerRoot: () => this.ownerRoot, ownerClaimed: () => this.getClaim('owner-muse')?.status === 'claimed', ownerOf: muse => ownerIdForMuse(tokens, muse)});
     ctx.blockConcurrencyWhile(async () => {
       this.ledger.init();
+      this.personalAuth.init();
       this.runtime.init(Date.now());
       // Task records version 2 (C06, I-07): migrates a stored version 1 inbox once, before any other commit; a restart writes nothing.
       migrateTaskStore(this.runtime, Date.now());
@@ -73,6 +77,12 @@ export class WorldDO extends DurableObject<Env> {
       if (owner && owner.inventory.length === 0) this.runtime.commitExternal(Date.now(), 'welcome', (st, emit) => { st.muses.find(m => m.id === OWNER_SLOT)!.inventory.push('coffee', 'postage_stamp'); emit({at: Date.now(), source: 'rule', kind: 'welcome_gift', muse: OWNER_SLOT, line: 'Welcome gift: Coffee and a Postage Stamp', data: {items: ['coffee', 'postage_stamp']}, tags: []}); });
     });
   }
+  // Private auth RPCs; no provider token/code crosses into DO storage or any world commit.
+  personalAuthBegin(flow: PersonalFlow) { return this.personalAuth.begin(flow); }
+  personalAuthConsume(binding: Pick<PersonalFlow, 'stateDigest' | 'browserDigest' | 'appId' | 'redirectUri'>, now: number) { return this.personalAuth.consume(binding, now); }
+  personalAuthComplete(stateDigest: string, appId: string, subject: string, sidDigest: string, now: number) { return this.personalAuth.complete(stateDigest, appId, subject, sidDigest, now); }
+  personalAuthActive(sidDigest: string, proof: PersonalSessionRow, appId: string, now: number) { return this.personalAuth.active(sidDigest, proof, appId, now); }
+  personalAuthRevoke(sidDigest: string, proof: PersonalSessionRow, appId: string, now: number) { return this.personalAuth.revoke(sidDigest, proof, appId, now); }
   reserve(r: ReserveRequest) { return this.ledger.reserve(r); }
   settle(id: string, costUsd: number, outcome: Outcome) { return this.ledger.settle(id, costUsd, outcome); }
   status() { this.ledger.prune(); return this.ledger.status(); }
