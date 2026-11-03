@@ -8,7 +8,10 @@ import {MercatorCoordinate} from 'maplibre-gl';
 import {PLACE_BY_ID} from '../engine/places.ts';
 import {BEATS} from '../engine/beats.ts';
 import {itemName} from '../engine/items.ts';
-import {harnessById} from '../engine/harness.ts';
+import {hasActorHarness} from '../engine/harness.ts';
+import type {ActorProfile} from '../identity/participant.ts';
+import {resolveMuse, presentationIn} from './personal-profile.ts';
+import {commonsCandidates, clearsContactMove, segmentDistance, PRESENTATION_RADIUS} from './commons-clearance.ts';
 import {OWNER_MUSE} from '../engine/location.ts';
 import {MUSE_VARIANTS, ACTION_CLIPS, PARTNER_DISTANCE, strideOf} from '../character-kit/catalog.ts';
 import clipManifest from '../../character-kit/runtime/animations/manifest.json' with {type: 'json'};
@@ -17,19 +20,23 @@ import geography from '../../assets/geography.json' with {type: 'json'};
 // ---------- Server shapes (GET /api/world, GET /api/world/events) ----------
 export type LiveTravel = {to: string; departAt: number; arriveAt: number; speed: string; chosen?: boolean};
 export type LiveBeat = {id: string; clip?: string | null; startedAt: number; endsAt: number; line?: string | null};
-export type LiveMuse = {id: string; place: string; travel: LiveTravel | null; beat: LiveBeat | null; inventory: string[]; reflection?: string; wants?: {goal: string; items?: string[]; source?: string}; paused?: unknown};
+export type LiveMuse = {id: string; profile?: ActorProfile; place: string; travel: LiveTravel | null; beat: LiveBeat | null; inventory: string[]; reflection?: string; wants?: {goal: string; items?: string[]; source?: string}; paused?: unknown;residentFrozenAt?:number};
 export type LiveWorld = {worldId: string; day: string; tick: number; version?: number; lastTickAt: number; muses: LiveMuse[]};
 export type LiveEvent = {id: string; seq?: number; tick?: number; at: number; source?: string; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data?: any};
 
 // ---------- Who owns which Muse (worker/core/owner-session.ts PRINCIPALS; a test keeps the two equal) ----------
-export type OwnerKind = 'owner' | 'reviewer' | 'demo-peer' | 'resident';
+export type OwnerKind = 'owner' | 'reviewer' | 'demo-peer' | 'resident' | 'personal' | 'unknown';
 export const OWNERSHIP: Readonly<Record<string, {kind: OwnerKind; label: string}>> = {
   [OWNER_MUSE]: {kind: 'owner', label: "Kim Sejun's Muse · owner"},
   '04-ember': {kind: 'reviewer', label: 'Reviewer Muse · directory review'},
   '09-copper': {kind: 'demo-peer', label: 'Demo peer Muse · team-controlled'},
 };
-export const ownerOf = (id: string) => OWNERSHIP[id] ?? {kind: 'resident' as const, label: 'Resident Muse'};
-export const museName = (id: string) => harnessById(id).name;
+export const ownerOf = (id: string, muse?: LiveMuse) => {
+  const owner=Object.hasOwn(OWNERSHIP,id)?OWNERSHIP[id]:undefined,p=muse?resolveMuse(muse):null;
+  if(p?.kind==='personal')return {kind:owner?.kind??'personal' as OwnerKind,label:'Personal Muse'+(owner?' · '+owner.kind:'')};
+  return owner??(hasActorHarness(id)&&p?.kind!=='unknown'?{kind:'resident' as const,label:'Resident Muse'}:{kind:'unknown' as const,label:'Profile unavailable'});
+};
+export const museName = (id: string, world?: LiveWorld | null) => presentationIn(id,world).name;
 
 // ---------- Inventory summary (pin title, 3D label and card show the same text) ----------
 export function inventorySummary(inv: readonly string[]) {
@@ -81,11 +88,41 @@ export const COMMONS_SLOTS: Readonly<Record<string, readonly Slot[]>> = {
   'commons:workbench': ring(6, 6, 1.2),
   'commons:hq': ring(4, -9, 1.2),
 };
-export function slotAt(placeId: string, museId: string): Slot | null {
+const LEGACY_IDS = new Set<string>(MUSE_VARIANTS.map(v => v.id));
+const OVERFLOW_POINTS = commonsCandidates(Object.values(COMMONS_SLOTS).flat());
+const overflowCache = new Map<string, ReadonlyMap<string, Slot>>();
+/** Allocate every extra actor together, so actors at different commons places cannot reuse a free point.
+ * Snapshot identity/place and sorted IDs are the only inputs; frame rate, event order and appearance are irrelevant.
+ * Existing ten slots remain untouched. Exhaustion fails closed instead of putting an actor in furniture.
+ */
+function extraSlots(participants: readonly LiveMuse[], placeId: string, museId: string): ReadonlyMap<string, Slot> {
+  const actors = [...new Map(participants.filter(m => !LEGACY_IDS.has(m.id) && ['personal', 'resident'].includes(resolveMuse(m).kind)).map(m => [m.id, m])).values()]
+    .sort((a, b) => Number(resolveMuse(b).kind === 'resident') - Number(resolveMuse(a).kind === 'resident') || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const targets = actors.map(m => ({id: m.id, place: m.id === museId ? placeId : m.place}));
+  const key = JSON.stringify(targets), cached = overflowCache.get(key); if (cached) return cached;
+  const out = new Map<string, Slot>(), free = [...OVERFLOW_POINTS], remoteCounts = new Map<string, number>();
+  for (const actor of targets) {
+    const c = placeScene(actor.place); if (!c) continue;
+    if (Object.hasOwn(COMMONS_SLOTS, actor.place)) {
+      let best = -1, distance = Infinity;
+      for (let i = 0; i < free.length; i++) { const d = (free[i].x - c.x) ** 2 + (free[i].z - c.z) ** 2; if (d < distance) { best = i; distance = d; } }
+      if (best < 0) continue;
+      const p = free.splice(best, 1)[0]; out.set(actor.id, {...p, yaw: Math.atan2(c.x - p.x, c.z - p.z)});
+    } else {
+      // Remote map places have no authored commons furniture; retain distinct concentric presentation slots.
+      const n = remoteCounts.get(actor.place) ?? 0; remoteCounts.set(actor.place, n + 1);
+      out.set(actor.id, ring(c.x, c.z, 2.4 + Math.floor(n / 12) * 1.1, 12)[n % 12]);
+    }
+  }
+  if (overflowCache.size >= 64) overflowCache.delete(overflowCache.keys().next().value!);
+  overflowCache.set(key, out); return out;
+}
+export function slotAt(placeId: string, museId: string, participants: readonly LiveMuse[] = []): Slot | null {
   const c = placeScene(placeId); if (!c) return null;
-  const k = MUSE_VARIANTS.findIndex(v => v.id === museId); if (k < 0) return null;
+  const k = MUSE_VARIANTS.findIndex(v => v.id === museId);
   const slots = COMMONS_SLOTS[placeId] ?? ring(c.x, c.z, 1.2);
-  return slots[k % slots.length];
+  if (k >= 0) return slots[k % slots.length];
+  return extraSlots(participants, placeId, museId).get(museId) ?? null;
 }
 
 // ---------- Clips ----------
@@ -226,10 +263,12 @@ export function scheduleCues(events: readonly LiveEvent[]): Cue[] {
 // ---------- Poses ----------
 export type Pose = {x: number; z: number; yaw: number; moving: boolean; progress: number; travelled: number; speed: string | null};
 /** Where the Muse is now: its slot at its place, or on the straight line between the two slots of its trip (server ETA). */
-export function musePose(v: LiveMuse, now: number): Pose | null {
-  const a = slotAt(v.place, v.id); if (!a) return null;
+export function musePose(v: LiveMuse, now: number, participants: readonly LiveMuse[] = [v]): Pose | null {
+  if(resolveMuse(v).kind==='unknown')return null;
+  if(resolveMuse(v).kind==='resident'&&typeof v.residentFrozenAt==='number')now=v.residentFrozenAt;
+  const a = slotAt(v.place, v.id, participants); if (!a) return null;
   if (!v.travel) return {...a, moving: false, progress: 0, travelled: 0, speed: null};
-  const b = slotAt(v.travel.to, v.id) ?? a;
+  const b = slotAt(v.travel.to, v.id, participants) ?? a;
   const span = Math.max(1, v.travel.arriveAt - v.travel.departAt), f = Math.min(1, Math.max(0, (now - v.travel.departAt) / span));
   const taxi = v.travel.speed === 'taxi';
   const g = taxi ? (f >= 1 ? 1 : 0) : f, dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
@@ -237,7 +276,7 @@ export function musePose(v: LiveMuse, now: number): Pose | null {
   return {x: a.x + dx * g, z: a.z + dz * g, yaw: moving ? Math.atan2(dx, dz) : f >= 1 ? b.yaw : a.yaw, moving, progress: f, travelled: d * g, speed: v.travel.speed};
 }
 /** Map pin position: the same pose as the 3D actor, in map coordinates. */
-export const museLngLat = (v: LiveMuse, now: number) => { const p = musePose(v, now); return p ? sceneToLngLat(p.x, p.z) : null; };
+export const museLngLat = (v: LiveMuse, now: number, participants: readonly LiveMuse[] = [v]) => { const p = musePose(v, now, participants); return p ? sceneToLngLat(p.x, p.z) : null; };
 
 // ---------- Frames ----------
 export type FrameFx = {kind: FxKind; progress: number};
@@ -257,10 +296,13 @@ const placeName = (id: string) => PLACE_BY_ID.get(id)?.name ?? id;
 const humanize = (s: string) => s.replace(/_/g, ' ');
 const smooth = (t: number) => { const c = Math.min(1, Math.max(0, t)); return c * c * (3 - 2 * c); };
 
-function baseFrame(v: LiveMuse, now: number): ActorFrame | null {
-  const p = musePose(v, now); if (!p) return null;
+function baseFrame(v: LiveMuse, now: number, participants: readonly LiveMuse[]): ActorFrame | null {
+  const frozen=resolveMuse(v).kind==='resident'&&typeof v.residentFrozenAt==='number';
+  if(frozen)now=v.residentFrozenAt!;
+  const p = musePose(v, now, participants); if (!p) return null;
   const f: ActorFrame = {id: v.id, x: p.x, z: p.z, yaw: p.yaw, clip: 'idle_breathe', actionTime: now / 1000, upper: null, upperTime: 0, carry: null, card: null, seated: false, moving: p.moving,
     cue: null, line: null, effects: [], visual: 'complete', fallback: null, status: `At ${placeName(v.place)}`, place: v.place, travel: null, beat: null};
+  if(frozen){f.moving=false;f.status='Resident activity paused';return f;}
   if (v.travel) {
     const eta = Math.max(0, Math.round(v.travel.arriveAt - now));
     f.travel = {to: v.travel.to, etaMs: eta, speed: v.travel.speed};
@@ -284,13 +326,14 @@ function baseFrame(v: LiveMuse, now: number): ActorFrame | null {
 /** The whole live scene at `now`: one frame per Muse in the snapshot, cues applied where both participants are present. */
 export function liveFrames(world: LiveWorld, cues: readonly Cue[], now: number): Map<string, ActorFrame> {
   const frames = new Map<string, ActorFrame>();
-  for (const v of world.muses) { const f = baseFrame(v, now); if (f) frames.set(v.id, f); }
+  for (const v of world.muses) { const f = baseFrame(v, now, world.muses); if (f) frames.set(v.id, f); }
   const homes = new Map([...frames].map(([id, f]) => [id, {x: f.x, z: f.z, yaw: f.yaw}]));
-  const active = cues.filter(c => c.start <= now && now < c.end);
+  const frozenIds = new Set(world.muses.filter(v => resolveMuse(v).kind === 'resident' && typeof v.residentFrozenAt === 'number').map(v => v.id));
+  const active = cues.filter(c => c.start <= now && now < c.end && !frozenIds.has(c.muse));
   for (const c of active) {
     const f = frames.get(c.muse); if (!f || f.travel) continue; // a travelling Muse plays no cue; the feed still shows the event
     const partner = c.partner ? frames.get(c.partner) : undefined;
-    const together = !!partner && !partner.travel && partner.place === f.place;
+    const together = !!partner && !partner.travel && partner.place === f.place && !frozenIds.has(c.partner!);
     const local = (now - c.start) / 1000;
     f.cue = {eventId: c.eventId, kind: c.kind, phase: c.phase, partner: c.partner};
     const projected = EVENT_PROJECTION[c.kind];
@@ -303,10 +346,13 @@ export function liveFrames(world: LiveWorld, cues: readonly Cue[], now: number):
       const side = (a.x - b.x) * tx + (a.z - b.z) * tz >= 0 ? 1 : -1;
       contactSpot = {x: b.x + tx * side * PARTNER_DISTANCE, z: b.z + tz * side * PARTNER_DISTANCE};
       occupied = [...homes].some(([id, p]) => id !== leader && id !== follower && Math.hypot(p.x - contactSpot!.x, p.z - contactSpot!.z) < .7);
-      if (occupied) {clip = 'wave'; f.visual = 'fallback'; f.fallback = 'The contact slot is occupied by another Muse: shown as a wave.';}
+      const needsClearance = !LEGACY_IDS.has(leader) || !LEGACY_IDS.has(follower);
+      if (needsClearance) occupied ||= [...homes].some(([id, p]) => id !== leader && id !== follower && segmentDistance(p, a, contactSpot!) < 2 * PRESENTATION_RADIUS);
+      const blockedByFurniture = needsClearance && Object.hasOwn(COMMONS_SLOTS, f.place) && !clearsContactMove(a, contactSpot);
+      if (occupied || blockedByFurniture) { occupied = true; clip = 'wave'; f.visual = 'fallback'; f.fallback = blockedByFurniture ? 'The contact movement would cross commons furniture: shown as a wave.' : 'The contact slot is occupied by another Muse: shown as a wave.'; }
     }
     if ((c.contact || c.face) && c.partner && !together) {
-      if (c.contact) { clip = 'wave'; f.visual = 'fallback'; f.fallback = `${museName(c.partner)} is not here: ${c.clip} is shown as wave`; }
+      if (c.contact) { clip = 'wave'; f.visual = 'fallback'; f.fallback = `${museName(c.partner, world)} is not here: ${c.clip} is shown as wave`; }
     }
     if (f.seated && UPPER_CLIPS.has(clip)) { f.clip = 'sit_idle'; f.upper = clip; f.actionTime = now / 1000; f.upperTime = local; }
     else {
@@ -339,7 +385,7 @@ export function liveFrames(world: LiveWorld, cues: readonly Cue[], now: number):
   // Turn the pairs to each other once every position is known (the stepping Muse may have moved).
   for (const c of active) {
     const f = frames.get(c.muse), q = c.partner ? frames.get(c.partner) : undefined;
-    if (!f || !q || f.travel || q.travel || q.place !== f.place || !(c.face || c.contact) || f.cue?.eventId !== c.eventId) continue;
+    if (!f || !q || frozenIds.has(c.muse) || frozenIds.has(c.partner!) || f.travel || q.travel || q.place !== f.place || !(c.face || c.contact) || f.cue?.eventId !== c.eventId) continue;
     f.yaw = Math.atan2(q.x - f.x, q.z - f.z);
   }
   return frames;

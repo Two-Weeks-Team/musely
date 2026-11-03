@@ -1,3 +1,4 @@
+import {serveCriticalAsset} from './asset-encoding.ts';
 // Musely main product Worker (musely.net): static assets plus the /api surface (direction v2, 15 and 20.2).
 import {handleMuse} from './core/proxy.ts';
 import {issueSession, readSession, cookieValue, sessionCookie, hashIp, timingSafeEqual, verifyTurnstile} from './core/session.ts';
@@ -9,6 +10,7 @@ import {readOwnerSession, ownerOrigins, originAllowed, OWNER_COOKIE, type OwnerT
 import {handleMcpHttp} from './core/mcp-server.ts';
 import {OWNER_SLOT} from './core/trust.ts';
 import {HARNESS_IDS} from '../src/engine/harness.ts';
+import {personalRoutes, isPersonalCallback} from './core/personal-api.ts';
 export {WorldDO} from './world-do.ts';
 
 const MODEL_TIMEOUT_MS = 8000;
@@ -24,6 +26,12 @@ async function readJson(request: Request, limit: number) {
 
 async function api(request: Request, env: Env, url: URL): Promise<Response> {
   const ip = request.headers.get('cf-connecting-ip') ?? '';
+  // Separate namespace, cookie, proof and durable auth store. Never inferred from owner/judge/visitor cookies.
+  if (url.pathname.startsWith('/api/personal/') || isPersonalCallback(url)) return personalRoutes(request, url, {
+    secret: env.SESSION_SECRET ?? '', origin: new URL(env.PUBLIC_ORIGIN).origin,
+    appId: env.THREADS_APP_ID, appSecret: env.THREADS_APP_SECRET,
+    rateLimit: env.BURST ? async () => (await env.BURST!.limit({key: 'personal-auth:' + await hashIp(env.SESSION_SECRET ?? 'unset', ip)})).success : undefined,
+  }, world(env));
   const session = await readSession(env.SESSION_SECRET ?? '', cookieValue(request.headers.get('cookie')));
   // The owner session (C06) is a separate cookie and a separate check; a judge session is never an owner.
   const tokens: OwnerTokens = {owner: env.OWNER_CONTROL_TOKEN, peer: env.DEMO_PEER_CONTROL_TOKEN, reviewer: env.REVIEWER_CONTROL_TOKEN, judge: env.JUDGE_TOKEN};
@@ -123,7 +131,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   if (RUN_LOG_PATHS.has(url.pathname) && request.method === 'GET') return cachedRead(request, env, ip, () => runLogRead(env, url));
 
   // Identity (direction v2, 6): signed A2A Agent Cards and the P0 / demo checks.
-  const cardMatch = /^\/api\/agents\/(0\d-[a-z]+)\/card$/.exec(url.pathname);
+  const cardMatch = /^\/api\/agents\/(0\d-[a-z]+|pm_[a-f0-9-]{36})\/card$/.exec(url.pathname);
   if (cardMatch && request.method === 'GET') { const card = await world(env).agentCard(cardMatch[1]); return card ? json(card) : json({error: 'unknown_agent'}, 404); }
   // P0 demonstration (judge link or the owner). It never revokes or delegates: those are the owner's own actions.
   if (url.pathname === '/api/p0/run' && request.method === 'POST') {
@@ -307,6 +315,6 @@ export default {
         return json({error: 'internal'}, 500);
       }
     }
-    return env.ASSETS.fetch(request);
+    return serveCriticalAsset(request, env.ASSETS);
   },
 } satisfies ExportedHandler<Env>;

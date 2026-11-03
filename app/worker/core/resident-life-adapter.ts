@@ -1,6 +1,6 @@
 /** Opt-in adapter only. No production caller, timer, model call or world mutation. */
 import {localClock, spotlightFor, type WorldState, type WorldEvent} from '../../src/engine/world.ts';
-import {HARNESS_IDS} from '../../src/engine/harness.ts';
+import {hasActorHarness} from '../../src/engine/harness.ts';
 import {PRINCIPALS} from './owner-session.ts';
 import {isRuntimeControlled} from '../../src/engine/inbox.ts';
 import {proposeLifeTurn, remember, restoreLife, saveLife, type LifeState, type LifeProposal} from '../../src/engine/resident-life.ts';
@@ -8,7 +8,7 @@ import {proposeLifeTurn, remember, restoreLife, saveLife, type LifeState, type L
 /** Respect the real scheduler's chosen resident. Never steal visitor priority or personal control. */
 export type ResidentOwnershipKind = 'resident'|'legacy'|'personal'|'unknown';
 export const knownResident = (id:string,kind:(id:string)=>ResidentOwnershipKind):boolean =>
-  HARNESS_IDS.includes(id) && !Object.values(PRINCIPALS).some(p=>p.muses.includes(id)) && kind(id)==='resident';
+  hasActorHarness(id) && !Object.values(PRINCIPALS).some(p=>p.muses.includes(id)) && kind(id)==='resident';
 
 export function residentProposalForWorld(life:LifeState, world:WorldState, now:number,
   options:{enabled:boolean;residentTurnAllowed:boolean;allowedPlaceIds:readonly string[];promiseLeadMs?:number;promiseGraceMs?:number;ownershipKind?:(id:string)=>ResidentOwnershipKind}):LifeProposal|null {
@@ -30,13 +30,18 @@ export function residentProposalForWorld(life:LifeState, world:WorldState, now:n
  * Records small factual public receipts, never event.line/data or a user's private Wants.
  * This is not an authenticity verifier. Do not expose it as an untrusted client endpoint.
  */
-export function rememberCommittedResidentEvents(life:LifeState,world:WorldState,events:readonly WorldEvent[],now:number):LifeState {
+export function rememberCommittedResidentEvents(life:LifeState,world:WorldState,events:readonly WorldEvent[],now:number,allowed:(id:string)=>boolean=()=>true):LifeState {
   let next=restoreLife(saveLife(life));
   for(const e of events){
-    if(!e.muse || !['arrive','encounter','craft'].includes(e.kind) || e.at>now || e.tick>world.tick) continue;
-    if(!world.muses.some(m=>m.id===e.muse) || !next.residents.some(m=>m.id===e.muse) || isRuntimeControlled(world,e.muse,now)) continue;
-    next=remember(next,e.muse,{id:e.id,kind:'executed',at:e.at,subject:e.other ?? e.place ?? e.muse,
-      publicSummary:`Committed ${e.kind} event`,source:e.source,evidenceId:e.id});
+    if(!e.muse || !['arrive','encounter','craft','greet','encounter_reply'].includes(e.kind) || e.at>now || e.tick>world.tick) continue;
+    if(e.kind==='greet'&&e.data?.public!==true)continue;
+    const recipients=[e.muse,...(e.other&&['encounter','greet','encounter_reply'].includes(e.kind)?[e.other]:[])];
+    for(const id of new Set(recipients)){
+      if(!allowed(id)||!world.muses.some(m=>m.id===id)||!next.residents.some(m=>m.id===id)||isRuntimeControlled(world,id,now))continue;
+      const receiving=id!==e.muse;
+      next=remember(next,id,{id:receiving?`${e.id}:received:${id}`:e.id,kind:'executed',at:e.at,subject:receiving?e.muse:e.other??e.place??e.muse,
+        publicSummary:`Committed ${e.kind} event${receiving?' received':''}`,source:e.source,evidenceId:e.id});
+    }
   }
   return next;
 }

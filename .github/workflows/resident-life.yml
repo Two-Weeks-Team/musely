@@ -3,18 +3,20 @@ on:
   pull_request:
     paths:
       - 'app/src/engine/**'
-      - 'app/worker/core/resident-life*.ts'
-      - 'app/worker/core/world-runtime.ts'
-      - 'app/worker/core/personal-*.ts'
+      - 'app/src/replay/**'
+      - 'app/src/ui/**'
+      - 'app/src/character-kit/**'
+      - 'app/worker/core/**'
       - 'app/docs/RESIDENT_LIFE.md'
       - 'app/scripts/resident-life*.test.mjs'
+      - 'app/scripts/resident-slot-clearance.test.mjs'
       - '.github/workflows/resident-life.yml'
 permissions:
   contents: read
 jobs:
   resident-life:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,9 +24,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Install locked replay dependencies without lifecycle scripts
+      - name: Install locked dependencies without lifecycle scripts
         working-directory: app
         run: npm ci --ignore-scripts
-      - name: Test isolated life contracts and actual engine adapter
+      - name: Check application and worker types
         working-directory: app
-        run: node --test scripts/resident-life*.test.mjs
+        run: npm run typecheck
+      - name: Verify real resident runtime, repository GLB renderer and personal authority
+        working-directory: app
+        run: node --test scripts/resident-life*.test.mjs scripts/resident-slot-clearance.test.mjs scripts/personal-entry-command.test.mjs scripts/personal-authority.test.mjs scripts/personal-entry.test.mjs scripts/entry-commit-hook.test.mjs scripts/legacy-profile.test.mjs scripts/kit-native-body.test.mjs scripts/messages.test.mjs scripts/run-replay.test.mjs

@@ -1,3 +1,4 @@
+import {actorProfile} from '../engine/participants.ts';
 // I-11: exact public checkpoint projection. There is no engine tick, command executor, model or transport here.
 import {scheduleCues} from '../ui/live-scene-core.ts';
 import {createPlayer, type Speed} from '../ui/replay-core.ts';
@@ -24,6 +25,8 @@ export const recordedStateHash = (body: string) => sha256Hex('musely-run-state-v
 // Exact known predecessor tuple: checkpoint projection only, with its original versions and hashes intact.
 // No old engine is executed and arbitrary/mixed catalog versions remain incompatible.
 const HISTORICAL_VERSIONS: readonly RunVersions[] = [
+  {schemaVersion:'run-log-2',engineVersion:'engine-5',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-c7068bfa0238'},
+  {schemaVersion:'run-log-2',engineVersion:'engine-4',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-c7068bfa0238'},
   {schemaVersion: 'run-log-2', engineVersion: 'engine-2', harnessVersion: 'harness-c0c69e98b5e8', catalogVersion: 'catalog-d69858ec160f'},
   {schemaVersion: 'run-log-2', engineVersion: 'engine-3', harnessVersion: 'harness-c0c69e98b5e8', catalogVersion: 'catalog-c7068bfa0238'},
 ];
@@ -45,6 +48,7 @@ function readSnapshot(s: unknown, worldId: string): Record<string, any> {
   const ids = state.muses.map((m: any) => obj(m) && typeof m.id === 'string' && typeof m.place === 'string' && Array.isArray(m.inventory) && m.inventory.every((i: unknown) => typeof i === 'string') ? m.id : bad('invalid Muse in snapshot'));
   if (new Set(ids).size !== ids.length) bad('duplicate Muse in snapshot');
   for (const m of state.muses) {
+    if(m.profile!==undefined){try{if(!obj(m.profile)||Object.keys(m.profile).sort().join(',')!=='actorId,appearanceId,displayName,revision')bad('invalid public profile fields');actorProfile(m.profile,m.id);}catch{bad('invalid public actor profile');}}
     if (m.travel !== null && m.travel !== undefined && (!obj(m.travel) || typeof m.travel.to !== 'string' || !integer(m.travel.departAt) || !arrivalTime(m.travel.arriveAt) || m.travel.arriveAt < m.travel.departAt || typeof m.travel.speed !== 'string')) bad('invalid travel in snapshot');
     if (m.beat !== null && m.beat !== undefined && (!obj(m.beat) || typeof m.beat.id !== 'string' || !integer(m.beat.startedAt) || !integer(m.beat.endsAt) || (m.beat.clip != null && typeof m.beat.clip !== 'string'))) bad('invalid beat in snapshot');
   }
@@ -107,3 +111,4 @@ export function loadRun(raw: unknown, expected?: RunVersions) {
 }
 export type RecordedPlayer = ReturnType<typeof loadRun>;
 export type {Speed};
+

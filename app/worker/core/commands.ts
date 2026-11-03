@@ -43,6 +43,8 @@ export type CommandHandler<T = unknown> = {
    */
   think?: () => Promise<{thought: T; settle?: () => void}>;
   apply: (st: WorldState, emit: Emit, at: number, thought: T | undefined) => Applied;
+  /** Sync post-log receipt hook; a throw rolls the whole command transaction back. */
+  afterLog?: (done: {events: WorldEvent[]; row: CommandRow}, at: number) => void;
   /** Logs a refusal (the default is one command_refused event). Owner notifications may be added here. */
   refused?: (st: WorldState, emit: Emit, r: Refused, at: number) => void;
   /** false: log every refusal (evidence flows such as P0); by default repeats inside the window are only counted. */
@@ -148,6 +150,7 @@ export async function executeCommand<T>(c: CommandCtx, cmd: WorldCommand, h: Com
         return c.trust.claimNonce(e.agent_id, e.nonce, e.message_id, e.expires_at) ? null : 'replay';
       },
       mutate: (st, emit) => (box.applied = h.apply(st, emit, atCommit, thought)),
+      afterLog: done => h.afterLog?.(done,atCommit),
       record: (version, events) => {
         const a = box.applied;
         const result: CommandResult = {ok: a.ok, commandId: cmd.commandId, worldVersion: version, eventIds: events.map(x => x.id), ...(a.ok ? {} : {error: {code: a.code, retryable: false}})};

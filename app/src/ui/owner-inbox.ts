@@ -1,3 +1,4 @@
+import {resolveMuse} from './personal-profile.ts';
 // Owner inbox (contract C06, direction v2 12.3; I-07). Separate from the Muse's agent inbox (heartbeat_check): it shows
 // only the meetups waiting for this owner's decision, the recent decisions and the three owner notification kinds
 // (meetup candidate, completed trade, blocked attempt), for the owner session's own Muse.
@@ -7,7 +8,6 @@
 //  - A decline has no reason field. The server refuses any field it does not know.
 //  - Everything is built with textContent; nothing from the server is parsed as HTML.
 // The functions above ownerInboxCard need no DOM, so scripts/tasks.test.mjs runs them directly.
-import {harnessById} from '../engine/harness.ts';
 import {PLACES} from '../engine/places.ts';
 
 export type Candidate = {id: string; time: string; place: string; place_id: string | null; public_basis: string};
@@ -91,18 +91,18 @@ export const decisionText = (r: {status: number; data: any}) => DECISION_REASONS
 // ---------- the card (DOM) ----------
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const at = (ms: number) => new Intl.DateTimeFormat(undefined, {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}).format(new Date(ms));
-const name = (id: string) => harnessById(id).name;
+const defaultName = (id: string) => resolveMuse({id}).name;
 const KIND_LABEL: Record<Notification['kind'], string> = {meetup_candidate: 'Meetup candidate', trade_completed: 'Trade completed', blocked: 'Blocked attempt'};
 const COMMONS = PLACES.filter(p => p.zone === 'commons');
 
 /** The mounted card can refresh without remounting its private editor or unchanged approval controls. */
-export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fetch(u, i), active: () => boolean = () => true) {
+export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fetch(u, i), active: () => boolean = () => true, name: (id:string)=>string = defaultName) {
   const box = el('div', 'id-card owner-inbox');
   const result = el('p', 'muted'); result.setAttribute('role', 'status');
   const store = (() => { try { return window.localStorage; } catch { return null; } })();
   let cond = loadConditions(store), request = 0;
   let view: {owner: string; waiting: HTMLElement; approvals: HTMLElement; recent: HTMLElement; notifications: HTMLElement; status: HTMLElement} | null = null;
-  const cards = new Map<string, {key: string; node: HTMLElement & {updateOther(side: Side): void}}>();
+  const cards = new Map<string, {key: string; node: HTMLElement & {updateOther(side: Side): void;updateNames():void}}>();
   const refreshButton = () => { const b = el('button', 'secondary', 'Refresh owner inbox'); b.type = 'button'; b.onclick = () => void paint(); return b; };
   // Keep nodes that already occupy the right slot connected: removing and re-appending an editor blurs it in browsers.
   const reconcile = (parent: HTMLElement, nodes: HTMLElement[]) => {
@@ -141,7 +141,7 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fe
     view.waiting.textContent = `Waiting for your decision (${waiting})`;
     const nodes = d.approvals.map(t => {
       const key = JSON.stringify([{...t, theirs: null}, d.approval_window_min]), old = cards.get(t.task_id);
-      if (!force && old?.key === key) { old.node.updateOther(t.theirs); return old.node; }
+      if (!force && old?.key === key) { old.node.updateOther(t.theirs);old.node.updateNames(); return old.node; }
       const selected = force ? undefined : old?.node.querySelector<HTMLInputElement>('input[type=radio]:checked')?.value;
       const node = approvalBlock(t, d.approval_window_min, selected);
       cards.set(t.task_id, {key, node}); return node;
@@ -177,13 +177,13 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fe
     const card = el('div', 'owner-approval');
     const dl = el('dl', 'facts');
     const g = (k: string, v: string) => { const value = el('dd', '', v); dl.append(el('dt', '', k), value); return value; };
-    g('Meetup', `${name(t.muse)} with ${name(t.other)}`);
+    const meetupName=g('Meetup', `${name(t.muse)} with ${name(t.other)}`);
     g('Other side', t.other_side ?? '—');
     g('Decide by', `${at(t.deadline)} (a ${windowMin}-minute window, server time)`);
     g('Revision', `${t.revision} · ${t.content_hash.slice(0, 12)}`);
     g('Your decision', t.yours ? `${t.yours.decision === 'approve' ? 'approved' : 'declined'}${t.yours.candidate ? ' ' + t.yours.candidate : ''}` : 'not yet');
     const otherValue = g('Their decision', '');
-    const node = Object.assign(card, {updateOther(side: Side) { otherValue.textContent = side ? `${side.decision === 'approve' ? 'approved' : 'declined'}${side.candidate ? ' ' + side.candidate : side.source === 'rule' ? ' (by rule, any candidate)' : ''}` : 'not yet'; }});
+    const node = Object.assign(card, {updateNames(){meetupName.textContent=`${name(t.muse)} with ${name(t.other)}`;},updateOther(side: Side) { otherValue.textContent = side ? `${side.decision === 'approve' ? 'approved' : 'declined'}${side.candidate ? ' ' + side.candidate : side.source === 'rule' ? ' (by rule, any candidate)' : ''}` : 'not yet'; }});
     node.updateOther(t.theirs);
     if (t.yours) {
       const chosen = t.candidates.find(c => c.id === t.yours!.candidate);
