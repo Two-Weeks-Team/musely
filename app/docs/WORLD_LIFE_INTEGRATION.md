@@ -271,3 +271,20 @@ Final multi-venue dependency pin advances PR139 to
 Its14 mocked-transport callModel/Ledger/SQLite goal tests are included in the combined
 checks. The new resident trade bridge remains proposal-only with no production caller;
 this integration does not imply autonomous negotiations or real paid provider execution.
+
+
+## Merged main188fcb7 registration boundary
+
+Team PR145 registration and PR146 asset transport are now merged into main188fcb7.
+The compatibility test uses actual Worker registration plus personal ownership resolution,
+then verifies no world entry, no MCP entitlement, and no NPC authority even with a
+synthetically supplied resident controlMode. Profile changes and logout retain the durable
+personal classification. Synthetic future entry is a negative authority probe, not a feature.
+
+The first registration composition found an old worker/index.ts left from the Life02 base,
+producing404 instead of exercising main's HTTP routes. This was a test-composition omission,
+not a team registration bug. Previous223 checks used direct MCP handlers and did not prove
+full Worker HTTP integration. CI now overlays current main index, asset-encoding and complete
+personal modules/tests, retains all shared3-way merges and pins reviewed-main188fcb7.
+Existing main-team code is copied only into ephemeral test checkouts; this PR does not
+rewrite or fork their registration implementation. No provider calls or deployment.

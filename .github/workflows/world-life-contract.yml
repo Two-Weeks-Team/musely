@@ -15,6 +15,9 @@ on:
       - 'app/worker/core/connected.ts'
       - 'app/worker/core/mcp-*.ts'
       - 'app/worker/core/personal-*.ts'
+      - 'app/worker/index.ts'
+      - 'app/worker/asset-encoding.ts'
+      - 'app/scripts/compat/*.test.mjs'
       - 'app/scripts/tsconfig.world-life-contract.json'
       - 'app/docs/WORLD_LIFE_INTEGRATION.md'
       - '.github/workflows/world-life-contract.yml'
@@ -34,7 +37,7 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci --ignore-scripts
-      - run: node --test scripts/world-life*.test.mjs scripts/messages.test.mjs
+      - run: node --test scripts/world-life*.test.mjs scripts/messages.test.mjs scripts/personal*.test.mjs scripts/compat/registration-boundary.test.mjs scripts/asset-encoding.test.mjs
       - run: npx tsc -p scripts/tsconfig.world-life-contract.json
       - run: npx tsc -p worker
   engine5-dependency:
@@ -59,10 +62,16 @@ jobs:
           cp app/worker/world-do.ts dependency-139/app/worker/
           cp app/worker/core/personal-session.ts dependency-139/app/worker/core/
           cp app/worker/core/threads.ts dependency-139/app/worker/core/
+          # Complete current-main Worker routing, not merely the older direct MCP fixture.
+          cp app/worker/index.ts app/worker/asset-encoding.ts dependency-139/app/worker/
+          cp app/worker/core/personal-*.ts dependency-139/app/worker/core/
+          cp app/scripts/personal*.test.mjs app/scripts/asset-encoding.test.mjs dependency-139/app/scripts/
+          mkdir -p dependency-139/app/scripts/compat
+          cp app/scripts/compat/registration-boundary.test.mjs dependency-139/app/scripts/compat/
       - run: npm ci --ignore-scripts
         working-directory: dependency-139/app
       - name: Offline actual server and atomic craft regressions
-        run: node --test scripts/world-life*.test.mjs scripts/messages.test.mjs scripts/wants-use.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs scripts/wants-journey.test.mjs scripts/trade-decision-provenance.test.mjs scripts/resident-wants-model.test.mjs scripts/run-log.test.mjs scripts/run-replay.test.mjs
+        run: node --test scripts/world-life*.test.mjs scripts/messages.test.mjs scripts/personal*.test.mjs scripts/compat/registration-boundary.test.mjs scripts/asset-encoding.test.mjs scripts/wants-use.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs scripts/wants-journey.test.mjs scripts/trade-decision-provenance.test.mjs scripts/resident-wants-model.test.mjs scripts/run-log.test.mjs scripts/run-replay.test.mjs
         working-directory: dependency-139/app
       - run: npx tsc -p worker
         working-directory: dependency-139/app
@@ -80,7 +89,7 @@ jobs:
           path: dependency-138
       - uses: actions/checkout@v4
         with:
-          ref: 7a85add2bc8eb2d8d34d70d37857950be453713d
+          ref: 188fcb786bdd874adb938e6fac9e721cf4a143e1
           path: reviewed-main
       - uses: actions/setup-node@v4
         with:
@@ -94,6 +103,13 @@ jobs:
           test "$(git hash-object app/worker/core/encounters.ts)" = "6dd3b1aecdbd9526af5361c4137cbb7b705abebd"
           test "$(git hash-object reviewed-main/app/worker/core/messages.ts)" = "7ed3b7f9aa3dda3165e5548b6748dfea5b89da06"
           test "$(git hash-object app/worker/core/world-runtime.ts)" = "435539467a815f2f1a28f8e832b76e0e7946fc48"
+          test "$(git hash-object app/worker/index.ts)" = "3bac1731ff1e73828adc926818b6c149b434e1e1"
+          test "$(git hash-object app/worker/asset-encoding.ts)" = "51f2a26e19bd61048b1cdd2ce4180ac1e4e6df6a"
+          test "$(git hash-object app/worker/world-do.ts)" = "ec73c74c79c8289ad06dd0bd77765e40be7ed1c4"
+          test "$(git hash-object app/worker/core/personal-api.ts)" = "7fefbcd684b23e86ad61d53244c591c7804164da"
+          test "$(git hash-object app/worker/core/personal-owners.ts)" = "836d31b5eae45b5ef4e7e2a23556e9ffaabc0f25"
+          test "$(git hash-object app/worker/core/personal-registration.ts)" = "59b4a32001498ba39974b0afe6a9266bee96f92b"
+          test "$(git hash-object app/worker/core/personal-session.ts)" = "bfa196aaa5cf09eb4252eaca48b5fe9f951c5d32"
       - name: Three-way compose resident and craft changes without overwriting either branch
         shell: bash
         run: |
@@ -106,6 +122,12 @@ jobs:
           cp app/worker/world-do.ts dependency-139/app/worker/
           cp app/worker/core/personal-session.ts dependency-139/app/worker/core/
           cp app/worker/core/threads.ts dependency-139/app/worker/core/
+          # Complete current-main Worker routing, not merely the older direct MCP fixture.
+          cp app/worker/index.ts app/worker/asset-encoding.ts dependency-139/app/worker/
+          cp app/worker/core/personal-*.ts dependency-139/app/worker/core/
+          cp app/scripts/personal*.test.mjs app/scripts/asset-encoding.test.mjs dependency-139/app/scripts/
+          mkdir -p dependency-139/app/scripts/compat
+          cp app/scripts/compat/registration-boundary.test.mjs dependency-139/app/scripts/compat/
           cp dependency-138/app/worker/core/resident-life-adapter.ts dependency-139/app/worker/core/
           cp dependency-138/app/worker/core/world-runtime.ts dependency-139/app/worker/core/
           cp dependency-138/app/src/engine/resident-life.ts dependency-139/app/src/engine/
@@ -123,7 +145,7 @@ jobs:
       - run: npm ci --ignore-scripts
         working-directory: dependency-139/app
       - name: Offline combined server, resident scheduler and craft regressions
-        run: node --test scripts/world-life*.test.mjs scripts/messages.test.mjs scripts/resident-life*.test.mjs scripts/wants-use.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs scripts/wants-journey.test.mjs scripts/trade-decision-provenance.test.mjs scripts/resident-wants-model.test.mjs scripts/run-log.test.mjs scripts/run-replay.test.mjs
+        run: node --test scripts/world-life*.test.mjs scripts/messages.test.mjs scripts/personal*.test.mjs scripts/compat/registration-boundary.test.mjs scripts/asset-encoding.test.mjs scripts/resident-life*.test.mjs scripts/wants-use.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs scripts/wants-journey.test.mjs scripts/trade-decision-provenance.test.mjs scripts/resident-wants-model.test.mjs scripts/run-log.test.mjs scripts/run-replay.test.mjs
         working-directory: dependency-139/app
       - run: npx tsc -p worker
         working-directory: dependency-139/app
