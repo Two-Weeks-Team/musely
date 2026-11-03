@@ -30,7 +30,7 @@ import {envelopeEvidence, peerCheck, museCredential, credentialProblem, type Cre
 import {executeCommand, signCommand, worldHandler, quietRefusal, type PeerCheck} from './commands.ts';
 import {syncTask, meetupCandidates, reviseMeetup, startOwnerApproval, definedOwnerOf, candidatesOf, MAX_CANDIDATES, type OwnerOf} from './tasks.ts';
 import {sendPostcard, giveGift, inviteCampfire, answerCampfire, recordCampfireApproach, inviteUpkeep, invitesDue, invitesFor, proposeHelp, answerHelp, helpServicesView, INVITE_TTL_MS, GATHERING_MIN} from './messages.ts';
-import {encounterOpportunities, encounterNotices, introduced, startIntroduction, PERSONAL_CONTINUATION} from './encounters.ts';
+import {encounterOpportunities, encounterNotices, incomingTradeIntents, introduced, startIntroduction, PERSONAL_CONTINUATION} from './encounters.ts';
 
 export type ToolCtx = {
   personal?: boolean;
@@ -140,6 +140,7 @@ TOOLS.find(t => t.name === 'heartbeat_check')!.write = undefined;
 TOOLS.find(t => t.name === 'heartbeat_check')!.annotations = {readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false};
 const FRESHNESS_GUIDANCE = ' Complete any heartbeat_check upkeep before planning. After choosing your intent for yourself, obtain a fresh get_world_state immediately before the chosen write and use its current world_version. Do not put heartbeat_check or unrelated calls between this final read and write; refresh again if such a call is needed. A precommit stale_world and a same command_id retry with fresh state are not another chosen world action; every read, attempt and retry still counts toward connector-call and time budgets. Preserve your runtime limits (including one retry, 12 calls or 3 chosen actions where configured); if insufficient, defer to the next run. This is guidance, not a new server quota or automatic retry.';
 for (const name of ['get_world_state', 'heartbeat_check', 'say_hello']) TOOLS.find(t => t.name === name)!.description += FRESHNESS_GUIDANCE;
+for (const name of ['get_world_state', 'heartbeat_check']) TOOLS.find(t => t.name === name)!.description += ' incoming_trade_intents shows current public intentions addressed to you, including incomplete offers while a meeting is pending. Each is intent_only with task_id null: it is not a pending Task, has no deadline and cannot itself be accepted or rejected as a Task. No response or next action is selected for you.';
 const COMMAND_PROPS: Record<string, Prop> = {
   command_id: {type: 'string', pattern: '^[A-Za-z0-9_-]{8,64}$', description: 'Optional idempotency key. Once a call with this id has committed, a retry with the same id and arguments returns that first result without acting again; other arguments with the same id are refused as command_conflict. A call refused before it commits (stale_world, in_progress, a credential or envelope check) spends nothing and is not stored, so you may retry the same id (for example after stale_world with a fresh expected_version). A call the world rules refuse (for example no_taxi_token or already_here) is a stored result: a retry with the same id returns that refusal again, so after changing the conditions use a new command_id. While the first call is still running, a retry is refused as in_progress (retryable).'},
   expected_version: {type: 'integer', minimum: 0, description: 'Optional world_version from get_world_state you planned against; if the world moved, the call is refused as stale_world (retryable) and nothing changes. Complete heartbeat upkeep before planning; get a fresh get_world_state immediately before your chosen write and use that current version. Respect your existing retry, connector-call and time budgets.'},
@@ -345,6 +346,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         world_version: s.version, observed_at: now, owner_location: ownerView(c.personal?c.ownerLocation?.():s.owner, meState, now), neighbors,
         places_nearby: nearbyPlaces(here, 10).map(({p, d}) => ({...placeView(p), distance_m: Math.round(d)})),
         inbox: {tasks_waiting_for_you: inbox.tasks.filter(t => t.status === 'pending' && t.awaiting === me).length, unread_messages: inbox.messages.filter(m => m.to === me && !m.read).length, open_campfire_invites: invitesFor(inbox, me).open.length},
+        incoming_trade_intents: incomingTradeIntents(s,me),
         rules: {trade_range_m: RULES.tradeRangeM, max_counters: MAX_COUNTERS, task_deadline_min: TASK_TTL_MS / 60_000, daily: DAILY, walk_mps: WALK_MPS, invite_deadline_min: INVITE_TTL_MS / 60_000, gathering_min: GATHERING_MIN, help_services: helpServicesView()},
         local_time: localClock(now).hhmm, opportunities: encounterOpportunities(s, me, now), continuation: PERSONAL_CONTINUATION,
       });
@@ -365,6 +367,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
       const after = inboxOf(c.runtime.state());
       return ok({
         now, tasks_for_you: after.tasks.filter(t => t.status === 'pending' && t.awaiting === me).map(t => viewOf(t, me)),
+        incoming_trade_intents: incomingTradeIntents(c.runtime.state(),me),
         your_open_tasks: after.tasks.filter(t => t.status === 'pending' && t.awaiting !== me && (t.from === me || t.to === me)).map(t => viewOf(t, me)),
         expired_now: expired.filter(t => t.from === me || t.to === me).map(t => viewOf(t, me)),
         recently_closed: after.tasks.filter(t => t.status !== 'pending' && (t.from === me || t.to === me)).slice(-5).map(t => viewOf(t, me)),
