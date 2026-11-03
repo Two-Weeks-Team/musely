@@ -1,0 +1,24 @@
+name: Resident Life Contracts
+on:
+  pull_request:
+    paths:
+      - 'app/src/engine/**'
+      - 'app/worker/core/resident-life-adapter.ts'
+      - 'app/scripts/resident-life*.test.mjs'
+      - '.github/workflows/resident-life.yml'
+permissions:
+  contents: read
+jobs:
+  resident-life:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Test isolated life contracts and actual engine adapter
+        working-directory: app
+        run: node --test scripts/resident-life*.test.mjs
