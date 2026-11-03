@@ -1,6 +1,6 @@
 // Owner location in the page (direction v2, 13.1): the always-on header chip and the device location card of the Location tab.
 // The wording and the state transitions live in location-state.ts (no DOM); this file only paints them. Everything is textContent.
-import {locationLine, snapshotOf, deviceLocation, deviceText, type LocationSnapshot, type OwnerLocationView, type DeviceLocation} from './location-state';
+import {locationLine, snapshotOf, deviceLocation, deviceText, VIRTUAL_FALLBACK, type LocationSnapshot, type OwnerLocationView, type DeviceLocation} from './location-state';
 import {BLOCKED, type Fetched} from './resource-state';
 
 /**
@@ -34,7 +34,9 @@ export function mountLocationChip(header: HTMLElement, before: Element | null) {
 // One flow per page: the Location tab is rebuilt on every render, and the answer must survive that (only the latest card is painted).
 let flow: ReturnType<typeof deviceLocation> | null = null, paintCard: ((d: DeviceLocation) => void) | null = null;
 
-/** The device location card (Location tab): one button, the state it reached, and the virtual-location guidance on refusal or failure. */
+let permissionState: PermissionState | 'unknown' | 'checking' = 'unknown', permissionQueryStarted = false;
+
+/** Device-only mapping. A permission query never opens a prompt; prompt/unknown still needs an explicit click. */
 export function deviceLocationCard() {
   const card = document.createElement('div'); card.className = 'device-loc'; card.id = 'device-location';
   const heading = document.createElement('strong');
@@ -43,16 +45,42 @@ export function deviceLocationCard() {
   const paint = (d: DeviceLocation) => {
     const t = deviceText(d);
     heading.textContent = t.heading; detail.textContent = t.detail;
-    card.dataset.status = d.status; card.dataset.fallback = t.fallback ? '1' : '';
-    button.disabled = d.status === 'requesting';
-    button.textContent = d.status === 'idle' ? 'Use device location (GPS)' : 'Ask again';
+    const denied = permissionState === 'denied' || (permissionState !== 'unknown' && d.status === 'denied');
+    if (denied) {
+      const chrome = typeof navigator !== 'undefined' && /(?:Chrome|Chromium)\//.test(navigator.userAgent) && !/(?:Edg|OPR)\//.test(navigator.userAgent);
+      detail.textContent = VIRTUAL_FALLBACK + (chrome
+        ? ' Chrome: open the site information icon beside the address, then Site settings → Location. Reset the blocked permission or choose Ask/Allow, then return here.'
+        : " Review Location permission in this browser's site settings, then return here.");
+    }
+    card.dataset.status = d.status; card.dataset.fallback = t.fallback ? '1' : ''; card.dataset.permission = permissionState;
+    button.hidden = denied || permissionState === 'granted';
+    button.disabled = d.status === 'requesting' || permissionState === 'checking';
+    button.textContent = permissionState === 'checking' ? 'Checking location permission…' : d.status === 'idle' ? 'Use device location (GPS)' : 'Ask again';
   };
   const geo = typeof navigator !== 'undefined' && 'geolocation' in navigator ? navigator.geolocation : undefined;
   flow ??= deviceLocation(geo, d => paintCard?.(d));
   paintCard = paint;
   const f = flow;
-  button.onclick = () => f.request();
-  paint(f.state);
+  button.onclick = () => { if (!button.disabled && !button.hidden && permissionState !== 'denied') f.request(); };
   card.append(heading, detail, button);
+  if (!permissionQueryStarted) {
+    permissionQueryStarted = true;
+    if (typeof navigator !== 'undefined' && navigator.permissions?.query) {
+      permissionState = 'checking';
+      void (async () => {
+        try {
+          const status = await navigator.permissions.query({name: 'geolocation'});
+          const update = () => {
+            if (!['prompt', 'denied', 'granted'].includes(status.state)) return;
+            const changed = permissionState !== status.state;
+            permissionState = status.state; f.permission(status.state); paintCard?.(f.state);
+            if (changed && status.state === 'granted') f.request();
+          };
+          status.addEventListener('change', update); update();
+        } catch { permissionState = 'unknown'; paintCard?.(f.state); }
+      })();
+    }
+  }
+  paint(f.state);
   return card;
 }

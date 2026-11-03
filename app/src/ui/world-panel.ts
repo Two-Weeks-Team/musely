@@ -534,12 +534,18 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   // The Location tab is drawn again after a move and on every poll while it is open: an unsent preset/verify choice and the last
   // move result survive that redraw.
   let locDraft: {preset: string; verify: boolean} | null = null, locMsg = '';
+  let locationDeviceCard: HTMLElement | null = null;
   async function renderLocation(stale: () => boolean) {
+    const frame = el('div', 'id-card'), box = el('div', 'location-owner-details');
+    locationDeviceCard ??= deviceLocationCard();
+    const see = el('button', 'secondary', 'See the preview location states (scripted)'); see.type = 'button'; see.onclick = () => { selectFlow('location-walk'); tab = 'flows'; void render(); };
+    frame.append(box, el('h4', '', 'Device location (GPS)'), locationDeviceCard, see);
+    body.append(frame);
+    box.append(el('p', 'muted', 'Reading the owner location…'));
     const r = await load<any>('location', '/api/owner/location');
     if (stale()) return;
-    const box = el('div', 'id-card');
-    box.append(el('span', 'eyebrow', 'OWNER LOCATION · 13.1'));
-    if (!r.ok) { box.append(el('h4', '', 'Location unavailable'), el('p', 'muted', `The owner location could not be read (${r.error}), so it is unknown right now. It is not assumed to be the HQ commons.`)); const b = el('button', 'secondary', 'Retry'); b.type = 'button'; b.onclick = () => void render(); box.append(b); body.append(box); return; }
+    box.replaceChildren(el('span', 'eyebrow', 'OWNER LOCATION · 13.1'));
+    if (!r.ok) { box.append(el('h4', '', 'Location unavailable'), el('p', 'muted', `The owner location could not be read (${r.error}), so it is unknown right now. It is not assumed to be the HQ commons.`)); const b = el('button', 'secondary', 'Retry'); b.type = 'button'; b.onclick = () => void render(); box.append(b); return; }
     const loc = r.data;
     const presetLabel = ((loc.presets ?? []) as {id: string; label: string}[]).find(p => p.id === loc.preset)?.label ?? loc.cell_label ?? loc.preset ?? '';
     box.append(el('h4', '', `${loc.source === 'gps' ? 'Device-mapped neighborhood' : 'Virtual location (demo)'} · ${presetLabel}`));
@@ -572,10 +578,6 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
       };
       box.append(lab, vlab, go, msg);
     }
-    box.append(el('h4', '', 'Device location (GPS)'), deviceLocationCard());
-    const see = el('button', 'secondary', 'See the preview location states (scripted)'); see.type = 'button'; see.onclick = () => { selectFlow('location-walk'); tab = 'flows'; void render(); };
-    box.append(see);
-    body.append(box);
   }
 
   let lastSeq = 0;

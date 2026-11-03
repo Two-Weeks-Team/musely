@@ -115,18 +115,30 @@ export type DeviceDeps = {now?: () => number; setTimer?: (fn: () => void, ms: nu
  */
 export function deviceLocation(geo: Geo | undefined, onChange: (d: DeviceLocation) => void, deps: DeviceDeps = {}) {
   const now = deps.now ?? Date.now, setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms)), clearTimer = deps.clearTimer ?? (t => clearTimeout(t as ReturnType<typeof setTimeout>));
-  let state = DEVICE_IDLE;
+  let state = DEVICE_IDLE, permission: PermissionState | null = null, requestId = 0;
+  let activeTimer: unknown;
   const set = (next: DeviceLocation) => { if (next !== state) { state = next; onChange(state); } };
   return {
     get state() { return state; },
+    /** Permission changes invalidate a pending answer without keeping any position. */
+    permission(value: PermissionState) {
+      if (value === permission) return;
+      permission = value;
+      // A prompt's grant belongs to its already-running request; do not start another GPS read.
+      if (value !== 'granted') { requestId++; clearTimer(activeTimer); activeTimer = undefined; }
+      if (value === 'denied') set({status: 'denied', preset: null, startedAt: null, at: now()});
+      else if (state.status === 'denied' || (value === 'prompt' && state.status === 'requesting')) set({...DEVICE_IDLE});
+    },
     request() {
+      if (permission === 'denied') return;
       const next = deviceStart(state, !!geo, now());
       if (next === state) return;
       set(next);
       if (next.status !== 'requesting' || !geo) return;
-      const started = next.startedAt!;
-      const timer = setTimer(() => set(deviceWatchdog(state, started, now())), GEO_WATCHDOG_MS);
-      const done = (a: GeoAnswer) => { clearTimer(timer); set(deviceResult(state, started, a, now())); };
+      const started = next.startedAt!, mine = ++requestId;
+      const timer = setTimer(() => { if (mine === requestId) set(deviceWatchdog(state, started, now())); }, GEO_WATCHDOG_MS);
+      activeTimer = timer;
+      const done = (a: GeoAnswer) => { clearTimer(timer); if (mine !== requestId) return; activeTimer = undefined; set(deviceResult(state, started, a, now())); };
       try {
         geo.getCurrentPosition(p => done({ok: true, lat: p.coords.latitude, lng: p.coords.longitude}), e => done({ok: false, code: Number(e?.code) || 2}), GEO_OPTIONS);
       } catch { done({ok: false, code: 2}); }
