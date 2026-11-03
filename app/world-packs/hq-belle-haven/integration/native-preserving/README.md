@@ -44,7 +44,7 @@ Even complete synthetic clearance leaves their runtime visibility OFF pending GP
 
 ## Evidence
 
-- Existing integration14 tests plus new native-preserving19 tests: **33/33 pass**.
+- Existing integration14 tests plus new native-preserving23 tests: **37/37 pass**.
 - Complete cloned MapLibre style validates with zero errors after the candidate paints.
 - Exact Git blobs cover latest main, geography, places, live-scene-core, map-style and package.
   Latest main worker/source-height startup differs; coordinate/layer contracts are unchanged.
@@ -67,3 +67,21 @@ are not complete. Keep feature OFF and the PR Draft. No deployment or merge occu
 
 Run from integration/: `npm test`; `npm run browser:build`.
 Generated browser-dist, node_modules and local logs are not committed.
+
+## Actual MapLibre layer-shape regression fixed
+
+Mac full-product opt-in at the earlier 4c16 head failed with Native building contract changed.
+The controller mistakenly inspected StyleSpecification['source-layer'], while actual
+Map.getLayer returns StyleLayer.sourceLayer. The old JSON mock hid the mismatch. Both
+enable validation and restore ownership now use the runtime sourceLayer field.
+
+Four additional regressions instantiate the installed MapLibre6.16 FillStyleLayer and
+FillExtrusionStyleLayer implementations, then use actual Map.prototype.getLayer and
+getPaintProperty. They verify camelCase runtime identity, real paint enable/restore,
+source-layer drift rejection and concurrent paint preservation. These do not instantiate
+a GPU Map; scene loop and event delivery are still a harness. Runtime classes are bundled
+locally using esbuild with type-only field semantics preserved. No new dependency added.
+
+37/37 integration tests and both browser bundle builds pass after the fix. Actual Mac
+ON/zoom/style reload must be retried on the corrected head; earlier ON failure is not a
+successful visual test and no claim of visual completion is made here.

@@ -13,10 +13,10 @@ export function colorExpression(original,radius=500){
 export function createDiagnosticNativeStyle(map,{diagnosticHarness=false,radius=500}={}){
  if(!diagnosticHarness)throw Error('Diagnostic harness only; actual product GPU not validated');
  let active=false,stale=false,snapshots=[];
- function disable(){const conflicts=[];for(const s of snapshots){const l=map.getLayer(s.id);if(!stale&&l?.type===s.type&&l.source===s.source&&l['source-layer']===s.sourceLayer&&same(map.getPaintProperty(s.id,s.property),s.owned)){map.setPaintProperty(s.id,s.property,s.original===undefined?null:structuredClone(s.original));}else conflicts.push(s.id)}active=false;snapshots=[];return{active,conflicts};}
+ function disable(){const conflicts=[];for(const s of snapshots){const l=map.getLayer(s.id);if(!stale&&l?.type===s.type&&l.source===s.source&&l.sourceLayer===s.sourceLayer&&same(map.getPaintProperty(s.id,s.property),s.owned)){map.setPaintProperty(s.id,s.property,s.original===undefined?null:structuredClone(s.original));}else conflicts.push(s.id)}active=false;snapshots=[];return{active,conflicts};}
  const onStyleLoad=()=>{stale=true;active=false;};map.on('style.load',onStyleLoad);
  return {get active(){return active},enable(){if(active)return{active:true,changed:0};if(snapshots.length)disable();stale=false;
- const plans=targets.map(([id,type,property])=>{const l=map.getLayer(id);if(l?.type!==type||l.source!=='openmaptiles'||l['source-layer']!=='building')throw Error('Native building contract changed');const original=structuredClone(map.getPaintProperty(id,property));return{id,type,source:l.source,sourceLayer:l['source-layer'],property,original,owned:colorExpression(original,radius)}});
+ const plans=targets.map(([id,type,property])=>{const l=map.getLayer(id);if(l?.type!==type||l.source!=='openmaptiles'||l.sourceLayer!=='building')throw Error('Native building contract changed');const original=structuredClone(map.getPaintProperty(id,property));return{id,type,source:l.source,sourceLayer:l.sourceLayer,property,original,owned:colorExpression(original,radius)}});
  try{for(const p of plans){snapshots.push(p);map.setPaintProperty(p.id,p.property,p.owned)}active=true;return{active:true,changed:plans.length};}catch(e){disable();throw e}},disable,dispose(){const result=disable();map.off('style.load',onStyleLoad);return result}};
 }
 
