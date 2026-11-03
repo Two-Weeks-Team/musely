@@ -24,3 +24,22 @@ test('deferred request has a bounded abort signal and HTTP failure preserves old
  const old=globalThis.fetch;globalThis.fetch=async(url,options)=>{assert.ok(options.signal instanceof AbortSignal);return new Response('',{status:503});};
  try {const {scene,fire}=host();const p=createCampfireScenePort(scene,fire);await assert.rejects(p.enable({distanceM:()=>1}),/unavailable/);assert.equal(fire.visible,true);assert.equal(p.getMetrics().pending,false);p.dispose();}finally{globalThis.fetch=old;}
 });
+
+test('synchronous loader failure clears pending and retries without a manual disable',async()=>{
+ const {scene,fire}=host();let attempts=0;
+ const p=createCampfireScenePort(scene,fire,{loadAsset:()=>{if(!attempts++)throw Error('sync loader failure');return load();}});
+ await assert.rejects(p.enable({distanceM:()=>2}),/sync loader failure/);
+ assert.equal(p.getMetrics().pending,false);assert.equal(fire.visible,true);
+ assert.equal(await p.enable({distanceM:()=>2}),true);assert.equal(attempts,2);p.dispose();
+});
+test('throwing owned cleanup still restores legacy fire, clears ownership and permits retry',async()=>{
+ const {scene,fire}=host(),p=createCampfireScenePort(scene,fire,{loadAsset:load});await p.enable({distanceM:()=>2});
+ scene.getObjectByName('campfire:commons:campfire').getObjectByName('bright_core').geometry.addEventListener('dispose',()=>{throw Error('cleanup failed');});
+ assert.throws(()=>p.disable(),AggregateError);assert.equal(p.getMetrics().enabled,false);assert.equal(fire.visible,true);assert.equal(scene.children.length,1);
+ await p.enable({distanceM:()=>2});assert.equal(fire.visible,false);p.dispose();assert.equal(fire.visible,true);
+});
+test('port disposal releases its scene owner even when a GPU resource cleanup callback throws',async()=>{
+ const {scene,fire}=host(),p=createCampfireScenePort(scene,fire,{loadAsset:load});await p.enable({distanceM:()=>2});
+ scene.getObjectByName('campfire:commons:campfire').getObjectByName('bright_core').geometry.addEventListener('dispose',()=>{throw Error('cleanup failed');});
+ assert.throws(()=>p.dispose(),AggregateError);assert.equal(p.getMetrics().disposed,true);assert.equal(fire.visible,true);createCampfireScenePort(scene,fire).dispose();
+});

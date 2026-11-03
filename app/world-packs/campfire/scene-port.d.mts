@@ -3,7 +3,8 @@ export type CampfireWorld = {worldId:string;version?:number;tick:number;lastTick
 export interface CampfireScenePort {
  enable(options:{distanceM:()=>number}):Promise<boolean>;
  disable():void;
- setWorld(world:CampfireWorld|null):void;
+ /** Observation clock from a successful transport read, or the explicit recorded frame. */
+ setWorld(world:CampfireWorld|null,observedAt?:number):void;
  update(at:number):void;
  dispose():void;
  getMetrics():unknown;

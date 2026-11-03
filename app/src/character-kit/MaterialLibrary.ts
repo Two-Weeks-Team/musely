@@ -3,12 +3,24 @@ import {GLTFLoader,type GLTF} from 'three/addons/loaders/GLTFLoader.js';
 import {MuseActor,type Lod} from './MuseActor.ts';
 import {attachmentUrl,fleeceFactor,lodUrl,propsUrl,variantById,type MuseVariantId} from './catalog.ts';
 
+type KitLoader=Pick<GLTFLoader,'loadAsync'>;
+// Consume the original HTTP response before parsing. FileLoader's stream wrapper can
+// report ERR_ABORTED in Chrome even after its wrapped consumer received the whole GLB.
+function nativeKitLoader():KitLoader{
+ const parser=new GLTFLoader();
+ return {async loadAsync(url:string){
+  const response=await fetch(url);
+  if(!response.ok)throw new Error(`Character asset request failed (${response.status})`);
+  return parser.parseAsync(await response.arrayBuffer(),T.LoaderUtils.extractUrlBase(url));
+ }};
+}
+
 /** Caches parsed kit files and tinted fleece so every actor shares geometry, maps and palettes. */
 export class MaterialLibrary{
  private files=new Map<string,Promise<GLTF>>();
  private fleeces=new Map<string,T.MeshStandardMaterial>();
- readonly base:string;private loader:GLTFLoader;
- constructor(base='/character-kit/runtime/',loader=new GLTFLoader()){this.base=base;this.loader=loader;}
+ readonly base:string;private loader:KitLoader;
+ constructor(base='/character-kit/runtime/',loader:KitLoader=nativeKitLoader()){this.base=base;this.loader=loader;}
  /** Parse a kit file once; transient network failures are retried twice before giving up. */
  load(url:string){
   if(!this.files.has(url)){

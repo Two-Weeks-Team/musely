@@ -35,7 +35,7 @@ const needsStop = (s: State, museId: string) => !s.paused?.[museId] || hasPendin
  */
 const byOwner = (emit: Emit): Emit => e => emit({...e, data: {...(e.data ?? {}), actor: 'owner'}});
 
-function stopInWorld(st: State, emit: Emit, museId: string, version: number, by: string, now: number, repaired: boolean) {
+export function stopInWorld(st: State, emit: Emit, museId: string, version: number, by: string, now: number, repaired: boolean) {
   const cancelled: string[] = [];
   for (const t of cancelTasksFor((st.inbox ??= emptyInbox()), museId, now, by)) {
     cancelled.push(t.id);

@@ -26,11 +26,16 @@ export function createCampfireScenePort(scene, legacyFire, {loadAsset=loadBundle
  if(legacyFire?.parent!==scene || legacyFire.name!=='Fire')throw new Error('Expected existing direct Fire group');
  let view=null,pending=null,epoch=0,disposed=false,distance=()=>Infinity,snapshot;
  const legacyVisible=legacyFire.visible;
- function disable(){if(disposed)return;epoch++;pending=null;view?.dispose();view=null;snapshot=undefined;legacyFire.visible=legacyVisible;}
- function setWorld(world){
+ function disable(){
+  if(disposed)return;
+  epoch++;pending=null;const previous=view;view=null;snapshot=undefined;
+  try{previous?.dispose();}finally{legacyFire.visible=legacyVisible;}
+ }
+
+ function setWorld(world, observedAt=world?.lastTickAt){
   snapshot=undefined;
-  if(!world || !Array.isArray(world.muses) || !Number.isFinite(world.lastTickAt))return;
-  snapshot={placeId:PLACE,observedAt:world.lastTickAt,receiptId:`projection:${world.worldId}:${world.version??world.tick}`,
+  if(!world || !Array.isArray(world.muses) || !Number.isFinite(world.lastTickAt) || !Number.isFinite(observedAt))return;
+  snapshot={placeId:PLACE,observedAt,receiptId:`projection:${world.worldId}:${world.version??world.tick}`,
    arrivedMuseIds:world.muses.filter(m=>m && typeof m.id==='string' && m.place===PLACE && m.travel===null).map(m=>m.id)};
  }
  function update(at){
@@ -45,7 +50,7 @@ export function createCampfireScenePort(scene, legacyFire, {loadAsset=loadBundle
   if(view)return Promise.resolve(true);
   if(pending)return pending;
   const token=++epoch;
-  pending=(async()=>{
+  const attempt=(async()=>{
    let source;
    try{
     source=await loadAsset();
@@ -58,12 +63,14 @@ export function createCampfireScenePort(scene, legacyFire, {loadAsset=loadBundle
     scene.add(next.group);view=next;legacyFire.visible=false;return true;
    }finally{
     if(source)disposeSource(source);
-    if(token===epoch)pending=null;
    }
   })();
-  return pending;
+  pending=attempt;
+  const clear=()=>{if(token===epoch && pending===attempt)pending=null;};
+  void attempt.then(clear,clear); // also runs after a synchronous custom loader failure
+  return attempt;
  }
- const port={enable,disable,setWorld,update,dispose(){if(disposed)return;disable();disposed=true;ports.delete(scene);},
+ const port={enable,disable,setWorld,update,dispose(){if(disposed)return;try{disable();}finally{disposed=true;ports.delete(scene);}},
   getMetrics(){return {enabled:!!view,pending:!!pending,disposed,placeId:PLACE,frame:view?.frame??null,mode:'flame-only-existing-seats',productionAcceptance:false};}};
  ports.set(scene,port);return port;
 }
