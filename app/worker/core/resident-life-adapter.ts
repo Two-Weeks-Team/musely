@@ -5,6 +5,7 @@ import {hasActorHarness} from '../../src/engine/harness.ts';
 import {PRINCIPALS} from './owner-session.ts';
 import {isRuntimeControlled} from '../../src/engine/inbox.ts';
 import {proposeLifeTurn, remember, restoreLife, saveLife, type LifeState, type LifeProposal} from '../../src/engine/resident-life.ts';
+import {projectResidentPromises} from './resident-promises.ts';
 
 /** Respect the real scheduler's chosen resident. Never steal visitor priority or personal control. */
 export type ResidentOwnershipKind = 'resident'|'legacy'|'personal'|'unknown';
@@ -46,7 +47,7 @@ export function rememberCommittedResidentEvents(life:LifeState,world:WorldState,
         publicSummary:`Committed ${e.kind} event${receiving?' received':''}`,source:e.source,evidenceId:bounded(e.id)});
     }
   }
-  return next;
+  return projectResidentPromises(next,world,events,now,allowed);
 }
 
 /** Matches the existing synchronous DO SQL/transaction shape, but owns a separate table.

@@ -15,7 +15,7 @@ import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
 /** Branch-specific fixed NPC enrollment/freeze semantics; combined goal integration uses a distinct version. */
-export const ENGINE_VERSION = 'engine-6-resident-v1';
+export const ENGINE_VERSION = 'engine-6-resident-v2';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';

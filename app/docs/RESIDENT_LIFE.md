@@ -28,11 +28,23 @@ Actual spotlight and encounter model inputs receive a bounded public context: go
 
 Personal actors never become model actors. Only actual world members with permanent personal control and positive personal registry ownership may enter the trusted peer list. A normal heartbeat's actual NPC encounter reply is delivered to the personal/connected recipient inbox. Signed `say_hello` retains main's contract: it records the introduction but does not fabricate an immediate reply or choose a personal Muse's next action.
 
+## Accepted gathering promises
+
+Committed rule acceptance of an existing public gathering invitation now creates a resident promise. The structured answer, actor, organizer, invitation identity and timestamp must match the authoritative world state. Free-form text, model prose, pending answers, personal actors and mere presence never create a promise. The organizer is recorded as `other`; `dueAt` is the attendance deadline, not a newly invented appointment time. The existing invitation code owns acceptance and travel, so this projection adds no action, permission, API call, timer or budget.
+
+Only an authoritative closed gathering that lists the resident as an attendee fulfills the promise. A valid terminal snapshot can reconcile a closing event missed while Life was OFF, using a distinct hashed snapshot receipt. Mere travel, an arrival, an expired clock or another participant's attendance cannot establish fulfillment. Expired/cancelled invitations and residents not listed in the final gathering close their tracking without completion credit.
+
+If OFF outlasts the world's 50-closed-invitation retention and the final evidence has been removed, an overdue invitation-backed record is conservatively marked `cancelled` with “attendance evidence unavailable; tracking closed.” Here cancelled means tracking ended, not that the resident refused or failed to attend. No attendance is inferred. Manual promises and records before their deadline are untouched. The original acceptance and closure remain bounded memories; no user text is copied. All writes share the original command/heartbeat rollback boundary and remain disabled while Life is OFF.
+
+At most 32 structured promises and 64 memories per resident are retained. Terminal records may be recycled; pending obligations are never evicted to admit new ones. If all 32 remain genuinely pending, a new accepted invitation is recorded only as a bounded agreement receipt with a capacity notice. No already-authorized invitation fails because the projection is full. This is bounded tracking, not an unlimited promise archive.
+
+Dynamic `pm_*` personal Muses retain main's current action restrictions: entry, introductions and normal NPC replies are supported, but this PR does not grant them invitation authority. Existing signed owner-Muse invitations are tested separately. Natural-language promise extraction, future calendar appointments and unrestricted conversational autonomy remain unimplemented.
+
 ## Presentation and replay
 
 Every catalog actor resolves its own name/role and an existing appearance asset. Instances sharing an appearance have separate actor IDs, renderer roots, positions and selection. Public personal/legacy profiles retain precedence. Unknown/invalid profiles do not borrow an NPC appearance or authority.
 
-The branch uses `engine-6-resident-v1`, separate from main engine-5 and PR139 engine-6. Catalog content versions include the fixed resident descriptors. Exact published engine2/3/4/5 checkpoint tuples remain readable as stored snapshots; mixed tuples are rejected. This is checkpoint playback, not re-execution of historical engines. PR140 owns the distinct combined engine-7 version.
+The branch uses `engine-6-resident-v2`, separate from main engine-5 and PR139 engine-6. Catalog content versions include the fixed resident descriptors. Exact published engine2/3/4/5 and engine-6-resident-v1 checkpoint tuples remain readable as stored snapshots; mixed tuples are rejected. This is checkpoint playback, not re-execution of historical engines. PR140 owns a distinct combined engine version; a changed integration must not reuse the previously published engine-7 tuple.
 
 ## Verification and remaining gates
 

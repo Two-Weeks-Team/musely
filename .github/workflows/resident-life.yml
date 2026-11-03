@@ -32,4 +32,4 @@ jobs:
         run: npm run typecheck
       - name: Verify real resident runtime, repository GLB renderer and personal authority
         working-directory: app
-        run: node --test scripts/resident-life*.test.mjs scripts/resident-slot-clearance.test.mjs scripts/personal-entry-command.test.mjs scripts/personal-authority.test.mjs scripts/personal-entry.test.mjs scripts/entry-commit-hook.test.mjs scripts/legacy-profile.test.mjs scripts/kit-native-body.test.mjs scripts/messages.test.mjs scripts/run-replay.test.mjs
+        run: node --test scripts/resident-life*.test.mjs scripts/resident-slot-clearance.test.mjs scripts/personal-entry-command.test.mjs scripts/personal-authority.test.mjs scripts/personal-entry.test.mjs scripts/entry-commit-hook.test.mjs scripts/legacy-profile.test.mjs scripts/kit-native-body.test.mjs scripts/messages.test.mjs scripts/run-replay.test.mjs scripts/personal-entry-ui.test.mjs scripts/personal-connection.test.mjs
