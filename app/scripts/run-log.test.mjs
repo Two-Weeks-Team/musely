@@ -490,7 +490,7 @@ test('review 2: a meeting is connected only when the connected Muse headed for t
   st = scene([['00-jolly', '01-sunny', 'commons:cafe']]);
   st.muses.find(m => m.id === '00-jolly').intent = {kind: 'greet', target: '01-sunny'};
   assert.equal(meetingOf(st, '00-jolly').data.actorOrigin, 'system');
-  assert.equal(ENGINE_VERSION, 'engine-5', 'atomic consumed-ingredient completion changes the engine content version');
+  assert.equal(ENGINE_VERSION, 'engine-6', 'atomic consumed-ingredient completion changes the engine content version');
 });
 
 test('review 1: the recount is bounded: 48 hours at most, 20,000 events at most, both answered partial', () => {

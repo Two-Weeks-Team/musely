@@ -32,3 +32,17 @@ test('generic model offer input is mediated before installing trade intent',t=>{
 test('OFF mode, personal proposer or revoked authorization do not collect refusals',t=>{for(const v of [{disabled:true},{personal:true},{unauthorized:true}]){const x=refusedOffer(t,v);assert.equal(x.sql.exec('SELECT count(*) n FROM resident_trade_refusals').toArray()[0].n,0);}});
 
 test('revoking target-resident authority cannot turn a cooldown guard into permission',t=>{const x=refusedOffer(t);x.loop.authorize=()=>false;assert.equal(x.r.canResidentProposeTrade(x.r.state(),'02-moss','05-bloom','tea','garden_pass',T+60000),false);assert.equal(x.r.canResidentProposeTrade(x.r.state(),'02-moss','05-bloom','coffee','garden_pass',T+60000),false);});
+
+import {admitPersonal} from '../src/engine/participants.ts';
+test('goal caller cannot bypass main pending-claim policy even with permissive custom authorize',t=>{
+ const x=setup(t);x.r.commitExternal(T,'dynamic peer',s=>{const a=s.muses.find(m=>m.id==='02-moss');a.inventory=a.inventory.filter(i=>i!=='garden_pass');s.muses.find(m=>m.id==='05-bloom').inventory=[];admitPersonal(s,{actorId:'pm_11111111-1111-4111-8111-111111111111',displayName:'Synthetic participant',appearanceId:'00-jolly',revision:1},T);const p=s.muses.at(-1);p.place=a.place;p.wants.items=['tea'];grantItem(s.items,p,'garden_pass',T,p.place,'craft');});
+ const before=x.r.state();runResidentGoalTurn(x.r,x.loop,T);assert.equal(x.r.state().inbox.tasks.length,0);assert.deepEqual(x.r.state().muses.at(-1),before.muses.at(-1));assert.equal(x.calls(),0);
+});
+
+test('main afterLog failure rolls goal observer and signed-command storage back together',t=>{
+ const x=setup(t);x.db.exec('CREATE TABLE hook_probe (value TEXT)');x.db.exec('CREATE TABLE test_nonce (id TEXT PRIMARY KEY)');
+ const r=new WorldRuntime(x.sql,{...x.opts,onCommit:()=>x.sql.exec("INSERT INTO hook_probe VALUES ('projection')")});r.init(T);
+ const before=r.state(),inputs=x.sql.exec('SELECT count(*) n FROM run_inputs').toArray()[0].n,events=r.events(0,10000).length;
+ assert.throws(()=>r.commitCommand(T+1,'atomic observer',{guard:()=>{x.sql.exec("INSERT INTO test_nonce VALUES ('nonce')");return null;},mutate:s=>{s.muses[0].reflection='synthetic';return {ok:true};},record:version=>({actorId:'fixture',commandId:'hook',action:'enter_world',row:{payloadHash:'fixture',result:{ok:true,commandId:'hook',worldVersion:version,eventIds:[]},output:null}}),afterLog:()=>{assert.equal(x.sql.exec('SELECT count(*) n FROM hook_probe').toArray()[0].n,1);throw Error('receipt failed');}}),/receipt failed/);
+ assert.deepEqual(r.state(),before);assert.equal(r.events(0,10000).length,events);for(const table of ['hook_probe','test_nonce','commands'])assert.equal(x.sql.exec('SELECT count(*) n FROM '+table).toArray()[0].n,0);assert.equal(x.sql.exec('SELECT count(*) n FROM run_inputs').toArray()[0].n,inputs);
+});

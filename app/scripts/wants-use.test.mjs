@@ -105,3 +105,14 @@ test('an expired plus a valid pass is one usable copy, not tradable surplus',()=
  assert.equal(goalTradeUtility(s,goal,'garden_pass','clover_seed',NOW).reason,'would_lose_goal_prerequisite');
  grantItem(s.items,a,'garden_pass',NOW,a.place,'craft');assert.equal(goalTradeUtility(s,goal,'garden_pass','clover_seed',NOW).ok,true);
 });
+
+import {admitPersonal} from '../src/engine/participants.ts';
+test('admitted personal profile cannot become an autonomous trade candidate before claim support',()=>{
+ const {s,a,b,goal}=fixture();b.inventory=[];
+ const profile={actorId:'pm_11111111-1111-4111-8111-111111111111',displayName:'Synthetic participant',appearanceId:'00-jolly',revision:1};
+ admitPersonal(s,profile,NOW);const peer=s.muses.at(-1);peer.place=a.place;peer.wants={goal:'coffee',items:['coffee'],source:'connected',updatedAt:NOW};grantItem(s.items,peer,'garden_pass',NOW,peer.place,'craft');
+ assert.equal(checkTrade(s.items,s.day,a,peer,'coffee','garden_pass',0,NOW).ok,true);
+ assert.equal(planUse(s,goal,NOW).candidates.length,0);
+});
+
+test('legacy peer public profile does not remove existing signed trade eligibility',()=>{const {s,b,goal}=fixture();b.profile={actorId:b.id,displayName:'Renamed legacy',appearanceId:'00-jolly',revision:1};assert.ok(planUse(s,goal,NOW).candidates.some(c=>c.peer===b.id));});

@@ -36,7 +36,8 @@ export function planUse(s: WorldState, goal: UseGoal, now: number): UsePlan {
   if (p.missing.length) {
     // Both sides gain a publicly requested item. No motive inference or random acceptance.
     for (const peer of s.muses) {
-      if (peer.id===m.id || peer.travel || peer.beat || s.paused?.[peer.id] || distanceM(placeById(m.place),placeById(peer.place))>100) continue;
+      // Newly admitted personal identities have no claimed-write authority yet (#148).
+      if (peer.id.startsWith('pm_') || peer.id===m.id || peer.travel || peer.beat || s.paused?.[peer.id] || distanceM(placeById(m.place),placeById(peer.place))>100) continue;
       const wants=publicNeed(s,peer.id);
       for (const want of p.missing) for (const give of new Set(m.inventory)) {
         if (!wants?.items.includes(give) || !goalTradeUtility(s,goal,give,want,now).ok) continue;
