@@ -1,3 +1,4 @@
+import {actorProfile} from '../../src/engine/participants.ts';
 // Trust registry and executor keys inside the world Durable Object (direction v2, 6 and 12.1).
 // Private keys never leave this object: system resident roots and every executor key live in SQLite;
 // the owner's root comes from the OWNER_ROOT_JWK secret. Methods used by verifyEnvelope are synchronous
@@ -178,6 +179,12 @@ export class Trust implements TrustRegistry {
     if(agent.kind==='personal'){const p=this.sql.exec('SELECT display_name,appearance_id FROM personal_profiles WHERE actor_id=?',museId).toArray()[0],g=this.sql.exec('SELECT scopes FROM personal_authority WHERE actor_id=?',museId).toArray()[0];const scopes=g?JSON.parse(String(g.scopes)):[];const card=buildCard(harnessById(String(p.appearance_id)),{kid:agent.agentId,publicJwk:agent.rootJwk},{ownerClaimed:false,fingerprint:null,scopes:{allowed:scopes.filter((s:string)=>(SCOPES.allowed as readonly string[]).includes(s)||s==='world_entry'),approval:scopes.filter((s:string)=>(SCOPES.approval as readonly string[]).includes(s)),forbidden:[...SCOPES.forbidden]},baseUrl});card.name=String(p.display_name);card.description='A personal Muse. Decisions remain in its owner runtime; Musely only verifies and commits explicit delegated actions.';card.skills=[];card['x-musely'].harness='personal';return signCard(card,root,`${baseUrl}/.well-known/jwks/${agent.agentId}.json`);}
     const owned = agent.kind === 'owner';
     const card = buildCard(harnessById(museId), {kid: agent.agentId, publicJwk: agent.rootJwk}, {ownerClaimed: owned ? claim.claimed : true, fingerprint: owned ? claim.fingerprint : null, scopes: SCOPE_SUMMARY, baseUrl, ownerLabel: owned ? 'Kim Sejun' : 'Musely resident'});
+    // Only the current public name changes. The legacy root, claim, scopes, role and URLs stay as issued.
+    if(museId===OWNER_SLOT){
+      let row:Record<string,unknown>|undefined;
+      try{row=this.sql.exec('SELECT state FROM world WHERE id=1').toArray()[0];}catch{/* Standalone trust fixtures can have no world table. */}
+      if(row){const muse=JSON.parse(String(row.state)).muses.find((m:{id:string})=>m.id===museId);if(muse?.profile!==undefined)card.name=actorProfile(muse.profile,museId).displayName;}
+    }
     return signCard(card, root, `${baseUrl}/.well-known/jwks/${agent.agentId}.json`);
   }
 
