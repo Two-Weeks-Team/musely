@@ -64,6 +64,11 @@ export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: M
   const check = checkTrade(ledger, s.day, a, b, t.give, t.want, 0, at);
   out.push({at, source: 'rule', kind: 'trade_proposed', muse: a.id, other: b.id, place: place.id, line: `${itemName(t.give)} for your ${itemName(t.want)}?`, data: {give: t.give, want: t.want, stage: 'propose', check: check.ok ? 'ok' : check.reason}, tags: []});
   if (!check.ok) {
+    if (toConnected) {
+      // A rule/validation failure is not the personal recipient's decision or speech.
+      out.push({at, source: 'rule', kind: 'trade_refused', muse: a.id, other: b.id, place: place.id, line: null, data: {reason: check.reason, stage: 'validate', recipientDecision: 'not_requested'}, tags: ['trade_refused']});
+      return out;
+    }
     out.push({at, source: 'rule', kind: 'trade_rejected', muse: b.id, other: a.id, place: place.id, line: 'Not this time.', data: {reason_public: check.reason === 'relic' ? 'relics stay with their place' : null, stage: 'negotiate'}, tags: ['trade_rejected']});
     return out;
   }

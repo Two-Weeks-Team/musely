@@ -12,6 +12,7 @@ on:
       - 'app/scripts/test-support/**'
       - 'app/scripts/wants-use.test.mjs'
       - 'app/scripts/wants-journey.test.mjs'
+      - 'app/scripts/trade-decision-provenance.test.mjs'
       - 'app/worker/world-do.ts'
       - 'app/package*.json'
       - '.github/workflows/wants-use.yml'
@@ -31,5 +32,5 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - run: npm ci --ignore-scripts
-      - run: node --test scripts/wants-use.test.mjs scripts/wants-journey.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs scripts/run-log.test.mjs scripts/run-replay.test.mjs
+      - run: node --test scripts/wants-use.test.mjs scripts/wants-journey.test.mjs scripts/trade-decision-provenance.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs scripts/run-log.test.mjs scripts/run-replay.test.mjs
       - run: node node_modules/typescript/bin/tsc --ignoreConfig --noEmit --target es2022 --module esnext --moduleResolution bundler --allowImportingTsExtensions --strict --skipLibCheck src/engine/wants-use.ts

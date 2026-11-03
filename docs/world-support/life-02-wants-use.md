@@ -45,3 +45,7 @@ The actual in-process WorldDO / MCP handler / signed-command path now tests publ
 Seven authenticated-path tests include rejection, task expiry, delegation revocation, concurrent craft idempotency, actor argument spoofing, injection rejection, missing provenance and repeated craft attribution. The local fixture supplies only Cloudflare base/storage/alarm hosting, test claim setup and ephemeral test credentials. No actual HTTP server/TLS, provider authentication, external personal Muse, AI-decided negotiation, persistent goal executor or deployment is established. Calls are manually selected by the test. Network is blocked and unexpected calls must remain zero.
 
 Main7a85add, PR138acf8024 and PR14011a1c5 were read for integration boundaries; test composition is not a merge. Existing app/runtime authority remains in charge. Production activation is still off.
+
+## Personal refusal attribution
+
+Failed rule proposals to a personal/connected recipient now emit `trade_refused` attributed to the proposer with no speech and recipientDecision=not_requested. The world must not fabricate the personal recipient saying “Not this time.” Three regressions preserve real resident rejection and pending valid personal proposals. This is an engine5 candidate fix, not a new personal decision policy.
