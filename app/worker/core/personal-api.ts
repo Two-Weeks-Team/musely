@@ -37,6 +37,20 @@ const nonceValid = (v: string | null): v is string => !!v && /^[A-Za-z0-9_-]{43}
 /** Cookie presence never selects the handler. Ambiguous mixed states are routed here and rejected. */
 export const isPersonalCallback = (url: URL) => url.pathname === PERSONAL_CALLBACK && url.searchParams.getAll('state').some(s => s.startsWith(PERSONAL_STATE_PREFIX));
 /** Every exception is reduced to a fixed category here, before the legacy API's general logging handler. */
+// An incoming empty HTTP write can have a non-null, already closed body stream.
+async function emptyWriteBody(request: Request): Promise<boolean> {
+  if (!request.body) return true;
+  const reader = request.body.getReader(); let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('body_deadline')), 1000); });
+  try {
+    for (let i = 0; i < 8; i++) {
+      const part = await Promise.race([reader.read(), deadline]);
+      if (part.done) return true;
+      if (part.value.byteLength) return false;
+    }
+    return false;
+  } catch { return false; } finally { if (timer !== undefined) clearTimeout(timer); void reader.cancel().catch(() => {}); }
+}
 export async function personalRoutes(request: Request, url: URL, cfg: PersonalConfig, stub: PersonalAuthStub): Promise<Response> {
   try {
     const now = cfg.now ?? Date.now;
@@ -46,7 +60,7 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
     if (request.method !== method) { const r = failure('method_not_allowed', 405); r.headers.set('allow', url.pathname === BASE + '/profile' ? 'GET, PATCH' : method); return r; }
     if (method !== 'GET' && !originAllowed(request, [cfg.origin])) return failure('origin_not_allowed', 403);
     const profileWrite = url.pathname === BASE + '/draft' || (url.pathname === BASE + '/profile' && request.method === 'PATCH');
-    if (method !== 'GET' && !profileWrite && request.body) return failure('body_not_allowed', 400);
+    if (method !== 'GET' && !profileWrite && !await emptyWriteBody(request)) return failure('body_not_allowed', 400);
     if (url.pathname !== PERSONAL_CALLBACK && url.search) return failure('bad_query', 400);
     const sessionReady = !!cfg.secret && typeof cfg.appId === 'string' && /^[0-9]{1,32}$/.test(cfg.appId);
     const ready = sessionReady && !!cfg.appSecret;
