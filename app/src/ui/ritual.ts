@@ -8,19 +8,31 @@ type Verdict = {step: string; passed: boolean; confidence: number; observation?:
 
 function cameraFailure(error: unknown): string | null {
   const name = error instanceof Error ? error.name : null;
-  if (name === 'NotAllowedError') return 'Camera access was blocked. In Chrome, open Site information → Site settings → Camera and allow this site. On macOS, also check System Settings → Privacy & Security → Camera and allow your browser. If both are allowed, this page’s camera policy may be blocking access.';
-  if (name === 'NotFoundError') return 'No camera was found. Connect or enable a camera, then try again.';
-  if (name === 'NotReadableError') return 'The camera could not be opened. Another app may be using it, or the device may be unavailable. Close other camera apps and check the device, then try again.';
+  if (name === 'NotAllowedError') return 'Chrome 사이트 정보 → 사이트 설정 → 카메라와 macOS 시스템 설정 → 개인정보 보호 및 보안 → 카메라에서 허용해 주세요. 둘 다 허용했다면 페이지를 새로 여세요. · Allow Chrome Site information → Site settings → Camera and macOS Privacy & Security → Camera. If both are allowed, reopen this page; its camera policy may be blocking access.';
+  if (name === 'NotFoundError') return '카메라를 연결하면 다시 할 수 있어요. 지금은 동네를 관전하거나 방문할 수 있어요. · No camera was found. Connect or enable a camera to retry; you can watch or visit now.';
+  if (name === 'NotReadableError') return '카메라를 쓰는 다른 앱을 닫고 장치 연결을 확인해 주세요. · Another app may be using it, or the device may be unavailable. Close other camera apps and check the device.';
   return null;
 }
+
+const poses: Record<string, string> = {
+  raise_left_hand: '왼손을 들어 주세요 · Raise your left hand',
+  raise_right_hand: '오른손을 들어 주세요 · Raise your right hand',
+  turn_head_left: '고개를 자신의 왼쪽으로 돌려 주세요 · Turn your head to your left',
+  turn_head_right: '고개를 자신의 오른쪽으로 돌려 주세요 · Turn your head to your right',
+  show_date_paper: '오늘 날짜를 쓴 종이를 보여 주세요 · Show a paper with today’s date',
+  thumbs_up: '엄지손가락을 들어 주세요 · Show a thumbs-up',
+  touch_nose: '손가락으로 코를 만져 주세요 · Touch your nose with one finger',
+  show_open_palm: '손바닥을 펼쳐 보여 주세요 · Show an open palm',
+};
 
 /** Recorded result card (default) plus the "try it yourself" flow. Returns the container to insert. */
 export function ritualCard(onDone: () => void) {
   const box = el('div', 'id-card ritual');
-  box.append(el('span', 'eyebrow', 'WELCOME RITUAL · A PERSON IS PRESENT'), el('h4', '', 'Three quick moves, judged by Muse Spark vision'));
-  const recorded = el('div', 'ritual-recorded');
-  box.append(recorded, el('p', 'muted', 'Your camera frames go through our server to the Muse Spark judge and are not stored by Musely. Only pass/fail per step, confidence and the request id are kept. Meta’s own retention applies to the request. The aim is to make it costlier for a bot than for a person, not impossible.'));
-  const start = el('button', 'secondary', 'Try the ritual with your camera'); start.type = 'button';
+  box.append(el('span', 'eyebrow', '본인 확인 · Welcome'), el('h4', '', '세 동작으로 시작해요 · Start with three moves'));
+  const history = el('details', 'ritual-recorded'); history.append(el('summary', '', '진행 예시 보기 · See an example'));
+  const recorded = el('div'); history.append(recorded);
+  box.append(el('p', 'muted', '실제 사람이 있는지 확인해요. 사진 3장은 서버를 거쳐 Meta로 전송되며 Musely는 보관하지 않아요. 결과만 보관하며 Meta의 보관 정책이 적용돼요. · Three photos check that a person is present. They go through our server to Meta; Musely keeps only results. Meta’s retention policy applies.'), history);
+  const start = el('button', 'primary', '카메라로 시작 · Try the ritual'); start.type = 'button';
   const stage = el('div', 'ritual-stage'); stage.hidden = true;
   box.append(start, stage);
 
@@ -35,10 +47,10 @@ export function ritualCard(onDone: () => void) {
   class Dismissed extends Error {}
   start.onclick = async () => {
     if (start.disabled) return;
-    start.disabled = true; stage.hidden = false; stage.tabIndex = -1;
+    start.disabled = true; start.hidden = true; stage.hidden = false; stage.tabIndex = -1;
     stage.setAttribute('role', 'region'); stage.setAttribute('aria-label', 'Camera ritual');
     const cancel = el('button', 'secondary ritual-cancel', '취소 · Cancel'); cancel.type = 'button';
-    const prompt = el('p', 'ritual-prompt', 'Allow the camera to see your preview. Nothing is photographed yet.');
+    const prompt = el('p', 'ritual-prompt', '카메라를 허용하면 미리보기가 나와요. 아직 촬영하지 않아요. · Allow the camera to see your preview. No photo yet.');
     const count = el('p', 'ritual-count'); count.setAttribute('aria-live', 'polite'); count.setAttribute('aria-atomic', 'true');
     const controls = el('div', 'ritual-controls'); controls.append(cancel);
     stage.replaceChildren(prompt, count, controls);
@@ -63,7 +75,7 @@ export function ritualCard(onDone: () => void) {
     const countdown = async () => { for (let n = 3; n > 0; n--) { guard(); count.textContent = String(n); await pause(1000); } count.textContent = ''; };
     const ready = async (label: string, focus = true) => {
       guard();
-      const button = el('button', 'secondary ritual-ready', label); button.type = 'button';
+      const button = el('button', 'primary ritual-ready', label); button.type = 'button';
       controls.replaceChildren(button, cancel);
       if (focus) { button.scrollIntoView({block: 'nearest', behavior: 'instant'}); button.focus({preventScroll: true}); }
       await wait(new Promise<void>(resolve => { button.onclick = () => { if (button.disabled) return; button.disabled = true; resolve(); }; }));
@@ -84,12 +96,12 @@ export function ritualCard(onDone: () => void) {
       await wait(pendingStream);
       video = el('video', 'ritual-video'); video.muted = true; video.playsInline = true; video.srcObject = stream;
       stage.replaceChildren(video, prompt, count, controls); await wait(video.play());
-      prompt.textContent = 'Ready? · 준비됐나요? Check your preview and prepare anything you need, including dated paper. Each move waits for you. No photo has been taken.';
+      prompt.textContent = '미리보기 안에 얼굴과 손이 보이나요? 오늘 날짜를 쓴 종이도 준비해 주세요. 준비 버튼을 누르기 전에는 촬영하지 않아요. · Check your face and hands in the preview and prepare paper with today’s date. Each move waits until you are ready.';
       focusStage();
       await ready('준비됐어요 · Ready', false);
       await countdown();
       // Start the three-minute server challenge only after the person has had time to prepare.
-      prompt.textContent = 'Preparing your three moves…';
+      prompt.textContent = '세 동작을 준비하고 있어요 · Preparing your three moves…';
       const st = await wait(sparkStatus()); if (st) await wait(ensureSession(st));
       guard();
       const ch = await wait(fetch('/api/ritual/start', {method: 'POST', signal: abort.signal}));
@@ -99,15 +111,15 @@ export function ritualCard(onDone: () => void) {
       expiry = setTimeout(() => cancelRun(new Error('The three-minute ritual expired. No frames were sent')), Math.max(0, expiresAt - Date.now()));
       for (let i = 0; i < steps.length; i++) {
         count.textContent = '';
-        prompt.textContent = `${i + 1}/3 · Please ${steps[i].text}. Prepare at your own pace, then press the button. Complete all three moves within three minutes.`;
-        await ready('이 동작 준비됐어요');
+        prompt.textContent = `${i + 1}/3 · ${poses[steps[i].id] ?? steps[i].text}. 미리보기를 보며 준비한 뒤 눌러 주세요. 3분 안에 마쳐 주세요. · Prepare in the preview, then press Ready. Finish within three minutes.`;
+        await ready('동작 준비됐어요 · Ready for this move');
         await countdown();
         guard(); count.textContent = '●'; frames.push(capture(video));
       }
       guard();
       if (Date.now() >= expiresAt) throw new Error('The three-minute ritual expired. No frames were sent');
       clearTimeout(expiry); expiry = undefined;
-      stopCamera(); prompt.textContent = 'Judging…'; count.textContent = ''; controls.replaceChildren(cancel);
+      stopCamera(); prompt.textContent = '결과를 확인하고 있어요 · Checking your moves…'; count.textContent = ''; controls.replaceChildren(cancel);
       sent = true;
       const r = await wait(fetch('/api/muse', {method: 'POST', headers: {'content-type': 'application/json'}, signal: abort.signal, body: JSON.stringify({action: 'challenge', input: {challengeId: id, frames}})}));
       frames.length = 0;
@@ -115,18 +127,24 @@ export function ritualCard(onDone: () => void) {
       stage.replaceChildren();
       if (!r.ok) throw new Error(j.error ?? String(r.status));
       const live = j.source === 'live';
-      stage.append(el('span', 'src ' + (live ? 'src-live' : 'src-replay'), live ? 'LIVE · Muse Spark vision' : `NOT JUDGED · ${j.reason}`));
+      stage.append(el('span', 'src ' + (live ? 'src-live' : 'src-replay'), live ? 'LIVE · Muse Spark vision' : '아직 확인하지 못했어요. 잠시 후 다시 해 주세요. · Not checked yet. Please retry shortly.'));
       const res = (j.output?.results ?? []) as Verdict[];
-      if (res.length) { stage.append(el('p', '', res.every(x => x.passed) ? 'Passed: a person did all three moves.' : 'Not passed. You can try again.'), results(res.map((x, k) => ({...x, step: steps[k]?.text ?? x.step})))); }
+      if (res.length) { stage.append(el('p', '', res.every(x => x.passed) ? '확인됐어요 · All three moves passed.' : '얼굴과 손이 미리보기에 잘 보이도록 맞추고 다시 해 주세요. · Not passed. Keep your face and hands visible, then retry.'), results(res.map((x, k) => ({...x, step: poses[steps[k]?.id] ?? steps[k]?.text ?? x.step})))); }
       if (j.evidence?.requestId) stage.append(el('p', 'muted', `Request ${j.evidence.requestId} · ${j.evidence.latencyMs} ms`));
       onDone();
     } catch (err) {
       if (err instanceof Dismissed) { stage.replaceChildren(el('p', 'muted', sent ? 'Ritual closed. Judging may already have received the three frames.' : 'Ritual cancelled: nothing was sent.')); return; }
-      stage.replaceChildren(el('p', 'muted', cameraFailure(err) ?? ('The ritual could not run: ' + (err as Error).message + '. The recorded ritual above still shows how it works.')));
+      stage.replaceChildren(el('p', 'muted', cameraFailure(err) ?? '연결과 조명을 확인하고 다시 해 주세요. 시간이 지났다면 처음부터 시작해 주세요. · Check your connection and lighting, then retry. If the time expired, start again.'));
+      if (err instanceof Error && err.name === 'NotFoundError') {
+        const visit = el('button', 'primary', '동네 둘러보기 · Watch the neighborhood'); visit.type = 'button';
+        visit.onclick = () => { box.closest<HTMLElement>(':popover-open')?.hidePopover(); };
+        stage.append(visit);
+      }
     } finally {
       observer.disconnect(); document.removeEventListener('visibilitychange', visibility); document.removeEventListener('toggle', visibility, true);
       clearTimeout(expiry); for (const timer of timers) clearTimeout(timer);
-      frames.length = 0; stopCamera(); start.disabled = false;
+      frames.length = 0; stopCamera(); start.disabled = false; start.hidden = false; start.textContent = '다시 하기 · Retry';
+      start.className = stage.querySelector?.('button.primary') ? 'secondary' : 'primary';
     }
   };
   return box;

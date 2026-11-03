@@ -29,7 +29,7 @@ async function fixture(t,{pendingCamera=false,cameraError=null,ttl=180000}={}){
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{mediaDevices:{getUserMedia:()=>cameraError?Promise.reject(Object.assign(new Error('camera fixture'),{name:cameraError})):pendingCamera?camera.promise:Promise.resolve(stream)}}});
  globalThis.fetch=async(url,init)=>{if(url==='/api/ritual/record')return response({record:null});if(url==='/api/ritual/start'){state.starts++;return response({id:'fixture',steps:[{id:'a',text:'raise one hand'},{id:'b',text:'turn your head'},{id:'c',text:'show three fingers'}],expiresAt:Date.now()+ttl});}if(url==='/api/muse'){state.posts.push(JSON.parse(init.body));return response({source:'live',output:{results:[]}});}throw Error('Unexpected offline request');};
  const card=ritualCard(()=>state.done++);await flush();
- const start=button(card,'Try the ritual with your camera');start.onclick();await flush();
+ const start=button(card,'카메라로 시작 · Try the ritual');start.onclick();await flush();
  const tick=async()=>{const timer=[...timers].find(([,v])=>v.ms===1000);assert.ok(timer,'countdown timer');timers.delete(timer[0]);timer[1].f();await flush();};
  const countdown=async()=>{await tick();await tick();await tick();};
  const click=async(text)=>{const b=button(card,text);assert.ok(b,`button ${text}`);assert.equal(b.disabled,false);b.onclick();await flush();};
@@ -42,7 +42,7 @@ test('preview is focused and waits without session or challenge use, then each m
  assert.equal(f.state.starts,0,'preview must not consume challenge');assert.equal(f.state.statusCalls,0);assert.equal(f.state.sessionCalls,0);
  assert.equal(document.activeElement,stage);assert.equal(stage.scrolled,true);assert.equal(stage.tabIndex,-1);
  await f.click('준비됐어요 · Ready');assert.equal(f.state.starts,0);await f.countdown();assert.equal(f.state.starts,1);assert.equal(f.state.captures,0);
- for(let i=0;i<3;i++){assert.equal(f.state.captures,i);assert.equal(f.state.posts.length,0);await f.click('이 동작 준비됐어요');await f.countdown();}
+ for(let i=0;i<3;i++){assert.equal(f.state.captures,i);assert.equal(f.state.posts.length,0);await f.click('동작 준비됐어요 · Ready for this move');await f.countdown();}
  assert.equal(f.state.captures,3);assert.equal(f.state.posts.length,1);assert.equal(f.state.posts[0].input.frames.length,3);assert.equal(f.state.stopped,1);assert.equal(f.state.done,1);
 });
 test('cancel during pending permission stops a late stream and never starts a challenge',async t=>{
@@ -62,7 +62,7 @@ for(const kind of ['hidden','removed','closed'])test(`${kind} releases preview a
  const f=await fixture(t);await f.dismiss(kind);assert.equal(f.state.stopped,1);assert.equal(f.state.posts.length,0);assert.equal(f.state.starts,0);assert.equal(f.start.disabled,false);
 });
 test('dismissal between prepared moves discards captured frames and prevents upload',async t=>{
- const f=await fixture(t);await f.click('준비됐어요 · Ready');await f.countdown();await f.click('이 동작 준비됐어요');await f.countdown();assert.equal(f.state.captures,1);
+ const f=await fixture(t);await f.click('준비됐어요 · Ready');await f.countdown();await f.click('동작 준비됐어요 · Ready for this move');await f.countdown();assert.equal(f.state.captures,1);
  await f.dismiss('hidden');assert.equal(f.state.stopped,1);assert.equal(f.state.posts.length,0);
 });
 test('expired challenge while waiting for a move stops without upload or replacement challenge',async t=>{
@@ -74,5 +74,5 @@ for(const kind of ['hidden','removed','closed'])test(`${kind} during permission 
 });
 test('repeated start and readiness clicks do not duplicate a challenge or capture',async t=>{
  const f=await fixture(t);f.start.onclick();await flush();const initial=button(f.card,'준비됐어요 · Ready');initial.onclick();initial.onclick();await flush();await f.countdown();assert.equal(f.state.starts,1);
- const move=button(f.card,'이 동작 준비됐어요');move.onclick();move.onclick();await flush();await f.countdown();assert.equal(f.state.captures,1);assert.equal(f.state.posts.length,0);await f.dismiss('closed');
+ const move=button(f.card,'동작 준비됐어요 · Ready for this move');move.onclick();move.onclick();await flush();await f.countdown();assert.equal(f.state.captures,1);assert.equal(f.state.posts.length,0);await f.dismiss('closed');
 });
