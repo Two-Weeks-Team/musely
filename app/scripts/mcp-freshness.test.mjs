@@ -1,0 +1,37 @@
+// Actual localhost TLS -> Worker/WorldDO -> native SQLite, with synthetic accounts and no provider calls.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {httpsWorld,JOLLY,COPPER} from './test-support/https-world.mjs';
+const module=await import('../worker/core/mcp-freshness.ts').catch(e=>{if(e.code!=='ERR_MODULE_NOT_FOUND')throw e;return {};});
+const PREFIX='musely_mcp_freshness',OWNER={id:'ak_SyntheticOwner1',muse:JOLLY};
+const read=(version,at)=>({isError:false,structuredContent:{world_version:version,observed_at:at,privateText:'PRIVATE_RESPONSE_CANARY'}});
+const write=(version=4,expected=3,refused='stale_world')=>({isError:!!refused,structuredContent:{command:{world_version:version,expected_version:expected,command_id:'PRIVATE_COMMAND_CANARY'},refused,privateReason:'PRIVATE_REASON_CANARY'}});
+function memory(){assert.equal(typeof module.McpFreshness,'function','freshness helper must exist');const logs=[];return{logs,service:new module.McpFreshness({logger:(prefix,json)=>logs.push([prefix,JSON.parse(json)])})};}
+function capture(t){const original=console.info,logs=[];console.info=(...args)=>{if(args[0]===PREFIX)logs.push(args);};t.after(()=>console.info=original);return logs;}
+const row=logs=>JSON.parse(logs.at(-1)[1]);
+test('TLS read -> 45s gap/another commit -> stale is bound to exactly returned world and heartbeat metadata',async t=>{
+ const logs=capture(t),a=await httpsWorld(t);let clock=Date.now()+100;a.dobj.connected.d.now=()=>clock;
+ const w=(await a.tool(JOLLY,'get_world_state')).structuredContent;assert.equal(logs.length,0);
+ await a.tool(COPPER,'greet',{text:'Synthetic peer hello'});const hb=(await a.tool(JOLLY,'heartbeat_check')).structuredContent;assert.equal(hb.world_version,a.state().version);assert.ok(Number.isSafeInteger(hb.observed_at));
+ clock+=45000;a.edit(s=>{s.spotlight.cursor=(s.spotlight.cursor+1)%10;});const version=a.state().version,nonces=a.db.prepare('SELECT count(*) n FROM nonces').get().n,commands=a.db.prepare('SELECT count(*) n FROM commands').get().n;
+ const result=(await a.tool(JOLLY,'greet',{text:'PRIVATE_ARGS_CANARY',command_id:'PRIVATE_COMMAND_CANARY',expected_version:w.world_version})).structuredContent;assert.equal(result.refused,'stale_world');assert.equal(logs.length,1,'one private diagnostic after a signed write');
+ const d=row(logs);assert.equal(d.schema,'musely-mcp-freshness-v1');assert.equal(d.at,clock);assert.equal(d.key_id,a.keys[JOLLY].id);assert.equal(d.muse,JOLLY);assert.equal(d.expected_version,w.world_version);assert.equal(d.result_version,result.command.world_version);assert.equal(d.refusal,'stale_world');assert.deepEqual(d.last_world_read,{at:w.observed_at,version:w.world_version});assert.deepEqual(d.last_heartbeat,{at:hb.observed_at,version:hb.world_version});assert.equal(d.read_age_ms,45000);assert.equal(a.state().version,version);assert.equal(a.db.prepare('SELECT count(*) n FROM nonces').get().n,nonces);assert.equal(a.db.prepare('SELECT count(*) n FROM commands').get().n,commands);assert.ok(!JSON.stringify(logs).includes('PRIVATE_'));assert.ok(!JSON.stringify(logs).includes(a.keys[JOLLY].key));assert.equal(a.wire.every(r=>!r.text.includes(PREFIX)),true);assert.equal(JSON.stringify(a.events()).includes(PREFIX),false);
+});
+test('TLS peer, list, unknown method/tool and invalid auth never log; diagnostic throwing cannot change a valid write',async t=>{
+ const logs=capture(t),a=await httpsWorld(t);await a.tool(COPPER,'greet',{text:'Synthetic peer greeting'});await a.rpc(a.keys[JOLLY].key,'tools/list');await a.rpc(a.keys[JOLLY].key,'tools/call',{name:'unknown_PRIVATE_CANARY',arguments:{}});await a.rpc(a.keys[JOLLY].key,'unknown_PRIVATE_METHOD');await a.rpc('msly_'+'X'.repeat(43),'tools/list');assert.equal(logs.length,0);
+ console.info=()=>{throw Error('PRIVATE_LOGGER_CANARY');};const before=a.db.prepare('SELECT count(*) n FROM commands').get().n,nonces=a.db.prepare('SELECT count(*) n FROM nonces').get().n;const args={text:'Synthetic valid greeting',command_id:'freshness-logger-throw'},r=(await a.tool(JOLLY,'greet',args)).structuredContent;assert.equal(r.ok,true);assert.equal(r.command.applied,true);assert.equal(a.db.prepare('SELECT count(*) n FROM commands').get().n,before+1);assert.equal(a.db.prepare('SELECT count(*) n FROM nonces').get().n,nonces+2);const version=a.state().version,duplicate=(await a.tool(JOLLY,'greet',args)).structuredContent;assert.equal(duplicate.command.duplicate,true);assert.equal(a.db.prepare('SELECT count(*) n FROM commands').get().n,before+1);assert.equal(a.db.prepare('SELECT count(*) n FROM nonces').get().n,nonces+2);assert.equal(a.state().version,version);
+});
+test('RAM records only 32 owner IDs, each read expires independently after15min and restarts empty',()=>{
+ const {service,logs}=memory();for(let i=0;i<33;i++)service.observe({id:'ak_Synthetic'+i,muse:JOLLY},'tools/call','get_world_state',read(i,100),100);
+ service.observe({id:'ak_Synthetic0',muse:JOLLY},'tools/call','greet',write(),200);assert.equal(logs.at(-1)[1].last_world_read,null);
+ service.observe({id:'ak_Synthetic32',muse:JOLLY},'tools/call','heartbeat_check',read(50,900000),900000);
+ service.observe({id:'ak_Synthetic32',muse:JOLLY},'tools/call','greet',write(),900101);assert.equal(logs.at(-1)[1].last_world_read,null);assert.deepEqual(logs.at(-1)[1].last_heartbeat,{at:900000,version:50});
+ const restarted=memory();restarted.service.observe(OWNER,'tools/call','greet',write(),1000000);assert.equal(restarted.logs[0][1].last_world_read,null);assert.notEqual(logs[0][1].instance_id,restarted.logs[0][1].instance_id);
+});
+test('only safe numeric response metadata and known signed writes can enter fixed diagnostic JSON',()=>{
+ const {service,logs}=memory();service.observe(OWNER,'tools/call','get_world_state',read('PRIVATE_VERSION_CANARY',1),1);service.observe(OWNER,'tools/call','heartbeat_check',read(1,'PRIVATE_TIME_CANARY'),1);service.observe({...OWNER,muse:COPPER},'tools/call','greet',write(),2);service.observe(OWNER,'tools/list','greet',write(),2);service.observe(OWNER,'tools/call','unknown_PRIVATE_TOOL',write(),2);service.observe({...OWNER,id:'msly_'+'X'.repeat(43)},'tools/call','greet',write(),2);assert.equal(logs.length,0);
+ service.observe(OWNER,'tools/call','greet',write(5,'PRIVATE_EXPECTED_CANARY','PRIVATE_REFUSAL_CANARY'),3);const d=logs[0][1];assert.equal(d.expected_version,null);assert.equal(d.refusal,'other_refusal');assert.equal(d.last_world_read,null);assert.equal(d.last_heartbeat,null);assert.equal(d.read_age_ms,null);assert.ok(!JSON.stringify(logs).includes('PRIVATE_'));assert.deepEqual(Object.keys(d).sort(),['schema','instance_id','at','tool','key_id','muse','expected_version','result_version','refusal','last_world_read','last_heartbeat','read_age_ms'].sort());
+});
+test('actual DO restart over the same SQLite loses read metadata and changes only the diagnostic instance id',async t=>{
+ const logs=capture(t),a=await httpsWorld(t);await a.tool(JOLLY,'get_world_state');await a.tool(JOLLY,'greet',{text:'Synthetic before restart',command_id:'freshness-before-restart'});assert.ok(row(logs).last_world_read);const before=row(logs).instance_id;await a.restart();const result=(await a.tool(JOLLY,'greet',{text:'Synthetic after restart',command_id:'freshness-after-restart'})).structuredContent;assert.equal(result.ok,true);const d=row(logs);assert.equal(d.last_world_read,null);assert.equal(d.last_heartbeat,null);assert.notEqual(d.instance_id,before);
+});
