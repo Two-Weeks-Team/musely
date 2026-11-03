@@ -1,6 +1,6 @@
-# D-04 device acceptance — preparation and approved reference amendment
+# D-04 device acceptance — approved reference and observed scoped results
 
-This document defines collection and review. It contains no final release/device PASS. Measurements require the release owner to freeze one release SHA, Worker version, configuration hash and served-body manifest first. A local diagnostic, emulated viewport, source hash, or completed collector is a separate evidence layer.
+The dated preparation protocol below is preserved. Later physical and client measurements satisfy the scoped C11 numeric gates recorded in the closeout below; whole D04 still awaits the original D01 acceptance output; the actual later I09 full handoff is recorded below. A physical client comparison, an emulated layout, an operating cold-entry measurement and a live ten-actor observation remain separate evidence layers. The original MacBook Air M1 requirement is historical; the approved MacBookPro18,2 amendment is explicit below.
 
 ## Approved reference amendment, 2026-11-02
 
@@ -21,7 +21,7 @@ The mobile reference is **Samsung Galaxy S23 Ultra (SM-S918N), Android 16/API 36
 | Live ten-character world | Separate actor IDs/LOD/draw observations | Never apply the eight-character 90-draw gate automatically. Ten world actors do not establish all ten are on screen. Camera/screenshot evidence requires review. |
 | Layout | Horizontal overflow 0; essential controls reachable at 360×640, 390×844 and 1440×1000 | The dedicated welcome-layout browser regression owns actual clicks and keyboard access. Collector end-state geometry/hit checks supplement that regression. |
 
-The saved same-phone baseline contains all 210 FPS bins, 22 PSS samples, viewport 411×742, native DPR 2.625/applied 1.5, Chrome 156.0.8078.73. PSS peak/end were 1,514,268 / 1,341,987 KiB. Its script left profile cache state unchanged and intercepted frozen HTML; it did not record an exact cache inventory or a controlled cold/warm precondition. Preserve this limitation in the comparison. A new context declaration does not retroactively prove the old cache state. Chrome group PSS includes other preserved Chrome processes, so assess process/sample continuity and raw trend.
+The older historical same-phone baseline (not the new accepted pair below) contains all 210 FPS bins, 22 PSS samples, viewport 411×742, native DPR 2.625/applied 1.5, Chrome 156.0.8078.73. PSS peak/end were 1,514,268 / 1,341,987 KiB. Its script left profile cache state unchanged and intercepted frozen HTML; it did not record an exact cache inventory or a controlled cold/warm precondition. Preserve this limitation in the comparison. A new context declaration does not retroactively prove the old cache state. Chrome group PSS includes other preserved Chrome processes, so assess process/sample continuity and raw trend.
 
 ## Reproducible collector
 
@@ -65,7 +65,7 @@ Separate Node public source probes now send `Connection: close` and use a 10-sec
 
 The pinned managed beacon constructs a bare `?` on its same-origin default path, and a preserved actual first-load diagnostic confirmed the exact empty-query denial shape. This classification recognizes a blocked telemetry attempt; it permits no network write and does not alter earlier failed receipts or prove device acceptance. The earlier sourceAfter transport failure remains of unknown cause, with no retry used to erase it.
 
-## Fresh local client pair (preparation only)
+## Fresh local client pair — original preparation protocol
 
 The old phone baseline stays immutable, including its missing model/route/cache fields. A new **a906c330cad5d5d5b21b589e7386505e1908a424 public client / 4946517bbad0ec7677edd73205d7b4390dbdc4e5 candidate** pair may use a root-owned GET-only loopback server on the same approved phone. This is a client FPS/PSS comparison over a recorded public GET dataset, not production serving/cache/Worker/Meta/first-load or live-ten-actor acceptance. The approved manual story210 seconds, DPR1.5, unchanged-profile-cache policy and peak/end `max(20%,64MiB)` formula stay unchanged. New thresholds derive from the new measured baseline, not from old absolute PSS numbers.
 
@@ -81,4 +81,28 @@ Root owns exact task-tab/device/port routing. Phone loopback is not Mac loopback
 
 For `baseline-capture`, omit `--baseline`: fresh actual context/RAF/visibility/PSS/source receipts are collected. Success emits `baselineCaptured:true` with `measuredChecksPass:false` and **no comparison result**; CLI exit0 means baseline capture completed, not acceptance. For `candidate`, provide the exact new baseline file, its `baselineSHA256` and `baselineContext` copied from the new actual observation. The collector checks that it is a completed local baseline with actual Document/source receipts, identical dataset/shared runtime assets/device selection and every recorded context alias. It then applies the existing PSS formula. Old provenance is never backfilled. Missing samples, hidden frames, handled errors, body/source changes and late cleanup/CDP failures remain failures. Numeric comparison still needs raw growth/crash/context and image-quality review.
 
-Offline `device-local-pair.test.mjs` uses a pure handler, fake CDP/ADB and virtual time to exercise both roles, mismatched bytes/config/dataset/assets/device, missing PSS, visibility and late errors. These tests do not start the prepared server or connect a physical device. The first real paired run remains root execution after source/tool review; local comparison cannot replace the separate production/first-load/eight-pose/layout/live-world receipts.
+Offline `device-local-pair.test.mjs` uses a pure handler, fake CDP/ADB and virtual time to exercise both roles, mismatched bytes/config/dataset/assets/device, missing PSS, visibility and late errors. These tests do not start the prepared server or connect a physical device. The preparation assigned the first real pair to root after source/tool review; its actual later result is recorded below. Local comparison does not replace the separate production/first-load/eight-pose/layout/live-world receipts.
+
+## Observed closeout, 2026-11-03 — C11 scope satisfied; D-01 prerequisite pending
+
+The reference and budget were approved before measurement: MacBookPro18,2; physical SM-S918N/Android16; DPR cap/applied1.5; manual Story210seconds; PSS peak/end increase each ≤max(20% of its baseline,64MiB), plus raw trend/crash review. No absolute total-memory ceiling, Air M1 measurement or ten-actor90-draw budget is invented.
+
+| Scope and original identity | Observed evidence | Scope limit |
+|---|---|---|
+| 8b13/ba0508d2/b5e18f5e, physical desktop Pro18,2/Chrome156.0.8078.76 | Cold4Mbps/150ms/cache-disabled/SW-bypass readable7411.3ms;210005.3ms manual Story median120FPS/p95frame9.9ms;nativeDPR2/applied1.5 | Preserve original8b13 identity; not a new494desktop benchmark |
+| Same desktop eight-character pose budget |211poses,Three drawmax72≤90,LOD0max2,characterdrawmax9≤10,LODtriangle gates pass;payload14,452,628B≤15MiB,texture56,819,712B≤96MiB/unknown0 | Shared eight-character budget; not210-second FPS or all ten visibility |
+| Same desktop live ten-character observation |20samples/10s,10scene actors,drawmax91 | Separate observation; eight90-draw gate is not applied |
+| Fresh physical client pair a906baseline/494candidate | Same SM-S918N/Android16/Chrome156.0.8078.73/CSS411×742/applied1.5,Story-manual210s/unchanged-profile-cache,each median60FPS/p9516.8ms | Both received a pinned recorded public GET dataset on phone loopback; not an a906-vs494production backend or controlled cache-content comparison |
+| Approved physical PSS pair | Peak1,489,187→1,578,461KiB(+5.9948%);end1,256,531→1,353,430KiB(+7.7116%);23/22actual samples | Both peak/end satisfy max(20%,64MiB); no sample interpolation or old-baseline backfill |
+| Separate production494/359cb5c5/e10feb65 cold phone entry |4Mbps/150ms/target-cache-disabled/SW-bypass,scene4963.1ms/readable7714.5ms;8loaded actors/6readable/applied1.5 | Actual browser Document327b8f… and exact managed beacon637381… match; scene-ready alone does not pass arrival |
+| Fresh494 layout |71checks at360×640,390×844,1440×1000;overflow0/essential controls and keyboard/click access;actual authored Documente715… | Local emulated viewport with deterministic API fixture; not physical performance |
+
+Candidate PSS peaks at20.138s and falls by30s, then varies from1,314,707–1,353,430KiB; no crash or sustained unbounded rise was observed in this210s path. This is not a long-duration leak guarantee. Native phone geometry/8offered hit-testable controls supplements, and does not replace, the three requested layout sizes.
+
+The new pair has complete shared context and its own baseline SHA. It uses recorded-public-dataset local pins and separate server/config/dataset identities, not fictitious production Worker UUIDs. The older incomplete baseline above remains unchanged. Baseline capture completion is not candidate acceptance. The independent phone review records50/50 raw recomputations and24input hashes; it is not50new device runs.
+
+Evidence IDs in the private C10 bundle: `final-desktop-acceptance-review.md`, `final-desktop-firstload-5`, `final-desktop-210-2`, `final-desktop-eight-budget-1`, `final-desktop-ten-observation-1`, `phone-client-pair-actual-1`, `d04-phone-independent`, `d04-layout-candidate-494/root-run-01`. The494change from8b13 affects only replay/loader and recorded-replay UI; rendering engine/assets/Worker/config are unchanged. Fresh494layout, recorded-scene acceptance and physical494client/cold receipts cover those impacts without retagging old desktop results.
+
+Denied RUM attempts remain aborted, and exact stale public map/network observations remain in raw evidence. Application errors0 is not every network event0. Earlier DPR/query/sourceAfter failures remain failed/unknown and are not overwritten.
+
+Original issue64 requires D-01 and I-09 acceptance outputs. I09 technical C10 evidence remained valid during the23:30Z verification reopening. The earlier partial-I13-projection exception was withdrawn,not restored. Actual I13#57 full handoff closed at2026-11-02T23:39:44Z; I09#56's supplemental C10 and full handoff were then recorded and it reclosed at23:40:41Z(comment6591322898). I11#59 followed at23:41:10Z. These are actual later receipts,not backdated completions. Thus I09's original prerequisite is now satisfied,but D01's actual personal-Muse/webcam integrated output remains unverified. Whole D04 closure stays pending D01 and final documentation/handoff confirmation. An OPEN issue label alone is not evidence of a missing measurement, nor must a CLOSED label substitute for evidence. Competition submission, agreements, public repository/video publication are team handoff decisions outside the current engineering scope; they are not new D-04 gates.

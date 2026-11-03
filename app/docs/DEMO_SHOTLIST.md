@@ -1,6 +1,6 @@
-# D05 — 180-second actual-highlight edit preparation
+# D05 — reviewed 180-second actual-highlight media; prerequisite acceptance pending
 
-Status: **PREPARATION ONLY**. Base `81a7199c236733f159e607d349e6e0d6256a947b`; the final release has not been frozen. D02/D03/D04 and real Meta-account checkpoints remain separate. In particular, the owner claim is pending and a production P0 successful trade has not been established. This document never substitutes a fixture for that missing shot. I11/run-log-2 must be present in the final release; older records are incompatible.
+Status: **Private media produced and reviewed; whole D05 remains pending its original D02/D03/D04 acceptance outputs.** The dated preparation/tool protocol below is retained, while the observed-media closeout records the later actual result. Recorded footage is source8b13/ba0508d2/b5e18f5e; currently serving494/359cb5c5/e10feb65 is separately verified. Actual operator P0 trade/revocation and I11 recorded replay evidence exist; neither is a personal Muse installation or webcam receipt. Existing claim/account provenance is not a new visitor authorization. This engineering scope ends at S3 development/verification and team-review preparation; competition Submit, agreements, public repository/video publication are team decisions outside it.
 
 The story is a place where Muses live together. Identity/delegation determines whether they may act together; items change what they can do and why they move or cooperate. People watch ordinary life and approve a real promise. This edit selects actual resulting highlights. The existing 3:30 scripted Story remains a reference for composition, never material renamed LIVE, and the product itself remains unrestricted in length.
 
@@ -10,17 +10,17 @@ All recorded footage carries **REPLAY**, original `live / rule / scripted / repl
 
 | Time | Cut | Picture and plain-language caption | Required original record and filming checkpoint |
 |---|---|---|---|
-| 0:00–0:12 | s01 | Bay → commons → two Muses. “We delegate. They meet, decide and live together.” | Final-release real world/highlight event; runId/eventId/inputSeq and an associated model or signed-check anchor. Do not invent a statistic about time saved. |
-| 0:12–0:26 | s02 | Select one Muse; open the original Agent Card/delegation evidence. “Identity before action.” | Actual signed A2A check and its original verdict. Public card only; never the agent-key setup screen. |
-| 0:26–0:46 | s03 | P0: a valid delegation, the offered items, one completed trade. “Permission makes cooperation possible.” | **Pending real-account claim checkpoint.** Same release, real claimed owner; `a2a_verified` plus correlated `trade_completed`, same message/job, actual inventory result. No fixture replacement. |
+| 0:00–0:12 | s01 | A recorded public world; select a Muse. “We delegate. They meet, decide and live together.” | Final-release real world/highlight event; runId/eventId/inputSeq and an associated model or signed-check anchor. Do not invent a statistic about time saved. |
+| 0:12–0:26 | s02 | Select one Muse; open the original signed-request/delegation verdict. “Identity before action.” | Actual signed A2A check and its original verdict. Public card only; never the agent-key setup screen. |
+| 0:26–0:46 | s03 | P0: a valid delegation, the offered items, one completed trade. “Permission makes cooperation possible.” | **Recorded operator P0 exists.** Source8b13 original `a2a_verified`/`trade_completed`,input349; matching job/fresh-ID revocation refusal is input351. Keep server verdict, operator and recorded provenance; do not present it as a personal Muse client. |
 | 0:46–1:04 | s04 | P0: same job after owner revocation; refusal, unchanged inventory. “The owner can stop it.” | `a2a_refused`, `delegation_revoked`, fresh request ID/nonce, same item/target job; before/after inventory unchanged. Existing daily trade cap is not revocation proof. Actual owner action is recorded by the root/account owner; this capture tool only reads its result. |
-| 1:04–1:24 | s05 | P1: ten seconds before, ten seconds after gaining an item. “A reward changes the next plan.” | Controlled pair: same initial snapshot/seed/time/public inputs, item is the changed variable. Store both run/commit/hash references and resulting action/ability change. Different random model answers do not prove causality. Show controlled comparison label; do not call synthetic input LIVE. |
-| 1:24–1:42 | s06 | Follow the actual discovery/Transit Pass/garden ability into movement or cooperation. | Real item history and ability before/after hashes, resulting event; reference its model request or signed-check anchor. Show actual ETA/world time and virtual location. |
+| 1:04–1:24 | s05 | P1: two ten-second controlled views without/with Transit Pass. “One item changes an available action.” | Controlled pair: same initial snapshot/seed/time/public inputs, item is the changed variable. Store both run/commit/hash references and resulting action/ability change. Different random model answers do not prove causality. Show controlled comparison label; do not call synthetic input LIVE. |
+| 1:24–1:42 | s06 | A recorded rule discovery and a separate model greeting. | Rule discovery4265 and separate model greeting4270/input427, with its actual request anchor. Do not claim the discovery caused that greeting; keep virtual location and original source labels. |
 | 1:42–2:02 | s07 | Two Muses agree; owners decide; one public confirmation. “A promise needs both owners.” | Actual candidate/answers → owner approvals of same revision/hash → `meetup_confirmed` approval_refs. Film only public result; private reasons and exact candidate conditions stay off camera. Demo principal remains labelled as such. |
-| 2:02–2:16 | s08 | Gift, postcard arrival or completed repair/story help. “They can help each other.” | Actual `gift`, postcard delivery or `help_completed`, item consumption/result, one reward. Connected Muse vs rule-resident source stays visible. |
+| 2:02–2:16 | s08 | One recorded gift result, once. “They can help each other.” | Actual gift4446/input466 and its inventory result; exact-command duplicate returns the stored outcome without a second reward. Keep the operator/connected source label; do not imply later help/postcard footage was filmed. |
 | 2:16–2:30 | s09 | Open highlight evidence: event → run/commit → original model request or signed verdict. | Existing public `/api/world/event?id=…`; exact selected event and input row. Model-free verification gets no invented requestId. |
 | 2:30–2:44 | s10 | Recorded replay controls, 1/10/60×, six autonomy measures with sample/notes. | Compatible run-log-2/hash chain, fixed recorded prefix, real source/origin breakdown and world/run/window. No new world action/model call/reward. |
-| 2:44–2:54 | s11 | Actual previously observed budget/provider fallback, honest source label, world continuing. | Original observed event and fallback provenance. Never inject faults into production for filming; an isolated D03 scene must say ISOLATED TEST and cannot replace the operational proof. |
+| 2:44–2:54 | s11 | Original `connected_muse` SCRIPTED guard followed by a separate LIVE turn; world continuing. | Original events4438/input462 SCRIPTED and4439/input463 LIVE. This is not quota/budget/provider-outage proof. D03 operating and isolated fault evidence remain separate; no new fault or retake is required by this cut. |
 | 2:54–3:00 | s12 | World holds; concise build/model/limits and original attribution remain. | Same release/source/config/deploy identity; no unsupported real GPS, unattended personal Muse, booking, RL-learning or SAM claims. |
 
 ## Manifest and evidence chain
@@ -52,7 +52,7 @@ The five `review` flags record the delivery coordinator's evidence review: P0 sa
 node scripts/demo-video.mjs verify /absolute/private/d05/observations/collected-plan.json /absolute/private/d05/observations
 ```
 
-Exit 2 and `blocked` are expected until all required real evidence exists. Pending claim, missing P0/P1 or an old run-log stays blocked.
+Those are generic preparation-verifier states, not the later root media review. Preserve original preparation/assembly flags, failed takes and their bytes. The reviewed media and its later root review are recorded below; fresh capture cannot inherit those results.
 
 ## Local capture and edit
 
@@ -83,7 +83,36 @@ node scripts/demo-video.mjs render PLAN.json EVIDENCE_DIR /absolute/ffmpeg /abso
 
 Calibration is a two-second synthetic test pattern with a visible NOT ACCEPTANCE slate. It never supplies a shot or release evidence. Render takes normalized 30fps H.264/YUV420p, preserves the full app frame above a 120px label band, adds a continuous CONTROLLED COMPARISON (SIMULATION) label to the P1 cut, strips audio, concatenates in shot order, decodes the output and requires 180 seconds (±0.1s). It refuses overwrite and does not upload. File names with arbitrary shell characters are passed as subprocess arguments, not shell commands. Output is `musely-180s-review.mp4` and `render-receipt.json`, status **rendered_needs_playback_review**, finalAcceptance **not_measured**. If narration is desired, record an authorized local human voice later; this preparation adds none.
 
-Final D05 acceptance remains root work after release freeze: watch the complete MP4 in a real local player, check 3:00 duration and every cut's original evidence/labels/attribution, verify the P0/P1 causal checkpoints and final build/model/limits match D06. Actual publication/submission/upload requires its separate authority/receipt. Tool preparation and playable calibration do not close D05.
+Root completed the exact-file native playback, full decode and cut/source/privacy/attribution review recorded below. Whole D05 still requires its original prerequisite acceptance outputs and consistent team handoff text. Competition publication/upload/agreements/Submit are outside this engineering scope. Tool preparation or a later unrelated receipt must not overwrite earlier not_measured/failed flags.
 
 
 The range-input portability review was not reproduced as a failure: the coordinator's blank-page Chrome156/current-Playwright diagnostic filled3.5 successfully. The existing range fill/input path is preserved here. This preparation change is verified with offline context/route stand-ins, not an actual Chrome capture or new operating request.
+
+## Observed media closeout, 2026-11-03
+
+The exact private movie is `musely-180s-cfr-caption-v2-review.mp4`:7,930,897B/SHA256 `8e11ce0187e97b4839b551895af916896de036b838897fa252d103261b9deec6`,H.2641920×1080/30fps/5400frames/**180.000s**/no audio. The package's exact180s criterion is satisfied; no platform duration tolerance is inferred and no narration requirement is added.
+
+There are **12 semantic cuts and13takes/assembled segments**, because s05 contains two separate10s controlled views. Source/capture8b13/ROWba0508d2/Workerb5e18f5e/config893a8e4…/model`muse-spark-1.3` is retained. Current service494/ROW359cb5c5/Workere10feb65 is not substituted into footage provenance.
+
+| Cut/time | Preserved original proof |
+|---|---|
+| s01,0–12 | Actual public run3,input222/events3316–3317/model requestac22677a…; recorded living world |
+| s02,12–26 | Original server-verdict event4012/input349; evidence, not a fresh signature check |
+| s03,26–46 | P0 authorized operator trade events4012–4013/input349 |
+| s04,46–64 | Original owner revoke350; same-job fresh refusal event4016/input351; original harness FAIL and separate correction retained |
+| s05,64–84 | Two10s controlled simulation RunRecords; identical seed/clock/publicinputs,only TransitPass differs; no fake live/model/signature |
+| s06,84–102 | Rule discovery4265 and separate model greeting4270/input427; discovery is not claimed to cause that separate greeting |
+| s07,102–122 | Original stored MCP answer4133/input380,owner approvals381–382,confirmation4139;operator principals,private candidate conditions not filmed |
+| s08,122–136 | Original gift4446/input466,one result; exact-command duplicate is stored-result proof,not a second reward |
+| s09,136–150 | Actual event4270/input427→original model request7dbd8855… |
+| s10,150–164 | Read-only recorded replay1/10/60×/pause/seek/autonomy; exact checkpoint proof stays in framing receipt/code |
+| s11,164–174 | Original SCRIPTED connected_muse guard4438/462 and separate LIVE4439/463;not operating quota/provider fault |
+| s12,174–180 | Original recorded event4443/input464;build/model/attribution/limits remain visible |
+
+Root verified03:00/00:00 and actually played this exact file in QuickTime from20:32:10.953Z to the final brand frame20:35:32.675Z,with no seek/pause/rate change. Fresh ordinary decode recorded5400frames/180s. Root inspected the13listed frame times/contactsheet and source/REPLAY/VIRTUAL/operator/controlled labels. End controls were hidden,so a separately captured03:00elapsed reading is not claimed.
+
+A later bounded optical review used only the last6s of s08/s10 at4Hz,48pictures total. First sampled gift proof131.50s was inside136s;60×159.75,Paused162.00,displayed175:23at162.25 and autonomy162.75 were inside164s. Quarter-second samples are not exact transition timestamps. No trim/hold/re-encode/retake was needed. The exact10523.6seek/hash remains separate receipt proof. Root's20:52:36Z fresh hash review recorded99assembly+59optical files with0mismatch. This note does not rerun decode/playback or rewrite original assembly finalAcceptance:not_measured.
+
+Private evidence IDs: `root-movie-review`, `root-filming-preparation/render-cfr-180-v1`, `root-filming-preparation/optical-timing-review`, `root-filming-preparation/work/coordinator-reviewed-plan.json`. Keep original179.666667s render/probe failures unchanged. Rights/distribution/submission/media-use permission remains UNKNOWN for team review; attribution and private technical review do not supply permission. Actual public video URL/anonymous access/upload/Submit remain unexecuted or unverified,without becoming new engineering media gates.
+
+Original D05 requires D02,D03,D04 acceptance outputs. D02's scoped P0/P1/P2/C09 proofs exist; D03's old8b13/default494four-hour FAILs remain separate from its new independent family1000run and operating quota/fallback gaps. D04's physical/C11 evidence now exists,so an older statement that the final phone was never measured is historical. Whole D04 still awaits its original D01 prerequisite. The23:30Z I09/I11 verification reopening is historical: I13#57 full handoff closed23:39:44Z,then actual I09#56 supplemental C10/reclosure23:40:41Z,then I11#59 reclosure23:41:10Z. PR125 normal merge5787d5d records the doc/order correction. Original partial-projection completion was withdrawn,not reinstated; technical evidence stayed valid and no time was backdated. Neither issue OPEN alone nor this media review establishes missing or completed prerequisites. D05 remains pending the actual required outputs,not competition submission. Personal Muse/CAPTCHA/webcam S3 checkpoints continue separately; Meta connector application remains prepared,separate from submission/consent.

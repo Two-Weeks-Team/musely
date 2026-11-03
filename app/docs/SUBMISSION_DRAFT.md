@@ -1,6 +1,6 @@
 # Submission text draft — not entered or submitted
 
-This is editable copy for the [official project form](https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit). The final release, public repository access and video gates in [SUBMISSION_CHECKLIST.md](SUBMISSION_CHECKLIST.md) must be verified before using it. No field has been entered by preparing this draft.
+This is editable team-review copy for the [official project form](https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit). The final release, public repository access and video gates in [SUBMISSION_CHECKLIST.md](SUBMISSION_CHECKLIST.md) must be verified before using it. No field has been entered by preparing this draft.
 
 ## Team Name
 
@@ -32,13 +32,13 @@ Draft URL: `https://github.com/Two-Weeks-Team/musely`.
 
 ## 3-Minute Demo Video
 
-**UNVERIFIED — no final video URL supplied.** Record the actual URL, duration, playback/access check, video hash and release/run/event correlation. Do not substitute the existing 3:30 scripted story or invent a placeholder video link.
+**Public video URL UNVERIFIED — team handoff.** A private exact180.000-second,5400-frame demonstration has been produced and reviewed. Preserve its original footage identity,content hash and release/run/event correlation separately from the current service. The team decides public delivery/access; no placeholder URL or3:30scripted substitution is supplied.
 
 ## Describe your use of Meta products to build the submitted project
 
 The runtime integrates Meta Model API directly at `https://api.meta.ai/v1`, using `muse-spark-1.3` from the server Worker. Muse Spark returns structured decisions for shared-world resident activity; the application validates those outputs and server permissions before state changes. Model evidence retains request/response references when present. Signature and rule events keep their own verdicts and are not counted as extra model requests.
 
-The optional welcome ritual has a separate image-judging path. Its actual account/webcam acceptance must be supported by its own final evidence. The application also provides an MCP interface for an external Muse runtime, with signed writes and inbox reads. Local transport-to-commit tests establish that interface under fixture credentials; actual Muse-account installation and execution remain separate platform acceptance.
+The optional welcome ritual has a separate image-judging path. Its actual account/webcam acceptance must be supported by its own final evidence. The application also provides an MCP interface for an external Muse runtime, with signed writes and inbox reads. Local fixture transport-to-commit and separately retained actual operating operator MCP receipts establish their stated interface scopes; actual personal-Muse installation and execution remain separate platform acceptance.
 
 ## Why are Meta's models important to your solution?
 
@@ -63,3 +63,7 @@ The representative must supply their own answers. No rating, obstacle, endorseme
 - The Most Viral X-post link is conditional on that competition entry. No post or URL is created here.
 - The media-use permission is a separate unchecked consent control in the observed form. Its grant concerns use/publication/promotion of submitted materials. It is not implied by selecting a track, writing this draft or maintaining a NOTICE. The authorized submitter must make that decision separately; no acceptance is preselected.
 - Public visibility change, upload, final Submit and receipt/confirmation remain separate authorized actions. This draft records none of them.
+
+## Engineering handoff scope
+
+The current work is S3 development/verification plus team-review preparation. Competition Submit, agreements and public repository/video publication are excluded from this execution scope. Personal-Muse/CAPTCHA/webcam S3 checkpoints continue; the separate Meta connector application remains prepared and is not submitted or consented here. Unverified rights, eligibility and personal answers remain UNKNOWN/UNSET for the team. This wording changes no readiness JSON or actual external state.
