@@ -103,13 +103,13 @@ jobs:
           test "$(git hash-object app/worker/core/encounters.ts)" = "6dd3b1aecdbd9526af5361c4137cbb7b705abebd"
           test "$(git hash-object reviewed-main/app/worker/core/messages.ts)" = "7ed3b7f9aa3dda3165e5548b6748dfea5b89da06"
           test "$(git hash-object app/worker/core/world-runtime.ts)" = "435539467a815f2f1a28f8e832b76e0e7946fc48"
-          test "$(git hash-object app/worker/index.ts)" = "3bac1731ff1e73828adc926818b6c149b434e1e1"
-          test "$(git hash-object app/worker/asset-encoding.ts)" = "51f2a26e19bd61048b1cdd2ce4180ac1e4e6df6a"
-          test "$(git hash-object app/worker/world-do.ts)" = "ec73c74c79c8289ad06dd0bd77765e40be7ed1c4"
-          test "$(git hash-object app/worker/core/personal-api.ts)" = "7fefbcd684b23e86ad61d53244c591c7804164da"
-          test "$(git hash-object app/worker/core/personal-owners.ts)" = "836d31b5eae45b5ef4e7e2a23556e9ffaabc0f25"
-          test "$(git hash-object app/worker/core/personal-registration.ts)" = "59b4a32001498ba39974b0afe6a9266bee96f92b"
-          test "$(git hash-object app/worker/core/personal-session.ts)" = "bfa196aaa5cf09eb4252eaca48b5fe9f951c5d32"
+          test "$(git hash-object app/worker/index.ts)" = "38a347f6b2ab8386fe5985c306345eec27a9f50f"
+          test "$(git hash-object app/worker/asset-encoding.ts)" = "d683aa4f0de81c706865a4cfbc937757d3736117"
+          test "$(git hash-object app/worker/world-do.ts)" = "ab528252f3b334b818e41a2b247e7dfcf69ee2d7"
+          test "$(git hash-object app/worker/core/personal-api.ts)" = "17221bbe7ac4da5bec565a7263f2e89a6d0f6bb8"
+          test "$(git hash-object app/worker/core/personal-owners.ts)" = "747f9670450d9d253a0eba7bdd7a29bbcb1a43d3"
+          test "$(git hash-object app/worker/core/personal-registration.ts)" = "16d31cf6b12f21645fe3c8b6344aacc2bf3305a5"
+          test "$(git hash-object app/worker/core/personal-session.ts)" = "f20e89f322186b755fe7b683e2e20c693e50409e"
       - name: Three-way compose resident and craft changes without overwriting either branch
         shell: bash
         run: |
