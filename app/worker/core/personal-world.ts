@@ -196,7 +196,7 @@ export class PersonalWorld{
   const b=this.lookup(hash);if(!b)return{status:'unauthorized'};
   if(notification&&method&&!method.startsWith('notifications/'))return{status:'ok',error:{code:-32600,message:'Invalid Request: only notifications may omit the id'}};
   const call=async(name:string,args:unknown):Promise<ToolResult>=>{
-   if(name==='register_agent'){if(!args||typeof args!=='object'||Array.isArray(args)||Object.keys(args).length)throw new InvalidParams();return tool({agent_id:b.actor.agentId,muse:b.actor.actorId,name:this.auth.owners.profile(b.actor.actorId)?.displayName,signer_kind:'server_custodial',claim:{status:'pending_claim',owner_claimed:false},tools:toolList(this.runtime.state().muses.map(m=>m.id),true).map(t=>t.name),entry_required:!this.admitted(b)});}
+   if(name==='register_agent'){if(!args||typeof args!=='object'||Array.isArray(args)||Object.keys(args).length)throw new InvalidParams();const claim=this.trust.personalClaim(b.actor.actorId);return tool({agent_id:b.actor.agentId,muse:b.actor.actorId,name:this.auth.owners.profile(b.actor.actorId)?.displayName,signer_kind:'server_custodial',claim:{status:claim.status,owner_claimed:claim.claimed},tools:toolList(this.runtime.state().muses.map(m=>m.id),true).map(t=>t.name),entry_required:!this.admitted(b)});}
    if(name==='enter_world')return this.enter(hash,b,args);
    if(!this.admitted(b))return denied('entry_required');
    if(name==='heartbeat_check'&&!b.scopes.includes('walk_and_greet'))return denied('scope_not_delegated');

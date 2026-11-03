@@ -2,6 +2,7 @@
 // current server entry can retire the door. Scripted walkthrough remains entryPreview-only.
 import {mountPersonalEntry,type PersonalEntryOptions} from './personal-entry.ts';
 import {mountPersonalConnection,type EntryProjection} from './personal-connection.ts';
+import {mountPersonalClaim} from './personal-claim.ts';
 import {HARNESSES, SCOPES, SCOPE_LABELS, type Harness, type ScopeLevel} from '../engine/harness';
 
 export type EntryPath = 'watch' | 'trial' | 'connect';
@@ -71,7 +72,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   document.body.append(panel);
   panel.querySelector('.close')!.setAttribute('aria-label', 'Close');
 
-  let personal: {profile:ReturnType<typeof mountPersonalEntry>; connection:ReturnType<typeof mountPersonalConnection>} | null = null;
+  let personal: {profile:ReturnType<typeof mountPersonalEntry>; connection:ReturnType<typeof mountPersonalConnection>; claim:ReturnType<typeof mountPersonalClaim>} | null = null;
   let personalEntry:EntryProjection|null=null,disposed=false;
   let timer = 0;
   const stopTimer = () => { if (timer) clearInterval(timer); timer = 0; };
@@ -100,11 +101,11 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
     else if (view) state.view = view;
     else state.view = state.path === 'trial' ? 'trial-card' : state.path === 'connect' ? 'connect' : 'choose';
     if (state.view === 'trial-card' && (state.path === 'trial' || !state.viewing)) state.viewing = state.trial ?? state.lastTrial;
-    panel.showPopover(); render();if(!preview)personal?.connection.setVisible(true); updateChip();
+    panel.showPopover(); render();if(!preview){personal?.claim.setVisible(true);personal?.connection.setVisible(!personal.claim.isExpanded());} updateChip();
     panel.querySelector<HTMLButtonElement>('.close')?.focus();
   }
   function close() {
-    if(disposed)return;personal?.connection.setVisible(false);
+    if(disposed)return;personal?.claim.setVisible(false);personal?.connection.setVisible(false);
     // Closing the panel mid-connection cancels the staged connection; nothing else changes.
     cancelConnect();
     state.open = false; panel.hidePopover(); updateChip(); chip.focus();
@@ -114,17 +115,21 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   function setupView() {
     body.append(el('span','eyebrow','YOUR MUSE · YOUR CHOICE'),el('h2','','내 Muse를 세계로 데려오세요 / Bring your Muse into the world'),
       el('p','world-sub','보던 세계는 그대로예요. 이름과 모습을 정하고 내 Muse를 연결해 보세요. / Keep watching while you prepare your own Muse. Sign-in and permissions are your choice.'));
-    const profileHost=el('div','entry-profile'),connectionHost=el('div','entry-connection');body.append(profileHost,connectionHost);
+    const profileHost=el('div','entry-profile'),claimHost=el('div','entry-account-claim'),connectionHost=el('div','entry-connection');body.append(profileHost,claimHost,connectionHost);
     const publicSetup='Musely MCP endpoint: https://musely.net/mcp\nSign in and register your own profile. Explicitly choose your virtual-world permissions and create your own one-time key.\nPut that key only in Muse’s secure API key field, never in chat.\nCreate an entry request here, then use register_agent({}) and ask your Muse to sign enter_world with the exact attempt_id shown. Only actual current entry finishes joining.\nEntry is separate from account verification. First greetings and trades still follow current claim and permission checks.\nAfter entry, read the world and inbox. Choose a nearby Muse you have not met and use say_hello(to) only when those checks allow it, then decide for yourself what to explore or do next within your permissions.';
     const text=el('textarea','entry-setup-text');text.id='entry-setup-text';text.readOnly=true;text.rows=6;text.value=publicSetup;text.setAttribute('aria-label','Public setup overview without an API key');
     const copyStatus=el('p','muted');copyStatus.id='entry-copy-status';copyStatus.setAttribute('role','status');
     const copy=button('공개 연결 안내 복사 / Copy public setup overview','secondary',()=>{},'entry-copy-setup');copy.onclick=async()=>{copy.disabled=true;try{await (opts.personal?.clipboard??navigator.clipboard).writeText(publicSetup);copyStatus.textContent='Public setup copied. No key was included and nothing was connected.';}catch{copyStatus.textContent='Could not copy. Select the public instructions above. Nothing was connected.';}finally{copy.disabled=false;}};
     const help=el('details','entry-advanced');help.append(el('summary','','연결 도움말 / Connection help'),text,copy,copyStatus);
     body.append(help,button('계속 둘러보기 / Keep watching','link-button',()=>{state.path='watch';close();opts.onWatch();},'entry-watch'));
-    const p=mountPersonalEntry(profileHost,{...opts.personal,connectionManaged:true,onState:s=>{void personal?.connection.syncProfile(s);}});
+    let connectionBusy=false,claimBusy=false;
+    const p=mountPersonalEntry(profileHost,{...opts.personal,connectionManaged:true,onState:s=>{void personal?.connection.syncProfile(s);void personal?.claim.syncProfile(s);}});
     const connection=mountPersonalConnection(connectionHost,{fetcher:opts.personal?.fetcher,newOperationId:opts.personal?.newOperationId,now:opts.personal?.now,clipboard:opts.personal?.clipboard,getWorldId:opts.getWorldId,
-      onWatch:()=>{state.path='watch';close();opts.onWatch();},onWriteBusy:value=>p.setExternalBusy(value),onSessionLost:()=>p.markSessionLost(),onEntry:entry=>{personalEntry=structuredClone(entry);updateChip();try{opts.onPersonalEntry?.(structuredClone(entry));}catch{}}});
-    personal={profile:p,connection};void connection.syncProfile(p.state());
+      onWatch:()=>{state.path='watch';close();opts.onWatch();},onWriteBusy:value=>{connectionBusy=value;p.setExternalBusy(connectionBusy||claimBusy);personal?.claim.setExternalBusy(value);},onSessionLost:()=>p.markSessionLost(),onEntry:entry=>{personalEntry=structuredClone(entry);updateChip();try{opts.onPersonalEntry?.(structuredClone(entry));}catch{}}});
+    const claim=mountPersonalClaim(claimHost,{fetcher:opts.personal?.fetcher,navigate:opts.personal?.navigate,clipboard:opts.personal?.clipboard,
+      onExpanded:value=>{connectionHost.hidden=value;connection.setVisible(state.open&&!value);},
+      onWriteBusy:value=>{claimBusy=value;p.setExternalBusy(connectionBusy||claimBusy);},onSessionLost:()=>p.markSessionLost()});
+    personal={profile:p,connection,claim};void connection.syncProfile(p.state());void claim.syncProfile(p.state());
   }
 
   function chooseView() {
@@ -247,16 +252,17 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
 
   chip.onclick = () => panel.matches(':popover-open') ? close() : open();
   const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape'&&state.open){event.preventDefault();close();}};document.addEventListener('keydown',onKey);
-  const onToggle=(event:Event)=>{ if ((event as ToggleEvent).newState === 'closed' && state.open) { cancelConnect(); state.open = false; updateChip(); chip.focus();personal?.connection.setVisible(false); } };panel.addEventListener('toggle',onToggle);
+  const onToggle=(event:Event)=>{ if ((event as ToggleEvent).newState === 'closed' && state.open) { cancelConnect(); state.open = false; updateChip(); chip.focus();personal?.claim.setVisible(false);personal?.connection.setVisible(false); } };panel.addEventListener('toggle',onToggle);
   const enter=document.getElementById('enter'),onEnter=()=>open('choose');enter?.addEventListener('click',onEnter);
   updateChip();
 
   // ?entry=choose|watch|trial|connect (&harness=09-copper) opens a path directly, for walkthrough recordings.
   const entry = preview ? opts.initial?.get('entry') : null;
+  if(!preview&&['claimed','failed','declined','not_found'].includes(opts.initial?.get('personalClaim')??''))open('connect');
   if (entry === 'trial') { const h = harness(opts.initial!.get('harness')); state.viewing = h?.id ?? null; open(h ? 'trial-card' : 'trial-pick'); }
   else if (entry === 'connect') open('connect');
   else if (entry === 'choose') open('choose');
   else if (entry === 'watch') { state.path = 'watch'; updateChip(); opts.onWatch(); }
 
-  return {state,open,close,dispose(){if(disposed)return;disposed=true;stopTimer();personal?.connection.dispose();personal?.profile.dispose();document.removeEventListener('keydown',onKey);panel.removeEventListener('toggle',onToggle);enter?.removeEventListener('click',onEnter);chip.remove();panel.remove();}};
+  return {state,open,close,dispose(){if(disposed)return;disposed=true;stopTimer();personal?.claim.dispose();personal?.connection.dispose();personal?.profile.dispose();document.removeEventListener('keydown',onKey);panel.removeEventListener('toggle',onToggle);enter?.removeEventListener('click',onEnter);chip.remove();panel.remove();}};
 }

@@ -4,6 +4,8 @@ import {PersonalOwners, type PersonalStorage} from './personal-owners.ts';
 
 export const PERSONAL_COOKIE = 'musely_p';
 export const PERSONAL_FLOW_COOKIE = 'musely_pf';
+export const PERSONAL_CLAIM_FLOW_COOKIE='musely_pcf';
+export const PERSONAL_CLAIM_STATE_PREFIX='personal-claim-v1.';
 export const PERSONAL_SESSION_TTL_MS = 3_600_000;
 export const PERSONAL_FLOW_TTL_MS = 600_000;
 // Reuse the already-registered product callback; prefix is routing only, never authentication.
@@ -53,6 +55,8 @@ export function personalCookieValue(request: Request, name: string): string | nu
 export const personalCookie = (token: string) => `${PERSONAL_COOKIE}=${token}; Path=/api/personal; Max-Age=3600; HttpOnly; Secure; SameSite=Strict`;
 export const clearPersonalCookie = `${PERSONAL_COOKIE}=; Path=/api/personal; Max-Age=0; HttpOnly; Secure; SameSite=Strict`;
 export const flowCookie = (verifier: string) => `${PERSONAL_FLOW_COOKIE}=${verifier}; Path=/api/threads; Max-Age=600; HttpOnly; Secure; SameSite=Lax`;
+export const claimFlowCookie=(verifier:string)=>`${PERSONAL_CLAIM_FLOW_COOKIE}=${verifier}; Path=/api/threads; Max-Age=600; HttpOnly; Secure; SameSite=Lax`;
+export const clearClaimFlowCookie=`${PERSONAL_CLAIM_FLOW_COOKIE}=; Path=/api/threads; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
 export const clearFlowCookie = `${PERSONAL_FLOW_COOKIE}=; Path=/api/threads; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
 
 /** Private additive SQL store; synchronous transactions are the consume/issue/revoke linearization points. */

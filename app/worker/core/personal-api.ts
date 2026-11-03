@@ -4,6 +4,7 @@ import type {PersonalBinding} from './personal-registration.ts';
 import type {ActorProfile} from '../../src/identity/participant.ts';
 import {personalAuthorizeUrl, personalThreadsIdentity, type PersonalThreadsConfig} from './threads.ts';
 import {
+  PERSONAL_CLAIM_FLOW_COOKIE,PERSONAL_CLAIM_STATE_PREFIX,claimFlowCookie,clearClaimFlowCookie,
   PERSONAL_COOKIE, PERSONAL_FLOW_COOKIE, PERSONAL_CALLBACK, PERSONAL_STATE_PREFIX, PERSONAL_FLOW_TTL_MS,
   personalNonce, personalDigest, personalCookieValue, personalCookie, clearPersonalCookie, flowCookie, clearFlowCookie,
   readPersonalProof, signPersonalSession, type PersonalFlow, type PersonalSessionRow, type PersonalProof,
@@ -11,6 +12,10 @@ import {
 
 type MaybePromise<T> = T | Promise<T>;
 export interface PersonalAuthStub {
+  personalClaimRead(binding:PersonalBinding):MaybePromise<unknown>;
+  personalClaimRevoke(binding:PersonalBinding,input:unknown):MaybePromise<unknown>;
+  personalClaimBegin(binding:PersonalBinding,input:unknown,flow:PersonalFlow):MaybePromise<boolean>;
+  personalClaimComplete(binding:Pick<PersonalFlow,'stateDigest'|'browserDigest'|'appId'|'redirectUri'>,code:string|null):MaybePromise<string>;
   personalLocation(binding:PersonalBinding):MaybePromise<unknown>;
   personalLocationSet(binding:PersonalBinding,input:unknown):MaybePromise<unknown>;
   personalStatus(binding: PersonalBinding | null): MaybePromise<unknown>;
@@ -46,7 +51,7 @@ function redirect(result: 'authenticated' | 'failed' | 'declined', session?: str
 }
 const nonceValid = (v: string | null): v is string => !!v && /^[A-Za-z0-9_-]{43}$/.test(v);
 /** Cookie presence never selects the handler. Ambiguous mixed states are routed here and rejected. */
-export const isPersonalCallback = (url: URL) => url.pathname === PERSONAL_CALLBACK && url.searchParams.getAll('state').some(s => s.startsWith(PERSONAL_STATE_PREFIX));
+export const isPersonalCallback = (url: URL) => url.pathname === PERSONAL_CALLBACK && url.searchParams.getAll('state').some(s => (s.startsWith(PERSONAL_STATE_PREFIX)||s.startsWith(PERSONAL_CLAIM_STATE_PREFIX)));
 /** Every exception is reduced to a fixed category here, before the legacy API's general logging handler. */
 // An incoming empty HTTP write can have a non-null, already closed body stream.
 async function emptyWriteBody(request: Request): Promise<boolean> {
@@ -62,7 +67,7 @@ async function emptyWriteBody(request: Request): Promise<boolean> {
     return false;
   } catch { return false; } finally { if (timer !== undefined) clearTimeout(timer); void reader.cancel().catch(() => {}); }
 }
-const bootstrapMethods = (path:string):string[]|null => path===BASE+'/location'?['GET','POST']:path===BASE+'/status'?['GET']:path===BASE+'/authority'?['GET','POST','DELETE']:path===BASE+'/keys'?['GET','POST']:/^\/api\/personal\/keys\/pak_[a-f0-9-]{36}$/.test(path)?['DELETE']:path===BASE+'/entry-attempts'?['POST']:/^\/api\/personal\/entry-attempts\/pea_[a-f0-9-]{36}$/.test(path)?['GET','DELETE']:null;
+const bootstrapMethods = (path:string):string[]|null => path===BASE+'/claim'?['GET','DELETE']:path===BASE+'/claim/start'?['POST']:path===BASE+'/location'?['GET','POST']:path===BASE+'/status'?['GET']:path===BASE+'/authority'?['GET','POST','DELETE']:path===BASE+'/keys'?['GET','POST']:/^\/api\/personal\/keys\/pak_[a-f0-9-]{36}$/.test(path)?['DELETE']:path===BASE+'/entry-attempts'?['POST']:/^\/api\/personal\/entry-attempts\/pea_[a-f0-9-]{36}$/.test(path)?['GET','DELETE']:null;
 async function bootstrapJSON(request:Request):Promise<unknown>{
  if(!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')||!request.body)throw Error('invalid_entry');
  const reader=request.body.getReader(),parts:number[]=[];let timer:ReturnType<typeof setTimeout>|undefined;
@@ -79,7 +84,7 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
     if (request.method !== method) { const r = failure('method_not_allowed', 405); r.headers.set('allow', bootstrap?bootstrap.join(', '):url.pathname === BASE + '/profile' ? 'GET, PATCH' : method); return r; }
     if (method !== 'GET' && !originAllowed(request, [cfg.origin])) return failure('origin_not_allowed', 403);
     const profileWrite = url.pathname === BASE + '/draft' || (url.pathname === BASE + '/profile' && request.method === 'PATCH');
-    const bootstrapWrite=!!bootstrap&&(request.method==='POST'||(url.pathname===BASE+'/authority'&&request.method==='DELETE'));
+    const bootstrapWrite=!!bootstrap&&(request.method==='POST'||([BASE+'/authority',BASE+'/claim'].includes(url.pathname)&&request.method==='DELETE'));
     if (method !== 'GET' && !profileWrite && !bootstrapWrite && !await emptyWriteBody(request)) return failure('body_not_allowed', 400);
     if (url.pathname !== PERSONAL_CALLBACK && url.search) return failure('bad_query', 400);
     const sessionReady = !!cfg.secret && typeof cfg.appId === 'string' && /^[0-9]{1,32}$/.test(cfg.appId);
@@ -97,6 +102,15 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
       const binding:PersonalBinding={sidDigest:await personalDigest('sid',p.sid),appId:cfg.appId!,proof:{principalId:p.principalId,authVersion:p.authVersion,issuedAt:p.issuedAt,expiresAt:p.expiresAt}};
       let input:unknown;if(bootstrapWrite){try{input=await bootstrapJSON(request);}catch{return failure('invalid_entry',400);}}
       try{
+       if(url.pathname===BASE+'/claim')return json(request.method==='GET'?await stub.personalClaimRead(binding):await stub.personalClaimRevoke(binding,input));
+       if(url.pathname===BASE+'/claim/start'){
+        if(!ready)return failure('personal_auth_not_configured',503);
+        if(cfg.rateLimit&&!await cfg.rateLimit())return failure('slow_down',429);
+        const state=PERSONAL_CLAIM_STATE_PREFIX+personalNonce(),verifier=personalNonce(),createdAt=now();
+        const flow={stateDigest:await personalDigest('state',state),browserDigest:await personalDigest('browser',verifier),appId:cfg.appId!,redirectUri:providerCfg().redirectUri,createdAt,expiresAt:createdAt+PERSONAL_FLOW_TTL_MS};
+        if(!await stub.personalClaimBegin(binding,input,flow))return failure('auth_flow_unavailable',429);
+        return json({authorizationUrl:personalAuthorizeUrl(providerCfg(),state)},200,claimFlowCookie(verifier));
+       }
        if(url.pathname===BASE+'/location')return json(request.method==='GET'?await stub.personalLocation(binding):await stub.personalLocationSet(binding,input));
        if(url.pathname===BASE+'/status')return json(await stub.personalStatus(binding));
        if(url.pathname===BASE+'/authority'){const authority=request.method==='GET'?await stub.personalAuthorityOwn(binding):request.method==='POST'?await stub.personalAuthorityGrant(binding,input):await stub.personalAuthorityRevoke(binding,input);return json({authority});}
@@ -106,9 +120,9 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
        return json(result);
       }catch(e){const code=e&&typeof e==='object'&&'name'in e&&e.name==='PersonalRegistryError'&&'code'in e&&typeof e.code==='string'?e.code:null;
        if(code==='personal_session_required')return failure(code,401);
-       if(code&&['invalid_authority','invalid_entry','invalid_registration','invalid_location'].includes(code))return failure(code,400);
+       if(code&&['invalid_authority','invalid_entry','invalid_registration','invalid_location','invalid_claim'].includes(code))return failure(code,400);
        if(code&&['key_not_found','entry_attempt_not_found'].includes(code))return failure(code,404);
-       if(code&&['authority_conflict','authority_changed','authority_required','operation_conflict','entry_key_invalid','entry_version_conflict','entry_profile_conflict','entry_world_conflict','entry_paused','entry_already_activated','draft_required'].includes(code))return failure(code,409);
+       if(code&&['claim_changed','claim_binding_invalid','authority_conflict','authority_changed','authority_required','operation_conflict','entry_key_invalid','entry_version_conflict','entry_profile_conflict','entry_world_conflict','entry_paused','entry_already_activated','draft_required'].includes(code))return failure(code,409);
        return failure('personal_entry_unavailable',503);
       }
     }
@@ -158,6 +172,18 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
       return json({authorizationUrl: personalAuthorizeUrl(providerCfg(), state)}, 200, flowCookie(verifier));
     }
     const q = url.searchParams;
+    if(q.getAll('state').some(x=>x.startsWith(PERSONAL_CLAIM_STATE_PREFIX))){
+      const bad=()=>json({error:'auth_flow_invalid'},400,clearClaimFlowCookie);
+      if([...q.keys()].some(k=>!['state','code','error','error_reason','error_description'].includes(k))||q.getAll('state').length!==1||q.getAll('code').length>1||q.getAll('error').length>1||(q.has('code')&&q.has('error')))return bad();
+      const state=q.get('state'),verifier=personalCookieValue(request,PERSONAL_CLAIM_FLOW_COOKIE);
+      if(!state?.startsWith(PERSONAL_CLAIM_STATE_PREFIX)||!nonceValid(state.slice(PERSONAL_CLAIM_STATE_PREFIX.length))||!nonceValid(verifier))return bad();
+      const code=q.has('error')?null:q.get('code');
+      if(!q.has('error')&&(!code||code.length>4096||/[\u0000-\u001f\u007f]/.test(code)))return bad();
+      const result=await stub.personalClaimComplete({stateDigest:await personalDigest('state',state),browserDigest:await personalDigest('browser',verifier),appId:cfg.appId!,redirectUri:providerCfg().redirectUri},code);
+      if(result==='invalid')return bad();
+      const safe=['claimed','declined','not_found','failed'].includes(result)?result:'failed',h=headers();h.set('location','/?personalClaim='+safe);h.append('set-cookie',clearClaimFlowCookie);return new Response(null,{status:303,headers:h});
+    }
+
     if ([...q.keys()].some(k => !['state', 'code', 'error', 'error_reason', 'error_description'].includes(k)) || q.getAll('state').length !== 1 || q.getAll('code').length > 1 || q.getAll('error').length > 1 || (q.has('code') && q.has('error'))) return failure('auth_flow_invalid', 400, true);
     const state = q.get('state'), verifier = personalCookieValue(request, PERSONAL_FLOW_COOKIE);
     if (!state?.startsWith(PERSONAL_STATE_PREFIX) || !nonceValid(state.slice(PERSONAL_STATE_PREFIX.length)) || !nonceValid(verifier)) return failure('auth_flow_invalid', 400, true);

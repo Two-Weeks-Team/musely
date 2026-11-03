@@ -129,3 +129,8 @@ Not built (S4, G-01): general user accounts and connections, a 24-hour probation
 
 Limits of this record: these are Node tests of the Worker code with stubbed outbound services, not a run on Cloudflare. A deployed quota, budget and fallback run was recorded on 2026-11-01 (section 6) for the earlier preview build of the same proxy. The main product deploy of this change still needs its own record.
 
+
+
+### Personal connections update (2026-11-04)
+
+The preceding dated demo evidence and its original single-operator limitations are preserved. Personal sign-in/profile/delegation/entry are now implemented; explicit personal claim adds separate ownership proof without adopting or replacing ComBba. The current endpoint and token-retention behavior are described in [MCP_TOOLS](MCP_TOOLS.md#personal-muse-ownership-proof) and the current privacy policy. Additional probation and per-owner rate limits remain unimplemented; existing visitor/IP/key/global-budget limits do not prove those safeguards. Local integration coverage is not actual new-account or Muse-platform acceptance.

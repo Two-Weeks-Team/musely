@@ -1,3 +1,4 @@
+import {currentPersonalClaim, type CurrentPersonalClaim} from './personal-claim-state.ts';
 import {actorProfile} from '../../src/engine/participants.ts';
 // Trust registry and executor keys inside the world Durable Object (direction v2, 6 and 12.1).
 // Private keys never leave this object: system resident roots and every executor key live in SQLite;
@@ -23,7 +24,20 @@ export class DelegationRevoked extends Error {
 
 export class Trust implements TrustRegistry {
   private sql: Sql;
+  private claimRefresh: ((actorId: string) => Promise<void>) | null = null;
   constructor(sql: Sql) { this.sql = sql; }
+  personalClaim(actorId: string, now = Date.now()) { return currentPersonalClaim(this.sql, actorId, now); }
+  personalClaimMatches(actorId: string, before: CurrentPersonalClaim, now = Date.now()) {
+    const current = this.personalClaim(actorId, now);
+    return before.claimed && current.claimed && before.version === current.version && before.fingerprint === current.fingerprint;
+  }
+  setPersonalClaimRefresh(refresh: (actorId: string) => Promise<void>) { this.claimRefresh = refresh; }
+  async refreshPersonalClaims(ids: readonly string[]) {
+    const personal = [...new Set(ids)].filter(id => this.agentByMuse(id)?.kind === 'personal');
+    if (!personal.length) return;
+    if (!this.claimRefresh) throw new Error('personal_claim_refresh_unavailable');
+    await Promise.all(personal.map(id => this.claimRefresh!(id)));
+  }
 
   init() {
     this.sql.exec('CREATE TABLE IF NOT EXISTS agents (agent_id TEXT PRIMARY KEY, muse_id TEXT UNIQUE NOT NULL, root_jwk TEXT NOT NULL, kind TEXT NOT NULL, label TEXT NOT NULL)');
@@ -176,7 +190,7 @@ export class Trust implements TrustRegistry {
   async card(museId: string, ownerRootJwk: JsonWebKey | null, claim: {claimed: boolean; fingerprint: string | null}, baseUrl: string): Promise<AgentCard> {
     const agent = this.agentByMuse(museId)!;
     const root = await this.rootPair(agent, ownerRootJwk);
-    if(agent.kind==='personal'){const p=this.sql.exec('SELECT display_name,appearance_id FROM personal_profiles WHERE actor_id=?',museId).toArray()[0],g=this.sql.exec('SELECT scopes FROM personal_authority WHERE actor_id=?',museId).toArray()[0];const scopes=g?JSON.parse(String(g.scopes)):[];const card=buildCard(harnessById(String(p.appearance_id)),{kid:agent.agentId,publicJwk:agent.rootJwk},{ownerClaimed:false,fingerprint:null,scopes:{allowed:scopes.filter((s:string)=>(SCOPES.allowed as readonly string[]).includes(s)||s==='world_entry'),approval:scopes.filter((s:string)=>(SCOPES.approval as readonly string[]).includes(s)),forbidden:[...SCOPES.forbidden]},baseUrl});card.name=String(p.display_name);card.description='A personal Muse. Decisions remain in its owner runtime; Musely only verifies and commits explicit delegated actions.';card.skills=[];card['x-musely'].harness='personal';return signCard(card,root,`${baseUrl}/.well-known/jwks/${agent.agentId}.json`);}
+    if(agent.kind==='personal'){const claim=this.personalClaim(museId),p=this.sql.exec('SELECT display_name,appearance_id FROM personal_profiles WHERE actor_id=?',museId).toArray()[0],g=this.sql.exec('SELECT scopes FROM personal_authority WHERE actor_id=?',museId).toArray()[0];const scopes=g?JSON.parse(String(g.scopes)):[];const card=buildCard(harnessById(String(p.appearance_id)),{kid:agent.agentId,publicJwk:agent.rootJwk},{ownerClaimed:claim.claimed,fingerprint:claim.fingerprint,scopes:{allowed:scopes.filter((s:string)=>(SCOPES.allowed as readonly string[]).includes(s)||s==='world_entry'),approval:scopes.filter((s:string)=>(SCOPES.approval as readonly string[]).includes(s)),forbidden:[...SCOPES.forbidden]},baseUrl});card.name=String(p.display_name);card.description='A personal Muse. Decisions remain in its owner runtime; Musely only verifies and commits explicit delegated actions.';card.skills=[];card['x-musely'].harness='personal';return signCard(card,root,`${baseUrl}/.well-known/jwks/${agent.agentId}.json`);}
     const owned = agent.kind === 'owner';
     const card = buildCard(harnessById(museId), {kid: agent.agentId, publicJwk: agent.rootJwk}, {ownerClaimed: owned ? claim.claimed : true, fingerprint: owned ? claim.fingerprint : null, scopes: SCOPE_SUMMARY, baseUrl, ownerLabel: owned ? 'Kim Sejun' : 'Musely resident'});
     // Only the current public name changes. The legacy root, claim, scopes, role and URLs stay as issued.
