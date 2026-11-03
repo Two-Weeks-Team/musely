@@ -19,7 +19,7 @@ import {createWorld, tick, spotlightFor, spotlightInput, encounterInput, request
 import {validate, buildMessages, maxCostUsd, actualCostUsd, failureCostUsd, checkOutput} from './actions.ts';
 import {callModel, type ModelConfig} from './model.ts';
 import {replayFor} from './replay.ts';
-import {isRuntimeControlled} from '../../src/engine/inbox.ts';
+import {isRuntimeControlled,isConnected} from '../../src/engine/inbox.ts';
 import {COMMANDS_TABLE, type CommandResult} from './commands.ts';
 import {syncTasks} from './tasks.ts';
 import {withMessageHooks} from './messages.ts';
@@ -191,13 +191,13 @@ export class WorldRuntime {
       const late: Omit<WorldEvent, 'id' | 'tick'>[] = [];
       // The answer keeps its turn unless its Muse was paused or revoked, or the world itself moved (a queue request does
       // not move it). One discard event, with the most specific reason.
-      const lost = !decision ? null : current.paused?.[decision.muse] ? 'paused before commit' : this.opts.delegationValid && !this.opts.delegationValid(decision.muse) ? 'delegation revoked before commit' : current.version !== before.version ? 'world changed while the model was answering' : null;
+      const lost = !decision ? null : current.paused?.[decision.muse] ? 'paused before commit' : isRuntimeControlled(current,decision.muse,now) ? 'personal or connected before commit' : this.opts.delegationValid && !this.opts.delegationValid(decision.muse) ? 'delegation revoked before commit' : current.version !== before.version ? 'world changed while the model was answering' : null;
       if (decision && lost) { late.push({at: now, source: decision.source, kind: 'decision_discarded', muse: decision.muse, data: {reason: lost, evidence: decision.evidence ?? null}, tags: []}); usable = null; }
       // Same checks for every model answer to a meeting: a revoked answerer or a moved world discards it (it was paid for).
       const discard = (r: EncounterReply, reason: string) => late.push({at: now, source: r.source as WorldEvent['source'], kind: 'encounter_reply_discarded', muse: r.muse, other: r.other, place: r.place, data: {reason, encounterId: r.encounterId, evidence: r.evidence ?? null}, tags: []});
       const replies = answers.map(r => {
         if (r.source === 'rule') return r;
-        const why = current.paused?.[r.muse] ? 'paused before commit' : this.opts.delegationValid && !this.opts.delegationValid(r.muse) ? 'delegation revoked before commit' : current.version !== before.version ? 'world changed while the model was answering' : null;
+        const why = current.paused?.[r.muse] ? 'paused before commit' : isRuntimeControlled(current,r.muse,now) ? 'personal or connected before commit' : this.opts.delegationValid && !this.opts.delegationValid(r.muse) ? 'delegation revoked before commit' : current.version !== before.version ? 'world changed while the model was answering' : null;
         if (!why) return r;
         discard(r, why);
         return {muse: r.muse, other: r.other, place: r.place, encounterId: r.encounterId, source: 'rule' as const, output: null, reason: 'discarded: ' + why};
@@ -307,6 +307,7 @@ export class WorldRuntime {
   private async liveSpotlight(s: WorldState, muse: string, freedom: Decision['freedom'], now: number): Promise<{decision: Decision | null; info: {source: string; reason?: string; requestId?: string | null}}> {
     // A paused Muse (owner revoked its delegation) has no turn: no model call, no fallback, no event.
     if (s.paused?.[muse]) return {decision: null, info: {source: 'scripted'}};
+    if(isRuntimeControlled(s,muse,now))return {decision:null,info:{source:'scripted',reason:s.muses.find(m=>m.id===muse)?.controlMode==='personal'?'personal_muse':isConnected(s.inbox,muse,now)?'connected_muse':'unresolved_actor'}};
     // The world must never stop on one bad input: if the spotlight input cannot be built, the scenario continues.
     let input;
     try { input = validate('spotlight', spotlightInput(s, muse, freedom, now)); }
