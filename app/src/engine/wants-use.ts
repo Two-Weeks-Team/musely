@@ -54,7 +54,7 @@ export function planUse(s: WorldState, goal: UseGoal, now: number): UsePlan {
 
 /** Never promote an acquisition or a transcript claim to realized benefit.
  * Inputs must be authoritative engine snapshots/events, not peer/model-produced JSON.
- * This verifier deliberately rejects a craft when required items were absent before completion.
+ * This verifier deliberately rejects a craft when consumed ingredients were absent before completion.
  */
 export function verifyUse(goal: UseGoal, before: WorldState, after: WorldState, events: readonly WorldEvent[], now: number):
   {fulfilled: false; reason: string} | {fulfilled: true; evidenceId: string; item: string; source: WorldEvent['source']} {
@@ -65,10 +65,14 @@ export function verifyUse(goal: UseGoal, before: WorldState, after: WorldState, 
   const a=before.muses.find(x=>x.id===goal.muse), b=after.muses.find(x=>x.id===goal.muse), beat=BEATS.find(x=>x.id===goal.beat);
   if (!a||!b||!beat?.result?.craft||a.beat?.id!==beat.id||a.beat.endsAt>now) return no('no_started_activity');
   if (before.paused?.[a.id] || after.paused?.[a.id]) return no('revoked');
-  if ((beat.needs??[]).some(x=>!a.inventory.includes(x)||isExpired(before.items,a.id,x,now))) return no('lost_prerequisite');
   const count=(xs:readonly string[],id:string)=>xs.filter(x=>x===id).length;
+  const consumed = new Map<string, number>();
+  for (const id of beat.result.consume ?? []) consumed.set(id, (consumed.get(id) ?? 0) + 1);
+  if ([...consumed].some(([id,n])=>count(a.inventory,id)<n||isExpired(before.items,a.id,id,now))) return no('lost_prerequisite');
   const result=beat.result.craft;
-  if (count(b.inventory,result)!==count(a.inventory,result)+1 || (beat.result.consume??[]).some(x=>count(b.inventory,x)!==count(a.inventory,x)-1)) return no('no_verified_inventory_delta');
+  for (const id of new Set([...consumed.keys(), result])) {
+    if (count(b.inventory,id)!==count(a.inventory,id)-(consumed.get(id)??0)+(id===result?1:0)) return no('no_verified_inventory_delta');
+  }
   const e=events.find(x=>x.kind==='craft'&&x.muse===a.id&&x.place===a.place&&x.at>=a.beat!.endsAt&&x.at>=goal.createdAt&&x.at<goal.expiresAt&&x.at<=now&&x.data?.item===result);
   const history=after.items.history.find(x=>x.via==='craft'&&x.to===a.id&&x.item===result&&x.at===e?.at&&x.place===a.place&&x.seq!==undefined&&x.seq>(before.items.chain?.seq??0));
   if (!e||!history) return no('no_engine_evidence');

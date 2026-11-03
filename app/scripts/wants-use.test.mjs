@@ -66,8 +66,8 @@ test('stale inventory craft bug is detected rather than recorded as goal progres
  const f=finish();const before=structuredClone(f.before);before.muses.find(x=>x.id===f.a.id).inventory=before.muses.find(x=>x.id===f.a.id).inventory.filter(x=>x!=='clover_seed');
  const r=tick(before,{now:f.done});assert.equal(verifyUse(f.goal,before,r.state,r.events,f.done).reason,'lost_prerequisite');
 });
-test('expired required item and revoked actor cannot be accepted as successful use',()=>{
- const f=finish();f.before.items.expiry[f.a.id][0].expiresAt=f.done;assert.equal(verifyUse(f.goal,f.before,f.state,f.events,f.done).reason,'lost_prerequisite');
+test('start-only pass expiry permits completed use; revoked actor still cannot fulfill',()=>{
+ const f=finish();f.before.items.expiry[f.a.id][0].expiresAt=f.done;assert.equal(verifyUse(f.goal,f.before,f.state,f.events,f.done).fulfilled,true);
  f.before.paused={[f.a.id]:{at:f.done,by:'owner',version:0}};assert.equal(verifyUse(f.goal,f.before,f.state,f.events,f.done).reason,'revoked');
 });
 test('tampered history blocks planning and realized-benefit attribution',()=>{

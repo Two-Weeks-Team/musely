@@ -5,14 +5,14 @@
 import {BEATS, CLIP_FALLBACK, inHours, type Beat} from './beats.ts';
 import {PLACES, PLACE_BY_ID, placeById, distanceM, WALK_MPS, type Place} from './places.ts';
 import {HARNESSES, harnessById} from './harness.ts';
-import {ITEM_BY_ID, itemUpkeep, grantItem, putTimed, historyFault, spendSpotlightTickets} from './items.ts';
+import {ITEM_BY_ID, itemUpkeep, grantItem, putTimed, isExpired, historyFault, spendSpotlightTickets} from './items.ts';
 import {rngFor, weightedPick, daySeed} from './rng.ts';
 import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-4: durable first introductions/signals; neighborhood roaming and original actor-origin semantics remain. */
-export const ENGINE_VERSION = 'engine-4';
+/** engine-5: atomic consumed-ingredient validation at beat completion; needs remain start conditions. */
+export const ENGINE_VERSION = 'engine-5';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
@@ -407,10 +407,26 @@ function startBeat(m: MuseState, beat: Beat, place: Place, now: number, source: 
 
 function finishBeat(m: MuseState, now: number, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void, ledger: ItemLedger, itemsHalted: boolean) {
   const beat = BEATS.find(b => b.id === m.beat!.id);
-  // With the item history halted the beat still ends, but it neither consumes nor crafts.
-  if (beat?.result && !itemsHalted) {
-    for (const c of beat.result.consume ?? []) { const k = m.inventory.indexOf(c); if (k >= 0) m.inventory.splice(k, 1); }
-    if (beat.result.craft) { grantItem(ledger, m, beat.result.craft, now, m.place, 'craft'); emit({at: now, source: 'rule', kind: 'craft', muse: m.id, place: m.place, data: {item: beat.result.craft, from: beat.result.consume ?? []}, tags: ['ability_change']}); }
+  // Revalidate consumed ingredients at completion: inventory may have changed while the
+  // beat was running. Preflight the whole consumption multiset before any mutation.
+  const remaining = [...m.inventory];
+  let blocked = itemsHalted ? 'item_history_untrusted' : null;
+  if (beat?.result && !blocked) {
+    for (const id of beat.result.consume ?? []) {
+      const i = remaining.indexOf(id);
+      if (i < 0 || isExpired(ledger, m.id, id, now)) { blocked = 'lost_ingredient'; break; }
+      remaining.splice(i, 1);
+    }
+    if (!blocked) {
+      m.inventory = remaining;
+      if (beat.result.craft) { grantItem(ledger, m, beat.result.craft, now, m.place, 'craft'); emit({at: now, source: 'rule', kind: 'craft', muse: m.id, place: m.place, data: {item: beat.result.craft, from: beat.result.consume ?? []}, tags: ['ability_change']}); }
+    }
+  }
+  if (beat?.result && blocked) {
+    emit({at: now, source: 'rule', kind: 'beat_cancelled', muse: m.id, place: m.place, data: {beat: beat.id, reason: blocked}, tags: []});
+    m.reflection = `Could not complete ${beat.id.replace(/_/g, ' ')} at ${placeById(m.place).name}`;
+    m.beat = null;
+    return;
   }
   // One-line reflection (#9): what the Muse takes from the last thing it did.
   m.reflection = `Last: ${beat?.id.replace(/_/g, ' ') ?? 'rest'} at ${placeById(m.place).name}`;

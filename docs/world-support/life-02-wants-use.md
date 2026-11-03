@@ -13,14 +13,18 @@ Related: #133; depends on Life-01 #132 and runtime integration #134.
 ## Evidence
 
 Base main: bd6d9d5bab9a6c3e5653ed1b195e76f16b67d21b (2026-11-03).
-Node 24.22.1: `node --test scripts/wants-use.test.mjs` — 16/16 passed. Includes existing `commitTrade` followed by real pure-engine `tick`: coffee exchanged for Garden Pass, Clover Seed consumed, Bloom crafted, Garden Pass kept, rule event plus chain evidence. This is deterministic local simulation, not a real model decision, TLS client acceptance, real personal Muse, browser result or deployment.
+Node 24.22.1: `node --test scripts/wants-use.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs scripts/run-log.test.mjs scripts/run-replay.test.mjs` — 73/73 passed across Wants, craft completion, version, run-log and replay checks. Includes existing `commitTrade` followed by real pure-engine `tick`: coffee exchanged for Garden Pass, Clover Seed consumed, Bloom crafted, Garden Pass kept, rule event plus chain evidence. This is deterministic local simulation, not a real model decision, TLS client acceptance, real personal Muse, browser result or deployment.
 
 TypeScript 7.0.2 strict isolated module dependency check passed:
 `node node_modules/typescript/bin/tsc --ignoreConfig --noEmit --target es2022 --module esnext --moduleResolution bundler --allowImportingTsExtensions --strict --skipLibCheck src/engine/wants-use.ts`
 
-## Known risk discovered, not silently fixed
+## Consumed-material fix and replay boundary
 
-The existing `world.ts` `finishBeat` can craft after required ingredients disappear between start and completion. The regression exercises that case; this module refuses to attribute it as fulfilled (`lost_prerequisite`). It does not repair the underlying inventory mutation. Before runtime activation, the main engine must revalidate beat prerequisites/expiry and consume atomically at completion. This PR avoids concurrent edits to shared world runtime; coordinate that fix with the main team.
+`finishBeat` now checks the entire consumed-material multiset before mutation. A missing ingredient cancels without partial consumption or craft. Duplicate quantities count correctly both in execution and the benefit verifier. `Beat.needs` remains a START condition: moving or expiring a nonconsumed Garden Pass does not cancel an activity already started. Existing pause/history-integrity protections remain.
+
+Engine content version becomes engine-5. The exact historical engine4/3/2 tuples remain checkpoint-readable. Tests use SYNTHETIC present-day fixtures labelled with historical version tuples and assert full state, snapshot hashes and original header preservation. They do not constitute a captured real engine-4 run, historical-production replay or execution of an old engine. Such real historical evidence remains unverified.
+
+Run-log fixtures previously defaulted to a real model URL with key='k' and no fake fetcher. Offline fixtures now default model:null; model tests supply an explicit fake transport. Both log/replay suites install a fail-closed fetch guard and assert zero unintended external requests. Initial execution was rejected; only after this safety correction did formal re-review permit the 73-test run. No real provider data was requested.
 
 ## Remaining integration gate
 
