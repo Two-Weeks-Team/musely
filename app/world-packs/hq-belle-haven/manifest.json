@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "hq-belle-haven-authoring-v1",
+  "status": "draft-unintegrated",
+  "runtimeEnabled": false,
+  "sourceCommit": "a31c9c9fb0d364f8e7ab8ec0fff2cfb647647620",
+  "originWgs84": [-122.14991969950646, 37.48313116566372],
+  "unit": "metre",
+  "axes": {"x": "east", "y": "up", "z": "south"},
+  "geographicMeshRotationDeg": 0,
+  "authoredCommonsGridBearingDeg": 30,
+  "roads": {"asset": "roads-preview.gltf", "source": "overview.geojson", "widthM": 3, "widthStatus": "stylistic-estimate", "navigable": false},
+  "buildings": {"status": "not-acquired", "asset": null},
+  "runtimePlaces": [],
+  "validation": {"focusedTests": 9, "visualQA": "not-run", "mobilePerformance": "not-run", "productCheck": "not-run"}
+}
