@@ -496,8 +496,9 @@ test('review 10: event ids name the actor; no gate configured means nobody meets
   const w = await m.call('greet', {text: 'Hello?', command_id: 'cmd-noexec-01'});
   assert.equal(w.structuredContent.refused, 'delegation_revoked');
   assert.equal(w.structuredContent.retryable, false);
-  assert.deepEqual(Object.keys(w.structuredContent.command).sort(), ['command_id', 'duplicate', 'expected_version', 'world_version']);
+  assert.deepEqual(Object.keys(w.structuredContent.command).sort(), ['applied', 'command_id', 'committed', 'duplicate', 'expected_version', 'world_version']);
   assert.equal(w.structuredContent.command.command_id, 'cmd-noexec-01');
+  assert.deepEqual([w.structuredContent.command.committed, w.structuredContent.command.applied], [false, false]);
 });
 
 // ---------------- PR #87 re-review ----------------

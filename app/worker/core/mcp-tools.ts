@@ -138,9 +138,11 @@ export const TOOLS: ToolDef[] = [
 // heartbeat_check reads the inbox and marks expiry; it commits but does not act in the world, so it is not signed.
 TOOLS.find(t => t.name === 'heartbeat_check')!.write = undefined;
 TOOLS.find(t => t.name === 'heartbeat_check')!.annotations = {readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false};
+const FRESHNESS_GUIDANCE = ' Complete any heartbeat_check upkeep before planning. After choosing your intent for yourself, obtain a fresh get_world_state immediately before the chosen write and use its current world_version. Do not put heartbeat_check or unrelated calls between this final read and write; refresh again if such a call is needed. A precommit stale_world and a same command_id retry with fresh state are not another chosen world action; every read, attempt and retry still counts toward connector-call and time budgets. Preserve your runtime limits (including one retry, 12 calls or 3 chosen actions where configured); if insufficient, defer to the next run. This is guidance, not a new server quota or automatic retry.';
+for (const name of ['get_world_state', 'heartbeat_check', 'say_hello']) TOOLS.find(t => t.name === name)!.description += FRESHNESS_GUIDANCE;
 const COMMAND_PROPS: Record<string, Prop> = {
   command_id: {type: 'string', pattern: '^[A-Za-z0-9_-]{8,64}$', description: 'Optional idempotency key. Once a call with this id has committed, a retry with the same id and arguments returns that first result without acting again; other arguments with the same id are refused as command_conflict. A call refused before it commits (stale_world, in_progress, a credential or envelope check) spends nothing and is not stored, so you may retry the same id (for example after stale_world with a fresh expected_version). A call the world rules refuse (for example no_taxi_token or already_here) is a stored result: a retry with the same id returns that refusal again, so after changing the conditions use a new command_id. While the first call is still running, a retry is refused as in_progress (retryable).'},
-  expected_version: {type: 'integer', minimum: 0, description: 'Optional world_version from get_world_state you planned against; if the world moved, the call is refused as stale_world (retryable) and nothing changes. Omit it to skip the version check.'},
+  expected_version: {type: 'integer', minimum: 0, description: 'Optional world_version from get_world_state you planned against; if the world moved, the call is refused as stale_world (retryable) and nothing changes. Complete heartbeat upkeep before planning; get a fresh get_world_state immediately before your chosen write and use that current version. Respect your existing retry, connector-call and time budgets.'},
 };
 for (const t of TOOLS) if (t.write) Object.assign(t.inputSchema.properties, COMMAND_PROPS);
 const PERSONAL_ENTRY_TOOL = write('enter_world','Enter your registered Muse','Explicit signed admission for your own pending entry attempt. Does not grant any other scope or choose your next action.',obj({attempt_id:{type:'string',pattern:'^pea_[a-f0-9-]{36}$'},command_id:{type:'string',pattern:'^[A-Za-z0-9_-]{8,64}$'},expected_version:{type:'integer',minimum:0}},['attempt_id','command_id']),'world_entry');
@@ -195,7 +197,7 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
       emit(tagLocation(st.owner, {at, source: 'live', kind: 'a2a_refused', muse: me, other: recipientMuse, line: 'Refused: delegation revoked', data: {step: 'delegation', reason: 'delegation_revoked', actor: 'your Muse', actorOrigin: 'connected', tool: tool.name, ...(c.personal?{}:{key_id:c.key.id}), envelope: null, content}, tags: ['p0_refused']}));
       notifyOwner(inboxOf(st), {kind: 'blocked', at, line: `Blocked: your Muse's ${tool.name.replace(/_/g, ' ')} was refused (delegation revoked)`, ref: null, other: recipientMuse, muse: me});
     });
-    return refused('delegation_revoked', {step: 'delegation', retryable: false, envelope: null, command: {command_id: opts.commandId ?? null, expected_version: opts.expectedVersion ?? null, world_version: c.runtime.state().version, duplicate: false}});
+    return refused('delegation_revoked', {step: 'delegation', retryable: false, envelope: null, command: {command_id: opts.commandId ?? null, expected_version: opts.expectedVersion ?? null, world_version: c.runtime.state().version, duplicate: false, committed: false, applied: false}});
   }
   const cmd = await signCommand(exec, {worldId, expectedVersion: opts.expectedVersion ?? null, action: tool.name, payload: content, recipient, scope: tool.write!.scope, ownerClaimed: claimedFor(c), now: at, commandId: opts.commandId});
   const envelope = envelopeEvidence(cmd.signed);
@@ -229,11 +231,11 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
     },
     refused: (st, emit, r, at2) => {
       const envelopeFailure = !quietRefusal(r.code);
-      emit(tagLocation(st.owner, {at: at2, source: 'live', kind: envelopeFailure ? 'a2a_refused' : 'command_refused', muse: me, other: recipientMuse, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, content, actor: 'your Muse', actorOrigin: 'connected', tool: tool.name, ...(c.personal?{}:{key_id:c.key.id}), envelope, command_id: cmd.commandId}, tags: envelopeFailure ? ['p0_refused'] : []}));
+      emit(tagLocation(st.owner, {at: at2, source: 'live', kind: envelopeFailure ? 'a2a_refused' : 'command_refused', muse: me, other: recipientMuse, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, content, actor: 'your Muse', actorOrigin: 'connected', tool: tool.name, ...(c.personal?{}:{key_id:c.key.id}), envelope, command_id: cmd.commandId, ...(r.code === 'stale_world' ? {expected_version: cmd.expectedVersion, observed_world_version: st.version} : {})}, tags: envelopeFailure ? ['p0_refused'] : []}));
       if (envelopeFailure) notifyOwner(inboxOf(st), {kind: 'blocked', at: at2, line: `Blocked: your Muse's ${tool.name.replace(/_/g, ' ')} was refused (${r.code.replace(/_/g, ' ')})`, ref: envelope.message_id, other: recipientMuse, muse: me});
     },
   }, at);
-  const command = {command_id: out.result.commandId, expected_version: cmd.expectedVersion, world_version: out.result.worldVersion, duplicate: out.duplicate};
+  const command = {command_id: out.result.commandId, expected_version: cmd.expectedVersion, world_version: out.result.worldVersion, duplicate: out.duplicate, committed: !out.duplicate && out.refused === null, applied: !out.duplicate && out.refused === null && out.result.ok};
   if (out.refused) return refused(out.refused.code, {step: out.refused.step, retryable: out.refused.retryable, envelope: evidenceOf(envelope, out.verified), command});
   // A duplicate returns the first result, with the first envelope's evidence.
   const stored = out.output as {outcome: Outcome; envelope: Evidence} | null;
@@ -340,7 +342,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         .map(({o, d}) => ({id: o.id, name: name(s,o.id), role: participantRole(s,o.id), place: placeView(placeById(o.place)), distance_m: Math.round(d), travelling: !!o.travel, in_trade_range: d <= RULES.tradeRangeM && !o.travel, public_wants: {goal: o.wants.goal, items: o.wants.items}, holds: o.inventory.filter(i => itemSpec(i)?.transferable && itemSpec(i)?.category !== 'relic')}));
       return ok({
         muse: {id: me, name: name(s,me), place: placeView(here), cell, travel: meState.travel ? {to: placeView(placeById(meState.travel.to)), speed: meState.travel.speed, eta_ms: etaMs(meState, now), arrive_at: meState.travel.arriveAt} : null, inventory: meState.inventory, wants: meState.wants, reflection: meState.reflection, memory: meState.memory.slice(0, 6), doing: meState.beat?.line ?? null},
-        world_version: s.version, owner_location: ownerView(c.personal?c.ownerLocation?.():s.owner, meState, now), neighbors,
+        world_version: s.version, observed_at: now, owner_location: ownerView(c.personal?c.ownerLocation?.():s.owner, meState, now), neighbors,
         places_nearby: nearbyPlaces(here, 10).map(({p, d}) => ({...placeView(p), distance_m: Math.round(d)})),
         inbox: {tasks_waiting_for_you: inbox.tasks.filter(t => t.status === 'pending' && t.awaiting === me).length, unread_messages: inbox.messages.filter(m => m.to === me && !m.read).length, open_campfire_invites: invitesFor(inbox, me).open.length},
         rules: {trade_range_m: RULES.tradeRangeM, max_counters: MAX_COUNTERS, task_deadline_min: TASK_TTL_MS / 60_000, daily: DAILY, walk_mps: WALK_MPS, invite_deadline_min: INVITE_TTL_MS / 60_000, gathering_min: GATHERING_MIN, help_services: helpServicesView()},
