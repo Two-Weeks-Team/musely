@@ -24,7 +24,9 @@ function clean(g:UseGoal):UseGoal {
 export class ResidentGoalStore {
  private sql:Sql;
  constructor(sql:Sql){this.sql=sql;}
- init(){this.sql.exec('CREATE TABLE IF NOT EXISTS resident_wants_receipts (world_id TEXT NOT NULL, goal_id TEXT NOT NULL, event_id TEXT NOT NULL, PRIMARY KEY(world_id,goal_id))');this.sql.exec('CREATE TABLE IF NOT EXISTS resident_wants_goals (world_id TEXT NOT NULL, goal_id TEXT NOT NULL, revision INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY(world_id,goal_id))');}
+ /** Identity check, not an exposed storage handle. Required for shared commit atomicity. */
+ sharesStorage(sql:Sql):boolean{return this.sql===sql;}
+ init(){this.sql.exec('CREATE TABLE IF NOT EXISTS resident_wants_turns (world_id TEXT NOT NULL, day TEXT NOT NULL, tick INTEGER NOT NULL, reservation_id TEXT NOT NULL, PRIMARY KEY(world_id,day,tick))');this.sql.exec('CREATE TABLE IF NOT EXISTS resident_wants_decisions (world_id TEXT NOT NULL, reservation_id TEXT NOT NULL, goal_id TEXT NOT NULL, task_id TEXT NOT NULL, decision TEXT NOT NULL, PRIMARY KEY(world_id,reservation_id))');this.sql.exec('CREATE TABLE IF NOT EXISTS resident_wants_receipts (world_id TEXT NOT NULL, goal_id TEXT NOT NULL, event_id TEXT NOT NULL, PRIMARY KEY(world_id,goal_id))');this.sql.exec('CREATE TABLE IF NOT EXISTS resident_wants_goals (world_id TEXT NOT NULL, goal_id TEXT NOT NULL, revision INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY(world_id,goal_id))');}
  load(world:string,id:string):GoalRow|null {const r=this.sql.exec('SELECT revision,body FROM resident_wants_goals WHERE world_id=? AND goal_id=?',world,id).toArray()[0];if(!r)return null;if(!Number.isSafeInteger(r.revision)||Number(r.revision)<0)throw Error('invalid stored revision');return {revision:Number(r.revision),goal:clean(JSON.parse(String(r.body)))};}
  saveInTransaction(world:string,expected:number|null,goal:UseGoal):number {
   if(goal.status==='fulfilled')throw Error('fulfillment requires engine evidence');
@@ -36,6 +38,13 @@ export class ResidentGoalStore {
   const revision=this.write(world,expected,{...row.goal,status:'fulfilled'});
   this.sql.exec('INSERT INTO resident_wants_receipts (world_id,goal_id,event_id) VALUES (?,?,?)',world,id,result.evidenceId);
   return revision;
+ }
+ turnConsumed(world:string,day:string,tick:number):boolean {return !!this.sql.exec('SELECT 1 FROM resident_wants_turns WHERE world_id=? AND day=? AND tick=?',world,day,tick).toArray()[0];}
+ recordTurnInTransaction(world:string,day:string,tick:number,reservationId:string){this.sql.exec('INSERT INTO resident_wants_turns (world_id,day,tick,reservation_id) VALUES (?,?,?,?)',world,day,tick,reservationId);}
+ recordDecisionInTransaction(world:string,id:string,expected:number,reservationId:string,taskId:string,decision:'accept'|'counter'|'reject'):number {
+  const row=this.load(world,id);if(!row||row.revision!==expected||row.goal.status!=='active')throw Error('stale goal');
+  const revision=this.write(world,expected,row.goal);
+  this.sql.exec('INSERT INTO resident_wants_decisions (world_id,reservation_id,goal_id,task_id,decision) VALUES (?,?,?,?,?)',world,reservationId,id,taskId,decision);return revision;
  }
  private write(world:string,expected:number|null,goal:UseGoal):number {
   if(!bounded(world))throw Error('invalid world');const g=clean(goal),old=this.load(world,g.id);

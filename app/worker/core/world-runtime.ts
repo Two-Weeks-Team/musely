@@ -17,6 +17,7 @@
 //   input row. Reads of the log (highlight pages, period samples, one event with its commit) are below.
 import {createWorld, tick, spotlightFor, spotlightInput, encounterInput, requestSpotlight, TICK_MS, type WorldState, type WorldEvent, type Decision, type EncounterReply, type Hooks} from '../../src/engine/world.ts';
 import {validate, buildMessages, maxCostUsd, actualCostUsd, failureCostUsd, checkOutput} from './actions.ts';
+import {runResidentWantsTurn,type ResidentWantsCallerPolicy} from './resident-wants-caller.ts';
 import {callModel, type ModelConfig} from './model.ts';
 import {replayFor} from './replay.ts';
 import {isRuntimeControlled} from '../../src/engine/inbox.ts';
@@ -46,6 +47,8 @@ export type SpotlightOrigin = 'visitor' | 'judge' | 'connected';
 export type SpotlightRequestResult = {ok: true; muse: string; position: number; already: boolean; eventIds: string[]} | {ok: false; reason: 'unknown_muse' | 'paused' | 'queue_full' | 'hourly_limit'};
 
 export type RuntimeOptions = {
+  /** Feature OFF; server-only policy, no WorldDO installation. */
+  residentWants?:ResidentWantsCallerPolicy;
   worldId: string;
   model: (Omit<ModelConfig, 'key'> & {key: string | undefined}) | null;
   ledger: Ledger;
@@ -99,6 +102,8 @@ export class WorldRuntime {
   /** The versioned run record and the ordered inputs of every commit (run-log.ts). */
   readonly runLog: RunLog;
   // Campfire invites close (gathered, expired, cancelled) on every tick: the invite upkeep joins the hooks here (I-13).
+  ownsResidentGoalStore(store:{sharesStorage:(sql:TxSql)=>boolean}):boolean{return store.sharesStorage(this.sql);}
+
   constructor(sql: TxSql, opts: RuntimeOptions) { this.sql = sql; this.opts = {...opts, hooks: withMessageHooks(opts.hooks)}; this.runLog = new RunLog(sql, opts.worldId); }
   get worldId() { return this.opts.worldId; }
 
@@ -147,15 +152,24 @@ export class WorldRuntime {
 
   /** One heartbeat. Safe to call again after a crash or an alarm retry. */
   async heartbeat(now: number): Promise<HeartbeatResult> {
-    const before = this.state();
+    let before = this.state();
     if (now - before.lastTickAt < TICK_MS * 0.9 && before.tick > 0) return {status: 'skipped_early', tick: before.tick, events: 0};
     // A second run for the same tick (alarm retry while the first is still waiting) stops here,
     // before any model call: the tick is committed or its spotlight reservation already exists.
     if (this.tickTaken(before)) return {status: 'skipped_duplicate', tick: before.tick, events: 0};
+    const originalTickReservation=this.reservationId(before);
     try {
+      const wants=this.opts.residentWants;
+      // Never allow a plugin to substitute a second budget/model/registry or ignore revocation.
+      const clock=()=>Math.max(now,wants?.context.now()??now);
+      const negotiated=wants?.enabled===true ? await runResidentWantsTurn(this,{...wants,authorize:(s,a,b,at)=>wants.enabled===true&&wants.context.enabled===true&&wants.authorize(s,a,b,at)&&(!this.opts.delegationValid||(this.opts.delegationValid(a)&&this.opts.delegationValid(b))),context:{...wants.context,now:clock,ledger:this.opts.ledger,model:this.opts.model?.key?{...this.opts.model,key:this.opts.model.key}:null,ownership:id=>{const registry=(this.opts as RuntimeOptions & {residentLife?:{enabled:boolean;ownershipKind:(id:string)=>'resident'|'personal'|'legacy'|'unknown'}}).residentLife;return registry?.enabled===true?registry.ownershipKind(id):'unknown';}}},now) : null;
+      const refreshed=this.state();
+      if(refreshed.tick!==before.tick||refreshed.day!==before.day)return {status:'skipped_duplicate',tick:refreshed.tick,events:0};
+      before=refreshed;now=Math.max(clock(),before.lastTickAt);
+      const wantsConsumedTurn=negotiated?.ok===true||['turn_already_consumed','already_reserved','timeout','network','upstream','bad_output','rate_limited','output_rejected','invalid_trade_choice','stale_authority_or_state','stale_task','trade_precondition_changed'].includes(negotiated?.reason??'');
       // The turn is fixed here and passed to the commit: queue requests made while the model answers wait for the next tick.
       const spot = spotlightFor(before, now), turn = {muse: spot.muse, priority: spot.priority};
-      const [{decision, info}, canMeet] = await Promise.all([this.liveSpotlight(before, spot.muse, spot.freedom, now), this.meetingGate(before, now)]);
+      const [{decision, info}, canMeet] = await Promise.all([wantsConsumedTurn?Promise.resolve({decision:null,info:{source:'rule',reason:negotiated?.ok===true||negotiated?.reason==='turn_already_consumed'?'resident_trade_turn':'resident_trade_attempt'}}):this.liveSpotlight(before, spot.muse, spot.freedom, now), this.meetingGate(before, now)]);
       // The spotlight slot is free again: this tick's meetings, and the other Muse's answer to each.
       const answers = await this.encounterReplies(before, now, decision, canMeet, turn);
       this.opts.beforeCommit?.();
@@ -203,7 +217,7 @@ export class WorldRuntime {
       return {status: 'committed' as const, tick: current.tick, events: all.length, spotlight: {muse: turn.muse, priority: turn.priority, ...info}, replies: {live: said.filter(e => e.source === 'live').length, rule: said.filter(e => e.source === 'rule').length}};
       });
     } finally {
-      this.inFlight.delete(this.reservationId(before));
+      this.inFlight.delete(originalTickReservation);
     }
   }
 
@@ -512,3 +526,4 @@ export class WorldRuntime {
     return {worldId: s.worldId, day: s.day, tick: s.tick, version: s.version, lastTickAt: s.lastTickAt, nextSpotlight: spotlightFor(s, now), spotlightQueue: s.spotlight.visitorQueue.filter(id => !s.paused?.[id]), muses: s.muses.map(m => ({id: m.id, place: m.place, travel: m.travel, beat: m.beat, inventory: m.inventory, reflection: m.reflection, wants: m.wants, paused: s.paused?.[m.id] ?? null}))};
   }
 }
+

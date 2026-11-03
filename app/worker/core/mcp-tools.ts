@@ -262,7 +262,7 @@ function residentAnswers(st: WorldState, t: Task, rule: Emit, live: Emit, at: nu
   return 'rejected';
 }
 
-function completeTrade(st: WorldState, t: Task, acceptor: string, live: Emit, rule: Emit, at: number, ownerMuse: string, by: 'live' | 'rule', ownerOf: OwnerOf) {
+export function completeTrade(st: WorldState, t: Task, acceptor: string, live: Emit, rule: Emit, at: number, ownerMuse: string, by: 'live' | 'rule', ownerOf: OwnerOf) {
   const offer = t.offer!, a = museOf(st, offer.by), b = museOf(st, acceptor);
   const first = st.items.history.filter(h => h.via === 'trade').length === 0;
   commitTrade(st.items, st.day, a, b, offer.give, offer.want, at);
