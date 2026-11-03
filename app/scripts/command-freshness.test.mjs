@@ -34,9 +34,21 @@ test('due heartbeat after world read makes it stale; heartbeat then fresh read p
  await t.tool(COPPER,'greet',{to:JOLLY,text:'Good morning'});
  const world=value(await t.tool(JOLLY,'get_world_state'));
  const hb=value(await t.tool(JOLLY,'heartbeat_check'));assert.ok(hb.messages.length>0);assert.ok(t.state().version>world.world_version);
+ assert.equal(hb.world_version,t.state().version,'heartbeat reports the post-upkeep version, not the read it invalidated');
+ assert.ok(Number.isSafeInteger(hb.observed_at));assert.ok(hb.observed_at>=world.observed_at);
  const stale=value(await t.tool(JOLLY,'greet',{text:'Good morning',command_id:'freshness-hb-order',expected_version:world.world_version}));assert.equal(stale.refused,'stale_world');effects(stale,false,false);
  const fresh=value(await t.tool(JOLLY,'get_world_state'));
  effects(value(await t.tool(JOLLY,'greet',{text:'Good morning',command_id:'freshness-hb-order',expected_version:fresh.world_version})),true,true);
+});
+
+test('heartbeat returns a usable post-upkeep version and a no-op recheck cannot invalidate it',async tc=>{
+ const t=await httpsWorld(tc);
+ await t.tool(COPPER,'greet',{to:JOLLY,text:'Good morning'});
+ const hb=value(await t.tool(JOLLY,'heartbeat_check')),version=t.state().version;
+ assert.equal(hb.world_version,version);assert.ok(hb.messages.length>0);
+ const next=value(await t.tool(JOLLY,'heartbeat_check'));assert.equal(next.world_version,version);
+ assert.equal(t.state().version,version);assert.deepEqual(next.messages,[]);
+ effects(value(await t.tool(JOLLY,'greet',{text:'Good morning',command_id:'freshness-post-upkeep-version',expected_version:next.world_version})),true,true);
 });
 
 test('world, heartbeat and hello deliver the same freshness guidance across places without choosing actions',async tc=>{

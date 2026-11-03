@@ -1,3 +1,4 @@
+import {McpFreshness} from './mcp-freshness.ts';
 import type {PersonalWorld} from './personal-world.ts';
 // The connected-Muse surface of the world Durable Object (direction v2, 7.2, 8.8, 12.3, 13.1):
 // agent keys, the owner location source, owner notifications and the MCP tool dispatch. Kept outside
@@ -31,6 +32,7 @@ const uniq = () => Math.random().toString(36).slice(2, 10);
 export class ConnectedHost {
   readonly keys: AgentKeys;
   private d: ConnectedDeps;
+  private readonly freshness=new McpFreshness();
   constructor(d: ConnectedDeps) { this.d = d; this.keys = new AgentKeys(d.sql); }
   init() { this.keys.init(); }
   private now() { return this.d.now ? this.d.now() : Date.now(); }
@@ -158,6 +160,7 @@ export class ConnectedHost {
       // A successful world action puts the Muse in the priority queue (deduplicated, 3 per hour); a revoked Muse never.
       const tool = method === 'tools/call' ? String((params as {name?: unknown} | null)?.name ?? '') : '';
       if (ACTION_TOOLS.has(tool) && (out.result as {isError?: boolean} | undefined)?.isError === false && !this.d.trust.suspended(key.muse)) this.d.runtime.requestSpotlight(key.muse, this.now(), {origin: 'connected', requester: 'connected:' + key.muse});
+      try{this.freshness.observe(key,method,tool,out.result,this.now());}catch{/* Private diagnostics never alter dispatch results. */}
       return {status: 'ok', ...out};
     } catch (e) {
       console.error('mcp tool error', method, e);

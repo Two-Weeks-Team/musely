@@ -382,7 +382,8 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
       });
       const after = inboxOf(c.runtime.state());
       return ok({
-        now, tasks_for_you: after.tasks.filter(t => t.status === 'pending' && t.awaiting === me).map(t => viewOf(t, me)),
+        now, observed_at: now, world_version: c.runtime.state().version,
+        tasks_for_you: after.tasks.filter(t => t.status === 'pending' && t.awaiting === me).map(t => viewOf(t, me)),
         incoming_trade_intents: incomingTradeIntents(c.runtime.state(),me),
         your_open_tasks: after.tasks.filter(t => t.status === 'pending' && t.awaiting !== me && (t.from === me || t.to === me)).map(t => viewOf(t, me)),
         expired_now: expired.filter(t => t.from === me || t.to === me).map(t => viewOf(t, me)),
