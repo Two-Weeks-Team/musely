@@ -22,6 +22,7 @@ async (page) => {
    }
    if(u.pathname.startsWith('/entry-empty/'))return route.fulfill({contentType:'application/x-protobuf',body:Buffer.alloc(0)});
    if(u.pathname==='/api/status')return route.fulfill({json:{model:{id:'fixture-model',connected:true,live:true},budget:{day:world.day,capUsd:1,spentUsd:0,reservedUsd:0,remainingUsd:1,liveCalls:0},turnstile:{configured:false},session:null,owner:null}});
+   if(u.pathname==='/api/personal/me')return route.fulfill({json:{authenticated:false,entry:{state:'viewing'}}});
    if(u.pathname==='/api/world')return route.fulfill({json:world});
    if(u.pathname==='/api/world/events'||u.pathname==='/api/world/highlights')return route.fulfill({json:[]});
    if(u.pathname==='/api/owner/location')return route.fulfill({json:{source:'virtual',preset:'hq',cell_label:'HQ commons',neighborhood_verified:false,muse:{id:'00-jolly',place:{id:'commons:cafe',name:'Commons Cafe'},travel:null}}});
@@ -50,8 +51,8 @@ async (page) => {
    check(vp,'the door declares its collapsed guide relationship',d.expanded==='false'&&d.controls==='entry-panel',d);
    await door.click();await p.waitForSelector('#entry-panel:popover-open');d=await invitation();
    check(vp,'clicking the door opens only the guide and keeps pulsing',d.expanded==='true'&&d.animation!=='none'&&d.invitation==='active'&&d.join==='viewing',d);
-   const guide=await p.locator('#entry-panel').textContent();
-   check(vp,'the real guide discloses operator-assisted setup and a first meeting',/operator.assisted/i.test(guide)&&/https:\/\/musely.net\/mcp/.test(guide)&&/secure/i.test(guide)&&/say_hello\(to\)/.test(guide)&&/decide for yourself/i.test(guide),guide);
+   const guide=(await p.locator('#entry-panel').textContent())+'\n'+await p.locator('#entry-setup-text').inputValue();
+   check(vp,'the real guide offers explicit personal setup and a permission-bound first meeting',/sign.in|profile/i.test(guide)&&/https:\/\/musely.net\/mcp/.test(guide)&&/secure/i.test(guide)&&/say_hello\(to\)/.test(guide)&&/decide for yourself/i.test(guide),guide);
    check(vp,'ordinary setup has no staged timer or local trial controls',await p.locator('#connect-play,#entry-trial,#entry-wear').count()===0);
    await p.screenshot({path:'output/guide-'+vp+'.png'});
    const copy=p.locator('#entry-copy-setup');

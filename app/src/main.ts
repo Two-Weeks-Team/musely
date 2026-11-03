@@ -249,5 +249,17 @@ const cardEl=document.getElementById('muse-card');if(cardEl)new ResizeObserver(s
 markMode(mode);
 // The ordinary door is an invitation, never a join receipt. Explicit entryPreview=1 retains the local walkthrough.
 // Mounted last because watching can switch modes through the existing controls.
-const onboarding=mountOnboarding({onWatch:()=>{if(mode!=='world')setMode('world');},initial:entryParams});
+let focusedPersonalEntry:string|null=null;
+const onboarding=mountOnboarding({
+ onWatch:()=>{if(mode!=='world')setMode('world');},initial:entryParams,
+ getWorldId:()=>liveScene?.liveProjection.world?.worldId??pendingLive?.world.worldId??null,
+ onPersonalEntry:entry=>{
+  if(entry.state!=='joined'||!entry.actor||!entry.receipt||!showingLive())return;
+  const current=liveScene?.liveProjection.world??pendingLive?.world;
+  if(current?.worldId!==entry.receipt.worldId||!current.muses.some(m=>m.id===entry.actor!.id))return;
+  const key=JSON.stringify([entry.actor.id,entry.receipt.id,entry.receipt.worldId]);
+  if(focusedPersonalEntry===key)return;
+  focusedPersonalEntry=key;selectLive(entry.actor.id);
+ },
+});
 window.__world={getMetrics:()=>({ready,live:liveScene?.getMetrics()??null,startup:{sceneReadyAtMs,onlineMapReadyAtMs,onlineMapAddedAtMs,detailReadyAtMs,overviewVisible:map.getZoom()<14},frame,zoom:map.getZoom(),center:map.getCenter().toArray(),pitch:map.getPitch(),bearing:map.getBearing(),elapsed:clock.elapsed,lifeTime,dialogue:conversationAt(Math.min(lifeTime,DURATION)),bubbles:bubbles?.getMetrics(),paused:clock.paused,tour,tourCamera,follow,selected,ownerDecision,drawCalls,triangles,fps,renderer:'WebGL2 shared map canvas',canvasCount:document.querySelectorAll('#map canvas').length,sceneId:world?.scene.uuid,museIds:world?.muses.map(m=>m.uuid),muses:ready?PEOPLE.map((p,i)=>({...p,position:world.muses[i].position.toArray(),floorY:surfaceHeightAt(world.muses[i].position.x,world.muses[i].position.z),bounds:museBounds(i)})):[],characterHeightM:world?.sourceHeight,characters:world?.actors?.map(a=>({variant:a.variant,rootId:a.root.uuid,lod:a.lod,wantedLod:a.wanted,loadedLods:[...a.loaded].sort(),attachment:a.attachmentLoaded,action:a.getMetrics().action,expression:a.getMetrics().expression,triangles:a.visibleTriangles()})),characterKit:!!world?.actors,characterUpgrade:world?{...world.upgradeTimes}:null,characterMaterials:(i:number)=>world?.actors?.[i]?.visibleMaterials(),errors,statuses,onlineMap:true,liveAgent:false,spark:spark?{connected:spark.model.connected,live:spark.model.live,model:spark.model.id}:null,dynamicLights:1}),script:LINES,map,startStory,seek:seekStory,visit,select,worldPanel,setMode,selectLive,get liveScene(){return liveScene;},previewCue,get mode(){return mode;},onboarding,perf,pixelRatio:ratio,actor:(i:number)=>world?.actors?.[i]??null,actionClips:ACTION_CLIPS,alignmentAt:(x:number,z:number)=>{const p=map.project(toGeo(x,z));return {geo:toGeo(x,z).toArray(),mapPixel:[p.x,p.y],modelPixel:projected(new T.Vector3(x,0,z))};},fixture:ROUNDS};

@@ -34,5 +34,6 @@ export class SceneProjection {
 export function frameSource(projection: LiveProjection, frame: ActorFrame | undefined, id: string) {
   const cueEvent = frame?.cue ? projection.events.find(e => e.id === frame.cue!.eventId) : null;
   if (cueEvent?.source) return cueEvent.source;
-  return [...projection.events].reverse().find(e => e.muse === id || e.other === id)?.source ?? 'rule';
+  return [...projection.events].reverse().find(e => e.muse === id || e.other === id)?.source
+    ?? (projection.world?.muses.find(m => m.id === id)?.profile ? 'waiting' : 'rule');
 }
