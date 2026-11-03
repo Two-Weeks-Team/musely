@@ -2,6 +2,7 @@
 // it gets a 24-hour session from Turnstile (or a judge link) and calls /api/muse with structured input.
 import {isolation} from './ui/isolation';
 import {BLOCKED} from './ui/resource-state';
+import {verifyVisitor} from './ui/session-verification';
 
 export type SparkStatus = {
   model: {id: string; connected: boolean; live: boolean};
@@ -22,15 +23,48 @@ export async function sparkStatus(): Promise<SparkStatus | null> {
   }
 }
 
-let turnstileScript: Promise<void> | null = null;
-function loadTurnstile() {
-  turnstileScript ??= new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-    s.async = true; s.onload = () => resolve(); s.onerror = () => reject(new Error('Turnstile unavailable'));
-    document.head.append(s);
+type TurnstileLoad = {promise: Promise<void>; script: HTMLScriptElement; pending: boolean; users: number; abandon: () => void};
+let turnstileScript: TurnstileLoad | null = null;
+function loadTurnstile(signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.reject(new Error('Verification cancelled'));
+  if (!turnstileScript) {
+    const script = document.createElement('script');
+    let accept!: () => void, refuse!: (error: Error) => void;
+    const promise = new Promise<void>((resolve, reject) => { accept = resolve; refuse = reject; });
+    const entry: TurnstileLoad = {promise, script, pending: true, users: 0, abandon: () => complete(new Error('Verification cancelled'))};
+    function complete(error?: Error) {
+      if (!entry.pending) return;
+      entry.pending = false;
+      script.onload = null; script.onerror = null;
+      if (error) {
+        // A late callback for this generation cannot clear a newer load.
+        if (turnstileScript === entry) turnstileScript = null;
+        script.remove(); refuse(error);
+      } else accept();
+    }
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.onload = () => complete();
+    script.onerror = () => complete(new Error('Turnstile unavailable'));
+    turnstileScript = entry;
+    document.head.append(script);
+  }
+  const entry = turnstileScript;
+  entry.users++;
+  return new Promise<void>((resolve, reject) => {
+    let done = false;
+    const finish = (error?: Error) => {
+      if (done) return;
+      done = true; signal.removeEventListener('abort', aborted); entry.users--;
+      if (error) reject(error); else resolve();
+      // Only the last pending consumer owns removal. Loaded SDK stays cached.
+      if (entry.pending && entry.users === 0) entry.abandon();
+    };
+    const aborted = () => finish(new Error('Verification cancelled'));
+    signal.addEventListener('abort', aborted, {once: true});
+    entry.promise.then(() => signal.aborted ? aborted() : finish(), () => finish(new Error('Turnstile unavailable')));
+    if (signal.aborted) aborted();
   });
-  return turnstileScript;
 }
 
 /** Opens a session: judge link token if present in the URL (then removed from the address bar), else Turnstile. */
@@ -45,14 +79,12 @@ export async function ensureSession(status: SparkStatus): Promise<SparkStatus['s
     history.replaceState(null, '', location.pathname + (params.size ? '?' + params : '') + location.hash);
     body = {judge};
   } else {
-    await loadTurnstile();
-    const host = document.createElement('div');
-    host.className = 'turnstile-host';
-    document.body.append(host);
-    const token = await new Promise<string>((resolve, reject) => {
-      (window as any).turnstile.render(host, {sitekey: status.turnstile.sitekey, callback: resolve, 'error-callback': () => reject(new Error('Turnstile failed')), appearance: 'interaction-only'});
-    }).finally(() => setTimeout(() => host.remove(), 500));
-    body = {turnstile: token};
+    return verifyVisitor(status.turnstile.sitekey, loadTurnstile, async (token, signal) => {
+      const res = await fetch('/api/session', {method: 'POST', signal, headers: {'content-type': 'application/json'}, body: JSON.stringify({turnstile: token})});
+      if (!res.ok) throw new Error('Session refused');
+      const s = await res.json();
+      return {tier: s.tier, expiresAt: s.expiresAt, quota: s.quota};
+    });
   }
   const res = await fetch('/api/session', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)});
   if (!res.ok) throw new Error('Session refused: ' + res.status);
