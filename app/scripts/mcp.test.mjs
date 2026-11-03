@@ -322,12 +322,19 @@ test('inbox: a resident proposal to a connected Muse becomes a pending Task with
   assert.ok(t.events('task_expired').some(e => e.data.task_id === task.id));
   assert.equal((await t.call('accept_trade', {task_id: task.id})).structuredContent.refused, 'task_expired');
 
-  // Not connected (no key use for 24 h): the same meeting resolves by rule at once.
+  // Presence can go away, but a personal Muse still decides in its own runtime.
   t.edit(st => { st.inbox.connected = {}; });
   t.edit(st => {
     const owner = st.muses.find(m => m.id === OWNER_SLOT), moss = st.muses.find(m => m.id === '02-moss');
     const out = resolveMeeting(st.items, st, moss, owner, placeById('commons:garden'), () => 0.1, T0 + 40 * 60_000);
-    assert.ok(!out.some(e => e.data?.inbox), 'no inbox Task when not connected');
+    assert.equal(owner.controlMode, 'personal');
+    assert.ok(out.some(e => e.kind === 'trade_proposed' && e.data?.inbox === true), 'an offline personal Muse still gets a pending Task');
+    assert.ok(!out.some(e => e.kind === 'trade_completed'), 'the world never accepts for an offline personal Muse');
+    // An actual unconnected resident still uses the existing rule path.
+    const resident = st.muses.find(m => m.id === '05-bloom');
+    place(st, resident.id, 'commons:garden'); resident.inventory.push('garden_pass');
+    const residentOut = resolveMeeting(st.items, st, moss, resident, placeById('commons:garden'), () => 0.1, T0 + 40 * 60_000);
+    assert.ok(!residentOut.some(e => e.data?.inbox), 'resident rule behavior remains distinct from personal control');
   });
 });
 

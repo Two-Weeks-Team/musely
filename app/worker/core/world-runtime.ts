@@ -19,7 +19,7 @@ import {createWorld, tick, spotlightFor, spotlightInput, encounterInput, request
 import {validate, buildMessages, maxCostUsd, actualCostUsd, failureCostUsd, checkOutput} from './actions.ts';
 import {callModel, type ModelConfig} from './model.ts';
 import {replayFor} from './replay.ts';
-import {isConnected} from '../../src/engine/inbox.ts';
+import {isRuntimeControlled} from '../../src/engine/inbox.ts';
 import {COMMANDS_TABLE, type CommandResult} from './commands.ts';
 import {syncTasks} from './tasks.ts';
 import {withMessageHooks} from './messages.ts';
@@ -282,7 +282,7 @@ export class WorldRuntime {
       return {decision: null, info: {source: 'scripted', reason}};
     };
     // A connected Muse thinks in its owner's runtime (8.8): the team key never decides for it.
-    if (isConnected(s.inbox, muse, now)) return {decision: null, info: {source: 'scripted', reason: 'connected_muse'}};
+    if (isRuntimeControlled(s, muse, now)) return {decision: null, info: {source: 'scripted', reason: s.muses.find(m => m.id === muse)?.controlMode === 'personal' ? 'personal_muse' : 'connected_muse'}};
     if (!this.opts.model?.key) return fallback('not_connected');
     const call = await this.modelCall('spotlight', input, this.reservationId(s));
     if (!call.ok) return fallback(call.reason);
@@ -327,7 +327,7 @@ export class WorldRuntime {
       console.error('encounter dry run failed', e);
       return [];
     }
-    const meetings = dry.filter(e => e.kind === 'encounter' && e.other && e.muse && !isConnected(s.inbox, e.other, now));
+    const meetings = dry.filter(e => e.kind === 'encounter' && e.other && e.muse && !isRuntimeControlled(s, e.other, now));
     // Budget kept for visitors, and a breaker after repeated timeouts: both answer by rule without a call.
     const budget = meetings.length ? this.opts.ledger.status() : null;
     const held = budget && budget.remainingUsd < ENCOUNTER_BUDGET_FLOOR * budget.capUsd ? 'budget_reserved_for_visitors' : now < this.circuitOpenUntil ? 'circuit_open' : null;

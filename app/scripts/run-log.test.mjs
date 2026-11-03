@@ -484,7 +484,7 @@ test('review 2: a meeting is connected only when the connected Muse headed for t
   st = scene([['00-jolly', '01-sunny', 'commons:cafe']]);
   st.muses.find(m => m.id === '00-jolly').intent = {kind: 'greet', target: '01-sunny'};
   assert.equal(meetingOf(st, '00-jolly').data.actorOrigin, 'system');
-  assert.equal(ENGINE_VERSION, 'engine-3', 'the tick output changed, so the engine version moved');
+  assert.equal(ENGINE_VERSION, 'engine-4', 'recorded introduction state changes the engine content version');
 });
 
 test('review 1: the recount is bounded: 48 hours at most, 20,000 events at most, both answered partial', () => {
@@ -649,7 +649,7 @@ test('review 3: greet, say_hello, postcard and wants text from a connected Muse 
   assert.deepEqual(cmds.map(c => c.action), ['greet', 'say_hello', 'send_postcard', 'update_wants']);
   assert.deepEqual(cmds.map(c => c.omitted), [['text'], ['text'], ['text'], ['goal']]);
   assert.deepEqual(cmds[0].fields, {kind: 'greet', to: '01-sunny'});
-  assert.deepEqual(cmds[1].fields, {kind: 'greet', to: '01-sunny'}, 'the hello action keeps public target IDs without retaining its text');
+  assert.deepEqual(cmds[1].fields, {kind: 'say_hello', to: '01-sunny'}, 'the hello action keeps public target IDs without retaining its text');
   assert.deepEqual(cmds[3].fields, {kind: 'update_wants', items: ['postcard']});
   assert.ok(cmds.every(c => /^[0-9a-f]{64}$|^sha-256=/.test(c.payloadHash) || typeof c.payloadHash === 'string'));
   // A deploy now: the new run's snapshot holds the state with that text, as hashes only.

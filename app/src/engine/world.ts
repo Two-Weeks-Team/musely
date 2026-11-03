@@ -9,15 +9,17 @@ import {ITEM_BY_ID, itemUpkeep, grantItem, putTimed, historyFault, spendSpotligh
 import {rngFor, weightedPick, daySeed} from './rng.ts';
 import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
-import {emptyInbox, expireTasks, deliverMessage, isConnected, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
+import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-3: bounded neighborhood roaming and walking; original engine-2 actor-origin semantics remain. */
-export const ENGINE_VERSION = 'engine-3';
+/** engine-4: durable first introductions/signals; neighborhood roaming and original actor-origin semantics remain. */
+export const ENGINE_VERSION = 'engine-4';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
 export type Freedom = 'where' | 'who' | 'offer' | 'plan';
 export type Speed = 'walk' | 'bus' | 'taxi';
+/** Public factual record of a first introduction through say_hello. Keyed by immutable peer ID. */
+export type Introduction = {id: string; at: number; place: string};
 
 export type MuseState = {
   id: string;
@@ -28,6 +30,10 @@ export type MuseState = {
   memory: string[];
   reflection: string;
   lastMet: Record<string, number>;
+  /** Absent in older worlds; no unrecorded historical introductions are inferred. */
+  introductions?: Record<string, Introduction>;
+  /** Once personally connected, loss of presence/credentials never hands this actor to resident rules. */
+  controlMode?: 'personal';
   intent: {kind: 'greet' | 'trade'; target: string; give?: string | null; want?: string | null} | null;
   /** Public wants (7, 9.1): starts from the harness; Spark or the owner's connected Muse can update it. */
   wants: Wants;
@@ -260,7 +266,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     const rand = rngFor(s.seed, s.tick, m.id);
     // A connected Muse (8.8) decides in its owner's runtime: requested trips still arrive and running beats
     // still finish. Only an idle owner-area stroll may be picked by rule; no team-model decision or activity is substituted.
-    const connected = isConnected(s.inbox, m.id, now);
+    const connected = isRuntimeControlled(s, m.id, now);
     const arrivedThisTick = !!m.travel && m.travel.arriveAt <= now;
     if (m.travel && m.travel.arriveAt <= now) {
       const place = placeById(m.travel.to);
@@ -275,6 +281,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     if (m.beat && m.beat.endsAt > now) continue;
     if (m.beat) finishBeat(m, now, emit, s.items, !!itemFault);
     if (connected) {
+      if (m.controlMode === 'personal') continue;
       // Ambient owner-area walking is world physics, not a connected command or a team-model decision.
       // A real command, an incoming approach, any pending commitment, or an existing trip/beat takes priority.
       const area = s.owner?.muse === m.id ? ownerArea(s.owner) : null;
@@ -309,6 +316,12 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   for (const [placeId, group] of byPlace) {
     for (let i = 0; i < group.length; i++) for (let j = i + 1; j < group.length; j++) {
       const a = group[i], b = group[j];
+      // Seeing a new Muse is a world fact, not a greeting or decision made for a personal Muse. Keep it even if
+      // the runtime wakes after the peer has left, and independently of the legacy 30-minute meeting cooldown.
+      if (!a.introductions?.[b.id] && !b.introductions?.[a.id]) {
+        if (isRuntimeControlled(s, a.id, now)) noteEncounter(s.inbox!, a.id, b.id, placeId, now);
+        if (isRuntimeControlled(s, b.id, now)) noteEncounter(s.inbox!, b.id, a.id, placeId, now);
+      }
       if (now - (a.lastMet[b.id] ?? 0) < 30 * 60_000) continue;
       const initiator = a.intent?.target === b.id ? a : b.intent?.target === a.id ? b : (rngFor(s.seed, s.tick, a.id, b.id)() < .5 ? a : b);
       const other = initiator === a ? b : a;
@@ -323,7 +336,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       if (gate?.event) emit(gate.event);
       for (const e of hooks.onEncounter?.(s, initiator, other, placeById(placeId), rngFor(s.seed, s.tick, initiator.id, other.id, 'meet'), now) ?? []) emit(e);
       // The other Muse answers (8.3). A connected Muse answers from its owner's runtime, so nothing is said for it here.
-      if (input.replies && !isConnected(s.inbox, other.id, now)) replyTo(other, initiator, placeId, meeting, input.replies.find(r => r.encounterId === meeting && r.muse === other.id && r.other === initiator.id), now, emit);
+      if (input.replies && !isRuntimeControlled(s, other.id, now)) replyTo(other, initiator, placeId, meeting, input.replies.find(r => r.encounterId === meeting && r.muse === other.id && r.other === initiator.id), now, emit);
       if (initiator.intent?.target === other.id) initiator.intent = null;
       remember(a, `Met ${harnessById(b.id).name} at ${placeById(placeId).name}`);
       remember(b, `Met ${harnessById(a.id).name} at ${placeById(placeId).name}`);
@@ -339,7 +352,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   else s.spotlight.cursor = (s.spotlight.cursor + 1) % s.muses.length;
   s.spotlight.streak = spot.priority ? (s.spotlight.streak ?? 0) + 1 : 0;
   // Spotlight Tickets are spent after this turn was served, so the next heartbeat's spotlightFor sees the same queue.
-  if (!itemFault) for (const e of spendSpotlightTickets(s, now, id => paused(id) || isConnected(s.inbox, id, now))) emit(e);
+  if (!itemFault) for (const e of spendSpotlightTickets(s, now, id => paused(id) || isRuntimeControlled(s, id, now))) emit(e);
   s.tick += 1; s.version += 1; s.lastTickAt = now;
   return {state: s, events};
 }

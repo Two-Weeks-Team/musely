@@ -6,6 +6,7 @@
 //   (one-line receipt), a blocked attempt. Daily greetings never become owner notifications.
 // Sealed negotiation: Tasks carry items and accept|reject only; rejections have no reason field.
 import {detectInjection, wrapUntrusted} from '../identity/untrusted.ts';
+import type {WorldState} from './world.ts';
 
 export const TASK_TTL_MS = 30 * 60_000;
 export const CONNECTED_MS = 24 * 3_600_000;
@@ -65,7 +66,11 @@ export type Task = {
   /** Meetup: set when both owners approved the same revision, hash and candidate (completed, Meetup Ember issued). */
   confirmed?: {candidate: string; at: number};
 };
-export type Message = {id: string; from: string; to: string; kind: 'greet' | 'postcard' | 'gift' | 'invite'; at: number; text: string | null; item?: string | null; blocked?: string[]; read: boolean};
+export type Message = {id: string; from: string; to: string; kind: 'greet' | 'postcard' | 'gift' | 'invite'; at: number; text: string | null; item?: string | null; blocked?: string[]; read: boolean;
+  /** Server facts identifying the start of an introduction, separate from the peer's untrusted text. */
+  encounter?: {id: string; place: string; first_contact: true}};
+/** The world noticed a new Muse. It has not said hello or chosen an action for the recipient. */
+export type EncounterNotice = {id: string; other: string; place: string; at: number; source: 'system'};
 export type Mail = {id: string; from: string; to: string; item: string; text: string | null; sentAt: number; deliverAt: number; crossRegion: boolean;
   /** Expiry clock of a time-limited item in the mail (I-06): it keeps running in transit and moves to the receiver. */
   timed?: {item: string; at: number; expiresAt: number}};
@@ -76,7 +81,9 @@ export type OwnerNotification = {id: string; kind: 'meetup_candidate' | 'trade_c
  * resident answers by rule at once; a connected Muse answers by coming to the campfire (live). Three or more of the
  * inviter and its accepted invitees at the campfire together close it as gathered (one highlight).
  */
-export type InviteAnswer = {answer: 'pending' | 'accept' | 'decline' | 'unavailable'; via: 'rule' | 'live' | null; at: number};
+export type InviteAnswer = {answer: 'pending' | 'accept' | 'decline' | 'unavailable'; via: 'rule' | 'live' | null; at: number;
+  /** Set only by the invitee's own signed move toward this invite's place after it was sent. */
+  comingAt?: number};
 export type CampfireInvite = {id: string; from: string; to: string[]; place: string; note: string | null; at: number; expiresAt: number;
   status: 'open' | 'gathered' | 'expired' | 'cancelled'; answers: Record<string, InviteAnswer>; closedAt?: number; gathered?: string[]};
 export const notificationMuse = (n: OwnerNotification) => n.muse ?? '00-jolly';
@@ -89,6 +96,8 @@ export type Inbox = {
   notifications: OwnerNotification[];
   /** museId → last time its agent key was used (connected while within 24 h and the key is not revoked). */
   connected: Record<string, number>;
+  /** Durable first-meeting signals, per recipient, until introduction; at most KEEP each. */
+  encounters?: Record<string, EncounterNotice[]>;
   /** day → museId → counts for daily limits on postcards and gifts. */
   sent: Record<string, Record<string, {postcards: number; gifts: number}>>;
   /** Campfire invites (I-13). Missing in states stored before them. */
@@ -100,9 +109,18 @@ export const emptyInbox = (): Inbox => ({version: 2, tasks: [], messages: [], ma
 export const DAILY = {postcards: 3, gifts: 3} as const;
 
 export const isConnected = (inbox: Inbox | undefined, museId: string, now: number) => !!inbox && now - (inbox.connected[museId] ?? -Infinity) < CONNECTED_MS;
+/** Ownership/control is permanent; recent connection activity is only presence. */
+export const isRuntimeControlled = (state: Pick<WorldState, 'muses' | 'inbox'>, museId: string, now: number) => state.muses.find(m => m.id === museId)?.controlMode === 'personal' || isConnected(state.inbox, museId, now);
 /** Connection activity is persisted at most every ten minutes; readers must include this uncertainty. */
 export const CONNECTED_REFRESH_MS = 10 * 60_000;
 export const nextId = (inbox: Inbox, prefix: string) => `${prefix}_${(++inbox.seq).toString(36)}`;
+
+export function noteEncounter(inbox: Inbox, recipient: string, other: string, place: string, at: number) {
+  const notices = ((inbox.encounters ??= {})[recipient] ??= []);
+  if (notices.some(notice => notice.other === other)) return;
+  notices.push({id: nextId(inbox, 'seen'), other, place, at, source: 'system'});
+  if (notices.length > KEEP) notices.splice(0, notices.length - KEEP);
+}
 
 export function notifyOwner(inbox: Inbox, n: Omit<OwnerNotification, 'id'> & {muse: string}) {
   inbox.notifications.push({id: nextId(inbox, 'n'), ...n});
@@ -124,7 +142,8 @@ export function deliverMessage(inbox: Inbox, m: Omit<Message, 'id' | 'read' | 'b
 }
 
 /** The view a connected Muse gets: peer text wrapped as untrusted data. */
-export const messageView = (m: Message) => ({id: m.id, from: m.from, kind: m.kind, at: m.at, item: m.item ?? null, text: m.text === null ? null : wrapUntrusted(m.text), blocked: m.blocked ?? null});
+export const messageView = (m: Message) => ({id: m.id, from: m.from, kind: m.kind, at: m.at, item: m.item ?? null, text: m.text === null ? null : wrapUntrusted(m.text), blocked: m.blocked ?? null,
+  encounter: m.encounter ? {id: m.encounter.id, place: m.encounter.place, first_contact: true} : null});
 
 /** Marks overdue pending Tasks expired; returns those that changed. */
 export function expireTasks(inbox: Inbox, now: number): Task[] {

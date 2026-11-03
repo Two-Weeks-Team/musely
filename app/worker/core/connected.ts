@@ -166,11 +166,13 @@ export class ConnectedHost {
   private markConnected(muse: string, now: number) {
     const s = this.d.runtime.state();
     const last = s.inbox?.connected[muse];
-    if (last !== undefined && now - last < CONNECTED_REFRESH_MS) return;
+    const establishPersonalControl = muse === OWNER_MUSE && s.muses.find(m => m.id === muse)?.controlMode !== 'personal';
+    if (!establishPersonalControl && last !== undefined && now - last < CONNECTED_REFRESH_MS) return;
     const fresh = last === undefined || now - last >= CONNECTED_MS;
     this.d.runtime.commitExternal(now, 'connected-' + uniq(), (st, emit) => {
       (st.inbox ??= emptyInbox()).connected[muse] = now;
-      if (fresh) emit(tagLocation(st.owner, {at: now, source: 'live', kind: 'agent_connected', muse, line: 'Connected: this Muse now thinks in its owner\'s runtime (live · your Muse)', data: {via: 'mcp'}, tags: []}));
+      if (establishPersonalControl) st.muses.find(m => m.id === muse)!.controlMode = 'personal';
+      if (fresh) emit(tagLocation(st.owner, {at: now, source: 'live', kind: 'agent_connected', muse, line: 'Connected: delegated MCP access is active for this Muse', data: {via: 'mcp'}, tags: []}));
     });
   }
 }

@@ -12,16 +12,16 @@ test('say_hello discovery tells the client this is a strict public write', async
   assert.ok(hello, 'first greeting is discoverable');
   assert.equal(hello.annotations.readOnlyHint, false);
   assert.equal(hello.inputSchema.additionalProperties, false);
-  assert.deepEqual(hello.inputSchema.required, []);
+  assert.deepEqual(hello.inputSchema.required, ['to']);
   assert.ok(hello.inputSchema.properties.to.enum.includes(COPPER));
   assert.ok(hello.inputSchema.properties.command_id);
   assert.ok(hello.inputSchema.properties.expected_version);
 });
 
-test('say_hello with no arguments commits one signed public hello without inventing a reply', async test => {
+test('say_hello uses its default opener for the selected new Muse without inventing a reply', async test => {
   const t = await httpsWorld(test);
-  const before = structuredClone(domainState(t));
-  const result = success(await t.tool(JOLLY, 'say_hello'));
+  const before = t.state().muses.map(m => ({id: m.id, inventory: [...m.inventory], place: m.place, travel: m.travel}));
+  const result = success(await t.tool(JOLLY, 'say_hello', {to: COPPER}));
   assert.equal(result.said, 'Hello! Nice to meet you.');
   assert.equal(result.public, true);
   assert.equal(result.envelope.verified, true);
@@ -31,10 +31,10 @@ test('say_hello with no arguments commits one signed public hello without invent
   assert.equal(events[0].line, 'Hello! Nice to meet you.');
   assert.equal(events[0].place, 'commons:cafe');
   assert.equal(events[0].muse, JOLLY);
-  assert.equal(events[0].other, null);
+  assert.equal(events[0].other, COPPER);
   assert.equal(events[0].data.tool, 'say_hello');
   assert.equal(events[0].data.actorOrigin, 'connected');
-  assert.deepEqual(domainState(t), before, 'a broadcast does not change items, travel or invent inbox replies');
+  assert.deepEqual(t.state().muses.map(m => ({id: m.id, inventory: [...m.inventory], place: m.place, travel: m.travel})), before, 'the introduction does not choose movement or item actions');
 });
 
 test('a directed say_hello reaches the real peer inbox exactly once across a command retry', async test => {

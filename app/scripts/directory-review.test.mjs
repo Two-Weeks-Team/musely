@@ -178,6 +178,7 @@ test('reviewer key: every /mcp write tool acts as the reviewer Muse, without wai
   await c.init();
   const now = Date.now();
   t.edit(st => {
+    (st.inbox.invites ??= []).push({id: 'invite_r1', from: '01-sunny', to: [REVIEWER], place: 'commons:campfire', note: null, at: now, expiresAt: now + 1800000, status: 'open', answers: {[REVIEWER]: {answer: 'pending', via: null, at: now}}});
     for (const [id, p] of [['01-sunny', 'commons:cafe'], ['02-moss', 'commons:garden'], ['05-bloom', 'commons:garden'], ['06-ink', 'commons:bookshelf'], ['07-tempo', 'commons:bookshelf'], ['09-copper', 'commons:workbench']]) place(st, id, p);
     st.inbox.tasks.push(
       task('task_r1', 'trade', '05-bloom', REVIEWER, now, {offer: {by: '05-bloom', give: 'tea', want: 'coffee'}}),
@@ -192,6 +193,7 @@ test('reviewer key: every /mcp write tool acts as the reviewer Muse, without wai
   const calls = [
     ['greet', {text: 'Hello from the review', to: '01-sunny'}],
     ['say_hello', {to: '01-sunny'}],
+    ['answer_campfire', {invite_id: 'invite_r1', answer: 'decline'}],
     ['update_wants', {goal: 'Find a story for tonight', items: ['pastry']}],
     ['discover', {}],
     ['accept_trade', {task_id: 'task_r1'}],
