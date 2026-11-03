@@ -3,7 +3,7 @@ test('character proof builds its current world source independently of absent or
  const temp=await mkdtemp(join(tmpdir(),'musely-proof-test-'));
  try{
   await Promise.all([mkdir(join(temp,'scripts')),mkdir(join(temp,'character-kit/runtime/base'),{recursive:true}),cp('src',join(temp,'src'),{recursive:true}),cp('assets',join(temp,'assets'),{recursive:true}),cp('fixtures',join(temp,'fixtures'),{recursive:true}),symlink(resolve('node_modules'),join(temp,'node_modules'),'dir')]);
-  for(const file of['build-character-proof.mjs','prepare-assets.mjs','embedding.mjs'])await copyFile('scripts/'+file,join(temp,'scripts',file));
+  for(const file of['build-character-proof.mjs','prepare-assets.mjs','embedding.mjs','asset-files.mjs','device-metrics.mjs'])await copyFile('scripts/'+file,join(temp,'scripts',file));
   await mkdir(join(temp,'character-kit/runtime/animations'),{recursive:true});await copyFile('character-kit/runtime/animations/manifest.json',join(temp,'character-kit/runtime/animations/manifest.json'));
   await cp('character-kit/runtime',join(temp,'character-kit/runtime'),{recursive:true});await copyFile('character-kit/manifest.json',join(temp,'character-kit/manifest.json'));
   const build=()=>{const r=spawnSync(process.execPath,['scripts/build-character-proof.mjs'],{cwd:temp,encoding:'utf8'});assert.equal(r.status,0,r.stderr+r.stdout);};
