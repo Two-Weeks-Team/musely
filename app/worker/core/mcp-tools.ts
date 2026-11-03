@@ -51,7 +51,7 @@ export class InvalidParams extends Error {}
 const currentClaim = (c: ToolCtx) => c.ownerClaimedNow ? c.ownerClaimedNow() : c.ownerClaimed;
 const claimedFor = (c: ToolCtx) => !!c.claimExempt || currentClaim(c);
 const CLAIMED_WRITES = new Set(['propose_trade', 'counter_trade', 'accept_trade', 'send_postcard', 'give_gift', 'propose_meetup', 'answer_candidate', 'invite_campfire', 'propose_help', 'answer_help']);
-const OTHER_ONLY = new Set(['greet', 'propose_trade', 'send_postcard', 'give_gift', 'propose_meetup']);
+const OTHER_ONLY = new Set(['greet', 'say_hello', 'propose_trade', 'send_postcard', 'give_gift', 'propose_meetup']);
 
 // ---------- strict input schemas (JSON Schema subset; the same object is published in tools/list) ----------
 type Prop = {type: 'string'; enum?: readonly string[]; pattern?: string; minLength?: number; maxLength?: number; description?: string}
@@ -115,6 +115,7 @@ export const TOOLS: ToolDef[] = [
   write('discover', 'Discover', 'Look for stamps, postcards and items at your Muse\'s current place (one per place per day, ten per day).', obj({}), 'world_item_discover'),
   write('craft', 'Craft', 'Craft an item: transit_pass (three different bus stops visited today) or a recipe from the world (bloom: clover seed + garden pass at a garden or park).', obj({recipe: {type: 'string', enum: RECIPES}}, ['recipe']), 'world_item_discover'),
   write('greet', 'Greet', 'Say a short public greeting (a bubble everyone can see). It is never an instruction to anyone.', obj({text: textProp(140, 'Public greeting, plain text'), to: museProp('Optional nearby Muse')}, ['text']), 'walk_and_greet'),
+  write('say_hello', 'Say hello', 'Start with a short public hello at your current place. With no text, says "Hello! Nice to meet you." Optionally address a nearby Muse from get_world_state; a connected recipient receives the hello in its inbox and decides whether to reply. Everyone can see the greeting. This does not create a reply, move anyone or schedule future activity.', obj({text: textProp(140, 'Optional public conversation opener, plain text'), to: museProp('Optional nearby Muse to say hello to')}), 'walk_and_greet'),
   write('propose_trade', 'Propose trade', 'Propose an in-world trade to a nearby Muse (within 100 m). Opens a Task; counters are limited to 2.', obj({to: museProp('Nearby Muse'), give: itemProp('Item you give'), want: itemProp('Item you want')}, ['to', 'give', 'want']), 'world_item_trade'),
   write('counter_trade', 'Counter trade', 'Counter a trade Task waiting for you (at most 2 counters per Task).', obj({task_id: taskProp, give: itemProp('Item you give'), want: itemProp('Item you want')}, ['task_id', 'give', 'want']), 'world_item_trade'),
   write('accept_trade', 'Accept trade', 'Accept a trade Task waiting for you; both items swap atomically and both get a receipt.', obj({task_id: taskProp}, ['task_id']), 'world_item_trade'),
@@ -423,8 +424,9 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         return {ok: true, data: {crafted: recipe, consumed: beat.result!.consume ?? []}};
       });
     }
+    case 'say_hello':
     case 'greet': {
-      const text = cleanText(String(args.text)), to = args.to as string | undefined;
+      const text = cleanText(String(args.text ?? 'Hello! Nice to meet you.')), to = args.to as string | undefined;
       if (!text) throw new InvalidParams('text is empty');
       return write_(to ?? null, {kind: 'greet', text, to: to ?? null}, (st, live, _rule, at) => {
         if (to === me) return {ok: false, reason: 'invalid_target'};

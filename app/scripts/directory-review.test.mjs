@@ -191,6 +191,7 @@ test('reviewer key: every /mcp write tool acts as the reviewer Muse, without wai
   const agent = t.agent(REVIEWER), postcard = t.muse(REVIEWER).inventory.find(i => i.startsWith('postcard:'));
   const calls = [
     ['greet', {text: 'Hello from the review', to: '01-sunny'}],
+    ['say_hello', {to: '01-sunny'}],
     ['update_wants', {goal: 'Find a story for tonight', items: ['pastry']}],
     ['discover', {}],
     ['accept_trade', {task_id: 'task_r1'}],

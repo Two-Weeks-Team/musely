@@ -332,7 +332,11 @@ test('I-07 AC3 one owner declines, the deadline passes, a delegation is revoked,
   const e = await meetupToOwners(t, SUNNY);
   const e1 = structuredClone(t.task(e));
   assert.equal(e1.approvals[SUNNY].source, 'rule');
-  t.edit(st => { st.inbox.tasks.find(x => x.id === e).candidates[0].time = '23:30'; });
+  t.edit(st => {
+    const candidate = st.inbox.tasks.find(x => x.id === e).candidates[0];
+    // The real-clock candidate can already be 23:30. This test needs an actual content change.
+    candidate.time = candidate.time === '23:30' ? '23:00' : '23:30';
+  });
   assert.deepEqual([t.task(e).revision, t.task(e).approvals], [e1.revision + 1, {}]);
   assert.equal((await t.decide('owner', body(e1, 'approve', 'c1'))).body.error, 'stale_approval');
   const e2 = await t.decide('owner', body(t.task(e), 'approve', 'c1'));
