@@ -78,6 +78,43 @@ test('an unrelated position change after the invitation cannot stand in for the 
   assert.ok(id);
 });
 
+test('a signed teleport records campfire consent before arrival hooks and retries join only once', async tc => {
+  const {t, invitation} = await invite(tc, {there: false});
+  const location = await t.go('POST', '/api/owner/location', {source: 'virtual', preset: 'hq', verify: true}, {origin: t.origin, cookie: t.cookies[JOLLY]});
+  assert.equal(location.status, 200);
+  t.edit(st => {const m = st.muses.find(m => m.id === JOLLY); m.place = 'bay:sf'; m.travel = null; m.inventory.push('taxi_token');});
+  const args = {to: FIRE, mode: 'teleport', command_id: 'campfire-chosen-teleport-001'};
+  const moved = ok(await t.tool(JOLLY, 'move', args));
+  assert.equal(moved.envelope.verified, true);
+  assert.equal(t.muse(JOLLY).place, FIRE);
+  assert.equal(t.muse(JOLLY).inventory.includes('taxi_token'), false);
+  assert.ok(invitation().answers[JOLLY].comingAt >= invitation().at);
+  await t.dobj.runtime.heartbeat(Date.now() + 1);
+  assert.equal(invitation().answers[JOLLY].answer, 'accept');
+  assert.equal(invitation().answers[JOLLY].via, 'live');
+  assert.equal(invitation().status, 'gathered');
+  const before = structuredClone(domainState(t)), events = t.events().length;
+  assert.equal(ok(await t.tool(JOLLY, 'move', args)).command.duplicate, true);
+  assert.deepEqual(domainState(t), before);
+  assert.equal(t.events().length, events);
+  assert.equal(t.events().filter(e => e.kind === 'campfire_gathering').length, 1);
+});
+
+test('a refused teleport cannot record campfire consent or spend inventory', async tc => {
+  const {t, invitation} = await invite(tc, {there: false});
+  const location = await t.go('POST', '/api/owner/location', {source: 'virtual', preset: 'hq', verify: true}, {origin: t.origin, cookie: t.cookies[JOLLY]});
+  assert.equal(location.status, 200);
+  t.edit(st => {const m = st.muses.find(m => m.id === JOLLY); m.place = 'bay:sf'; m.travel = null; m.inventory = m.inventory.filter(x => x !== 'taxi_token');});
+  const inventory = [...t.muse(JOLLY).inventory];
+  const refused = await t.tool(JOLLY, 'move', {to: FIRE, mode: 'teleport'});
+  assert.equal(refused.structuredContent.refused, 'no_taxi_token');
+  assert.equal(invitation().answers[JOLLY].answer, 'pending');
+  assert.equal(invitation().answers[JOLLY].comingAt, undefined);
+  assert.equal(invitation().status, 'open');
+  assert.equal(t.muse(JOLLY).place, 'bay:sf');
+  assert.deepEqual(t.muse(JOLLY).inventory, inventory);
+});
+
 test('expired invitations cannot be accepted and a lost owner claim still permits a decline', async tc => {
   const {t, id, invitation} = await invite(tc);
   t.claim(false);

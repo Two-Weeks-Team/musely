@@ -385,8 +385,15 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         if (m.travel) return {ok: false, reason: 'travelling', extra: {eta_ms: etaMs(m, at)}};
         if (m.place === dest.id) return {ok: false, reason: 'already_here'};
         if (mode === 'teleport') {
-          const why = teleport(st, m, dest, at, 'live', live, c.hooks, 'move tool');
-          return why ? {ok: false, reason: why} : {ok: true, data: {mode: 'teleport', place: placeView(dest), spent: 'taxi_token'}, text: `Teleported to ${dest.name} (Taxi Token spent).`};
+          let coming: string[] = [];
+          // Only a successful signed teleport reaches this hook. Record the recipient's choice before
+          // the existing arrival hooks evaluate invitations; owner-follow teleports do not imply consent.
+          const hooks: Hooks = {...c.hooks, onArrive: (state, arrived, place, rng, now) => {
+            coming = recordCampfireApproach(state, me, place.id, now);
+            return c.hooks.onArrive?.(state, arrived, place, rng, now) ?? [];
+          }};
+          const why = teleport(st, m, dest, at, 'live', live, hooks, 'move tool');
+          return why ? {ok: false, reason: why} : {ok: true, data: {mode: 'teleport', place: placeView(dest), spent: 'taxi_token', ...(coming.length ? {answering_invites_by_arrival: coming} : {})}, text: `Teleported to ${dest.name} (Taxi Token spent).`};
         }
         const t = beginTrip(m, dest, at, 'live', live, 'move tool');
         const coming = recordCampfireApproach(st, me, dest.id, at);

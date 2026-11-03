@@ -217,6 +217,9 @@ test('reviewer key: every /mcp write tool acts as the reviewer Muse, without wai
   for (const call of calls) {
     if (call === 'arrive') { await t.dobj.runtime.heartbeat(Math.max(Date.now(), t.state().lastTickAt) + 2 * TICK); assert.equal(t.muse(REVIEWER).place, 'commons:garden'); continue; }
     const [name, rawArgs] = call;
+    // The arrival heartbeat can start Copper's ordinary resident trip. This tool-authorization
+    // matrix needs an available helper; resident scheduling is covered separately.
+    if (name === 'propose_help') t.edit(st => place(st, '09-copper', 'commons:workbench'));
     const args = typeof rawArgs === 'function' ? rawArgs() : rawArgs;
     const r = await c.tool(name, args);
     assert.equal(r.isError, false, `${name}: ${JSON.stringify(r.structuredContent)}`);
