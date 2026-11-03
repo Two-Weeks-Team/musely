@@ -6,7 +6,7 @@ import {completeTrade} from './mcp-tools.ts';
 import {goalTradeUtility} from '../../src/engine/wants-use.ts';
 import {checkTrade,historyFault,sweepExpired} from '../../src/engine/items.ts';
 import {isRuntimeControlled,TASK_TTL_MS} from '../../src/engine/inbox.ts';
-import {HARNESS_IDS} from '../../src/engine/harness.ts';
+import {hasResidentHarness} from './resident-harness.ts';
 import {PRINCIPALS} from './owner-session.ts';
 import {type WorldRuntime} from './world-runtime.ts';
 import {type WorldState,spotlightFor} from '../../src/engine/world.ts';
@@ -32,7 +32,7 @@ export async function runResidentWantsTurn(runtime:WorldRuntime,policy:ResidentW
  if(!runtime.ownsResidentGoalStore(policy.context.goals))return no('storage_mismatch');
  const before=runtime.state();if(historyFault(structuredClone(before.items),false,now))return no('history_tamper');if(policy.context.goals.turnConsumed(before.worldId,before.day,before.tick))return no('turn_already_consumed');const spot=spotlightFor(before,now);if(spot.priority)return no('visitor_priority');
  const actor=before.muses.find(m=>m.id===spot.muse),id=actor?.id;
- if(!id||!HARNESS_IDS.includes(id)||Object.values(PRINCIPALS).some(p=>p.muses.includes(id))||policy.context.ownership(id)!=='resident'||before.paused?.[id]||isRuntimeControlled(before,id,now))return no('owner_authority_required');
+ if(!id||!hasResidentHarness(id)||Object.values(PRINCIPALS).some(p=>p.muses.includes(id))||policy.context.ownership(id)!=='resident'||before.paused?.[id]||isRuntimeControlled(before,id,now))return no('owner_authority_required');
  const goalId=policy.goalFor(id),task=before.inbox?.tasks.find(t=>t.kind==='trade'&&t.status==='pending'&&t.awaiting===id&&t.deadline>now&&t.offer);
  if(!goalId||!task?.offer)return no('no_pending_goal_trade');
  const peer=task.offer.by;if(!policy.authorize(before,id,peer,now))return no('authority_refused');

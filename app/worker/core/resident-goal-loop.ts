@@ -1,6 +1,6 @@
 /** Feature-OFF catalog-goal loop. Goal selection is deterministic server policy, not an LLM claim. */
 import {BEATS} from '../../src/engine/beats.ts';
-import {HARNESS_IDS} from '../../src/engine/harness.ts';
+import {hasResidentHarness} from './resident-harness.ts';
 import {emptyInbox,isRuntimeControlled,nextId,TASK_TTL_MS} from '../../src/engine/inbox.ts';
 import {historyFault,sweepExpired,checkTrade} from '../../src/engine/items.ts';
 import {planUse,verifyUse} from '../../src/engine/wants-use.ts';
@@ -9,7 +9,7 @@ import {PRINCIPALS} from './owner-session.ts';
 import {ResidentGoalStore} from './resident-wants-model.ts';
 import {type WorldRuntime} from './world-runtime.ts';
 export type ResidentGoalLoopPolicy={enabled?:boolean;goals:ResidentGoalStore;ownership:(id:string)=>'resident'|'personal'|'legacy'|'unknown';authorize:(s:WorldState,actor:string,peer:string|null,at:number)=>boolean;goalBeatsFor:(actor:string)=>readonly string[]};
-const eligible=(s:WorldState,id:string,p:ResidentGoalLoopPolicy,now:number)=>HARNESS_IDS.includes(id)&&!Object.values(PRINCIPALS).some(x=>x.muses.includes(id))&&p.ownership(id)==='resident'&&!s.paused?.[id]&&!isRuntimeControlled(s,id,now)&&p.authorize(s,id,null,now);
+const eligible=(s:WorldState,id:string,p:ResidentGoalLoopPolicy,now:number)=>hasResidentHarness(id)&&!Object.values(PRINCIPALS).some(x=>x.muses.includes(id))&&p.ownership(id)==='resident'&&!s.paused?.[id]&&!isRuntimeControlled(s,id,now)&&p.authorize(s,id,null,now);
 /** Receipts are emitted only from authoritative committed craft evidence, in caller's shared SQL transaction. */
 export function completeResidentGoalsInTransaction(p:ResidentGoalLoopPolicy,before:WorldState,after:WorldState,events:readonly WorldEvent[],now:number){
  if(p.enabled!==true)return;

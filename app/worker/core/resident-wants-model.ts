@@ -4,7 +4,7 @@
 import {validate,buildMessages,checkOutput,maxCostUsd,actualCostUsd,failureCostUsd} from './actions.ts';
 import {callModel,type ModelConfig} from './model.ts';
 import {type Ledger,type Sql} from './ledger.ts';
-import {HARNESS_IDS} from '../../src/engine/harness.ts';
+import {hasResidentHarness} from './resident-harness.ts';
 import {PRINCIPALS} from './owner-session.ts';
 import {isRuntimeControlled} from '../../src/engine/inbox.ts';
 import {sha256Hex} from '../../src/engine/sha256.ts';
@@ -69,14 +69,15 @@ export async function prepareResidentTrade(c:WantsModelContext,goalId:string,tas
  const no=(reason:string)=>({ok:false as const,reason});if(c.enabled!==true)return no('disabled');
  const before=structuredClone(c.world()),row=c.goals.load(before.worldId,goalId),now=c.now();
  const eligible=(s:WorldState,r:GoalRow|null)=>{if(!r||r.goal.status!=='active'||r.goal.createdAt>c.now()||r.goal.expiresAt<=c.now())return false;const id=r.goal.muse;
- return HARNESS_IDS.includes(id)&&!Object.values(PRINCIPALS).some(p=>p.muses.includes(id))&&c.ownership(id)==='resident'&&!s.paused?.[id]&&!isRuntimeControlled(s,id,c.now());};
+ return hasResidentHarness(id)&&!Object.values(PRINCIPALS).some(p=>p.muses.includes(id))&&c.ownership(id)==='resident'&&!s.paused?.[id]&&!isRuntimeControlled(s,id,c.now());};
  if(!eligible(before,row))return no('owner_authority_required');
  const actor=before.muses.find(m=>m.id===row!.goal.muse),task=before.inbox?.tasks.find(t=>t.id===taskId);
  if(!actor||actor.travel||actor.beat||!task||task.kind!=='trade'||task.status!=='pending'||task.awaiting!==actor.id||task.deadline<=now||!task.offer)return no('no_actionable_trade');
  const other=before.muses.find(m=>m.id===task.offer!.by);if(!other||other.id===actor.id||other.travel)return no('invalid_peer');
- if(!HARNESS_IDS.includes(other.id))return no('unsupported_peer_harness');
- const input=validate('trade',{muse:actor.id,other:other.id,give:task.offer.give,want:task.offer.want,items:actor.inventory.slice(0,12),otherItems:other.inventory.slice(0,12),round:task.round+1});
- const messages=buildMessages('trade',input);
+ if(!hasResidentHarness(other.id))return no('unsupported_peer_harness');
+ let input:ReturnType<typeof validate>,messages:unknown[];
+ try {input=validate('trade',{muse:actor.id,other:other.id,give:task.offer.give,want:task.offer.want,items:actor.inventory.slice(0,12),otherItems:other.inventory.slice(0,12),round:task.round+1});messages=buildMessages('trade',input);}
+ catch{return no('unsupported_trade_context');}
  // Only bounded objective IDs, no free-text private reasons or peer instructions.
  const recipe=BEATS.find(b=>b.id===row!.goal.beat);
  if(!recipe?.result?.craft)return no('unsupported_goal');

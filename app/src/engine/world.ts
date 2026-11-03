@@ -494,6 +494,7 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   if (o.offer_item && !m.inventory.includes(o.offer_item)) return reject('offered item not held: ' + o.offer_item.slice(0, 40));
   const other = findMuse(s, o.target_agent);
   if (!other || other.id === m.id) return reject('offer needs another Muse');
+  if(m.id.startsWith('pm_')||other.id.startsWith('pm_'))return reject('counterparty_pending_claim');
   if(hooks.canProposeTrade&&!hooks.canProposeTrade(s,m.id,other.id,o.offer_item,o.want_item,now))return reject('trade proposal policy');
   m.intent = {kind: 'trade', target: other.id, give: o.offer_item || null, want: o.want_item || null};
   if (o.want_item && ITEM_BY_ID.has(o.want_item) && !m.wants.items.includes(o.want_item)) updateWants(m, {items: [o.want_item, ...m.wants.items].slice(0, 4)}, d.source === 'live' ? 'spark' : m.wants.source, now);

@@ -109,7 +109,19 @@ export class WorldRuntime {
   // Campfire invites close (gathered, expired, cancelled) on every tick: the invite upkeep joins the hooks here (I-13).
   private goalIdle(s:WorldState,now:number){const p=this.opts.residentGoals;if(!p||p.enabled!==true)return [];if(!this.ownsResidentGoalStore(p.goals))throw Error('resident goal storage mismatch');return residentGoalIdleIds({...p,authorize:(s,a,b,at)=>p.authorize(s,a,b,at)&&(!this.opts.delegationValid||this.opts.delegationValid(a)),ownership:id=>{const r=(this.opts as RuntimeOptions & {residentLife?:{enabled:boolean;ownershipKind:(id:string)=>'resident'|'personal'|'legacy'|'unknown'}}).residentLife;return r?.enabled?r.ownershipKind(id):'unknown';}},s,now);}
 
-  private engineHooks():Hooks {const h=this.opts.hooks??{},p=this.opts.residentGoals;if(p?.enabled!==true)return h;if(!this.ownsResidentGoalStore(p.goals))throw Error('resident goal storage mismatch');return {...h,canProposeTrade:(s,a,b,g,w,at)=>{const registry=(this.opts as RuntimeOptions & {residentLife?:{enabled:boolean;ownershipKind:(id:string)=>string}}).residentLife;const active=registry?.enabled===true&&registry.ownershipKind(a)==='resident';return (h.canProposeTrade?.(s,a,b,g,w,at)??true)&&(!active||(p.authorize(s,a,null,at)&&(!this.opts.delegationValid||this.opts.delegationValid(a))&&p.goals.refusalUntil(s.worldId,a,b,g,w)<=at));}};}
+  private engineHooks():Hooks {
+    const h=this.opts.hooks??{},p=this.opts.residentGoals;
+    if(p?.enabled===true&&!this.ownsResidentGoalStore(p.goals))throw Error('resident goal storage mismatch');
+    return {...h,canProposeTrade:(s,a,b,g,w,at)=>{
+      // This main pending-claim constraint applies even with Life mode disabled.
+      if(a.startsWith('pm_')||b.startsWith('pm_'))return false;
+      if(h.canProposeTrade?.(s,a,b,g,w,at)===false)return false;
+      if(p?.enabled!==true)return true;
+      const registry=(this.opts as RuntimeOptions & {residentLife?:{enabled:boolean;ownershipKind:(id:string)=>string}}).residentLife;
+      const active=registry?.enabled===true&&registry.ownershipKind(a)==='resident';
+      return !active||(p.authorize(s,a,null,at)&&(!this.opts.delegationValid||this.opts.delegationValid(a))&&p.goals.refusalUntil(s.worldId,a,b,g,w)<=at);
+    }};
+  }
 
   canResidentProposeTrade(s:WorldState,actor:string,peer:string,give:string,want:string,at:number):boolean{return this.engineHooks().canProposeTrade?.(s,actor,peer,give,want,at)??true;}
 

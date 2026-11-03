@@ -58,6 +58,9 @@ export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: M
   out.push({at, source: 'rule', kind: 'greet', muse: a.id, other: b.id, place: place.id, line: greeting, data: {stage: 'greet', public: true}, tags: []});
   const toConnected = isRuntimeControlled(s, b.id, at);
   if (toConnected) deliverMessage(inbox, {from: a.id, to: b.id, kind: 'greet', at, text: greeting});
+  // Main #148: dynamic personal identities cannot perform claimed-write trades yet.
+  // Greetings remain available; neither scopes nor a public profile imply a claim.
+  if(a.id.startsWith('pm_')||b.id.startsWith('pm_'))return out;
   const t = a.intent?.kind === 'trade' && a.intent.target === b.id && a.intent.give && a.intent.want ? {give: a.intent.give, want: a.intent.want} : pickTrade(a, b);
   if (!t) return out;
   if(canProposeTrade&&!canProposeTrade(s,a.id,b.id,t.give,t.want,at))return out;
