@@ -17,7 +17,7 @@
 //   input row. Reads of the log (highlight pages, period samples, one event with its commit) are below.
 import {createWorld, tick, spotlightFor, spotlightInput, encounterInput, requestSpotlight, TICK_MS, type WorldState, type WorldEvent, type Decision, type EncounterReply, type Hooks} from '../../src/engine/world.ts';
 import {validate, buildMessages, maxCostUsd, actualCostUsd, failureCostUsd, checkOutput} from './actions.ts';
-import {completeResidentGoalsInTransaction,residentGoalIdleIds,createResidentServices,runResidentGoalTurn,type ResidentGoalLoopPolicy} from './resident-goal-loop.ts';
+import {recordResidentTradeRefusalsInTransaction,completeResidentGoalsInTransaction,residentGoalIdleIds,createResidentServices,runResidentGoalTurn,type ResidentGoalLoopPolicy} from './resident-goal-loop.ts';
 import {runResidentWantsTurn,type ResidentWantsCallerPolicy} from './resident-wants-caller.ts';
 import {callModel, type ModelConfig} from './model.ts';
 import {replayFor} from './replay.ts';
@@ -108,9 +108,13 @@ export class WorldRuntime {
   // Campfire invites close (gathered, expired, cancelled) on every tick: the invite upkeep joins the hooks here (I-13).
   private goalIdle(s:WorldState,now:number){const p=this.opts.residentGoals;if(!p||p.enabled!==true)return [];if(!this.ownsResidentGoalStore(p.goals))throw Error('resident goal storage mismatch');return residentGoalIdleIds({...p,authorize:(s,a,b,at)=>p.authorize(s,a,b,at)&&(!this.opts.delegationValid||this.opts.delegationValid(a)),ownership:id=>{const r=(this.opts as RuntimeOptions & {residentLife?:{enabled:boolean;ownershipKind:(id:string)=>'resident'|'personal'|'legacy'|'unknown'}}).residentLife;return r?.enabled?r.ownershipKind(id):'unknown';}},s,now);}
 
+  private engineHooks():Hooks {const h=this.opts.hooks??{},p=this.opts.residentGoals;if(p?.enabled!==true)return h;if(!this.ownsResidentGoalStore(p.goals))throw Error('resident goal storage mismatch');return {...h,canProposeTrade:(s,a,b,g,w,at)=>{const registry=(this.opts as RuntimeOptions & {residentLife?:{enabled:boolean;ownershipKind:(id:string)=>string}}).residentLife;const active=registry?.enabled===true&&registry.ownershipKind(a)==='resident';return (h.canProposeTrade?.(s,a,b,g,w,at)??true)&&(!active||(p.authorize(s,a,null,at)&&(!this.opts.delegationValid||this.opts.delegationValid(a))&&p.goals.refusalUntil(s.worldId,a,b,g,w)<=at));}};}
+
+  canResidentProposeTrade(s:WorldState,actor:string,peer:string,give:string,want:string,at:number):boolean{return this.engineHooks().canProposeTrade?.(s,actor,peer,give,want,at)??true;}
+
   private notifyCommit(before:WorldState,after:WorldState,events:readonly WorldEvent[],now:number){
     const p=this.opts.residentGoals;
-    if(p?.enabled){if(!this.ownsResidentGoalStore(p.goals))throw Error('resident goal storage mismatch');completeResidentGoalsInTransaction({...p,ownership:id=>{const r=(this.opts as RuntimeOptions & {residentLife?:{enabled:boolean;ownershipKind:(id:string)=>'resident'|'personal'|'legacy'|'unknown'}}).residentLife;return r?.enabled?r.ownershipKind(id):'unknown';},authorize:(s,a,b,at)=>p.authorize(s,a,b,at)&&(!this.opts.delegationValid||this.opts.delegationValid(a))},before,after,events,now);}
+    if(p?.enabled){if(!this.ownsResidentGoalStore(p.goals))throw Error('resident goal storage mismatch');recordResidentTradeRefusalsInTransaction(p.goals,before,after,events,now,id=>{const registry=(this.opts as RuntimeOptions & {residentLife?:{enabled:boolean;ownershipKind:(id:string)=>string}}).residentLife;return registry?.enabled===true&&registry.ownershipKind(id)==='resident'&&p.authorize(after,id,null,now)&&(!this.opts.delegationValid||this.opts.delegationValid(id));});completeResidentGoalsInTransaction({...p,ownership:id=>{const r=(this.opts as RuntimeOptions & {residentLife?:{enabled:boolean;ownershipKind:(id:string)=>'resident'|'personal'|'legacy'|'unknown'}}).residentLife;return r?.enabled?r.ownershipKind(id):'unknown';},authorize:(s,a,b,at)=>p.authorize(s,a,b,at)&&(!this.opts.delegationValid||this.opts.delegationValid(a))},before,after,events,now);}
     synchronous(this.opts.onCommit?.(structuredClone(before),structuredClone(after),structuredClone(events),now));
   }
 
@@ -182,7 +186,7 @@ export class WorldRuntime {
       const refreshed=this.state();
       if(refreshed.tick!==before.tick||refreshed.day!==before.day)return {status:'skipped_duplicate',tick:refreshed.tick,events:0};
       before=refreshed;now=Math.max(clock(),before.lastTickAt);
-      const wantsConsumedTurn=goalResult?.ok===true||goalResult?.reason==='turn_already_consumed'||negotiated?.ok===true||['turn_already_consumed','already_reserved','timeout','network','upstream','bad_output','rate_limited','output_rejected','invalid_trade_choice','goal_utility_not_improved','stale_authority_or_state','stale_task','trade_precondition_changed'].includes(negotiated?.reason??'');
+      const wantsConsumedTurn=goalResult?.ok===true||goalResult?.reason==='turn_already_consumed'||negotiated?.ok===true||['turn_already_consumed','already_reserved','timeout','network','upstream','bad_output','rate_limited','output_rejected','invalid_trade_choice','recent_explicit_refusal','goal_utility_not_improved','stale_authority_or_state','stale_task','trade_precondition_changed'].includes(negotiated?.reason??'');
       // The turn is fixed here and passed to the commit: queue requests made while the model answers wait for the next tick.
       const spot = spotlightFor(before, now), turn = {muse: spot.muse, priority: spot.priority};
       const [{decision, info}, canMeet] = await Promise.all([wantsConsumedTurn?Promise.resolve({decision:null,info:{source:'rule',reason:negotiated?.ok===true||negotiated?.reason==='turn_already_consumed'?'resident_trade_turn':'resident_trade_attempt'}}):this.liveSpotlight(before, spot.muse, spot.freedom, now), this.meetingGate(before, now)]);
@@ -209,7 +213,7 @@ export class WorldRuntime {
         return {muse: r.muse, other: r.other, place: r.place, encounterId: r.encounterId, source: 'rule' as const, output: null, reason: 'discarded: ' + why};
       });
       const committedGoalIdle=this.goalIdle(current,now);
-      const {state, events} = tick(current, {now, decision: usable, replies, spot: turn,residentGoalIdle:committedGoalIdle}, canMeet ? {...this.opts.hooks, canMeet: this.dedupMeetings(canMeet)} : this.opts.hooks);
+      const {state, events} = tick(current, {now, decision: usable, replies, spot: turn,residentGoalIdle:committedGoalIdle}, canMeet ? {...this.engineHooks(), canMeet: this.dedupMeetings(canMeet)} : this.engineHooks());
       // Task records (C06, I-07): revision and contentHash follow any content change the tick made.
       syncTasks(state.inbox);
       // A model answer to a meeting that did not happen in the committed tick is not used.
@@ -355,7 +359,7 @@ export class WorldRuntime {
    */
   private async encounterReplies(s: WorldState, now: number, decision: Decision | null, canMeet: Hooks['canMeet'], turn: {muse: string; priority: boolean}): Promise<EncounterReply[]> {
     let dry: WorldEvent[];
-    try { dry = tick(s, {now, decision, replies: [], spot: turn,residentGoalIdle:this.goalIdle(s,now)}, canMeet ? {...this.opts.hooks, canMeet} : this.opts.hooks).events; } catch (e) {
+    try { dry = tick(s, {now, decision, replies: [], spot: turn,residentGoalIdle:this.goalIdle(s,now)}, canMeet ? {...this.engineHooks(), canMeet} : this.engineHooks()).events; } catch (e) {
       console.error('encounter dry run failed', e);
       return [];
     }

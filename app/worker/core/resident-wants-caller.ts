@@ -46,6 +46,7 @@ export async function runResidentWantsTurn(runtime:WorldRuntime,policy:ResidentW
    if(historyFault(s.items,false,at))throw new StaleTrade('history_tamper');
    for(const e of sweepExpired(s,at))emit({...e,source:'rule'});
    const choice=prepared.choice;
+   if(choice.decision==='counter'&&policy.context.goals.refusalUntil(s.worldId,id,peer,choice.counter_give,choice.counter_want)>at)throw new StaleTrade('recent_explicit_refusal');
    const checked=choice.decision==='accept'?checkTrade(s.items,s.day,b,a,t.offer.give,t.offer.want,t.round,at):choice.decision==='counter'?checkTrade(s.items,s.day,a,b,choice.counter_give,choice.counter_want,t.round+1,at):{ok:true};
    if(!checked.ok)throw new StaleTrade('trade_precondition_changed');
    if(choice.decision!=='reject'&&!goalTradeUtility(s,row.goal,choice.decision==='accept'?t.offer.want:choice.counter_give,choice.decision==='accept'?t.offer.give:choice.counter_want,at).ok)throw new StaleTrade('goal_utility_not_improved');

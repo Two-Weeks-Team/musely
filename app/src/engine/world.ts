@@ -61,13 +61,16 @@ export type Decision = {muse: string; freedom: Freedom; source: 'live' | 'replay
  * `Decision`: live (a model answer, with evidence) or rule (no model answer; `reason` says why). `muse` answers `other`.
  */
 export type EncounterReply = {muse: string; other: string; place: string; encounterId: string; source: 'live' | 'replay' | 'rule'; output: {intent: string; item: string; line: string; public_reason: string; injection_suspected: boolean} | null; reason?: string; evidence?: Record<string, unknown>};
+export type TradeProposalGuard=(s:WorldState,actor:string,peer:string,give:string,want:string,at:number)=>boolean;
 export type Hooks = {
+  /** Trusted server policy for each autonomous offer; unrelated greetings remain allowed. */
+  canProposeTrade?:TradeProposalGuard;
   /** Item discovery etc. when a Muse arrives somewhere (task 4 rules). */
   onArrive?: (s: WorldState, m: MuseState, place: Place, rand: () => number, at: number) => Omit<WorldEvent, 'id' | 'tick'>[];
   /** Speed a Muse may use for a trip (items change abilities; task 4). `s` lets the hook check neighborhood verification (13.1). */
   speedFor?: (m: MuseState, from: Place, to: Place, s?: WorldState) => Speed;
   /** Trades, gifts and help when two Muses meet (task 4 rules). */
-  onEncounter?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, rand: () => number, at: number) => Omit<WorldEvent, 'id' | 'tick'>[];
+  onEncounter?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, rand: () => number, at: number, canProposeTrade?:TradeProposalGuard) => Omit<WorldEvent, 'id' | 'tick'>[];
   /** Credential check before two Muses meet (C04). On refusal neither Muse changes; only `event` is logged. */
   canMeet?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, at: number) => {ok: boolean; event: Omit<WorldEvent, 'id' | 'tick'> | null};
   /** World upkeep after this tick's moves and meetings (campfire invites, I-13: worker/core/messages.ts inviteUpkeep). */
@@ -336,7 +339,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       const byIntent = initiator.intent?.target === other.id;
       emit({at: now, source: 'rule', kind: 'encounter', muse: initiator.id, other: other.id, place: placeId, data: {encounterId: meeting, initiatedByIntent: byIntent, actorOrigin: byIntent && isConnected(s.inbox, initiator.id, now) ? 'connected' : 'system', stage: 'recognize'}, tags: []});
       if (gate?.event) emit(gate.event);
-      for (const e of hooks.onEncounter?.(s, initiator, other, placeById(placeId), rngFor(s.seed, s.tick, initiator.id, other.id, 'meet'), now) ?? []) emit(e);
+      for (const e of hooks.onEncounter?.(s, initiator, other, placeById(placeId), rngFor(s.seed, s.tick, initiator.id, other.id, 'meet'), now,hooks.canProposeTrade) ?? []) emit(e);
       // The other Muse answers (8.3). A connected Muse answers from its owner's runtime, so nothing is said for it here.
       if (input.replies && !isRuntimeControlled(s, other.id, now)) replyTo(other, initiator, placeId, meeting, input.replies.find(r => r.encounterId === meeting && r.muse === other.id && r.other === initiator.id), now, emit);
       if (initiator.intent?.target === other.id) initiator.intent = null;
@@ -487,6 +490,7 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   if (o.offer_item && !m.inventory.includes(o.offer_item)) return reject('offered item not held: ' + o.offer_item.slice(0, 40));
   const other = findMuse(s, o.target_agent);
   if (!other || other.id === m.id) return reject('offer needs another Muse');
+  if(hooks.canProposeTrade&&!hooks.canProposeTrade(s,m.id,other.id,o.offer_item,o.want_item,now))return reject('trade proposal policy');
   m.intent = {kind: 'trade', target: other.id, give: o.offer_item || null, want: o.want_item || null};
   if (o.want_item && ITEM_BY_ID.has(o.want_item) && !m.wants.items.includes(o.want_item)) updateWants(m, {items: [o.want_item, ...m.wants.items].slice(0, 4)}, d.source === 'live' ? 'spark' : m.wants.source, now);
   const there = placeById(other.travel?.to ?? other.place);

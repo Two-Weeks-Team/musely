@@ -1,7 +1,7 @@
 // Engine hooks for the item and reward rules (direction v2, 9, 9.1, 12.2, 12.3).
 // Offline the engine resolves trades with a simple rule (accept when the item changes the receiver's
 // abilities); the world Durable Object replaces this with a live Muse Spark negotiation when budget allows.
-import type {Hooks, MuseState, WorldEvent, WorldState} from './world.ts';
+import type {TradeProposalGuard, Hooks, MuseState, WorldEvent, WorldState} from './world.ts';
 import {discover, receiveDiscovery, grantItem, checkTrade, commitTrade, speedFor, abilityGain, itemName, canCraftTransitPass, historyFault, type Ledger} from './items.ts';
 import {harnessById, HARNESSES} from './harness.ts';
 import type {Place} from './places.ts';
@@ -35,7 +35,7 @@ export function makeHooks(): Hooks {
       }
       return out;
     },
-    onEncounter: (s, a, b, place, rand, at) => resolveMeeting(s.items, s, a, b, place, rand, at),
+    onEncounter: (s, a, b, place, rand, at, canProposeTrade) => resolveMeeting(s.items, s, a, b, place, rand, at, canProposeTrade),
   };
 }
 
@@ -47,7 +47,7 @@ function pickTrade(a: MuseState, b: MuseState): {give: string; want: string} | n
 }
 
 /** Meeting stages 3–8 (12.3) for the offline rule path: greet → propose → negotiate → lock/swap → ability → reflect. */
-export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: MuseState, place: Place, rand: () => number, at: number): E[] {
+export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: MuseState, place: Place, rand: () => number, at: number,canProposeTrade?:TradeProposalGuard): E[] {
   const out: E[] = [];
   // A connected Muse (7.2, 8.8) thinks in its owner's runtime: the rule engine never decides for it.
   // Its initiations come only through MCP tools, and proposals to it wait in its inbox as Tasks.
@@ -59,6 +59,7 @@ export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: M
   if (toConnected) deliverMessage(inbox, {from: a.id, to: b.id, kind: 'greet', at, text: greeting});
   const t = a.intent?.kind === 'trade' && a.intent.target === b.id && a.intent.give && a.intent.want ? {give: a.intent.give, want: a.intent.want} : pickTrade(a, b);
   if (!t) return out;
+  if(canProposeTrade&&!canProposeTrade(s,a.id,b.id,t.give,t.want,at))return out;
   // A tampered item history stops trades (I-06); the greeting above still happens.
   if (historyFault(ledger, false, at)) return out;
   const check = checkTrade(ledger, s.day, a, b, t.give, t.want, 0, at);
