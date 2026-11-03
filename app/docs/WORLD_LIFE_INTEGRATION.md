@@ -1,5 +1,27 @@
 # Integration-01: installed feature-OFF server integration (#134)
 
+## Committed resident promises (current candidate)
+
+Exact dependencies: #138 `44b4ba860813d0716637a59235f929129a963efe`,
+#139 `098718d50cb25cd4d17a65160411b5644581cf6f`.
+
+The installed path now projects rule-accepted, signed invitation facts into the existing
+resident LifeStore. Actual gathering receipts fulfill promises; expiry or host revocation
+closes them without inventing attendance. Missing retained evidence is a tracking closure,
+not proof of refusal, absence or completion. Only resident records are eligible.
+
+Actual in-process signed legacy-owner → two new NPC invitations → real trips → alarm
+→ gathering → fulfilled is verified, as are downtime expiry, multi-place host revocation,
+and LifeStore failure rolling back world, token, nonce and projection before safe retry.
+Dynamic `pm_*` invitations remain blocked by main's pending-claim policy; these tests do
+not claim to unlock that capability. No new model calls, credentials, services or costs.
+
+This behavior is distinct: standalone resident **v2**, combined **engine8**. CI records
+real SQLite checkpoints from main engine5, goal engine6, resident v1/v2 and the previously
+published combined engine7 source, then verifies all five unchanged through engine8.
+Original version/catalog/harness tuples and hashes are preserved; unknown combinations
+and repeated predecessor insertion fail closed.
+
 ## Five-PR composition candidate (2026-11-03)
 
 The test workflow additionally composes #135 `186666899d557235c17c9ccf974b5e9c7eeed912`

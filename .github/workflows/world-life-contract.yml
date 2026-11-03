@@ -31,11 +31,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          ref: c9a7ef0d4a21a7e0496cb02e3326eb1e3ba176ef
+          ref: 098718d50cb25cd4d17a65160411b5644581cf6f
           path: dependency-139
       - uses: actions/checkout@v4
         with:
-          ref: 6fe12e6c7782d2048b179b617b7dce123ae701ea
+          ref: 44b4ba860813d0716637a59235f929129a963efe
           path: dependency-138
       - uses: actions/checkout@v4
         with:
@@ -65,11 +65,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          ref: c9a7ef0d4a21a7e0496cb02e3326eb1e3ba176ef
+          ref: 098718d50cb25cd4d17a65160411b5644581cf6f
           path: dependency-139
       - uses: actions/checkout@v4
         with:
-          ref: 6fe12e6c7782d2048b179b617b7dce123ae701ea
+          ref: 44b4ba860813d0716637a59235f929129a963efe
           path: dependency-138
       - uses: actions/checkout@v4
         with:
@@ -87,6 +87,18 @@ jobs:
         with:
           ref: 7d3bdad83830099e43e68ae02df669c532c8c50e
           path: dependency-137
+      - uses: actions/checkout@v4
+        with:
+          ref: ec65543f254e34b60e0c7712b189b384f78e470d
+          path: predecessor-140
+      - uses: actions/checkout@v4
+        with:
+          ref: 6fe12e6c7782d2048b179b617b7dce123ae701ea
+          path: predecessor-138
+      - uses: actions/checkout@v4
+        with:
+          ref: c9a7ef0d4a21a7e0496cb02e3326eb1e3ba176ef
+          path: predecessor-139
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -100,18 +112,23 @@ jobs:
           ln -s "$PWD/dependency-139/app/node_modules" dependency-138/app/node_modules
           node app/scripts/capture-engine-checkpoint.mjs reviewed-main/app /tmp/main5.json engine-5
           node app/scripts/capture-engine-checkpoint.mjs dependency-139/app /tmp/wants6.json engine-6
-          node app/scripts/capture-engine-checkpoint.mjs dependency-138/app /tmp/resident6.json engine-6-resident-v1
+          ln -s "$PWD/dependency-139/app/node_modules" predecessor-138/app/node_modules
+          ln -s "$PWD/dependency-139/app/node_modules" predecessor-139/app/node_modules
+          node app/scripts/capture-engine-checkpoint.mjs predecessor-138/app /tmp/resident6.json engine-6-resident-v1
+          node app/scripts/capture-engine-checkpoint.mjs dependency-138/app /tmp/resident-v2.json engine-6-resident-v2
+          bash predecessor-140/app/scripts/compose-world-life.sh predecessor-140/app reviewed-main/app predecessor-138/app predecessor-139/app full
+          node app/scripts/capture-engine-checkpoint.mjs predecessor-139/app /tmp/combined7.json engine-7
       - name: Compose exact dependency sources, fail on unreviewed conflicts
         run: bash app/scripts/compose-world-life.sh app reviewed-main/app dependency-138/app dependency-139/app full
       - name: Actual server tests with offline model transport
         env:
-          MUSELY_INTEGRATED_ENGINE: engine-7
+          MUSELY_INTEGRATED_ENGINE: engine-8
         run: node --test scripts/world-life*.test.mjs scripts/messages.test.mjs scripts/personal*.test.mjs scripts/legacy-profile.test.mjs scripts/compat/*.test.mjs scripts/asset-encoding.test.mjs scripts/wants-use.test.mjs scripts/craft-completion.test.mjs scripts/craft-replay-compat.test.mjs scripts/wants-journey.test.mjs scripts/trade-decision-provenance.test.mjs scripts/resident-wants-*.test.mjs scripts/resident-goal-loop.test.mjs scripts/run-log.test.mjs scripts/run-replay.test.mjs scripts/prepare-integrated-replay.test.mjs scripts/resident-life*.test.mjs scripts/resident-slot-clearance.test.mjs scripts/installed/*.test.mjs
         working-directory: dependency-139/app
       - run: npx tsc -p worker
         working-directory: dependency-139/app
       - name: Replay predecessor records without mutating their versions or hashes
-        run: node scripts/verify-integrated-replay.mjs /tmp/main5.json /tmp/wants6.json /tmp/resident6.json
+        run: node scripts/verify-integrated-replay.mjs /tmp/main5.json /tmp/wants6.json /tmp/resident6.json /tmp/resident-v2.json /tmp/combined7.json
         working-directory: dependency-139/app
       - run: node scripts/prepare-assets.mjs && npx tsc -p .
         working-directory: dependency-139/app
@@ -121,7 +138,7 @@ jobs:
           cp app/scripts/five-pr-coexistence.test.mjs dependency-139/app/scripts/
       - name: Validate combined real actor rigs, campfire state and UI boundaries
         env:
-          MUSELY_INTEGRATED_ENGINE: engine-7
+          MUSELY_INTEGRATED_ENGINE: engine-8
         run: node --test scripts/five-pr-coexistence.test.mjs scripts/campfire*.test.mjs scripts/live-scene.test.mjs scripts/personal*.test.mjs scripts/resident-life*.test.mjs scripts/resident-slot-clearance.test.mjs scripts/boundaries.test.mjs scripts/character-proof-build.test.mjs scripts/transport-build.test.mjs scripts/installed/*.test.mjs
         working-directory: dependency-139/app
       - run: npm run typecheck && npm run build

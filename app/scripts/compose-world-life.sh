@@ -24,7 +24,7 @@ node "$own/scripts/compose-resident-runtime.mjs" "$wants/src/engine/world.ts" "$
 node "$own/scripts/compose-resident-runtime.mjs" "$own/worker/core/messages.ts" "$base/worker/core/messages.ts" "$life/worker/core/messages.ts" "$wants/worker/core/messages.ts" messages
 node "$own/scripts/compose-resident-runtime.mjs" "$wants/src/replay/player.ts" "$base/src/replay/player.ts" "$life/src/replay/player.ts" "$wants/src/replay/player.ts" player
 merge worker/core/run-log.ts "$life"
-cp "$life"/worker/core/{resident-life*,resident-roster,actions,trust,encounters}.ts "$wants/worker/core/"
+cp "$life"/worker/core/{resident-life*,resident-roster,resident-promises,actions,trust,encounters}.ts "$wants/worker/core/"
 cp "$life"/src/engine/{resident-life,resident-catalog,harness,actor-display,inbox,participants}.ts "$wants/src/engine/"
 cp "$life"/src/ui/{personal-profile,live-scene-core,live-scene,commons-clearance}.ts "$wants/src/ui/"
 cp "$life/src/replay/versions.ts" "$wants/src/replay/versions.ts"

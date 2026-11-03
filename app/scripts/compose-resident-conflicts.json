@@ -130,5 +130,17 @@
     "left": "  {schemaVersion: 'run-log-2', engineVersion: 'engine-4', harnessVersion: 'harness-c0c69e98b5e8', catalogVersion: 'catalog-c7068bfa0238'},\n",
     "right": "  {schemaVersion:'run-log-2',engineVersion:'engine-4',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-c7068bfa0238'},\n",
     "result": "  {schemaVersion: 'run-log-2', engineVersion: 'engine-4', harnessVersion: 'harness-c0c69e98b5e8', catalogVersion: 'catalog-c7068bfa0238'},\n"
+  },
+  {
+    "kind": "world",
+    "left": "/** engine-6: atomic consumed ingredients, opt-in goal idle/refusal policy; preserves engine5 personal admission. */\nexport const ENGINE_VERSION = 'engine-6';\n",
+    "right": "/** Branch-specific fixed NPC enrollment/freeze semantics; combined goal integration uses a distinct version. */\nexport const ENGINE_VERSION = 'engine-6-resident-v2';\n",
+    "result": "/** engine-8: personal entry plus fixed resident roster/freeze and goal/refusal/promise integration. */\nexport const ENGINE_VERSION = 'engine-8';\n"
+  },
+  {
+    "kind": "player",
+    "left": "  {schemaVersion:'run-log-2',engineVersion:'engine-5',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-c7068bfa0238'},\n  {schemaVersion: 'run-log-2', engineVersion: 'engine-4', harnessVersion: 'harness-c0c69e98b5e8', catalogVersion: 'catalog-c7068bfa0238'},\n",
+    "right": "  {schemaVersion:'run-log-2',engineVersion:'engine-6-resident-v1',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-ffb109917767'},\n  {schemaVersion:'run-log-2',engineVersion:'engine-5',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-c7068bfa0238'},\n  {schemaVersion:'run-log-2',engineVersion:'engine-4',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-c7068bfa0238'},\n",
+    "result": "  {schemaVersion:'run-log-2',engineVersion:'engine-6-resident-v1',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-ffb109917767'},\n  {schemaVersion:'run-log-2',engineVersion:'engine-5',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-c7068bfa0238'},\n  {schemaVersion:'run-log-2',engineVersion:'engine-4',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-c7068bfa0238'},\n"
   }
 ]
