@@ -38,3 +38,5 @@ Original procedural asset/code only; no imported Muse/Jolly assets or third-part
 Review found initial visible sparks before first update (P2) and a stale seven-material authoring count (P3). Construction now applies a hidden zero-attendance frame; actual-GLB regression test covers it. Metrics now count five exported materials. Malformed arrival arrays also fail closed, with a regression test. Review did not find P0/P1. This is code review, not product acceptance.
 
 Latest main includes signed campfire arrival consent (#136). This pack does not bypass or replace it. No current app/worker files are changed. #130 coordinate/scene-overlap investigation remains blocking actual integration.
+
+CI correction: first remote run passed 14 tests but TS7 discovered the parent app tsconfig and failed TS5112 with command-line files. Added an explicit isolated tsconfig and use tsc -p; no parent compiler config changed.
