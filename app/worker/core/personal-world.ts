@@ -1,4 +1,5 @@
 import {createOwnershipAdapter} from './personal-owners.ts';
+import {ReceiptSnapshots} from './receipt-snapshots.ts';
 import {PRESETS,defaultOwner,nextOwnerLocation,type OwnerLocation} from '../../src/engine/location.ts';
 import {followOwner} from '../../src/engine/travel.ts';
 import {resumeMuse} from '../../src/engine/world.ts';
@@ -31,9 +32,11 @@ const denied=(reason:string)=>tool({ok:false,refused:reason,reason},true);
 export class PersonalWorld{
  readonly authority:PersonalAuthority;
  readonly entry:PersonalEntry;
+ private receiptSnapshots:ReceiptSnapshots;
  constructor(privateStorage:PersonalStorage,auth:PersonalAuthStore,registration:PersonalRegistration,runtime:WorldRuntime,trust:Trust,baseUrl:string,hooks:Hooks,legacy:{root:()=>JsonWebKey|null;
  claimed:()=>boolean}={root:()=>null,claimed:()=>false}){
   this.storage=privateStorage;
+ this.receiptSnapshots=new ReceiptSnapshots(privateStorage.sql);
  this.auth=auth;
  this.registration=registration;
  this.runtime=runtime;
@@ -54,6 +57,7 @@ export class PersonalWorld{
  private baseUrl:string;
  private hooks:Hooks;
  init(){this.authority.init();
+ this.receiptSnapshots.init();
  this.entry.init();
  this.storage.sql.exec('CREATE TABLE IF NOT EXISTS personal_owner_locations (actor_id TEXT PRIMARY KEY,location TEXT NOT NULL)');
  this.storage.sql.exec('CREATE TABLE IF NOT EXISTS personal_connector_activity (key_id TEXT PRIMARY KEY REFERENCES personal_authority_keys(id),actor_id TEXT NOT NULL,grant_version INTEGER NOT NULL,last_seen_at INTEGER NOT NULL)');
@@ -152,9 +156,11 @@ export class PersonalWorld{
  private receipt(id:string):CommittedEntryReceipt|null{
   const r=this.storage.sql.exec('SELECT * FROM personal_entry_receipts WHERE attempt_id=?',id).toArray()[0];
  if(!r)return null;
-  const record=this.runtime.eventRecord(String(r.event_id)),input=record?.input,body=input?.afterSnapshot;
-  if(!record||record.event.kind!=='personal_entered'||record.event.muse!==r.actor_id||record.event.seq!==Number(r.event_seq)||record.runId!==r.run_id||input?.seq!==Number(r.input_seq)||!body||input.afterSnapshotError||typeof body.body!=='string'||typeof r.after_hash!=='string'||body.hash!==r.after_hash||input.afterHash!==r.after_hash||bodyHash(body.body)!==r.after_hash||input.input?.actorId!==r.agent_id||input.input?.commandId!==r.command_id||input.input?.action!=='enter_world'||input.input?.payloadHash!==r.payload_hash||input.input?.ok!==true)return null;
-  const s=JSON.parse(body.body);
+  const record=this.runtime.eventRecord(String(r.event_id)),input=record?.input;
+  const archived=input?.afterSnapshot;
+  const body=archived?.body??(!archived&&input?.afterSnapshotError==='replay_storage_limit'?this.receiptSnapshots.read({kind:'personal_entry',actorId:String(r.actor_id),worldId:String(r.world_id),runId:String(r.run_id),inputSeq:Number(r.input_seq),eventId:String(r.event_id),afterHash:String(r.after_hash)}):null);
+  if(!record||record.event.kind!=='personal_entered'||record.event.muse!==r.actor_id||record.event.seq!==Number(r.event_seq)||record.runId!==r.run_id||input?.seq!==Number(r.input_seq)||!body||(archived?input.afterSnapshotError!==null||archived.hash!==r.after_hash:input.afterSnapshotError!=='replay_storage_limit')||typeof r.after_hash!=='string'||input.afterHash!==r.after_hash||bodyHash(body)!==r.after_hash||input.input?.actorId!==r.agent_id||input.input?.commandId!==r.command_id||input.input?.action!=='enter_world'||input.input?.payloadHash!==r.payload_hash||input.input?.ok!==true)return null;
+  const s=JSON.parse(body);
  if(s.worldId!==r.world_id||s.tick!==input.tick||s.version!==input.versionAfter)return null;
   const muse=s.muses?.find((m:{id:string})=>m.id===r.actor_id);
  if(!muse||muse.controlMode!=='personal'||muse.profile?.actorId!==r.actor_id||muse.profile?.revision!==Number(r.profile_revision))return null;
@@ -168,7 +174,11 @@ export class PersonalWorld{
   const events=done.events.map(e=>this.runtime.eventRecord(e.id)).filter(e=>e?.event.kind==='personal_entered'&&e.event.muse===b.actor.actorId);
   if(events.length!==1)return fail('entry_commit_invalid');
  const event=events[0]!,input=event.input;
-  if(!input?.afterSnapshot||input.afterSnapshotError||input.versionAfter!==done.row.result.worldVersion||input.input?.actorId!==b.actor.agentId||input.input?.commandId!==commandId||input.input?.action!=='enter_world'||input.input?.ok!==true||typeof input.afterHash!=='string'||bodyHash(input.afterSnapshot.body)!==input.afterHash)return fail('entry_commit_invalid');
+  if(!input)return fail('entry_commit_invalid');
+  const witness={kind:'personal_entry' as const,actorId:b.actor.actorId,worldId:this.runtime.worldId,runId:event.runId!,inputSeq:input.seq,eventId:event.event.id,afterHash:input.afterHash};
+  if(!input.afterSnapshot&&input.afterSnapshotError==='replay_storage_limit')this.receiptSnapshots.put(witness,this.runtime.state());
+  const snapshot=input.afterSnapshot?.body??(input.afterSnapshotError==='replay_storage_limit'?this.receiptSnapshots.read(witness):null);
+  if(!snapshot||(input.afterSnapshot?input.afterSnapshotError!==null:input.afterSnapshotError!=='replay_storage_limit')||input.versionAfter!==done.row.result.worldVersion||input.input?.actorId!==b.actor.agentId||input.input?.commandId!==commandId||input.input?.action!=='enter_world'||input.input?.ok!==true||typeof input.afterHash!=='string'||bodyHash(snapshot)!==input.afterHash)return fail('entry_commit_invalid');
   this.storage.sql.exec('INSERT INTO personal_entry_receipts (id,attempt_id,actor_id,agent_id,root_ref,key_id,grant_version,profile_revision,world_id,committed_at,run_id,input_seq,event_seq,event_id,after_hash,command_id,payload_hash) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)','per_'+crypto.randomUUID(),attempt.id,b.actor.actorId,b.actor.agentId,b.actor.rootRef,b.id,b.version,attempt.profile_revision,this.runtime.worldId,at,event.runId,input.seq,event.event.seq,event.event.id,input.afterHash,commandId,done.row.payloadHash);
   this.storage.sql.exec("UPDATE personal_entry_attempts SET status='activated' WHERE id=? AND status='pending'",attempt.id);
   if(!this.receipt(String(attempt.id)))return fail('entry_commit_invalid');

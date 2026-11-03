@@ -12,8 +12,9 @@ export class PersonalRegistration {
   private auth: PersonalAuthStore;
   private generateRoot: () => Promise<KeyPair>;
   private now: () => number;
-  constructor(storage: PersonalStorage, auth: PersonalAuthStore, options: {generateRoot?: () => Promise<KeyPair>; now?: () => number} = {}) {
-    this.storage = storage; this.auth = auth; this.generateRoot = options.generateRoot ?? (() => generateKeyPair(true)); this.now = options.now ?? Date.now;
+  private reservedPrincipal:(principalId:string)=>boolean;
+  constructor(storage: PersonalStorage, auth: PersonalAuthStore, options: {generateRoot?: () => Promise<KeyPair>; now?: () => number; reservedPrincipal?:(principalId:string)=>boolean} = {}) {
+    this.storage = storage; this.auth = auth; this.generateRoot = options.generateRoot ?? (() => generateKeyPair(true)); this.now = options.now ?? Date.now;this.reservedPrincipal=options.reservedPrincipal??(()=>false);
   }
   init() {
     // Deliberately separate from Trust.private_keys/agents; draft roots grant no existing MCP entitlement.
@@ -36,6 +37,7 @@ export class PersonalRegistration {
   async register(binding: PersonalBinding, input: unknown): Promise<ActorProfile> {
     const b = {...binding, proof: {...binding.proof}};
     this.guard(b);
+    if(this.reservedPrincipal(b.proof.principalId))return fail('actor_exists');
     const intent = normalizeDraftIntent(input), existing = this.auth.owners.draftForIntent(b.proof.principalId, intent);
     if (existing) return this.publicProfile(existing);
     if (this.auth.owners.actorForPrincipal(b.proof.principalId)) return fail('actor_exists');
@@ -48,6 +50,7 @@ export class PersonalRegistration {
     const rootRef = 'root_ref:' + crypto.randomUUID();
     return this.storage.transactionSync(() => {
       this.guard(b); // logout/authVersion/expiry during keygen must win before any persistent draft/root.
+      if(this.reservedPrincipal(b.proof.principalId))return fail('actor_exists');
       const concurrent = this.auth.owners.draftForIntent(b.proof.principalId, intent);
       if (concurrent) return this.publicProfile(concurrent);
       const actor = this.auth.owners.registerDraft(b.proof.principalId, {...intent, agentId: key.kid, rootRef}, this.now());
