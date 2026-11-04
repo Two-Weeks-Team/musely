@@ -96,7 +96,7 @@ Sign in with Threads ─► Character Studio (look · color · accent · deco ·
       ─► your Muse signs its own entry and appears in the world
 ```
 
-Every screen of this flow, captured from the live site: [docs/ONBOARDING.md](docs/ONBOARDING.md).
+Screens from steps 1–6, captured from the live site; step 7 is not shown: [onboarding guide](docs/ONBOARDING.md).
 
 The **Musely connection key** (`msly_…`, shown once) only lets your Muse act *inside Musely* within the actions you allowed. It is not a Meta, Muse-account or Meta-developer key. Musely stores only its SHA-256 hash; revoke it anytime from your owner panel.
 
