@@ -147,7 +147,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
         social?.setVisible(available&&socialExpanded);
       }finally{applying=false;}
     }
-    const p=mountPersonalEntry(profileHost,{...opts.personal,connectionManaged:true,onState:s=>{latest=s;void adoption?.syncProfile(s);applyFlow();}});
+    const p=mountPersonalEntry(profileHost,{...opts.personal,connectionManaged:true,authResult:opts.initial?.get('personal')??undefined,onState:s=>{latest=s;void adoption?.syncProfile(s);applyFlow();}});
     connection=mountPersonalConnection(connectionHost,{fetcher:opts.personal?.fetcher,newOperationId:opts.personal?.newOperationId,now:opts.personal?.now,clipboard:opts.personal?.clipboard,getWorldId:opts.getWorldId,
       onWatch:()=>{state.path='watch';close();opts.onWatch();},onWriteBusy:value=>{connectionBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy);claim?.setExternalBusy(value||adoptionBusy);adoption?.setExternalBusy(value||claimBusy);},onSessionLost:()=>p.markSessionLost(),onEntry:entry=>{if(disposed||blocked()||socialExpanded)return;personalEntry=structuredClone(entry);updateChip();applyFlow();try{opts.onPersonalEntry?.(structuredClone(entry));}catch{}}});
     claim=mountPersonalClaim(claimHost,{fetcher:opts.personal?.fetcher,navigate:opts.personal?.navigate,clipboard:opts.personal?.clipboard,
@@ -286,6 +286,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
 
   // ?entry=choose|watch|trial|connect (&harness=09-copper) opens a path directly, for walkthrough recordings.
   const entry = preview ? opts.initial?.get('entry') : null;
+  if(!preview&&['failed','declined'].includes(opts.initial?.get('personal')??''))open('connect');
   if(!preview&&['claimed','failed','declined','not_found'].includes(opts.initial?.get('personalClaim')??''))open('connect');
   if (entry === 'trial') { const h = harness(opts.initial!.get('harness')); state.viewing = h?.id ?? null; open(h ? 'trial-card' : 'trial-pick'); }
   else if (entry === 'connect') open('connect');
