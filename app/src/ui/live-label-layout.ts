@@ -38,3 +38,18 @@ export function layoutCompactLabels(input:readonly LabelCandidate[],bounds:{left
  const placed=layoutLiveLabels(input.map(c=>({...c,width:c.width+badge})),bounds,obstacles);
  return placed.map(p=>{const base=byId.get(p.id)!,width=p.count?p.width:Math.min(base.width,p.width);return{...p,left:p.left+(p.width-width)/2,width};});
 }
+
+/** Conservative opaque rectangle union, clipped to this frame's viewport. */
+export function overlayUnionArea(boxes:readonly LabelBox[],viewport:{width:number;height:number}):number {
+ const clipped=boxes.map(b=>{const left=Math.max(0,b.left),top=Math.max(0,b.top),right=Math.min(viewport.width,b.left+b.width),bottom=Math.min(viewport.height,b.top+b.height);return{left,top,right,bottom};}).filter(b=>Number.isFinite(b.left+b.top+b.right+b.bottom)&&b.right>b.left&&b.bottom>b.top);
+ const xs=[...new Set(clipped.flatMap(b=>[b.left,b.right]))].sort((a,b)=>a-b);let area=0;
+ for(let i=1;i<xs.length;i++){const left=xs[i-1],right=xs[i],ys=clipped.filter(b=>b.left<right&&b.right>left).map(b=>[b.top,b.bottom]).sort((a,b)=>a[0]-b[0]);let length=0,end=-Infinity;for(const [top,bottom]of ys)if(bottom>end){length+=bottom-Math.max(top,end);end=bottom;}area+=(right-left)*length;}
+ return area;
+}
+/** Optional labels yield to immutable current UI/speech geometry. Protected names never yield to the budget. */
+export function budgetMobileLabels(input:readonly (LabelCandidate&{priority?:number})[],bounds:{left:number;right:number;top:number;bottom:number},obstacles:readonly LabelBox[],opaque:readonly LabelBox[],viewport:{width:number;height:number},fraction=.19){
+ const ranked=[...input].sort((a,b)=>Number(b.selected)-Number(a.selected)||Number(b.speaking)-Number(a.speaking)||(a.priority??0)-(b.priority??0)||a.id.localeCompare(b.id));
+ const protectedIds=new Set(ranked.filter(c=>c.selected||c.speaking).map(c=>c.id)),optional=ranked.filter(c=>!protectedIds.has(c.id));let count=Math.max(0,8-protectedIds.size),placements:LabelPlacement[]=[],dots:string[]=[],area=0;
+ for(;;){const keep=new Set([...protectedIds,...optional.slice(0,count).map(c=>c.id)]);placements=layoutCompactLabels(ranked.filter(c=>keep.has(c.id)),bounds,obstacles);dots=ranked.filter(c=>!keep.has(c.id)).map(c=>c.id);const dotBoxes=ranked.filter(c=>!keep.has(c.id)).map(c=>({left:c.x,top:c.y,width:5,height:5}));area=overlayUnionArea([...opaque,...placements.filter(p=>!p.hidden),...dotBoxes],viewport);if(area<=viewport.width*viewport.height*fraction||count===0)break;count--;}
+ return{placements,dots,area,protectedOverBudget:area>viewport.width*viewport.height*fraction};
+}
