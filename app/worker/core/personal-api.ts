@@ -230,11 +230,13 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
     if (!state?.startsWith(PERSONAL_STATE_PREFIX) || !nonceValid(state.slice(PERSONAL_STATE_PREFIX.length)) || !nonceValid(verifier)) return invalid();
     const stateDigest = await personalDigest('state', state);
     const binding = {stateDigest, browserDigest: await personalDigest('browser', verifier), appId: cfg.appId!, redirectUri: providerCfg().redirectUri};
-    if (!await stub.personalAuthConsume(binding, now())) return invalid();
     const record = async (detail: PersonalAuthFailure) => {
       logFailure(detail);
-      try { if (!await stub.personalAuthFailure(binding, detail, now())) console.error(JSON.stringify({event:'personal_auth_diagnostic_store_failed'})); } catch { console.error(JSON.stringify({event: 'personal_auth_diagnostic_store_failed'})); }
+      try { if (!await stub.personalAuthFailure(binding, detail, now())) console.error(JSON.stringify({event:'personal_auth_diagnostic_store_failed',hint:'flow_ineligible_or_missing'})); } catch { console.error(JSON.stringify({event: 'personal_auth_diagnostic_store_failed'})); }
     };
+    try { if (!await stub.personalAuthConsume(binding, now())) return invalid(); }
+    // An RPC error does not prove this invocation consumed the flow; a replay must not poison its owner.
+    catch { logFailure({reason:'state_store_failed'}); return redirect('failed'); }
     if (q.has('error')) { await record({reason:'provider_declined'}); return redirect('declined'); }
     const code = q.get('code');
     if (!code || code.length > 4096 || /[\u0000-\u001f\u007f]/.test(code)) { await record({reason:'auth_code_invalid'}); return callbackFailure('auth_code_invalid'); }

@@ -187,3 +187,19 @@ test('browser invalid callback shows a safe route back while keeping HTTP400 and
  const a=await boot(t),calls=provider(t),r=await a.go('GET',CALLBACK+'?state=personal-v1.invalid&code=PRIVATE_URL_CANARY',{accept:'text/html'});
  assert.equal(r.status,400);assert.match(r.headers.get('content-type'),/text\/html/);const html=await r.text();assert.match(html,/href="\/"/);assert.doesNotMatch(html,/PRIVATE_URL_CANARY|<script/);assert.equal(calls.length,0);
 });
+
+test('state consume RPC failure after a durable commit is logged and guided without re-exchange or auth cookie',async t=>{
+ const a=await boot(t),logs=[];const old=console.error;t.after(()=>console.error=old);console.error=(...x)=>logs.push(x);const calls=provider(t);
+ const consume=a.dobj.personalAuthConsume.bind(a.dobj);a.dobj.personalAuthConsume=(...args)=>{consume(...args);throw Error('PRIVATE_CONSUME_RPC_CANARY');};
+ const f=await start(a),r=await callback(a,f);assert.equal(r.status,303);assert.equal(r.headers.get('location'),'/?personal=failed');assert.equal(cookie(r,'musely_p'),undefined);assert.equal(calls.length,0);
+ const row=a.db.prepare('SELECT * FROM personal_auth_flows').get();assert.equal(row.failure_reason,null,'ambiguous ownership is logged without changing the flow');assert.match(JSON.stringify(logs),/state_store_failed/);assert.doesNotMatch(JSON.stringify(logs)+dbText(a.db),/PRIVATE_CONSUME_RPC_CANARY|synthetic-code/);
+});
+
+test('ambiguous replay consume RPC cannot mark the valid in-flight callback failed',async t=>{
+ const a=await boot(t),logs=[];const old=console.error;t.after(()=>console.error=old);console.error=(...x)=>logs.push(x);
+ let release,entered;const held=new Promise(r=>release=r),ready=new Promise(r=>entered=r);
+ provider(t,{fetcher:async u=>{if(u.pathname==='/oauth/access_token'){entered();await held;return new Response('{"access_token":"synthetic-private"}');}return new Response('{"id":"42"}');}});
+ const consume=a.dobj.personalAuthConsume.bind(a.dobj);a.dobj.personalAuthConsume=(...args)=>{const ok=consume(...args);if(!ok)throw Error('PRIVATE_REPLAY_RPC_CANARY');return ok;};
+ const f=await start(a),first=callback(a,f);await ready;const replay=await callback(a,f);release();const r=await first;
+ assert.equal(replay.status,303);assert.equal(r.status,303);assert.ok(cookie(r,'musely_p'));assert.equal(a.db.prepare('SELECT * FROM personal_auth_flows').get().failed_at,null);assert.equal(a.db.prepare('SELECT count(*) n FROM personal_auth_sessions').get().n,1);assert.doesNotMatch(JSON.stringify(logs),/PRIVATE_REPLAY_RPC_CANARY/);
+});
