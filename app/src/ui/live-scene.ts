@@ -74,7 +74,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
   }
   function wanted(id: string, variant: MuseVariantId,key?:string) {
     const m = projection.world?.muses.find(m => m.id === id), p = m ? resolveMuse(m) : null;
-    return !disposed && (p?.kind === 'personal'||p?.kind === 'resident') && p.appearanceId === variant && (entries.get(id)?.actor.variant !== variant||typeof p?.profile?.appearanceId==='object')&&(key===undefined||appearanceKey(p?.appearance??variant)===key);
+    return !disposed && (p?.kind === 'personal'||p?.kind === 'resident'||p?.kind === 'judge') && p.appearanceId === variant && (entries.get(id)?.actor.variant !== variant||typeof p?.profile?.appearanceId==='object')&&(key===undefined||appearanceKey(p?.appearance??variant)===key);
   }
   async function upgradeEntry(e: Entry, variant: MuseVariantId, current: () => boolean) {
     if (!host.library) return;

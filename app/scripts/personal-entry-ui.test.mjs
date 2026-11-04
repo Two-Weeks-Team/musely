@@ -180,3 +180,5 @@ for(const language of ['en-US','ko-KR'])test(language+' invited beta notice prec
  assert.equal(personalAuthResult(new URLSearchParams('personal=authenticated')),'authenticated');assert.equal(personalAuthResult(new URLSearchParams('personal='+raw)),undefined);
  }finally{if(previous)Object.defineProperty(globalThis,'navigator',previous);else delete globalThis.navigator;}
 });
+
+test('prepared profile summary includes allowlisted body, accent and decorative icon without changing registration',async()=>{const appearanceId={look:'01-sunny',body:'sage',accent:'02-moss',deco:'08-orbit'},t=setup(u=>u.endsWith('/me')?me():profile({...PROFILE,appearanceId}));await t.c.ready;const summary=tree(t.host,n=>n.className==='personal-profile-summary')[0],icon=tree(summary,n=>n.className==='muse-icon')[0];assert.ok(icon);assert.match(icon.getAttribute('style'),/#9AAE91/i);assert.ok(tree(icon,n=>n.className==='cosmetic-deco').length);assert.match(summary.textContent,/ComBba/);assert.ok(t.calls.every(x=>x.method==='GET'));t.c.dispose();});

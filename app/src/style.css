@@ -233,3 +233,5 @@ footer .neighbors{display:flex!important;align-items:center;gap:8px;min-width:0!
 /* The judge notice is a separate row below the measured compact header, including narrow screens. */
 .judge-entry{top:calc(var(--header-h,54px) + 10px);z-index:31}.personal-entry[data-state=registered]>h2{display:none}
 .muse-icon{box-shadow:inset -2px -3px 0 var(--muse-accent,#0000000a)}.cosmetic-deco{position:absolute;right:-4px;top:-5px;font:700 10px/1 system-ui;color:var(--muse-accent,#fff);text-shadow:0 1px 2px #172034;pointer-events:none}
+
+.personal-profile-summary{display:flex;align-items:center;gap:10px}.personal-profile-summary .muse-icon{position:relative;display:inline-block;flex:none;width:32px;height:32px}.entry-more-permissions{margin-top:10px}
