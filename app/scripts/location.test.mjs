@@ -316,8 +316,8 @@ test('AC4 always-on line: virtual neighborhood, the owner destination and the Mu
   // The chip's answer is applied when it arrives; the rest of the refresh does not wait for it (and nothing is applied during a replay).
   assert.match(panel, /if \(!isolation\.replay\) \{locChip\.update\(lr\); paintOwnerArea\(\);\}/);
   assert.ok(!/await\s+locReq|await load<OwnerLocationView>/.test(panel), 'refresh does not wait for the location answer');
-  // The open Location tab is drawn again on polls and after a move (refresh), unless one of its controls is in use.
-  assert.match(panel, /tab === 'location' && !ret\) \{\n\s+const f = document\.activeElement, inUse = /);
+  // Poll redraw, open details, focus and in-use select/input behavior run against the actual
+  // render/refresh functions in world-panel-interaction.test.mjs; do not pin their local variable spelling.
   assert.ok(!/\.loc-chip[^{}]*\{[^}]*display:\s*none/.test(css) && !/loc-chip\s*\{\s*display:\s*none/.test(css), 'no rule hides the location chip');
   // The map-error note sits under the measured header (with the chip in it), not at a fixed 92 px (scripts/location.browser.js measures it).
   const tops = [...css.matchAll(/#network-note\{([^}]*)\}/g)].map(m => m[1]).filter(r => /(^|;)top:/.test(r));
