@@ -9,8 +9,12 @@ export type Memory = {id: string; kind: 'declared' | 'inferred' | 'agreement' | 
   at: number; subject: string; publicSummary: string; source: Provenance; evidenceId: string};
 export type PromiseRecord = {id: string; other: string; place: string; dueAt: number;
   status: 'pending' | 'fulfilled' | 'cancelled'; evidenceId: string};
+export type RelationshipFact={eventId:string;kind:string;at:number;source:Provenance};
+export type RelationshipInterpretation={source:'live';relationship:'acquaintance'|'familiar'|'cooperating'|'uncertain';summary:string;feeling:string;evidenceIds:string[];at:number};
+export type ResidentRelationship={other:string;facts:RelationshipFact[];interpretation?:RelationshipInterpretation};
+export type ResidentReflection={day:string;slots:number[];lastAttemptAt:number;lastReflectedAt:number|null;outcome:'pending'|'live'|'unavailable'|'rejected'|'discarded'};
 export type ResidentLife = {id: string; roleId: string; goal: string; routine: Routine[];
-  memories: Memory[]; promises: PromiseRecord[]; lastServedAt: number; served: number};
+  memories: Memory[]; promises: PromiseRecord[]; lastServedAt: number; served: number;relationships?:ResidentRelationship[];reflection?:ResidentReflection};
 export type LifeState = {schema: 1; residents: ResidentLife[];dialogues?:Dialogue[]};
 export type ActorAuthority = {id: string; connected: boolean; paused: boolean};
 export type ProposalContext = {now:number;hour:number;worldVersion:number;
@@ -58,7 +62,7 @@ export function restoreLife(raw: string): LifeState {
   if (!unique(s.residents.map(r => r.id))) fail();
   // Rebuild allowlisted fields: unknown fields (including private data) never survive.
   return {schema: 1, ...(s.dialogues===undefined?{}:{dialogues:restoreDialogues(s.dialogues)}), residents: s.residents.map(r => ({id:r.id,roleId:r.roleId,goal:r.goal,
-    lastServedAt:r.lastServedAt,served:r.served,routine:r.routine.map(x=>({hour:x.hour,place:x.place})),
+    lastServedAt:r.lastServedAt,served:r.served,...(r.relationships===undefined?{}:{relationships:restoreRelationships(r.relationships)}),...(r.reflection===undefined?{}:{reflection:restoreReflection(r.reflection)}),routine:r.routine.map(x=>({hour:x.hour,place:x.place})),
     memories:r.memories.map(m=>({id:m.id,kind:m.kind,at:m.at,subject:m.subject,publicSummary:m.publicSummary,source:m.source,evidenceId:m.evidenceId})),
     promises:r.promises.map(p=>({id:p.id,other:p.other,place:p.place,dueAt:p.dueAt,status:p.status,evidenceId:p.evidenceId}))}))};
 }
@@ -148,4 +152,23 @@ export function isCurrentLifeProposal(state:LifeState,proposal:LifeProposal,inpu
   const current=proposeLifeTurn(state,input);
   return current!==null && current.residentId===proposal.residentId && current.placeId===proposal.placeId
     && current.reason===proposal.reason && current.promiseId===proposal.promiseId;
+}
+
+/** Optional private NPC fields. Facts and the NPC's own model interpretation are deliberately separate. */
+export const RELATIONSHIP_EVENT_KINDS:readonly string[]=['greet','encounter','encounter_reply','trade_proposed','trade_countered','trade_rejected','trade_completed','gift','help_completed'];
+export function restoreRelationships(value:unknown):ResidentRelationship[]{
+ if(!Array.isArray(value)||value.length>32)fail();
+ const rows=(value as ResidentRelationship[]).map(r=>{
+  if(!r||!str(r.other)||!Array.isArray(r.facts)||r.facts.length<1||r.facts.length>3)fail();
+  for(const f of r.facts)if(!f||!str(f.eventId)||!RELATIONSHIP_EVENT_KINDS.includes(f.kind)||!finiteTime(f.at)||!sources.includes(f.source))fail();
+  if(!unique(r.facts.map(f=>f.eventId)))fail();
+  let interpretation:RelationshipInterpretation|undefined;
+  if(r.interpretation!==undefined){const i=r.interpretation;if(!i||i.source!=='live'||!['acquaintance','familiar','cooperating','uncertain'].includes(i.relationship)||!str(i.summary)||!str(i.feeling,80)||!finiteTime(i.at)||!Array.isArray(i.evidenceIds)||i.evidenceIds.length<1||i.evidenceIds.length>3||i.evidenceIds.some(e=>!str(e))||!unique(i.evidenceIds))fail();
+   interpretation={source:'live',relationship:i.relationship,summary:i.summary,feeling:i.feeling,evidenceIds:[...i.evidenceIds],at:i.at};}
+  return{other:r.other,facts:r.facts.map(f=>({eventId:f.eventId,kind:f.kind,at:f.at,source:f.source})),...(interpretation?{interpretation}:{})};
+ });if(!unique(rows.map(r=>r.other)))fail();return rows;
+}
+export function restoreReflection(v:ResidentReflection):ResidentReflection {
+ if(!v||typeof v.day!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v.day)||!Array.isArray(v.slots)||v.slots.length>3||!unique(v.slots.map(String))||v.slots.some(n=>!Number.isInteger(n)||n<0||n>2)||!finiteTime(v.lastAttemptAt)||(v.lastReflectedAt!==null&&!finiteTime(v.lastReflectedAt))||!['pending','live','unavailable','rejected','discarded'].includes(v.outcome))fail();
+ return{day:v.day,slots:[...v.slots],lastAttemptAt:v.lastAttemptAt,lastReflectedAt:v.lastReflectedAt,outcome:v.outcome};
 }
