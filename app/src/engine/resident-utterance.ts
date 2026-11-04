@@ -1,5 +1,6 @@
 import {JUDGE_MUSE} from './judge-muse.ts';
 /** Resident public speech only. No authority, model call, private memory, storage or world mutation. */
+import {localClock,dayPhase,greetingFitsPhase} from './world-clock.ts';
 import type {WorldState} from './world.ts';
 import {BEATS,inHours} from './beats.ts';
 import {placeById} from './places.ts';
@@ -130,7 +131,9 @@ export function ruleResidentGreeting(s:WorldState,id:string,to:string,now:number
  let name:string;try{name=participantName(s,to);}catch{return null;}
  const start=hash32(JSON.stringify([s.seed,s.tick,id,to,'resident-greeting']))%variants.length;
  for(let i=0;i<variants.length;i++){
-  const line=variants[(start+i)%variants.length].replace('{name}',()=>name);
+  const template=variants[(start+i)%variants.length];
+  if(!greetingFitsPhase(template,dayPhase(localClock(now).hour)))continue;
+  const line=template.replace('{name}',()=>name);
   if(filterResidentUtterance(s,id,line,now,recent).line!==null)return line;
  }
  return null;

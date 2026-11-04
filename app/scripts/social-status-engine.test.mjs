@@ -13,12 +13,13 @@ test('DND blocks a fresh automatic contact even with a preexisting intent; OFF k
  assert.equal(on.events.filter(social).length,0);assert.equal(JSON.stringify(s),before);
  assert(tick(s,{now:AT},{...makeHooks(),canMeet:()=>({ok:true,event:null})}).events.some(e=>e.kind==='greet'));
 });
-test('busy gives only an in-place wave without consuming the later conversation cooldown',()=>{
+test('busy waves once per pair per thirty minutes without consuming the later conversation cooldown',()=>{
  const s=pair(),out=tick(s,{now:AT},hooks('busy'));
  assert.deepEqual(out.events.filter(social).map(e=>e.kind),['resident_wave']);assert.equal(out.events.find(e=>e.kind==='resident_wave').muse,A);
  assert.equal(out.state.muses[0].place,s.muses[0].place);assert.equal(out.state.muses[0].travel,null);
  assert.deepEqual(out.state.muses.map(m=>m.lastMet),s.muses.map(m=>m.lastMet));
- assert.deepEqual(tick(out.state,{now:AT+TICK_MS},hooks('busy')).events.filter(social).map(e=>e.kind),['resident_wave']);
+ assert.deepEqual(tick(out.state,{now:AT+TICK_MS},hooks('busy')).events.filter(social).map(e=>e.kind),[]);
+ assert.deepEqual(tick(out.state,{now:AT+30*TICK_MS},hooks('busy')).events.filter(social).map(e=>e.kind),['resident_wave']);
  const open=tick(out.state,{now:AT+TICK_MS},hooks('welcoming'));
  assert.ok(open.events.some(e=>e.kind==='encounter'));
  assert.equal(tick(open.state,{now:AT+2*TICK_MS},hooks('welcoming')).events.filter(e=>e.kind==='encounter').length,0);
