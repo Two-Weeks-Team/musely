@@ -28,7 +28,7 @@ async function readJson(request: Request, limit: number) {
 }
 
 async function api(request: Request, env: Env, url: URL): Promise<Response> {
-  if(url.pathname.startsWith('/api/judge/'))return judgeRoutes(request,url,{secret:env.SESSION_SECRET??'',mode:env.JUDGE_MUSE_MODE,origins:ownerOrigins(env.PUBLIC_ORIGIN,env.ALLOWED_HOSTS)},world(env));
+  if(url.pathname.startsWith('/api/judge/'))return judgeRoutes(request,url,{secret:env.SESSION_SECRET??'',mode:env.JUDGE_MUSE_MODE,origins:ownerOrigins(env.PUBLIC_ORIGIN,env.ALLOWED_HOSTS),rateLimit:env.BURST?async key=>(await env.BURST!.limit({key})).success:undefined},world(env));
   const ip = request.headers.get('cf-connecting-ip') ?? '';
   // Separate namespace, cookie, proof and durable auth store. Never inferred from owner/judge/visitor cookies.
   if (url.pathname.startsWith('/api/personal/') || isPersonalCallback(url)) return personalRoutes(request, url, {

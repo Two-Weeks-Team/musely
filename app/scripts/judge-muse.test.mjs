@@ -138,3 +138,30 @@ test('Judge model turn uses the existing shared call and English guard; switchin
 test('shared Judge preference is enforced by world contact policy even without the old global social flag',async t=>{
  const x=await boot(t,{social:false});const status=await x.go('PATCH',BASE+'/social-status',x.judge,{mode:'do_not_disturb',expectedRevision:0});assert.equal(status.status,200);assert.equal(status.body.status,'do_not_disturb');assert.equal(x.world.runtime.view(Date.now()).muses.find(m=>m.id==='10-judge').availability.status,'do_not_disturb');
 });
+
+test('judge routes use the existing per-route/session burst limiter before DO reads or mutations',async t=>{
+ const x=await boot(t);let calls=0,doCalls=0;const call=x.world.judgeCall.bind(x.world);x.world.judgeCall=(...args)=>{doCalls++;return call(...args);};x.env.BURST={limit:async()=>{calls++;return{success:false};}};
+ for(const [method,path,body]of[['GET','inbox',undefined],['PATCH','social-status',{mode:'busy',expectedRevision:0}]]){const r=await x.go(method,BASE+'/'+path,x.judge,body);assert.equal(r.status,429);assert.deepEqual(r.body,{error:'slow_down'});}
+ assert.equal(calls,2);assert.equal(doCalls,0);assert.equal(x.db.prepare('SELECT count(*) n FROM social_status_overrides').get().n,0);
+ const counts=new Map();x.env.BURST={limit:async({key})=>{const n=(counts.get(key)??0)+1;counts.set(key,n);return{success:n<=20};}};
+ for(let n=0;n<20;n++)for(const path of['muse','inbox','notifications','social-status'])assert.equal((await x.go('GET',BASE+'/'+path,x.judge)).status,200,'four ordinary poll routes have independent limits');
+ assert.equal(counts.size,4);assert.equal((await x.go('GET',BASE+'/inbox',x.judge)).status,429);
+ const other='musely_s='+(await issueSession(x.env.SESSION_SECRET,'judge')).token;assert.equal((await x.go('GET',BASE+'/inbox',other)).status,200,'another judge session has its own limit');
+});
+
+test('Judge outgoing counteroffer is not attributed to its original proposer as a received trade',async t=>{
+ const x=await boot(t),now=Date.now();x.world.runtime.commitExternal(now,'judge-outgoing-counter',s=>{s.inbox.tasks.push({id:'self-counter',kind:'trade',from:'01-sunny',to:'10-judge',awaiting:'01-sunny',status:'pending',createdAt:now,updatedAt:now,deadline:now+10000,offer:{by:'10-judge',give:'tea',want:'fruit'},round:1,history:[]});});
+ assert.deepEqual((await x.go('GET',BASE+'/inbox',x.judge)).body.proposals,[]);
+});
+
+for(const boundary of ['body','commit'])test('Judge team reset rechecks current expiry at '+boundary+' and preserves state/inbox/notifications/events',async t=>{
+ const x=await boot(t),now=Date.now();x.world.runtime.commitExternal(now,'judge-reset-preserve',s=>{s.muses.find(m=>m.id==='10-judge').memory=['preserve'];s.inbox.messages.push({id:'preserve-message',from:'01-sunny',to:'10-judge',kind:'greet',at:now,text:'preserve',read:false});s.inbox.notifications.push({id:'preserve-notice',muse:'10-judge',kind:'blocked',at:now,line:'preserve',ref:null,other:'01-sunny'});});
+ const state=x.world.runtime.state(),events=x.world.runtime.events(0,10000),clock=Date.now;
+ try{
+  let response;
+  if(boundary==='body'){let enter,controller;const entered=new Promise(r=>enter=r),stream=new ReadableStream({start(c){controller=c;},pull(){enter();return new Promise(()=>{});}},{highWaterMark:0});const pending=x.go('POST','/api/owner/reset',x.owner,stream);await entered;Date.now=()=>clock()+2*3600000;controller.enqueue(new TextEncoder().encode('{"muse":"10-judge"}'));controller.close();response=await pending;}
+  else{const commit=x.world.runtime.commitExternal.bind(x.world.runtime);x.world.runtime.commitExternal=(at,label,mutate)=>commit(at,label,(s,emit)=>{Date.now=()=>clock()+2*3600000;return mutate(s,emit);});response=await x.go('POST','/api/owner/reset',x.owner,{muse:'10-judge'});}
+  assert.equal(response.status,401);assert.deepEqual(response.body,{error:'owner_session_required'});assert.deepEqual(x.world.runtime.state(),state);assert.deepEqual(x.world.runtime.events(0,10000),events);
+ }finally{Date.now=clock;}
+ assert.throws(()=>x.world.resetMuse('10-judge',PRINCIPALS['demo-peer'].ownerId,{principal:'demo-peer',ownerId:PRINCIPALS['demo-peer'].ownerId,exp:now+3600000}),e=>e.code==='not_your_muse');
+});

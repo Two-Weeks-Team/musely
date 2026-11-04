@@ -12,7 +12,7 @@ export function judgeInbox(sql:Pick<TxSql,'exec'>,world:WorldState){
  const greetings=rows.filter(r=>text(r.id)&&time(r.at)&&text(r.muse)&&text(r.line)&&['greet','encounter_reply'].includes(String(r.kind))&&['live','rule','scripted','replay'].includes(String(r.source))).map(r=>({id:r.id as string,at:r.at as number,from:r.muse as string,kind:r.kind as 'greet'|'encounter_reply',line:r.line as string,source:r.source as 'live'|'rule'|'scripted'|'replay'}));
  const proposals=(world.inbox?.tasks??[]).filter(t=>
   // Only received proposals, including a received counteroffer, never our outgoing original offer.
-  (t.to===JUDGE_MUSE.id&&t.from!==JUDGE_MUSE.id||t.kind==='trade'&&t.awaiting===JUDGE_MUSE.id&&t.offer?.by!==JUDGE_MUSE.id&&t.from===JUDGE_MUSE.id)&&
+  (t.to===JUDGE_MUSE.id&&t.from!==JUDGE_MUSE.id&&(t.kind!=='trade'||t.offer?.by===t.from)||t.kind==='trade'&&t.awaiting===JUDGE_MUSE.id&&t.offer?.by===t.to&&t.from===JUDGE_MUSE.id)&&
   ['trade','meetup','help'].includes(t.kind)&&['pending','completed','rejected','expired','failed','cancelled'].includes(t.status)&&text(t.id)&&text(t.from)&&time(t.createdAt)&&time(t.deadline)
  ).slice(-LIMIT).reverse().map(t=>({id:t.id,kind:t.kind,from:t.from===JUDGE_MUSE.id?t.offer!.by:t.from,status:t.status,createdAt:t.createdAt,deadline:t.deadline,
   offer:t.kind==='trade'&&t.offer&&text(t.offer.give)&&text(t.offer.want)?{give:t.offer.give,want:t.offer.want}:null}));

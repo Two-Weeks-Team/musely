@@ -26,7 +26,7 @@ export interface ConnectedStub {
   agentKeyMuse(id: string): MaybePromise<string | null>;
   revokeAgentKey(id: string): MaybePromise<unknown | null>;
   purgeAgentKey(id: string, by: string): MaybePromise<unknown | null>;
-  resetMuse(muse: string, by: string): MaybePromise<{ok: boolean; reason?: string}>;
+  resetMuse(muse: string, by: string, team?:LegacyOwnerProof): MaybePromise<{ok: boolean; reason?: string}>;
   ownerNotifications(detailFor: string[]): MaybePromise<unknown>;
   ownerRevoke(muse: string, by: string): MaybePromise<{ok: boolean; reason?: string}>;
   ownerRedelegate(muse: string, by: string): MaybePromise<{ok: boolean; reason?: string}>;
@@ -166,7 +166,10 @@ export async function connectedRoutes(request: Request, url: URL, auth: OwnerAut
     if(!shared&&pre.principal!=='reviewer')return json({error:'reviewer_only'},403);
     const s = gate({write:true,...(shared?{}:{muse})});
     if (s instanceof Response) return s;
-    const r = await stub.resetMuse(muse, s.ownerId);
+    if(shared&&(!Number.isSafeInteger(s.exp)||s.exp<=Date.now()))return json({error:'owner_session_required'},401);
+    let r:{ok:boolean;reason?:string};
+    try{r=shared?await stub.resetMuse(muse,s.ownerId,{principal:s.principal,ownerId:s.ownerId,exp:s.exp}):await stub.resetMuse(muse,s.ownerId);}
+    catch(e){const code=e&&typeof e==='object'&&'code'in e?e.code:null;if(shared&&code==='owner_session_required')return json({error:code},401);if(shared&&code==='not_your_muse')return json({error:code},403);throw e;}
     if (r.ok) return json(r);
     return r.reason === 'delegation_revoked' ? json({error: 'delegation_revoked', detail: 'The Muse is revoked. Delegate it again (POST /api/owner/redelegate) before a reset.'}, 409) : json({error: r.reason ?? 'refused'}, 404);
   }

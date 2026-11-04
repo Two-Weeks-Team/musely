@@ -31,13 +31,15 @@ export type ResetResult =
 
 const uniq = () => Math.random().toString(36).slice(2, 8);
 
-export function resetMuse(c: ControlCtx, museId: string, by: string): ResetResult {
+export function resetMuse(c: ControlCtx, museId: string, by: string,authorize?:()=>void): ResetResult {
+  authorize?.();
   const start = START_STATE[museId];
   if (!start || !c.trust.agentByMuse(museId) || !c.runtime.state().muses.some(m => m.id === museId)) return {ok: false, reason: 'unknown_muse'};
   if (c.trust.suspended(museId)) return {ok: false, reason: 'delegation_revoked'};
   const now = c.now ? c.now() : Date.now();
   let out: Extract<ResetResult, {ok: true}> | null = null;
   c.runtime.commitExternal(now, `muse-reset-${museId}-${uniq()}`, (st, emit) => {
+    authorize?.();
     const m = st.muses.find(x => x.id === museId)!, inbox = (st.inbox ??= emptyInbox());
     const cancelled: string[] = [];
     for (const t of cancelTasksFor(inbox, museId, now, by)) {

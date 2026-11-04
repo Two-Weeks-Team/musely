@@ -6,7 +6,7 @@ import {ownsMuse} from './core/owner-session.ts';
 import {publicCatalogItems} from '../src/engine/items.ts';
 import {losePersonalClaim} from './core/personal-claim-loss.ts';
 import {PersonalClaims,type ClaimFlowBinding} from './core/personal-claims.ts';
-import {LegacyProfile,type LegacyOwnerProof} from './core/legacy-profile.ts';
+import {LegacyProfile,LegacyProfileError,type LegacyOwnerProof} from './core/legacy-profile.ts';
 import {PersonalAdoption} from './core/personal-adoption.ts';
 import {PersonalLegacy} from './core/personal-legacy.ts';
 import {ReceiptSnapshots} from './core/receipt-snapshots.ts';
@@ -384,7 +384,13 @@ export class WorldDO extends DurableObject<Env> {
   revokeAgentKey(id: string) { return this.connected.revokeKey(id); }
   purgeAgentKey(id: string, by: string) { return this.connected.purgeKey(id, by); }
   // Reviewer Muse reset (G-08); the Worker route checks the reviewer session.
-  resetMuse(muse: string, by: string) { return resetMuse({trust: this.trust, runtime: this.runtime}, muse, by); }
+  resetMuse(muse: string, by: string,team?:LegacyOwnerProof) {
+    const authorize=muse===JUDGE_MUSE.id?()=>{
+      if(!team||!Number.isSafeInteger(team.exp)||team.exp<=Date.now())throw new LegacyProfileError('owner_session_required');
+      if(!['owner','reviewer'].includes(team.principal)||team.ownerId!==PRINCIPALS[team.principal]?.ownerId||by!==team.ownerId)throw new LegacyProfileError('not_your_muse');
+    }:undefined;
+    return resetMuse({trust:this.trust,runtime:this.runtime},muse,by,authorize);
+  }
   // Owner control (C06, I-02): revocation and the separate re-delegation; the Worker route checks the owner session.
   ownerRevoke(muse: string, by: string) { return revokeMuse({trust: this.trust, runtime: this.runtime}, muse, by); }
   ownerRedelegate(muse: string, by: string) { return redelegateMuse({trust: this.trust, runtime: this.runtime}, muse, by); }
