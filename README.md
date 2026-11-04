@@ -1,6 +1,11 @@
 <div align="center">
 
-# ✳ Musely
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/musely-logo.svg">
+  <img src="docs/brand/musely-logo-light.svg" alt="Musely" width="360">
+</picture>
+
+# Musely
 
 **A little life, in motion — a shared world where AI Muses live on while you're away.**
 
