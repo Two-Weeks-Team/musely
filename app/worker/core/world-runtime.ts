@@ -23,6 +23,7 @@ import {validate, buildMessages, maxCostUsd, actualCostUsd, failureCostUsd, chec
 import {recordResidentTradeRefusalsInTransaction,completeResidentGoalsInTransaction,residentGoalIdleIds,createResidentServices,runResidentGoalTurn,type ResidentGoalLoopPolicy} from './resident-goal-loop.ts';
 import {runResidentWantsTurn,type ResidentWantsCallerPolicy} from './resident-wants-caller.ts';
 import {callModel, type ModelConfig} from './model.ts';
+import {residentKindFor,isResidentBudgetRefusal} from './resident-budget-policy.ts';
 import {replayFor} from './replay.ts';
 import {isRuntimeControlled,isConnected} from '../../src/engine/inbox.ts';
 import {COMMANDS_TABLE, type CommandResult} from './commands.ts';
@@ -55,6 +56,8 @@ export type SpotlightOrigin = 'visitor' | 'judge' | 'connected';
 export type SpotlightRequestResult = {ok: true; muse: string; position: number; already: boolean; eventIds: string[]} | {ok: false; reason: 'unknown_muse' | 'paused' | 'queue_full' | 'hourly_limit'};
 
 export type RuntimeOptions = {
+  /** Split budget controls priorities; the old shared-pool floor applies only in legacy mode. */
+  residentBudgetEnabled?:boolean;
   /** Default absent/off. Trusted server-only policy; no browser-controlled flags. */
   residentLife?: {enabled:boolean;initialState:LifeState;allowedPlaceIds:readonly string[];
     /** Explicit enrollment only; never inferred from appearance or a personal profile. */
@@ -414,6 +417,7 @@ export class WorldRuntime {
     try { input = validate('spotlight', spotlightInput(s, muse, freedom, now),this.trustedPersonalPeers(s)); }
     catch (e) { return {decision: null, info: {source: 'scripted', reason: 'input_invalid: ' + String((e as Error).message).slice(0, 80)}}; }
     const fallback = (reason: string) => {
+      if(this.opts.residentBudgetEnabled&&isResidentBudgetRefusal(reason))return {decision:null,info:{source:'rule',reason}};
       const r = replayFor('spotlight', input);
       const out = r.output as Decision['output'] & {freedom?: string};
       // A recorded answer is used only if it was made for this freedom; otherwise the scenario continues.
@@ -440,7 +444,8 @@ export class WorldRuntime {
     if (!release) return {ok: false, reason: 'concurrency_limit'};
     try {
       const messages = withResidentContext(buildMessages(action, input),residentContext);
-      const res = this.opts.ledger.reserve({id, tier: 'world', session: 'world', ip: '', action, maxCostUsd: maxCostUsd(action, messages)});
+      const personalPeer=action==='encounter'&&(input.other==='00-jolly'||typeof input.other==='string'&&this.opts.residentLife?.ownershipKind(input.other)==='personal');
+      const res = this.opts.ledger.reserve({id, tier: 'world', session: 'world', ip: '', action, maxCostUsd: maxCostUsd(action, messages),...(this.opts.residentBudgetEnabled?{residentKind:residentKindFor(action,personalPeer)}:{})});
       if (!res.ok) return {ok: false, reason: res.reason};
       // Reserved before (a retried tick after a crash): that call was already made or paid for; never call twice.
       if (res.existing) return {ok: false, reason: 'already_reserved'};
@@ -469,7 +474,7 @@ export class WorldRuntime {
     const meetings = dry.filter(e => e.kind === 'encounter' && e.other && e.muse && !isRuntimeControlled(s, e.other, now)&&!this.registryControls(e.other));
     // Budget kept for visitors, and a breaker after repeated timeouts: both answer by rule without a call.
     const budget = meetings.length ? this.opts.ledger.status() : null;
-    const held = budget && budget.remainingUsd < ENCOUNTER_BUDGET_FLOOR * budget.capUsd ? 'budget_reserved_for_visitors' : now < this.circuitOpenUntil ? 'circuit_open' : null;
+    const held = !this.opts.residentBudgetEnabled&&budget&&budget.remainingUsd < ENCOUNTER_BUDGET_FLOOR * budget.capUsd ? 'budget_reserved_for_visitors' : now < this.circuitOpenUntil ? 'circuit_open' : null;
     // Every slot is taken (or refused) before the first await, so the cap holds across this batch.
     return Promise.all(meetings.map((e, i) => {
       const muse = e.other!, other = e.muse!, place = e.place ?? s.muses.find(m => m.id === muse)!.place, meeting = String(e.data?.encounterId);
@@ -494,7 +499,7 @@ export class WorldRuntime {
   encounterCircuitOpen(now: number) { return now < this.circuitOpenUntil; }
   private noteEncounterCall(outcome: string, now: number) {
     // Only calls that reached the model count: a missing slot, budget or reservation says nothing about its health.
-    if (['concurrency_limit', 'not_connected', 'budget', 'session_quota', 'ip_quota', 'already_reserved'].includes(outcome)) return;
+    if (isResidentBudgetRefusal(outcome)||['concurrency_limit', 'not_connected', 'session_quota', 'ip_quota', 'already_reserved'].includes(outcome)) return;
     if (outcome !== 'timeout') { this.encounterTimeouts = 0; return; }
     this.encounterTimeouts += 1;
     if (this.encounterTimeouts >= ENCOUNTER_TIMEOUTS_TO_OPEN) { this.encounterTimeouts = 0; this.circuitOpenUntil = now + ENCOUNTER_CIRCUIT_MS; }

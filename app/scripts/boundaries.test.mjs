@@ -130,7 +130,9 @@ test('I-12 bundle: fake secrets in the build environment and local secret files 
   }
 });
 
-test('I-12 secrets: no key or token in Worker responses, events, run log, logs, storage or requests to other hosts', async () => {
+test('I-12 secrets: no key or token in Worker responses, events, run log, logs, storage or requests to other hosts', async t => {
+  // Exercise the current split policy inside its configured period, with offline provider fixtures.
+  t.mock.method(Date, 'now', () => Date.parse('2026-11-04T12:00:00+09:00'));
   const vars = await wranglerVars();
   const root = await ownerRoot();
   const secrets = secretList(root);
@@ -175,7 +177,7 @@ test('I-12 secrets: no key or token in Worker responses, events, run log, logs, 
     let alarm = null, ready, depth = 0;
     const transactionSync = fn => { const sp = 'tx' + depth++; db.exec('SAVEPOINT ' + sp); try { const r = fn(); db.exec('RELEASE ' + sp); return r; } catch (e) { db.exec('ROLLBACK TO ' + sp); db.exec('RELEASE ' + sp); throw e; } finally { depth--; } };
     const ctx = {storage: {sql, transactionSync, getAlarm: async () => alarm, setAlarm: async t => { alarm = t; }}, blockConcurrencyWhile: fn => (ready = fn())};
-    const env = {...vars, DAILY_BUDGET_USD: '1', ...FAKE, OWNER_ROOT_JWK: root.text, THREADS_APP_ID: '424242'};
+    const env = {...vars, ...FAKE, OWNER_ROOT_JWK: root.text, THREADS_APP_ID: '424242'};
     const dobj = new WorldDO(ctx, env);
     await ready;
     env.WORLD = {idFromName: () => 'id', get: () => dobj};
@@ -346,7 +348,7 @@ test('I-12 wording: terms, About and this record tell the demo limits apart from
   assert.ok(section, 'terms.html has the #demo-limits section');
   const [enforced, notBuilt] = plain(section).split('Remaining demo limits:');
   assert.ok(notBuilt, 'the section separates what is not built');
-  for (const fact of [`${SESSION_TTL_MS / 3_600_000}-hour session`, `${HOURLY_LIMITS.visitor} live Muse Spark calls per hour`, `own ${CHALLENGE_HOURLY_LIMIT} per hour`, `spotlight requests are also ${SPOTLIGHT_REQUESTS_PER_HOUR.visitor} per hour`, `capped at ${IP_HOURLY_LIMIT} per hour`, `${HOURLY_LIMITS.judge} live calls per hour`, `US$${vars.DAILY_BUDGET_USD}`, '00:00 UTC', 'recorded replay', 'Personal Muse connections', 'demo peer and a directory-review Muse']) assert.ok(enforced.includes(fact), 'enforced now: ' + fact);
+  for (const fact of [`${SESSION_TTL_MS / 3_600_000}-hour session`, `${HOURLY_LIMITS.visitor} live Muse Spark calls per hour`, `own ${CHALLENGE_HOURLY_LIMIT} per hour`, `spotlight requests are also ${SPOTLIGHT_REQUESTS_PER_HOUR.visitor} per hour`, `capped at ${IP_HOURLY_LIMIT} per hour`, `${HOURLY_LIMITS.judge} live calls per hour`, `US$${vars.DAILY_BUDGET_USD}`, (vars.RESIDENT_BUDGET_MODE === 'split-v1' ? '00:00 Asia/Seoul' : '00:00 UTC'), 'recorded replay', 'Personal Muse connections', 'demo peer and a directory-review Muse']) assert.ok(enforced.includes(fact), 'enforced now: ' + fact);
   assert.ok(!/probation|per-owner/.test(enforced), 'the enforced limits do not claim the unbuilt safeguards');
   for (const fact of ['Personal sign-in and connections are implemented', 'no 24-hour probation', 'no per-owner rate limit']) assert.ok(notBuilt.includes(fact), 'not built: ' + fact);
   // The About dialog points to it.

@@ -10,7 +10,7 @@ const shim='data:text/javascript,'+encodeURIComponent('export class DurableObjec
 const hook=registerHooks({resolve(specifier,context,next){return specifier==='cloudflare:workers'?{url:shim,shortCircuit:true}:next(specifier,context);}});
 const {WorldDO}=await import('../../worker/world-do.ts');const {default:worker}=await import('../../worker/index.ts');hook.deregister();
 export const HOST='https://musely.net',FIRE='commons:campfire',OWNER='00-jolly',PEER='09-copper';
-export async function bootWorldDo(t,{campfires,mode,modelFetcher}={}){
+export async function bootWorldDo(t,{campfires,mode,modelFetcher,envOverrides={}}={}){
  const db=new DatabaseSync(':memory:');t.after(()=>db.close());let tx=false,alarm=null,ready;
  const sql={exec(q,...args){const rows=db.prepare(q).all(...args);return {toArray:()=>rows};}};
  const transactionSync=fn=>{assert.equal(tx,false,'fixture disallows nested transactions');db.exec('BEGIN');tx=true;try{const r=fn();db.exec('COMMIT');return r;}catch(e){db.exec('ROLLBACK');throw e;}finally{tx=false;}};
@@ -19,7 +19,7 @@ export async function bootWorldDo(t,{campfires,mode,modelFetcher}={}){
  const pair=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
  const root=await crypto.subtle.exportKey('jwk',pair.privateKey);
  const tokens={owner:'fixture-owner-control-token-000001',peer:'fixture-peer-control-token-000002'};
- const env={PUBLIC_ORIGIN:HOST,ALLOWED_HOSTS:'musely.net',DAILY_BUDGET_USD:modelFetcher?'20':'0.00001',OWNER_ROOT_JWK:JSON.stringify(root),OWNER_CONTROL_TOKEN:tokens.owner,DEMO_PEER_CONTROL_TOKEN:tokens.peer,MODEL_BASE:'https://invalid.test',MODEL_ID:'offline-fixture',MODEL_API_KEY:modelFetcher?'fixture-model-key':undefined,WORLD_LIFE_MODE:mode};
+ const env={PUBLIC_ORIGIN:HOST,ALLOWED_HOSTS:'musely.net',DAILY_BUDGET_USD:modelFetcher?'20':'0.00001',OWNER_ROOT_JWK:JSON.stringify(root),OWNER_CONTROL_TOKEN:tokens.owner,DEMO_PEER_CONTROL_TOKEN:tokens.peer,MODEL_BASE:'https://invalid.test',MODEL_ID:'offline-fixture',MODEL_API_KEY:modelFetcher?'fixture-model-key':undefined,WORLD_LIFE_MODE:mode,...envOverrides};
  let world=new WorldDO(ctx,env);await ready;
  // Test-only server configuration injection; production WorldDO never enables this policy.
  if(campfires)world.connected.d.campfires=campfires;

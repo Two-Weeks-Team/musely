@@ -12,6 +12,7 @@ import {PersonalWorld} from './core/personal-world.ts';
 // the append-only run log, the trust registry and the owner claim (direction v2, 6, 8.7, 15).
 import {DurableObject} from 'cloudflare:workers';
 import {Ledger, type ReserveRequest, type Outcome, type Tier} from './core/ledger.ts';
+import {residentBudgetFromEnv} from './core/resident-budget-policy.ts';
 import type {Env} from './env.ts';
 import type {ClaimRecord} from './core/threads.ts';
 import {WorldRuntime} from './core/world-runtime.ts';
@@ -55,7 +56,8 @@ export class WorldDO extends DurableObject<Env> {
     this.personalAuth = new PersonalAuthStore(ctx.storage);
     this.receiptSnapshots=new ReceiptSnapshots(ctx.storage.sql);
     this.personalRegistration = new PersonalRegistration(ctx.storage, this.personalAuth,{reservedPrincipal:id=>this.personalAdoption?.hasPrincipal(id)??false});
-    this.ledger = new Ledger(ctx.storage.sql, {dailyCapUsd: Number(env.DAILY_BUDGET_USD) || 20});
+    const residentBudget=residentBudgetFromEnv(env);
+    this.ledger = new Ledger(ctx.storage.sql, {dailyCapUsd: residentBudget ? Number(env.DAILY_BUDGET_USD??'30') : Number(env.DAILY_BUDGET_USD) || 20,residentBudget});
     this.trust = new Trust(ctx.storage.sql);
     this.ritual = new RitualStore(ctx.storage.sql);
     this.ownerRoot = env.OWNER_ROOT_JWK ? JSON.parse(env.OWNER_ROOT_JWK) : null;
@@ -79,6 +81,7 @@ export class WorldDO extends DurableObject<Env> {
       meetingGate: async (s, now) => {const gate=await this.meetings.prepare(s,now);this.worldLife?.acceptMeetingGate(s,now,gate);return gate;},
       worldId: 'musely',
       ledger: this.ledger,
+      residentBudgetEnabled:residentBudget?.enabled===true,
       hooks,
       model: {base: env.MODEL_BASE, key: env.MODEL_API_KEY, model: env.MODEL_ID, timeoutMs: 8000},
     });
