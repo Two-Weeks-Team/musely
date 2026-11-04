@@ -1,4 +1,5 @@
-import {ruleResidentUtterance,filterResidentUtterance,type PublicUtterance} from './resident-utterance.ts';
+import {withinConversationRange} from './speech.ts';
+import {ruleResidentUtterance,ruleResidentGreeting,filterResidentUtterance,type PublicUtterance} from './resident-utterance.ts';
 import {residentRhythm,residentPlaceWeight,residentStayMinutes,residentSociability,residentValues} from './resident-values.ts';
 import {participantName,participantLikes} from './participants.ts';
 import type {ActorProfile} from '../identity/participant.ts';
@@ -17,8 +18,8 @@ import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-14: wave-only contact never consumes conversation cooldown; preserves recorded engine13 snapshots. */
-export const ENGINE_VERSION = 'engine-14';
+/** engine-16: persona English greetings and explicit English-policy RULE fallback; engine15 stays checkpoint-only. */
+export const ENGINE_VERSION = 'engine-16';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
@@ -96,8 +97,14 @@ export type Hooks = {
   conversationHistory?:readonly ConversationReceipt[];
   /** Explicit short RULE recovery only for managed failed resident decisions; default preserves old behavior. */
   residentFallbackRecovery?:boolean;
+  /** Trusted in-game AOI policy only; no owner location or authority is derived from it. */
+  localPerceptionEnabled?:boolean;
+  /** Actual observation clock at final commit; action bookkeeping keeps its original logical time. */
+  observationAt?:number;
   /** Complete committed public speech window supplied by the host; never a private inbox or tail sample. */
   residentSpeechHistory?:readonly PublicUtterance[];
+  /** New RULE greeting selector is explicit opt-in; old engine/checkpoint callers remain unchanged. */
+  residentGreetingsEnabled?:boolean;
   /** Internal server feature flag only; no public input can grant it. */
   residentValuesEnabled?:boolean;
   /** Optional current server preference, never an authority proof or replay-state field. */
@@ -109,7 +116,7 @@ export type Hooks = {
   /** Speed a Muse may use for a trip (items change abilities; task 4). `s` lets the hook check neighborhood verification (13.1). */
   speedFor?: (m: MuseState, from: Place, to: Place, s?: WorldState) => Speed;
   /** Trades, gifts and help when two Muses meet (task 4 rules). */
-  onEncounter?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, rand: () => number, at: number, canProposeTrade?:TradeProposalGuard) => Omit<WorldEvent, 'id' | 'tick'>[];
+  onEncounter?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, rand: () => number, at: number, canProposeTrade?:TradeProposalGuard, greeting?:string|null) => Omit<WorldEvent, 'id' | 'tick'>[];
   /** Credential check before two Muses meet (C04). On refusal neither Muse changes; only `event` is logged. */
   canMeet?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, at: number) => {ok: boolean; event: Omit<WorldEvent, 'id' | 'tick'> | null};
   /** World upkeep after this tick's moves and meetings (campfire invites, I-13: worker/core/messages.ts inviteUpkeep). */
@@ -278,7 +285,7 @@ export function setResidentFrozen(s:WorldState,ids:readonly string[],now:number)
   }
 }
 
-export function tick(prev: WorldState, input: {now: number; decision?: Decision | null; replies?: EncounterReply[]; spot?: {muse: string; priority: boolean}; residentMove?: {muse:string;place:string;expectedVersion:number};residentIdle?:readonly string[];residentFrozen?:readonly string[];residentGoalIdle?:readonly string[];residentActors?:readonly string[];residentTurns?:readonly ResidentTurn[];residentFallback?:readonly string[];residentReactions?:readonly ResidentReaction[];requirePriorityApplication?:boolean}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
+export function tick(prev: WorldState, input: {now: number; decision?: Decision | null; replies?: EncounterReply[]; spot?: {muse: string; priority: boolean}; residentMove?: {muse:string;place:string;expectedVersion:number};residentIdle?:readonly string[];residentFrozen?:readonly string[];residentGoalIdle?:readonly string[];residentEnglishFallback?:string;residentActors?:readonly string[];residentTurns?:readonly ResidentTurn[];residentFallback?:readonly string[];residentReactions?:readonly ResidentReaction[];requirePriorityApplication?:boolean}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
   const now = input.now, clock = localClock(now);
   const s: WorldState = structuredClone(prev);
   if(input.residentFrozen!==undefined)setResidentFrozen(s,input.residentFrozen,now);
@@ -310,6 +317,8 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   for (const t of expireTasks(s.inbox, now)) emit({at: now, source: 'rule', kind: 'task_expired', muse: t.awaiting, other: t.awaiting === t.from ? t.to : t.from, data: {task_id: t.id, task: t.kind}, tags: []});
   const paused = (id: string) => !!s.paused?.[id] || isResidentFrozen(s,id);
   const managed=(m:MuseState)=>input.residentActors?.includes(m.id)===true && m.id!=='00-jolly' && !m.id.startsWith('pm_') && hasActorHarness(m.id) && m.controlMode!=='personal' && !m.profile;
+  // Only an explicitly rejected resident model utterance selects this rule path.
+  const englishFallback=(m:MuseState)=>m.id===input.residentEnglishFallback&&!!residentValues(m.id)&&!m.profile&&m.controlMode!=='personal'&&!isRuntimeControlled(s,m.id,now);
   // A postcard from or to a paused Muse (delegation revoked) waits in the queue; it is delivered on the first tick after
   // the owner delegates again.
   const due = s.inbox.mail.filter(x => x.deliverAt <= now && !paused(x.from) && !paused(x.to));
@@ -373,7 +382,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     if(hooks.socialStatus&&m.intent&&contactPolicy(s,m.id,m.intent.target,now,hooks)!=='approach'){
       m.intent=null;continue; // No replacement trip in this tick; pending agreements are unchanged.
     }
-    const recovering=hooks.residentFallbackRecovery===true&&managed(m)&&input.residentFallback?.includes(m.id)===true&&!m.intent;
+    const recovering=hooks.residentFallbackRecovery===true&&managed(m)&&input.residentFallback?.includes(m.id)===true&&!m.intent&&!englishFallback(m);
     // Life03 choices use the existing movement/intent validation after real arrival/beat completion.
     // A reaction is independent; it never restarts this activity or changes its ETA.
     if(managed(m)){
@@ -415,7 +424,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
         }
         continue;
       }
-      if(!m.intent&&!input.residentFallback?.includes(m.id))continue;
+      if(!m.intent&&!input.residentFallback?.includes(m.id)&&!englishFallback(m))continue;
     }
     // Trusted goal scheduler owns idle boundaries, never personal commands or live decisions.
     if(input.residentGoalIdle?.includes(m.id)&&!m.intent&&input.decision?.muse!==m.id)continue;
@@ -453,12 +462,12 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     if (goTravel) {
       // Choose among the area's places first; never discard an already-picked place at a cell edge.
       const dest = chooseDestination(s, m, rand, clock.hour, hooks, now);
-      if (dest) { startTrip(s, m, place, dest, now, managed(m)?'rule':'scripted', emit, hooks); continue; }
+      if (dest) { startTrip(s, m, place, dest, now, managed(m)||englishFallback(m)?'rule':'scripted', emit, hooks); continue; }
     }
     const beat = weightedPick(rand, stay, b => beatWeight(b, m.id));
     if (beat) {const selected=managed(m)?{...beat,minutes:Math.max(5,Math.min(60,beat.minutes))}:beat;
       const minutes=rhythm?residentStayMinutes(m.id,selected.minutes,clock.hour):selected.minutes;
-      startBeat(m,{...selected,minutes:recovering?Math.max(5,Math.min(10,minutes)):minutes},place,now,managed(m)?'rule':'scripted',emit,s);
+      startBeat(m,{...selected,...(englishFallback(m)?{line:ruleResidentUtterance(s,m.id,selected.id,now)??undefined}:{}),minutes:recovering?Math.max(5,Math.min(10,minutes)):minutes},place,now,managed(m)||englishFallback(m)?'rule':'scripted',emit,s);
     }else if(recovering){
       // No valid catalog activity/destination: a finite rest, never an invented recipe or item effect.
       m.beat={id:'resident_stay',clip:'idle_breathe',startedAt:now,endsAt:now+5*60000,line:null};
@@ -506,9 +515,10 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       const byIntent = initiator.intent?.target === other.id;
       emit({at: now, source: 'rule', kind: 'encounter', muse: initiator.id, other: other.id, place: placeId, data: {encounterId: meeting, initiatedByIntent: byIntent, actorOrigin: byIntent && isConnected(s.inbox, initiator.id, now) ? 'connected' : 'system', stage: 'recognize'}, tags: []});
       if (gate?.event) emit(gate.event);
-      for (const e of hooks.onEncounter?.(s, initiator, other, placeById(placeId), rngFor(s.seed, s.tick, initiator.id, other.id, 'meet'), now,hooks.canProposeTrade) ?? []) emit(e);
+      const greeting=hooks.residentGreetingsEnabled===true?ruleResidentGreeting(s,initiator.id,other.id,now,[...(hooks.residentSpeechHistory??[]),...events.map(e=>({muse:e.muse,at:e.at,line:e.line??null}))]):undefined;
+      for (const e of hooks.onEncounter?.(s, initiator, other, placeById(placeId), rngFor(s.seed, s.tick, initiator.id, other.id, 'meet'), now,hooks.canProposeTrade,greeting) ?? []) emit(e);
       // The other Muse answers (8.3). A connected Muse answers from its owner's runtime, so nothing is said for it here.
-      if (input.replies && !input.residentReactions?.some(r=>r.reply.muse===other.id&&r.reply.other===initiator.id) && !isRuntimeControlled(s, other.id, now)) replyTo(s, other, initiator, placeId, meeting, input.replies.find(r => r.encounterId === meeting && r.muse === other.id && r.other === initiator.id), now, emit);
+      if (input.replies && !input.residentReactions?.some(r=>r.reply.muse===other.id&&r.reply.other===initiator.id) && !isRuntimeControlled(s, other.id, now)) replyTo(s, other, initiator, placeId, meeting, input.replies.find(r => r.encounterId === meeting && r.muse === other.id && r.other === initiator.id), now, emit,hooks.residentSpeechHistory??[]);
       if (initiator.intent?.target === other.id) initiator.intent = null;
       remember(a, `Met ${participantName(s,b.id)} at ${placeById(placeId).name}`);
       remember(b, `Met ${participantName(s,a.id)} at ${placeById(placeId).name}`);
@@ -522,6 +532,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   for(const reaction of input.residentReactions??[]){
     const r=reaction.reply,m=s.muses.find(m=>m.id===r.muse),to=s.muses.find(m=>m.id===r.other),key=r.muse+'|'+reaction.triggerId;
     if(!m||!to||!managed(m)||paused(m.id)||paused(to.id)||isRuntimeControlled(s,m.id,now)||handled.has(key)||socialDistance(s,m.id,to.id,now)>100)continue;
+    if(hooks.localPerceptionEnabled===true&&reaction.kind==='reply'&&!withinConversationRange(m,to,hooks.observationAt??now))continue;
     const gate=hooks.canMeet?.(s,m,to,placeById(m.place),now);if(gate&&!gate.ok)continue;
     if(hooks.socialStatus){
       const policy=contactPolicy(s,m.id,to.id,now,hooks);
@@ -534,7 +545,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       emit({at:now,source:'rule',kind:'resident_passby',muse:m.id,other:to.id,place:m.place,data:{triggerId:reaction.triggerId,peerSpoke:false},tags:[]});
     }
     if(reaction.kind==='wave')emit({at:now,source:'rule',kind:'resident_wave',muse:m.id,other:to.id,place:m.place,data:{triggerId:reaction.triggerId,continuingActivity:true},tags:[]});
-    else {const first=events.length;replyTo(s,m,to,m.place,r.encounterId,r,now,emit);for(const e of events.slice(first))e.data={...e.data,triggerId:reaction.triggerId,continuingActivity:true};}
+    else {const first=events.length;replyTo(s,m,to,m.place,r.encounterId,r,now,emit,hooks.residentSpeechHistory??[]);for(const e of events.slice(first))e.data={...e.data,triggerId:reaction.triggerId,continuingActivity:true};}
   }
   for (const e of hooks.onTick?.(s, now) ?? []) emit(e);
 
@@ -606,7 +617,7 @@ function remember(m: MuseState, line: string) { m.memory = [line, ...m.memory.fi
  * anything else is a rule answer with the reason it is not live (no key, budget, limits, invalid output, discarded).
  * A rule answer never carries model evidence.
  */
-function replyTo(s:WorldState, m: MuseState, to: MuseState, placeId: string, meeting: string, r: EncounterReply | undefined, now: number, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void) {
+function replyTo(s:WorldState, m: MuseState, to: MuseState, placeId: string, meeting: string, r: EncounterReply | undefined, now: number, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void,history:readonly PublicUtterance[]=[]) {
   const toName = to.profile?.displayName ?? actorLabel(to.id);
   if (r && r.source !== 'rule' && r.output) {
     const o = r.output;
@@ -615,8 +626,9 @@ function replyTo(s:WorldState, m: MuseState, to: MuseState, placeId: string, mee
     m.reflection = `With ${toName}: ${o.public_reason || o.line}`.slice(0, 100);
     return;
   }
-  if(isRuntimeControlled(s,to.id,now))deliverMessage(s.inbox!,{from:m.id,to:to.id,kind:'greet',at:now,text:`Nice to see you, ${toName}.`});
-  emit({at: now, source: 'rule', kind: 'encounter_reply', muse: m.id, other: to.id, place: placeId, line: `Nice to see you, ${toName}.`, data: {encounterId: meeting, intent: 'greet', item: null, reason: r?.reason ?? 'no_answer_requested'}, tags: []});
+  const fallbackLine=r?.reason==='output_rejected:public_speech_not_english'?ruleResidentGreeting(s,m.id,to.id,now,history):`Nice to see you, ${toName}.`;
+  if(fallbackLine!==null&&isRuntimeControlled(s,to.id,now))deliverMessage(s.inbox!,{from:m.id,to:to.id,kind:'greet',at:now,text:fallbackLine});
+  emit({at: now, source: 'rule', kind: 'encounter_reply', muse: m.id, other: to.id, place: placeId, line: fallbackLine, data: {encounterId: meeting, intent: 'greet', item: null, reason: r?.reason ?? 'no_answer_requested'}, tags: []});
 }
 
 function startBeat(m: MuseState, beat: Beat, place: Place, now: number, source: Source, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void, s: WorldState) {
@@ -697,6 +709,7 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   if (freedom === 'who') {
     const other = findMuse(s, o.target_agent);
     if (!other || other.id === m.id) return reject('unknown Muse: ' + o.target_agent.slice(0, 40));
+    if(hooks.localPerceptionEnabled===true&&!withinConversationRange(m,other,hooks.observationAt??now))return reject('too_far');
     if(hooks.socialStatus&&contactPolicy(s,m.id,other.id,now,hooks)!=='approach')return reject('social contact unavailable');
     m.intent = {kind: 'greet', target: other.id};
     emit({...base, kind: 'spotlight', place: here.id, other: other.id, line: o.line || null, data: {...base.data, live: true, offScript: true}, tags: ['off_script']});
@@ -708,6 +721,7 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   if (o.offer_item && !m.inventory.includes(o.offer_item)) return reject('offered item not held: ' + o.offer_item.slice(0, 40));
   const other = findMuse(s, o.target_agent);
   if (!other || other.id === m.id) return reject('offer needs another Muse');
+  if(hooks.localPerceptionEnabled===true&&!withinConversationRange(m,other,hooks.observationAt??now))return reject('too_far');
   const allowed=hooks.canProposeTrade?.(s,m.id,other.id,o.offer_item,o.want_item,now);
   if((m.id.startsWith('pm_')||other.id.startsWith('pm_'))&&allowed!==true)return reject('counterparty_pending_claim');
   if(allowed===false)return reject('trade proposal policy');

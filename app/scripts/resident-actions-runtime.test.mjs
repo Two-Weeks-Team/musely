@@ -1,3 +1,4 @@
+import {PLACE_BY_ID,placeById} from '../src/engine/places.ts';
 // Actual WorldRuntime + SQLite, synthetic provider only. No external HTTP or live model.
 import {test} from 'node:test';import assert from 'node:assert/strict';import {DatabaseSync} from 'node:sqlite';
 import {WorldRuntime} from '../worker/core/world-runtime.ts';import {Ledger} from '../worker/core/ledger.ts';import {HARNESS_IDS} from '../src/engine/harness.ts';import {ResidentLifeStore} from '../worker/core/resident-life-adapter.ts';
@@ -73,4 +74,11 @@ test('opt-in bulk timeout recovery commits short RULE actions for every eligible
  const runtime=new WorldRuntime(x.sql,{...x.options,hooks:{residentValuesEnabled:true,residentFallbackRecovery:true}});runtime.init(NOW);await runtime.heartbeat(NOW);const residents=runtime.state().muses.filter(m=>m.id!=='00-jolly');assert.equal(residents.length,26);
  for(const m of residents){assert.ok(m.travel||m.beat,'timeout must have a real action for '+m.id);const e=x.runtime.events().find(e=>e.muse===m.id&&['beat','depart'].includes(e.kind)&&e.at===NOW);assert.equal(e?.source,'rule');if(m.beat)assert.ok(m.beat.endsAt>=NOW+5*60000&&m.beat.endsAt<=NOW+10*60000);}
  const fallback=x.runtime.recentOfKind('resident_activity_fallback',40);assert.ok(fallback.some(e=>e.data.reason==='timeout'));assert.equal(fallback.length,26);t.diagnostic(JSON.stringify({eligible:residents.length,depart:residents.filter(m=>m.travel).length,beat:residents.filter(m=>m.beat).length,timeout:fallback.filter(e=>e.data.reason==='timeout').length,concurrency:fallback.filter(e=>e.data.reason==='concurrency_limit').length}));assert.equal(x.runtime.state().muses[0].controlMode,'personal');
+});
+
+test('clock-only travel beyond observed conversation range discards the LIVE approach after model await',async t=>{
+ const cafe=placeById('commons:cafe');for(const[id,x]of[['perception-clock:near',49],['perception-clock:far',449]]){PLACE_BY_ID.set(id,{...cafe,id,name:id,x:cafe.x+x});t.after(()=>PLACE_BY_ID.delete(id));}
+ let x;x=boot(t,{socialStatus:()=> 'welcoming',activityOutput:{freedom:'who',decision:'greet',target_agent:'02-moss',target_place:''},onCall:()=>x.clock(NOW+8000)});x.runtime.opts.perception={enabled:true};
+ x.runtime.commitExternal(NOW,'clock-peer',s=>{const b=s.muses.find(m=>m.id==='02-moss');delete s.paused[b.id];b.place='perception-clock:near';b.travel={to:'perception-clock:far',departAt:NOW,arriveAt:NOW+10000,speed:'walk',chosen:true};});assert(x.runtime.perceptionFor(x.actor,NOW).conversation.some(m=>m.id==='02-moss'));
+ await x.runtime.heartbeat(NOW);assert.equal(x.runtime.perceptionFor(x.actor,NOW+8000).conversation.some(m=>m.id==='02-moss'),false);assert.equal(muse(x).intent,null);assert.equal(muse(x).travel,null);assert.equal(x.runtime.runLog.lastInput().input.residentActions.turns.find(r=>r.muse===x.actor).used,false);assert(x.runtime.events().some(e=>e.kind==='decision_rejected'&&e.muse===x.actor&&e.data.reason==='too_far'));
 });
