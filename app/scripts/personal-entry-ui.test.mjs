@@ -161,3 +161,9 @@ test('a connection write barrier blocks profile refresh, save and logout until i
 test('profile lifecycle publishes safe snapshots for connection fencing without changing registration into entry',async()=>{
  const states=[],t=setup(url=>url.endsWith('/me')?me():profile(),{onState:s=>states.push(s)});await t.c.ready;assert.ok(states.some(s=>s.authenticated===true&&s.profile?.actorId===PROFILE.actorId));assert.ok(states.every(s=>s.joined===false));t.c.dispose();assert.equal(states.at(-1).authenticated,false);assert.equal(states.at(-1).profile,null);
 });
+
+test('failed login return stays visible after profile reads, gives a next step and never retries automatically',async()=>{
+ const t=setup(()=>me(false),{authResult:'failed'});await t.c.ready;
+ assert.match(t.host.textContent,/연결을 마치지 못|could not finish/i);assert.match(t.host.textContent,/잠시 뒤|later/i);
+ assert.deepEqual(t.calls.map(x=>x.method),['GET']);assert.equal(t.navigation.length,0);assert.ok(action(t.host,'login'));t.c.dispose();
+});

@@ -1,3 +1,4 @@
+import {isPersonalAuthReason, personalAuthFailure, type PersonalAuthFailure} from './personal-auth-failure.ts';
 // Personal authentication only. No actor, world entry, agent key or legacy owner authority is created here.
 import {b64url, unb64url, hmac, timingSafeEqual} from './session.ts';
 import {PersonalOwners, type PersonalStorage} from './personal-owners.ts';
@@ -68,6 +69,11 @@ export class PersonalAuthStore {
     this.owners.init();
     this.storage.transactionSync(() => {
       this.storage.sql.exec('CREATE TABLE IF NOT EXISTS personal_auth_flows (state_digest TEXT PRIMARY KEY, browser_digest TEXT NOT NULL, app_id TEXT NOT NULL, redirect_uri TEXT NOT NULL, purpose TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, consumed_at INTEGER, completed_at INTEGER)');
+      // Additive and restart-safe: preserve all existing flow/session rows.
+      for (const [name, type] of [['failed_at','INTEGER'],['failure_reason','TEXT'],['failure_meta_code','INTEGER'],['failure_meta_subcode','INTEGER']]) {
+        try { this.storage.sql.exec('SELECT ' + name + ' FROM personal_auth_flows LIMIT 0').toArray(); }
+        catch { this.storage.sql.exec('ALTER TABLE personal_auth_flows ADD COLUMN ' + name + ' ' + type); }
+      }
       this.storage.sql.exec('CREATE TABLE IF NOT EXISTS personal_auth_sessions (sid_digest TEXT PRIMARY KEY, principal_id TEXT NOT NULL REFERENCES personal_principals(id), app_id TEXT NOT NULL, auth_version INTEGER NOT NULL, issued_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER)');
     });
   }
@@ -100,11 +106,22 @@ export class PersonalAuthStore {
     if (!digestPattern.test(stateDigest) || !appPattern.test(appId) || typeof subject !== 'string' || !/^[0-9]{1,128}$/.test(subject) || !digestPattern.test(sidDigest) || !time(now)) return null;
     return this.storage.transactionSync(() => {
       const f = this.storage.sql.exec('SELECT * FROM personal_auth_flows WHERE state_digest = ?', stateDigest).toArray()[0];
-      if (!f || f.app_id !== appId || f.purpose !== 'login' || f.consumed_at === null || f.completed_at !== null || Number(f.consumed_at) > now || Number(f.expires_at) <= now) return null;
+      if (!f || f.app_id !== appId || f.purpose !== 'login' || f.consumed_at === null || f.completed_at !== null || f.failed_at !== null || Number(f.consumed_at) > now || Number(f.expires_at) <= now) return null;
       const p = this.owners.ensurePrincipal({provider: 'threads', subject: appId + ':' + subject}, now);
       this.storage.sql.exec('INSERT INTO personal_auth_sessions (sid_digest,principal_id,app_id,auth_version,issued_at,expires_at) VALUES (?,?,?,?,?,?)', sidDigest, p.id, appId, p.authVersion, now, now + PERSONAL_SESSION_TTL_MS);
       this.storage.sql.exec('UPDATE personal_auth_flows SET completed_at = ? WHERE state_digest = ?', now, stateDigest);
       return {principalId: p.id, authVersion: p.authVersion, issuedAt: now, expiresAt: now + PERSONAL_SESSION_TTL_MS};
+    });
+  }
+  /** Trusted Worker-only diagnostics. Wrong browser/app/redirect, replay and late responses cannot rewrite a flow. */
+  fail(binding: Pick<PersonalFlow, 'stateDigest' | 'browserDigest' | 'appId' | 'redirectUri'>, detail: PersonalAuthFailure, now: number): boolean {
+    if (!binding || !digestPattern.test(binding.stateDigest) || !digestPattern.test(binding.browserDigest) || !detail || !isPersonalAuthReason(detail.reason) || !time(now)) return false;
+    const safe = personalAuthFailure(detail.reason, detail.metaCode, detail.metaSubcode);
+    return this.storage.transactionSync(() => {
+      const f = this.storage.sql.exec('SELECT * FROM personal_auth_flows WHERE state_digest = ?', binding.stateDigest).toArray()[0];
+      if (!f || f.browser_digest !== binding.browserDigest || f.app_id !== binding.appId || f.redirect_uri !== binding.redirectUri || f.purpose !== 'login' || f.consumed_at === null || f.failed_at !== null || Number(f.consumed_at) > now || f.completed_at !== null && safe.reason !== 'session_sign_failed') return false;
+      this.storage.sql.exec('UPDATE personal_auth_flows SET failed_at = ?, failure_reason = ?, failure_meta_code = ?, failure_meta_subcode = ? WHERE state_digest = ?', now, safe.reason, safe.metaCode ?? null, safe.metaSubcode ?? null, binding.stateDigest);
+      return true;
     });
   }
   /** Pure read: no pruning, provider fetch, claim recheck, or world/presence mutation. */
