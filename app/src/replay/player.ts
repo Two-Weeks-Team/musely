@@ -25,6 +25,7 @@ export const recordedStateHash = (body: string) => sha256Hex('musely-run-state-v
 // Exact known predecessor tuple: checkpoint projection only, with its original versions and hashes intact.
 // No old engine is executed and arbitrary/mixed catalog versions remain incompatible.
 const HISTORICAL_VERSIONS: readonly RunVersions[] = [
+  {schemaVersion:'run-log-2',engineVersion:'engine-11',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-ffb109917767'},
   {schemaVersion:'run-log-2',engineVersion:'engine-10',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-ffb109917767'},
   {schemaVersion:'run-log-2',engineVersion:'engine-9',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-ffb109917767'},
   {schemaVersion:'run-log-2',engineVersion:'engine-8',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-ffb109917767'},

@@ -1,4 +1,5 @@
-import {residentRhythm,residentPlaceWeight,residentStayMinutes,residentSociability} from './resident-values.ts';
+import {ruleResidentUtterance,filterResidentUtterance,type PublicUtterance} from './resident-utterance.ts';
+import {residentRhythm,residentPlaceWeight,residentStayMinutes,residentSociability,residentValues} from './resident-values.ts';
 import {participantName,participantLikes} from './participants.ts';
 import type {ActorProfile} from '../identity/participant.ts';
 // Scenario engine and spotlight rotation (direction v2, 8.1–8.4, 8.6, 8.8).
@@ -16,8 +17,8 @@ import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-11: explicit catalog stays preserve chosen duration and LIVE evidence. */
-export const ENGINE_VERSION = 'engine-11';
+/** engine-12: resident-only public speech provenance and transactional duplicate suppression. */
+export const ENGINE_VERSION = 'engine-12';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
@@ -84,6 +85,8 @@ export type ResidentTurn = {decision:Decision;stayMinutes:number};
 export type ResidentReaction = {reply:EncounterReply;triggerId:string;kind:'reply'|'wave'};
 export type TradeProposalGuard=(s:WorldState,actor:string,peer:string,give:string,want:string,at:number)=>boolean;
 export type Hooks = {
+  /** Complete committed public speech window supplied by the host; never a private inbox or tail sample. */
+  residentSpeechHistory?:readonly PublicUtterance[];
   /** Internal server feature flag only; no public input can grant it. */
   residentValuesEnabled?:boolean;
   /** Optional current server preference, never an authority proof or replay-state field. */
@@ -375,7 +378,11 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
           const reason=!dest?'unknown place: '+o.target_place.slice(0,40):
             o.target_agent||o.offer_item||o.want_item?'stay cannot contain a social or item target':named&&!selected?'activity unavailable here':null;
           if(reason){emit({at:now,source:d.source,kind:'decision_rejected',muse:m.id,place:m.place,line:null,data:{freedom:d.freedom,decision:o.decision,public_reason:o.public_reason,evidence:d.evidence??null,reason},tags:[]});continue;}
-          const withEvidence=(e:Omit<WorldEvent,'id'|'tick'>)=>emit({...e,data:{...e.data,evidence:d.evidence??null,freedom:d.freedom,decision:o.decision}});
+          const withEvidence=(e:Omit<WorldEvent,'id'|'tick'>)=>{
+            const line=hooks.residentValuesEnabled===true?o.line||null:e.line;
+            if(m.beat&&e.kind==='beat')m.beat.line=line??null;
+            emit({...e,line,data:{...e.data,evidence:d.evidence??null,freedom:d.freedom,decision:o.decision}});
+          };
           if(selected)startBeat(m,{...selected,minutes:turn.stayMinutes},here,now,d.source,withEvidence,s);
           else{m.beat={id:'resident_stay',clip:'idle_breathe',startedAt:now,endsAt:now+turn.stayMinutes*60000,line:null};
             withEvidence({at:now,source:d.source,kind:'beat',muse:m.id,place:m.place,line:null,data:{beat:'resident_stay',clip:'idle_breathe',minutes:turn.stayMinutes},tags:[]});}
@@ -389,8 +396,9 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
         applyDecision(s,d,d.freedom,now,emit,hooks);
         const rejected=events.slice(first).some(e=>e.kind==='decision_rejected');
         if(!rejected&&!m.travel){
-          m.beat={id:'resident_stay',clip:'idle_breathe',startedAt:now,endsAt:now+turn.stayMinutes*60000,line:null};
-          emit({at:now,source:d.source,kind:'beat',muse:m.id,place:m.place,line:null,data:{beat:'resident_stay',clip:'idle_breathe',minutes:turn.stayMinutes,evidence:d.evidence??null},tags:[]});
+          const line=hooks.residentValuesEnabled===true?o.line||null:null;
+          m.beat={id:'resident_stay',clip:'idle_breathe',startedAt:now,endsAt:now+turn.stayMinutes*60000,line};
+          emit({at:now,source:d.source,kind:'beat',muse:m.id,place:m.place,line,data:{beat:'resident_stay',clip:'idle_breathe',minutes:turn.stayMinutes,evidence:d.evidence??null},tags:[]});
         }
         continue;
       }
@@ -518,8 +526,34 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   s.spotlight.streak = priorityApplied ? (s.spotlight.streak ?? 0) + 1 : 0;
   // Spotlight Tickets are spent after this turn was served, so the next heartbeat's spotlightFor sees the same queue.
   if (!itemFault) for (const e of spendSpotlightTickets(s, now, id => paused(id) || isRuntimeControlled(s, id, now))) emit(e);
+  if(hooks.residentValuesEnabled===true)finalizeResidentSpeech(s,events,now,hooks.residentSpeechHistory??[]);
   s.tick += 1; s.version += 1; s.lastTickAt = now;
   return {state: s, events};
+}
+
+/** Only new public emissions and their new beat representation. Never called on recorded history.
+ * Call before state serialization/command result/hash, using the complete committed speech window.
+ * Spotlight and beat are two representations of one choice, not two spoken turns. */
+export function finalizeResidentSpeech(s:WorldState,events:WorldEvent[],now:number,history:readonly PublicUtterance[]):void {
+  const said:PublicUtterance[]=[...history];
+  const companions=new Map<string,{kinds:Set<string>;line:string|null}>();
+  for(const e of events){
+    if(!e.muse)continue;
+    const m=s.muses.find(m=>m.id===e.muse);
+    if(!m||!residentValues(m.id)||m.profile||m.controlMode==='personal'||isRuntimeControlled(s,m.id,now))continue;
+    const beat=m.beat,newBeat=e.kind==='beat'&&beat!==null&&beat.id===e.data?.beat&&beat.startedAt===e.at;
+    if(e.source==='rule'&&e.kind==='beat'&&typeof e.data?.beat==='string')e.line=ruleResidentUtterance(s,m.id,e.data.beat,now);
+    if(e.line==null){if(newBeat)beat!.line=null;continue;} // Non-speech events retain their original shape.
+    const candidate=e.line,companion=e.kind==='spotlight'||e.kind==='beat';
+    const key=JSON.stringify([m.id,e.at,e.source,candidate]),prior=companion?companions.get(key):undefined;
+    if(prior&&prior.kinds.size===1&&!prior.kinds.has(e.kind)){e.line=prior.line;prior.kinds.add(e.kind);}
+    else{
+      e.line=filterResidentUtterance(s,m.id,candidate,now,said).line;
+      if(companion&&!prior)companions.set(key,{kinds:new Set([e.kind]),line:e.line});
+      if(e.line!==null)said.push({muse:m.id,at:e.at,line:e.line});
+    }
+    if(newBeat)beat!.line=e.line??null;
+  }
 }
 
 /**

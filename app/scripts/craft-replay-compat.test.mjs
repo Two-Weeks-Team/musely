@@ -2,10 +2,10 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {assertCompatible} from '../src/replay/player.ts';
 import {currentVersions} from '../src/replay/versions.ts';
-const expectedEngine=process.env.MUSELY_INTEGRATED_ENGINE??'engine-11';
-assert.ok(['engine-6','engine-7','engine-8','engine-9','engine-10','engine-11'].includes(expectedEngine),'unsupported integration engine expectation');
+const expectedEngine=process.env.MUSELY_INTEGRATED_ENGINE??'engine-12';
+assert.ok(['engine-6','engine-7','engine-8','engine-9','engine-10','engine-11','engine-12'].includes(expectedEngine),'unsupported integration engine expectation');
 const v4={schemaVersion:'run-log-2',engineVersion:'engine-4',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-c7068bfa0238'};
-test('resident stays are explicitly engine-11 (or an exact requested historical composition)',()=>{assert.equal(currentVersions().engineVersion,expectedEngine);assert.doesNotThrow(()=>assertCompatible(currentVersions()));});
+test('resident speech is explicitly engine-12 (or an exact requested historical composition)',()=>{assert.equal(currentVersions().engineVersion,expectedEngine);assert.doesNotThrow(()=>assertCompatible(currentVersions()));});
 test('exact engine-4 checkpoint remains readable without rewriting its source version',()=>{const record={...v4};assert.doesNotThrow(()=>assertCompatible(record));assert.deepEqual(record,v4);});
 test('mixed historical catalog and unknown engine are refused',()=>{assert.throws(()=>assertCompatible({...v4,catalogVersion:'catalog-unknown'}),/incompatible_record/);assert.throws(()=>assertCompatible({...v4,engineVersion:'engine-999'}),/incompatible_record/);});
 test('explicit expected tuple cannot silently accept engine-4 as the current combined engine',()=>{assert.throws(()=>assertCompatible(v4,currentVersions()),/incompatible_record/);});
@@ -28,3 +28,5 @@ test('published engine-9 exact tuple is historical checkpoint-only, with mixed d
 });
 
 test('published engine-10 is an exact checkpoint predecessor and never retagged',()=>{const v10={schemaVersion:'run-log-2',engineVersion:'engine-10',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-ffb109917767'},original=JSON.stringify(v10);assert.doesNotThrow(()=>assertCompatible(v10));assert.throws(()=>assertCompatible(v10,currentVersions()));assert.throws(()=>assertCompatible({...v10,catalogVersion:'catalog-unknown'}));assert.equal(JSON.stringify(v10),original);});
+
+test('published engine-11 stays are exact read-only checkpoints under engine-12',()=>{const v11={schemaVersion:'run-log-2',engineVersion:'engine-11',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-ffb109917767'},original=JSON.stringify(v11);assert.doesNotThrow(()=>assertCompatible(v11));assert.throws(()=>assertCompatible(v11,currentVersions()));assert.throws(()=>assertCompatible({...v11,catalogVersion:'catalog-unreviewed'}));assert.equal(JSON.stringify(v11),original);});
