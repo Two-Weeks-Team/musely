@@ -12,7 +12,7 @@ The later [PR209/210 partial handoff](RELEASE_ACCEPTANCE.md#pr210-m4-partial-han
 
 ## Requirements and evidence basis
 
-The adopted direction is **Startup / Push the Frontier**. The current form uses the exact option **Startups Track**. [Official event](https://cerebralvalley.ai/e/meta-ai-developer-hackathon): project deadline **2026-11-04 21:00 America/New_York = 2026-11-05 02:00 UTC = 2026-11-05 11:00 KST**. The event can change dates; recheck before execution.
+The adopted direction is **Startup / Build for Your World**. The current form uses the exact option **Startups Track**. [Official event](https://cerebralvalley.ai/e/meta-ai-developer-hackathon): project deadline **2026-11-04 21:00 America/New_York = 2026-11-05 02:00 UTC = 2026-11-05 11:00 KST**. The event can change dates; recheck before execution.
 
 A read-only authenticated form capture at **2026-11-02T12:45:16.657614+00:00** contains **101 controls**. Its visible required labels confirm **Public GitHub Repository** and **3-Minute Demo Video**, along with team name, track, problem statement, project description, Meta-product use, why Meta models matter, build-likelihood and overall-opinion questions. Native HTML required attributes are absent; visible labels/ARIA and the actual form are the requirement basis.
 
