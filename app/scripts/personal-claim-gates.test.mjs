@@ -127,7 +127,7 @@ for(const action of ['meeting','heartbeat','proposal','invite'])test('successful
  const began=Date.now();
  if(action==='proposal'){const out=await proposal(one,two,'successful-rechecked-proposal');assert.equal(out.isError,false,JSON.stringify(out.structuredContent));}
  else if(action==='invite'){const out=await one.call('invite_campfire',{to:[id],command_id:'successful-rechecked-invite'});assert.equal(out.isError,false);assert.notEqual(a.dobj.runtime.state().inbox.invites.at(-1).answers[id]?.answer,'unavailable');}
- else if(action==='heartbeat'){assert.equal((await a.dobj.runtime.heartbeat(began)).status,'committed');assert.ok(a.dobj.worldEvents(0,2000).some(e=>e.kind==='cards_verified'&&[e.muse,e.other].includes(id)&&[e.muse,e.other].includes('02-moss')),'real heartbeat meeting uses current proof, not its old logical event time');}
+ else if(action==='heartbeat'){assert.equal((await a.dobj.runtime.heartbeat(began)).status,'committed');assert.ok(a.dobj.worldEvents(0,2000,{runId:a.dobj.runtime.runLog.current.runId}).some(e=>e.kind==='cards_verified'&&[e.muse,e.other].includes(id)&&[e.muse,e.other].includes('02-moss')),'real heartbeat meeting uses current proof, not its old logical event time');}
  else{const {MeetingCheck}=await import('../worker/core/a2a.ts'),s=a.dobj.runtime.state(),gate=await new MeetingCheck(()=>({trust:a.dobj.trust,ownerRoot:null,ownerClaimed:false,baseUrl:ORIGIN})).prepare(s,began);assert.equal(gate(s,s.muses.find(m=>m.id===one.profile.actorId),s.muses.find(m=>m.id===id),{id:'commons:cafe'},Date.now()).ok,true);}
  assert.equal(calls,2);assert.equal(a.dobj.trust.personalClaim(id).claimed,true);assert.ok(a.db.prepare('SELECT checked_at FROM personal_claims WHERE actor_id=?').get(id).checked_at>began);
 });
