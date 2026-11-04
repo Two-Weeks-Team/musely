@@ -13,6 +13,7 @@ import {PersonalWorld} from './core/personal-world.ts';
 import {DurableObject} from 'cloudflare:workers';
 import {Ledger, type ReserveRequest, type Outcome, type Tier} from './core/ledger.ts';
 import {residentBudgetFromEnv} from './core/resident-budget-policy.ts';
+import {residentPersona} from './core/actions.ts';
 import type {Env} from './env.ts';
 import type {ClaimRecord} from './core/threads.ts';
 import {WorldRuntime} from './core/world-runtime.ts';
@@ -96,10 +97,15 @@ export class WorldDO extends DurableObject<Env> {
     const actionsEnabled=actionMode==='action-v1',actionConcurrency=Number(env.RESIDENT_ACTION_MAX_CONCURRENT??'4');
     if(actionsEnabled&&(!active()||!residentBudget))throw Error('resident_actions_require_world_life_and_split_budget');
     if(actionsEnabled&&(!Number.isSafeInteger(actionConcurrency)||actionConcurrency<1||actionConcurrency>8))throw Error('invalid_RESIDENT_ACTION_MAX_CONCURRENT');
+    const reflectionMode=env.RESIDENT_REFLECTION_MODE;
+    if(reflectionMode!==undefined&&reflectionMode!==''&&reflectionMode!=='off'&&reflectionMode!=='private-v1')throw Error('unsupported_RESIDENT_REFLECTION_MODE');
+    const reflectionEnabled=reflectionMode==='private-v1';
+    if(reflectionEnabled&&(!valuesEnabled||!actionsEnabled||!active()||!residentBudget))throw Error('reflection_requires_confirmed_values_and_resident_actions');
     if(active())this.worldLife=new WorldLifeController(txSql,this.personalAuth.owners,this.trust,this.ledger,env.MODEL_API_KEY?{base:env.MODEL_BASE,key:env.MODEL_API_KEY,model:env.MODEL_ID,timeoutMs:8000}:null,muse=>this.personalWorld.ownerOf(muse),active);
     this.runtime = new WorldRuntime(txSql, {
       ...this.worldLife?.runtimeOptions(),
       ...(valuesEnabled?{residentValuesEnabled:true}:{}),
+      ...(reflectionEnabled?{residentReflection:{enabled:true,persona:residentPersona}}:{}),
       ...(socialEnabled?{socialStatus:currentSocialStatus}:{}),
       ...(actionsEnabled?{residentActions:{enabled:true,maxConcurrent:actionConcurrency},operatingResidentControl:(id:string,now:number)=>this.operatingResidentControl(id,now)}:{}),
       // Live decisions for a Muse whose delegation was revoked (and not re-issued) are discarded.
