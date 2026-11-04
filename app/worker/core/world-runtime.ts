@@ -62,6 +62,7 @@ export type SpotlightOrigin = 'visitor' | 'judge' | 'connected';
 export type SpotlightRequestResult = {ok: true; muse: string; position: number; already: boolean; eventIds: string[]} | {ok: false; reason: 'unknown_muse' | 'paused' | 'queue_full' | 'hourly_limit' | 'self_directed' | 'model_unavailable'};
 
 export type RuntimeOptions = {
+  residentValuesEnabled?:boolean;
   residentActions?:{enabled:boolean;maxConcurrent?:number};
   operatingResidentControl?:OperatingResidentControl;
   socialStatus?:(world:WorldState,actorId:string,now:number)=>SocialStatus;
@@ -608,8 +609,9 @@ export class WorldRuntime {
     if (!release) return {ok: false, reason: 'concurrency_limit'};
     try {
       const signalWorld=activity&&this.opts.socialStatus?this.state():null,signalAt=signalWorld?(this.opts.publicationNow??Date.now)():0;
-      const modelInput=signalWorld?{...input,public_availability:signalWorld.muses.map(m=>({actor_id:m.id,status:this.statusOf(signalWorld,m.id,signalAt)}))}:input;
-      const messages = activity?activityMessages(modelInput,residentContext):withResidentContext(buildMessages(action, input),residentContext);
+      const signalledInput=signalWorld?{...input,public_availability:signalWorld.muses.map(m=>({actor_id:m.id,status:this.statusOf(signalWorld,m.id,signalAt)}))}:input;
+      const modelInput=this.opts.residentValuesEnabled===true?{...signalledInput,residentValuesEnabled:true}:signalledInput;
+      const messages = activity?activityMessages(modelInput,residentContext):withResidentContext(buildMessages(action, modelInput),residentContext);
       const personalPeer=action==='encounter'&&(input.other==='00-jolly'||typeof input.other==='string'&&this.opts.residentLife?.ownershipKind(input.other)==='personal');
       const res = this.opts.ledger.reserve({id, tier: 'world', session: 'world', ip: '', action, maxCostUsd: maxCostUsd(action, messages),...(this.opts.residentBudgetEnabled?{residentKind:residentKindFor(action,personalPeer)}:{})});
       if (!res.ok) return {ok: false, reason: res.reason};

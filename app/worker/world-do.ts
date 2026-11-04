@@ -79,11 +79,15 @@ export class WorldDO extends DurableObject<Env> {
     // The runtime commits inside the storage transaction; every other store shares the same SQL handle.
     const txSql = {exec: (q: string, ...b: unknown[]) => ctx.storage.sql.exec(q, ...b), transactionSync: <T>(fn: () => T) => ctx.storage.transactionSync(fn)};
     const active=()=>worldLifeEnabled(env.WORLD_LIFE_MODE);
+    const valuesMode=env.RESIDENT_VALUES_MODE;
+    if(valuesMode!==undefined&&valuesMode!==''&&valuesMode!=='off'&&valuesMode!=='confirmed-v1')throw Error('unsupported_RESIDENT_VALUES_MODE');
+    const valuesEnabled=valuesMode==='confirmed-v1';
+    if(valuesEnabled)hooks.residentValuesEnabled=true;
     const socialMode=env.SOCIAL_STATUS_MODE;
     if(socialMode!==undefined&&socialMode!==''&&socialMode!=='off'&&socialMode!=='public-v1')throw Error('unsupported_SOCIAL_STATUS_MODE');
     const socialEnabled=socialMode==='public-v1';
     const currentSocialStatus=(state:WorldState,actorId:string,now:number)=>{
-      try{return resolveSocialStatus(state,actorId,now,this.socialStatus?.override(actorId)??'do_not_disturb');}
+      try{return resolveSocialStatus(state,actorId,now,this.socialStatus?.override(actorId)??'do_not_disturb',valuesEnabled);}
       catch{return 'do_not_disturb' as const;}
     };
     if(socialEnabled)hooks.socialStatus=currentSocialStatus;
@@ -95,6 +99,7 @@ export class WorldDO extends DurableObject<Env> {
     if(active())this.worldLife=new WorldLifeController(txSql,this.personalAuth.owners,this.trust,this.ledger,env.MODEL_API_KEY?{base:env.MODEL_BASE,key:env.MODEL_API_KEY,model:env.MODEL_ID,timeoutMs:8000}:null,muse=>this.personalWorld.ownerOf(muse),active);
     this.runtime = new WorldRuntime(txSql, {
       ...this.worldLife?.runtimeOptions(),
+      ...(valuesEnabled?{residentValuesEnabled:true}:{}),
       ...(socialEnabled?{socialStatus:currentSocialStatus}:{}),
       ...(actionsEnabled?{residentActions:{enabled:true,maxConcurrent:actionConcurrency},operatingResidentControl:(id:string,now:number)=>this.operatingResidentControl(id,now)}:{}),
       // Live decisions for a Muse whose delegation was revoked (and not re-issued) are discarded.
@@ -119,7 +124,7 @@ export class WorldDO extends DurableObject<Env> {
       commitProfile:(owner,input)=>{const profile=this.legacyProfile.patch(owner,input),commit=this.runtime.runLog.lastInput();if(!commit)throw new PersonalRegistryError('adoption_unavailable');const event=ctx.storage.sql.exec("SELECT seq,id FROM events WHERE run_id=? AND input_seq=? AND kind='legacy_profile_updated' AND muse=? ORDER BY seq DESC LIMIT 1",commit.runId,commit.seq,OWNER_SLOT).toArray()[0];if(!event)throw new PersonalRegistryError('adoption_unavailable');if(!commit.afterSnapshot&&commit.afterSnapshotError==='replay_storage_limit')this.receiptSnapshots.put({kind:'legacy_adoption',actorId:OWNER_SLOT,worldId:this.runtime.worldId,runId:commit.runId,inputSeq:commit.seq,eventId:String(event.id),afterHash:commit.afterHash},this.runtime.state());return{profile,commit:{worldId:this.runtime.worldId,runId:commit.runId,inputSeq:commit.seq,eventSeq:Number(event.seq),eventId:String(event.id),afterHash:commit.afterHash}};},
     });
     this.personalLegacy=new PersonalLegacy({storage:ctx.storage,auth:this.personalAuth,adoption:this.personalAdoption,runtime:this.runtime,trust:this.trust,connected:this.connected,legacyProfile:this.legacyProfile});
-    if(socialEnabled)this.socialStatus=new SocialStatusStore(ctx.storage,{world:()=>this.runtime.state(),authorize:(binding,muse,now)=>this.authorizeSocialStatus(binding,muse,now)});
+    if(socialEnabled)this.socialStatus=new SocialStatusStore(ctx.storage,{residentValuesEnabled:valuesEnabled,world:()=>this.runtime.state(),authorize:(binding,muse,now)=>this.authorizeSocialStatus(binding,muse,now)});
     ctx.blockConcurrencyWhile(async () => {
       this.ledger.init();
       this.personalAuth.init();
