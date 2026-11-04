@@ -6,7 +6,7 @@
 import type {ModelKeyPolicy,ModelKeyChoice} from './model-key-state.ts';
 import {ACTION_LIMITS, OUTPUT_SCHEMAS, type Action} from './actions.ts';
 
-export type ModelConfig = {base: string; key: string; fallbackKey?:string; keyPolicy?:ModelKeyPolicy; delegate?:(action:Action,messages:unknown[],format:unknown)=>Promise<ModelResult>; model: string; timeoutMs: number; fetcher?: typeof fetch};
+export type ModelConfig = {base: string; key: string; fallbackKey?:string; keyPolicy?:ModelKeyPolicy; delegate?:(action:Action,messages:unknown[],format:unknown,deadlineAt:number)=>Promise<ModelResult>; model: string; timeoutMs: number; deadlineAt?:number; fetcher?: typeof fetch};
 function paymentExhausted(status:number,body:string){
  if(status===402)return true;
  if(![401,403,429].includes(status))return false;
@@ -20,14 +20,15 @@ export type ModelResult =
   | {ok: false; kind: 'timeout' | 'rate_limited' | 'upstream' | 'bad_output' | 'network'; status?: number; latencyMs: number; requestId?: string | null; usage?: Usage};
 
 export async function callModel(cfg: ModelConfig, action: Action, messages: unknown[], responseFormat: unknown = OUTPUT_SCHEMAS[action]): Promise<ModelResult> {
-  const started = Date.now(), controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), cfg.timeoutMs);
+  const started=Date.now(),deadlineAt=Math.min(cfg.deadlineAt??Infinity,started+cfg.timeoutMs);
+  if(!Number.isFinite(deadlineAt)||deadlineAt<=started)return{ok:false,kind:'timeout',latencyMs:0};
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),deadlineAt-started);
   let choice:ModelKeyChoice|undefined;
   // The deadline holds even if a fetch implementation ignores the abort signal: the wait itself is cut off.
   const deadline = new Promise<never>((_, reject) => controller.signal.addEventListener('abort', () => reject(new Error('deadline')), {once: true}));
   deadline.catch(() => {});
   try {
-    if(cfg.delegate)return await Promise.race([cfg.delegate(action,messages,responseFormat),deadline]);
+    if(cfg.delegate){const result=await Promise.race([cfg.delegate(action,messages,responseFormat,deadlineAt),deadline]);return{...result,latencyMs:Date.now()-started};}
     choice=cfg.keyPolicy?await Promise.race([Promise.resolve(cfg.keyPolicy.select()),deadline]):undefined;
     const usingFallback=choice?.key==='fallback';
     const headers:Record<string,string>={authorization:'Bearer '+(usingFallback?cfg.fallbackKey:cfg.key),'content-type':'application/json'};

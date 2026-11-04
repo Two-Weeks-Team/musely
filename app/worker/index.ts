@@ -115,7 +115,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     }
     const res = await handleMuse(body, session, await hashIp(env.SESSION_SECRET ?? 'unset', ip), {
       ledger: {reserve: r => stub.reserve(r), settle: (id, cost, outcome) => stub.settle(id, cost, outcome)},
-      model: {base: env.MODEL_BASE, key: env.MODEL_API_KEY, delegate:(action,messages,format)=>stub.modelCall(action,messages,format), model: env.MODEL_ID, timeoutMs: MODEL_TIMEOUT_MS},
+      model: {base: env.MODEL_BASE, key: env.MODEL_API_KEY, delegate:(action,messages,format,deadlineAt)=>stub.modelCall(action,messages,format,deadlineAt), model: env.MODEL_ID, timeoutMs: MODEL_TIMEOUT_MS},
       burst: env.BURST ? async key => (await env.BURST!.limit({key})).success : undefined,
     });
     if (!isRitual || !session) return res;
@@ -275,7 +275,7 @@ async function personalOwnerSpecial(request:Request,path:string,binding:Personal
   const steps=await call('ritualTake',[String(body?.input?.challengeId??''),session.sid]);if(!steps)return json({error:'ritual_expired_or_used'},400);
   const response=await handleMuse({action:'challenge',input:{steps,frames:body?.input?.frames}},session,await hashIp(env.SESSION_SECRET??'unset',request.headers.get('cf-connecting-ip')??''),{
     ledger:{reserve:r=>call('ritualReserve',[r]) as ReturnType<typeof stub.reserve>,settle:(id,cost,outcome)=>stub.settle(id,cost,outcome)},
-    model:{base:env.MODEL_BASE,key:env.MODEL_API_KEY,delegate:(action,messages,format)=>stub.modelCall(action,messages,format),model:env.MODEL_ID,timeoutMs:MODEL_TIMEOUT_MS},burst:env.BURST?async key=>(await env.BURST!.limit({key})).success:undefined,
+    model:{base:env.MODEL_BASE,key:env.MODEL_API_KEY,delegate:(action,messages,format,deadlineAt)=>stub.modelCall(action,messages,format,deadlineAt),model:env.MODEL_ID,timeoutMs:MODEL_TIMEOUT_MS},burst:env.BURST?async key=>(await env.BURST!.limit({key})).success:undefined,
   });
   const out=await response.clone().json().catch(()=>null) as any;
   const results=Array.isArray(out?.output?.results)?out.output.results.map((r:any)=>({step:String(r.step).slice(0,40),passed:r.passed===true,confidence:Number(r.confidence)||0})):[];

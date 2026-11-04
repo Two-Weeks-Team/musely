@@ -327,7 +327,7 @@ export class WorldDO extends DurableObject<Env> {
   reserve(r: ReserveRequest) { return this.ledger.reserve(r); }
   settle(id: string, costUsd: number, outcome: Outcome) { return this.ledger.settle(id, costUsd, outcome); }
   status() { this.ledger.prune(); return {...this.ledger.status(),...this.modelKeys.status(),residentExecution:this.runtime.modelExecutionStatus()}; }
-  modelCall(action:Action,messages:unknown[],format:unknown){return callModel({base:this.env.MODEL_BASE,key:this.env.MODEL_API_KEY??'',fallbackKey:this.env.MODEL_API_KEY_FALLBACK,keyPolicy:this.modelKeys,model:this.env.MODEL_ID,timeoutMs:8000},action,messages,format);}
+  modelCall(action:Action,messages:unknown[],format:unknown,deadlineAt=Date.now()+8000){return callModel({base:this.env.MODEL_BASE,key:this.env.MODEL_API_KEY??'',fallbackKey:this.env.MODEL_API_KEY_FALLBACK,keyPolicy:this.modelKeys,model:this.env.MODEL_ID,timeoutMs:8000,deadlineAt},action,messages,format);}
   quota(session: string, tier: Tier) { return this.ledger.quotaFor(session, tier); }
   async alarm() {
     try {
