@@ -1,3 +1,4 @@
+import {apiFetcher} from './api-fetch.ts';
 import {uiText} from './i18n.ts';
 // Welcome ritual UI (direction v2, 6.4). The server picks three actions; the browser shows a mirrored preview
 // (like a mirror) but sends raw, non-mirrored frames, and says so in the judging prompt. Frames go to the
@@ -31,7 +32,7 @@ const poses: Record<string, string> = {
 
 /** Recorded result card (default) plus the "try it yourself" flow. Returns the container to insert. */
 export function ritualCard(onDone: () => void, options: {fetcher?: typeof fetch; active?: () => boolean; readOnly?: boolean} = {}) {
-  const fetcher = options.fetcher ?? visitorFetch;
+  const fetcher = apiFetcher(options.fetcher ?? visitorFetch);
   const box = el('div', 'id-card ritual');
   if (!options.readOnly) box.append(el('span', 'eyebrow', uiText('본인 확인 · Welcome')), el('h4', '', uiText('세 동작으로 시작해요 · Start with three moves')));
   const history = el('details', 'ritual-recorded'); history.append(el('summary', '', uiText('진행 예시 보기 · See an example')));

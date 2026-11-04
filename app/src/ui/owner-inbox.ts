@@ -1,3 +1,4 @@
+import {apiFetch,apiRequestInit} from './api-fetch.ts';
 import {uiText,catalogText,inventoryText,activityStatus} from './i18n.ts';
 import {resolveMuse} from './personal-profile.ts';
 // Owner inbox (contract C06, direction v2 12.3; I-07). Separate from the Muse's agent inbox (heartbeat_check): it shows
@@ -54,7 +55,7 @@ export function approvalBody(t: Pick<OwnerTask, 'task_id' | 'revision' | 'conten
 export type FetchLike = (url: string, init: {method: string; cache?: 'no-store'; headers?: Record<string, string>; body?: string}) => Promise<{ok: boolean; status: number; json(): Promise<unknown>}>;
 async function call(f: FetchLike, method: string, path: string, body?: unknown): Promise<{ok: boolean; status: number; data: any}> {
   try {
-    const r = await f(path, {method, cache: 'no-store', headers: body === undefined ? {} : {'content-type': 'application/json'}, body: body === undefined ? undefined : JSON.stringify(body)});
+    const r = await f(path, {...apiRequestInit(),method,cache:'no-store',headers:body===undefined?{}:{'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
     return {ok: r.ok, status: r.status, data: await r.json().catch(() => null)};
   } catch {
     return {ok: false, status: 0, data: {error: 'network'}};
@@ -99,7 +100,7 @@ const KIND_LABEL: Record<Notification['kind'], string> = {meetup_candidate: uiTe
 const COMMONS = PLACES.filter(p => p.zone === 'commons');
 
 /** The mounted card can refresh without remounting its private editor or unchanged approval controls. */
-export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fetch(u, i), active: () => boolean = () => true, name: (id:string)=>string = defaultName) {
+export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => apiFetch(u, i), active: () => boolean = () => true, name: (id:string)=>string = defaultName) {
   const box = el('div', 'id-card owner-inbox');
   const result = el('p', 'muted'); result.setAttribute('role', 'status');
   const store = (() => { try { return window.localStorage; } catch { return null; } })();

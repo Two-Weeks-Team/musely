@@ -1,3 +1,4 @@
+import {apiFetch,apiFetcher} from './api-fetch.ts';
 import {uiText} from './i18n.ts';
 // Owner control UI (direction v2, 7 "철회"; contract C06; I-02). Revoking a Muse's delegation and delegating again are
 // owner actions: ordinary UI uses only the current Threads personal session bound to ComBba.
@@ -24,7 +25,7 @@ const REASONS: Record<string, string> = {
 };
 async function call(f: typeof fetch, method: string, path: string, body?: unknown): Promise<{ok: boolean; status: number; data: any}> {
   try {
-    const r = await f(path, {method, cache: 'no-store', headers: body === undefined ? {} : {'content-type': 'application/json'}, body: body === undefined ? undefined : JSON.stringify(body)});
+    const r = await apiFetcher(f)(path, {method, cache: 'no-store', headers: body === undefined ? {} : {'content-type': 'application/json'}, body: body === undefined ? undefined : JSON.stringify(body)});
     return {ok: r.ok, status: r.status, data: await r.json().catch(() => null)};
   } catch {
     return {ok: false, status: 0, data: {error: 'network'}};

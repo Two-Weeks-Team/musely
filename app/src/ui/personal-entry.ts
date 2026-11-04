@@ -1,3 +1,4 @@
+import {apiFetcher} from './api-fetch.ts';
 import {uiText,catalogText,inventoryText,activityStatus} from './i18n.ts';
 // Profile preparation only: never proves world entry and is not mounted by the live door yet.
 import {MUSE_VARIANTS} from '../character-kit/catalog.ts';
@@ -37,7 +38,7 @@ function authorization(v: unknown): string {
 
 /** Explicit mount performs me/profile reads only. All writes require the component's user controls. */
 export function mountPersonalEntry(host: HTMLElement, options: PersonalEntryOptions = {}) {
- const fetcher = options.fetcher ?? fetch, navigate = options.navigate ?? (url => window.location.assign(url));
+ const fetcher = apiFetcher(options.fetcher), navigate = options.navigate ?? (url => window.location.assign(url));
  const now = options.now ?? Date.now, operationId = options.newOperationId ?? (() => crypto.randomUUID());
  const root = document.createElement('section'); root.className = 'personal-entry'; host.append(root);
  let phase: PersonalEntryPhase = 'pending', authenticated: boolean | null = null, profile: ActorProfile | null = null, expiresAt = 0;

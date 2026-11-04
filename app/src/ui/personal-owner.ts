@@ -1,3 +1,4 @@
+import {apiFetcher} from './api-fetch.ts';
 // UI transport only. The server proves adoption/current personal authority; a public name never grants ownership.
 export const PERSONAL_OWNER_BASE='/api/personal/owner';
 type Options={fetcher?:typeof fetch;now?:()=>number;setTimer?:(fn:()=>void,ms:number)=>unknown;clearTimer?:(timer:unknown)=>void};
@@ -14,7 +15,7 @@ function ownerPath(path:string):string|null{
 const denied=()=>new Response(JSON.stringify({error:'owner_session_required'}),{status:401,headers:{'content-type':'application/json'}});
 /** Separate from the emergency owner cookie. Invalidation fences both HTTP and delayed JSON; it never retries or falls back. */
 export function createPersonalOwnerAccess(options:Options={}){
- const now=options.now??Date.now,fetcher=options.fetcher??((...args)=>fetch(...args)),setTimer=options.setTimer??((fn,ms)=>setTimeout(fn,ms)),clearTimer=options.clearTimer??(timer=>clearTimeout(timer as ReturnType<typeof setTimeout>));
+ const now=options.now??Date.now,fetcher=apiFetcher(options.fetcher),setTimer=options.setTimer??((fn,ms)=>setTimeout(fn,ms)),clearTimer=options.clearTimer??(timer=>clearTimeout(timer as ReturnType<typeof setTimeout>));
  let blocked=false,generation=0,disposed=false,expiry=0,timer:unknown,loggingOut=0;
  const listeners=new Set<(reason:string)=>void>();
  const notify=(reason:string)=>{for(const listener of listeners)try{listener(reason);}catch{}};

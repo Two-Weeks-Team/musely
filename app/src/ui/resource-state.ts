@@ -1,3 +1,4 @@
+import {apiFetch,apiFetcher} from './api-fetch.ts';
 import {uiText} from './i18n.ts';
 // Request health for the live world surface (P-06, criterion A; contract C02). A request does not just "succeed or give
 // null": HTTP errors, a broken body and a network failure are different, an empty list is a real answer, and a failure after
@@ -11,9 +12,9 @@ export type Health = {lastOkAt: number | null; lastErrorAt: number | null; error
 /** loading: nothing answered yet · ready: the last request worked · stale: the last request failed but older data is on screen · error: it failed and there is nothing to show. */
 export type ResState = 'loading' | 'ready' | 'stale' | 'error';
 
-export async function fetchJson<T>(path: string, init?: RequestInit, fetcher: typeof fetch = fetch): Promise<Fetched<T>> {
+export async function fetchJson<T>(path: string, init?: RequestInit, fetcher: typeof fetch = apiFetch): Promise<Fetched<T>> {
   let r: Response;
-  try { r = await fetcher(path, {cache: 'no-store', ...init}); } catch (e) { return {ok: false, error: (e as Error)?.message === BLOCKED ? BLOCKED : uiText('Network error'), at: Date.now()}; }
+  try { r = await apiFetcher(fetcher)(path, {cache: 'no-store', ...init}); } catch (e) { return {ok: false, error: (e as Error)?.message === BLOCKED ? BLOCKED : uiText('Network error'), at: Date.now()}; }
   if (!r.ok) return {ok: false, error: uiText`HTTP ${r.status}`, at: Date.now()};
   try { return {ok: true, data: (await r.json()) as T, at: Date.now()}; } catch { return {ok: false, error: uiText('Invalid response'), at: Date.now()}; }
 }

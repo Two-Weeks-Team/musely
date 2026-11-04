@@ -1,3 +1,4 @@
+import {apiFetcher} from './api-fetch.ts';
 import {uiText,catalogText} from './i18n.ts';
 // Owner-side setup only. The browser never calls MCP or fabricates a world admission.
 import {MUSE_VARIANTS} from '../character-kit/catalog.ts';
@@ -50,7 +51,7 @@ const setupMessage=(text:string)=>{
  return uiText(text);
 };
 export function mountPersonalConnection(host:HTMLElement,options:Options={}){
- const fetcher=options.fetcher??fetch,now=options.now??Date.now,delay=options.setTimer??((f,ms)=>globalThis.setTimeout(f,ms)),clear=options.clearTimer??(n=>globalThis.clearTimeout(n)),newId=options.newOperationId??(()=>crypto.randomUUID());
+ const fetcher=apiFetcher(options.fetcher),now=options.now??Date.now,delay=options.setTimer??((f,ms)=>globalThis.setTimeout(f,ms)),clear=options.clearTimer??(n=>globalThis.clearTimeout(n)),newId=options.newOperationId??(()=>crypto.randomUUID());
  const root=document.createElement('section');root.className='personal-connection';host.append(root);let context:ProfileState={authenticated:null,profile:null,busy:false},data:PersonalStatus|null=null,attempt:EntryAttempt|null=null,location:LocationAnswer|null=null,raw='',rawKeyId='',rawInput:HTMLInputElement|null=null;
  const scopeInputs=new Map<string,HTMLInputElement>(),selectedScopes=new Set<string>();
  let boundActor:string|null=null,copiedKey=false;
