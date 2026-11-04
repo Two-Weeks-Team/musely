@@ -4,6 +4,7 @@ import {mountPersonalEntry,type PersonalEntryOptions} from './personal-entry.ts'
 import {mountPersonalConnection,type EntryProjection} from './personal-connection.ts';
 import {mountPersonalClaim} from './personal-claim.ts';
 import {mountPersonalAdoption} from './personal-adoption.ts';
+import {mountSocialStatus} from './social-status.ts';
 import {HARNESSES, SCOPES, SCOPE_LABELS, type Harness, type ScopeLevel} from '../engine/harness';
 
 export type EntryPath = 'watch' | 'trial' | 'connect';
@@ -73,7 +74,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   document.body.append(panel);
   panel.querySelector('.close')!.setAttribute('aria-label', 'Close');
 
-  let personal: {profile:ReturnType<typeof mountPersonalEntry>; connection:ReturnType<typeof mountPersonalConnection>; claim:ReturnType<typeof mountPersonalClaim>;adoption:ReturnType<typeof mountPersonalAdoption>;apply:()=>void} | null = null;
+  let personal: {profile:ReturnType<typeof mountPersonalEntry>; connection:ReturnType<typeof mountPersonalConnection>; claim:ReturnType<typeof mountPersonalClaim>;adoption:ReturnType<typeof mountPersonalAdoption>;social:ReturnType<typeof mountSocialStatus>;apply:()=>void} | null = null;
   let personalEntry:EntryProjection|null=null,disposed=false;
   let timer = 0;
   const stopTimer = () => { if (timer) clearInterval(timer); timer = 0; };
@@ -123,32 +124,40 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
     const copy=button('공개 연결 안내 복사 / Copy public setup overview','secondary',()=>{},'entry-copy-setup');copy.onclick=async()=>{copy.disabled=true;try{await (opts.personal?.clipboard??navigator.clipboard).writeText(publicSetup);copyStatus.textContent='Public setup copied. No key was included and nothing was connected.';}catch{copyStatus.textContent='Could not copy. Select the public instructions above. Nothing was connected.';}finally{copy.disabled=false;}};
     const help=el('details','entry-advanced');help.append(el('summary','','연결 도움말 / Connection help'),text,copy,copyStatus);
     body.append(help,button('계속 둘러보기 / Keep watching','link-button',()=>{state.path='watch';close();opts.onWatch();},'entry-watch'));
-    let connectionBusy=false,claimBusy=false,adoptionBusy=false,applying=false;
+    const socialDetails=el('details','entry-social-status'),socialHost=el('div');socialDetails.id='entry-social-status';socialDetails.append(el('summary','','내 Muse 상태 / My Muse status'),socialHost);socialDetails.hidden=true;body.append(socialDetails);
+    let connectionBusy=false,claimBusy=false,adoptionBusy=false,socialBusy=false,socialExpanded=false,applying=false;
+    let social:ReturnType<typeof mountSocialStatus>|null=null;
     let connection:ReturnType<typeof mountPersonalConnection>|null=null,claim:ReturnType<typeof mountPersonalClaim>|null=null,adoption:ReturnType<typeof mountPersonalAdoption>|null=null;
     let latest:ReturnType<ReturnType<typeof mountPersonalEntry>['state']>|null=null,connectionVisible:boolean|null=null,claimVisible:boolean|null=null;
     const blocked=()=>!!adoption?.state().blocksSetup||latest?.profile?.actorId==='00-jolly';
     function applyFlow(){
       if(applying||!latest)return;applying=true;
       try{
+        const member=!!latest.profile&&(!!adoption?.state().data?.adopted||!!personalEntry?.receipt&&personalEntry.actor?.id===latest.profile.actorId),available=state.open&&latest.authenticated===true&&member;
+        if(!available){socialExpanded=false;socialDetails.open=false;}socialDetails.hidden=!available;
         const block=blocked(),form=profileHost.querySelector('form');
         const hide=(node:HTMLElement,value:boolean)=>{node.hidden=value;if(node.style)node.style.display=value?'none':'';};
-        if(form)hide(form,block);hide(help,block);hide(claimHost,block);hide(connectionHost,block||!!claim?.isExpanded());
-        const showClaim=state.open&&!block,showConnection=state.open&&!block&&!claim?.isExpanded();
+        if(form)hide(form,block||socialExpanded);hide(help,block||socialExpanded);hide(adoptionHost,socialExpanded);hide(claimHost,block||socialExpanded);hide(connectionHost,block||socialExpanded||!!claim?.isExpanded());
+        const showClaim=state.open&&!block&&!socialExpanded,showConnection=state.open&&!block&&!socialExpanded&&!claim?.isExpanded();
         if(claim&&claimVisible!==showClaim){claimVisible=showClaim;claim.setVisible(showClaim);}
         if(connection&&connectionVisible!==showConnection){connectionVisible=showConnection;connection.setVisible(showConnection);}
-        const current=block?{authenticated:null,profile:null,busy:true}:latest;
+        const current=block||socialExpanded?{authenticated:null,profile:null,busy:true}:latest;
         void connection?.syncProfile(current);void claim?.syncProfile(current);
+        void social?.syncOwner({authenticated:latest.authenticated,muse:latest.profile?.actorId??null,busy:latest.busy||connectionBusy||claimBusy||adoptionBusy});
+        social?.setVisible(available&&socialExpanded);
       }finally{applying=false;}
     }
     const p=mountPersonalEntry(profileHost,{...opts.personal,connectionManaged:true,onState:s=>{latest=s;void adoption?.syncProfile(s);applyFlow();}});
     connection=mountPersonalConnection(connectionHost,{fetcher:opts.personal?.fetcher,newOperationId:opts.personal?.newOperationId,now:opts.personal?.now,clipboard:opts.personal?.clipboard,getWorldId:opts.getWorldId,
-      onWatch:()=>{state.path='watch';close();opts.onWatch();},onWriteBusy:value=>{connectionBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy);claim?.setExternalBusy(value||adoptionBusy);adoption?.setExternalBusy(value||claimBusy);},onSessionLost:()=>p.markSessionLost(),onEntry:entry=>{if(disposed||blocked())return;personalEntry=structuredClone(entry);updateChip();try{opts.onPersonalEntry?.(structuredClone(entry));}catch{}}});
+      onWatch:()=>{state.path='watch';close();opts.onWatch();},onWriteBusy:value=>{connectionBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy);claim?.setExternalBusy(value||adoptionBusy);adoption?.setExternalBusy(value||claimBusy);},onSessionLost:()=>p.markSessionLost(),onEntry:entry=>{if(disposed||blocked()||socialExpanded)return;personalEntry=structuredClone(entry);updateChip();applyFlow();try{opts.onPersonalEntry?.(structuredClone(entry));}catch{}}});
     claim=mountPersonalClaim(claimHost,{fetcher:opts.personal?.fetcher,navigate:opts.personal?.navigate,clipboard:opts.personal?.clipboard,
-      onExpanded:()=>applyFlow(),onWriteBusy:value=>{claimBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy);adoption?.setExternalBusy(value||connectionBusy);},onSessionLost:()=>p.markSessionLost()});
+      onExpanded:()=>applyFlow(),onWriteBusy:value=>{claimBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy);adoption?.setExternalBusy(value||connectionBusy);},onSessionLost:()=>p.markSessionLost()});
     adoption=mountPersonalAdoption(adoptionHost,{fetcher:opts.personal?.fetcher,newOperationId:opts.personal?.newOperationId,getWorldId:opts.getWorldId,
       onState:a=>{if(disposed)return;if(a.blocksSetup){personalEntry=a.data?.adopted?a.data.entry:null;updateChip();}else if(latest?.authenticated===false){personalEntry=null;updateChip();}applyFlow();},
-      onWriteBusy:value=>{adoptionBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy);claim?.setExternalBusy(value||connectionBusy);},onSessionLost:()=>p.markSessionLost(),onAdopted:()=>p.refresh(),onWatch:()=>{state.path='watch';close();opts.onWatch();}});
-    personal={profile:p,connection,claim,adoption,apply:applyFlow};latest=p.state();void adoption.syncProfile(latest);applyFlow();
+      onWriteBusy:value=>{adoptionBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy);claim?.setExternalBusy(value||connectionBusy);},onSessionLost:()=>p.markSessionLost(),onAdopted:()=>p.refresh(),onWatch:()=>{state.path='watch';close();opts.onWatch();}});
+    social=mountSocialStatus(socialHost,{fetcher:opts.personal?.fetcher,endpoint:()=>'/api/personal/social-status',onSessionLost:()=>p.markSessionLost(),onWriteBusy:value=>{socialBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy);claim?.setExternalBusy(value||connectionBusy||adoptionBusy);adoption?.setExternalBusy(value||connectionBusy||claimBusy);}});social.setVisible(false);
+    socialDetails.addEventListener('toggle',()=>{socialExpanded=socialDetails.open;applyFlow();});
+    personal={profile:p,connection,claim,adoption,social,apply:applyFlow};latest=p.state();void adoption.syncProfile(latest);applyFlow();
   }
 
   function chooseView() {
@@ -283,5 +292,5 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   else if (entry === 'choose') open('choose');
   else if (entry === 'watch') { state.path = 'watch'; updateChip(); opts.onWatch(); }
 
-  return {state,open,close,dispose(){if(disposed)return;disposed=true;stopTimer();personal?.adoption.dispose();personal?.claim.dispose();personal?.connection.dispose();personal?.profile.dispose();document.removeEventListener('keydown',onKey);panel.removeEventListener('toggle',onToggle);enter?.removeEventListener('click',onEnter);chip.remove();panel.remove();}};
+  return {state,open,close,dispose(){if(disposed)return;disposed=true;stopTimer();personal?.social.dispose();personal?.adoption.dispose();personal?.claim.dispose();personal?.connection.dispose();personal?.profile.dispose();document.removeEventListener('keydown',onKey);panel.removeEventListener('toggle',onToggle);enter?.removeEventListener('click',onEnter);chip.remove();panel.remove();}};
 }

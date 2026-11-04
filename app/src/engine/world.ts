@@ -10,6 +10,7 @@ import {actorLabel, knownActorNamed} from './actor-display.ts';
 import {HARNESSES, harnessById, hasActorHarness, harnessRoleId,isResidentInstance} from './harness.ts';
 import {ITEM_BY_ID, itemUpkeep, grantItem, putTimed, isExpired, historyFault, spendSpotlightTickets} from './items.ts';
 import {rngFor, weightedPick, daySeed} from './rng.ts';
+import {pairInteractionPolicy,personalApproachProbability,type SocialStatus} from './social-status.ts';
 import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
@@ -82,6 +83,8 @@ export type ResidentTurn = {decision:Decision;stayMinutes:number};
 export type ResidentReaction = {reply:EncounterReply;triggerId:string;kind:'reply'|'wave'};
 export type TradeProposalGuard=(s:WorldState,actor:string,peer:string,give:string,want:string,at:number)=>boolean;
 export type Hooks = {
+  /** Optional current server preference, never an authority proof or replay-state field. */
+  socialStatus?: (world:WorldState,actorId:string,now:number)=>SocialStatus;
   /** Trusted server policy for each autonomous offer; unrelated greetings remain allowed. */
   canProposeTrade?:TradeProposalGuard;
   /** Item discovery etc. when a Muse arrives somewhere (task 4 rules). */
@@ -214,11 +217,22 @@ function eligibleBeats(m: MuseState, place: Place, hour: number) {
 }
 function beatWeight(b: Beat, museId: string) { return (b.weight ?? 1) * (b.roles?.includes(harnessRoleId(museId)) ? 3 : 1); }
 
-function chooseDestination(s: WorldState, m: MuseState, rand: () => number, hour: number): Place | null {
+function contactPolicy(s:WorldState,a:string,b:string,now:number,hooks:Hooks):'approach'|'wave'|'none' {
+ if(!hooks.socialStatus)return 'approach';
+ try{return pairInteractionPolicy(hooks.socialStatus(s,a,now),hooks.socialStatus(s,b,now));}catch{return 'none';}
+}
+function chooseDestination(s: WorldState, m: MuseState, rand: () => number, hour: number,hooks:Hooks={},now=0): Place | null {
   const here = placeById(m.place), liked = new Set<string>(participantLikes(s,m.id));
   const area = s.owner?.muse === m.id ? ownerArea(s.owner) : null;
   const options = PLACES.filter(p => p.id !== here.id && (area ? areaContains(area, p) : p.zone !== 'bay') && eligibleBeats(m, p, hour).length > 0);
-  return weightedPick(rand, options, p => (liked.has(p.kind) ? 4 : 1) * (p.zone === 'commons' ? 2.5 : 1) / (1 + distanceM(here, p) / 300));
+  // Public-fact weighting only: never creates an intent, permission, route or Personal decision.
+  const socialWeight=(place:string)=>{
+    if(!hooks.socialStatus||isRuntimeControlled(s,m.id,now)||m.profile||m.id==='00-jolly'||m.controlMode==='personal')return 1;
+    try{if(hooks.socialStatus(s,m.id,now)!=='welcoming')return 1;
+      return 1+4*s.muses.filter(p=>p.place===place&&!p.travel&&!s.paused?.[p.id]).reduce((sum,p)=>sum+personalApproachProbability(s,m.id,p.id,now,hooks.socialStatus!(s,p.id,now)),0);
+    }catch{return 1;}
+  };
+  return weightedPick(rand, options, p => (liked.has(p.kind) ? 4 : 1) * (p.zone === 'commons' ? 2.5 : 1) / (1 + distanceM(here, p) / 300) * socialWeight(p.id));
 }
 
 export function tripMs(from: Place, to: Place, speed: Speed) {
@@ -338,6 +352,10 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       }
       continue;
     }
+    // A stale social intent is not permission to chase or contact a peer after their status changes.
+    if(hooks.socialStatus&&m.intent&&contactPolicy(s,m.id,m.intent.target,now,hooks)!=='approach'){
+      m.intent=null;continue; // No replacement trip in this tick; pending agreements are unchanged.
+    }
     // Life03 choices use the existing movement/intent validation after real arrival/beat completion.
     // A reaction is independent; it never restarts this activity or changes its ETA.
     if(managed(m)){
@@ -388,7 +406,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     const goTravel = !m.intent && (stay.length === 0 || rand() < (place.zone === 'commons' ? .22 : .45));
     if (goTravel) {
       // Choose among the area's places first; never discard an already-picked place at a cell edge.
-      const dest = chooseDestination(s, m, rand, clock.hour);
+      const dest = chooseDestination(s, m, rand, clock.hour, hooks, now);
       if (dest) { startTrip(s, m, place, dest, now, managed(m)?'rule':'scripted', emit, hooks); continue; }
     }
     const beat = weightedPick(rand, stay, b => beatWeight(b, m.id));
@@ -412,6 +430,20 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       const other = initiator === a ? b : a;
       const gate = hooks.canMeet?.(s, initiator, other, placeById(placeId), now);
       if (gate && !gate.ok) { if (gate.event) emit(gate.event); continue; }
+      // Credential/claim/paused/distance checks above always precede social contact policy.
+      if(hooks.socialStatus){
+        const policy=contactPolicy(s,a.id,b.id,now,hooks);
+        if(policy==='none')continue;
+        if(policy==='wave'){
+          const waver=[initiator,other].find(m=>!isRuntimeControlled(s,m.id,now)&&m.id!=='00-jolly'&&!m.profile&&m.controlMode!=='personal'&&hasActorHarness(m.id));
+          if(!waver)continue;
+          a.lastMet[b.id]=b.lastMet[a.id]=now;
+          if(gate?.event)emit(gate.event);
+          emit({at:now,source:'rule',kind:'resident_wave',muse:waver.id,other:waver===a?b.id:a.id,place:placeId,line:null,data:{clip:'wave',actorOrigin:'system'},tags:[]});
+          if(waver.intent?.target===(waver===a?b.id:a.id))waver.intent=null;
+          continue;
+        }
+      }
       a.lastMet[b.id] = b.lastMet[a.id] = now;
       const meeting = encounterId(s, a.id, b.id);
       // C03/C09: a start is by intent only when the initiator was heading for this very Muse (not a coin toss, not an
@@ -436,6 +468,11 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     const r=reaction.reply,m=s.muses.find(m=>m.id===r.muse),to=s.muses.find(m=>m.id===r.other),key=r.muse+'|'+reaction.triggerId;
     if(!m||!to||!managed(m)||paused(m.id)||paused(to.id)||isRuntimeControlled(s,m.id,now)||handled.has(key)||socialDistance(s,m.id,to.id,now)>100)continue;
     const gate=hooks.canMeet?.(s,m,to,placeById(m.place),now);if(gate&&!gate.ok)continue;
+    if(hooks.socialStatus){
+      const policy=contactPolicy(s,m.id,to.id,now,hooks);
+      if(policy==='none'||policy==='wave'&&reaction.kind!=='wave')continue;
+      if(reaction.kind==='wave'&&events.some(e=>e.kind==='resident_wave'&&((e.muse===m.id&&e.other===to.id)||(e.muse===to.id&&e.other===m.id))))continue;
+    }
     handled.add(key);
     if(reaction.triggerId.startsWith('passby:')){
       m.lastMet[to.id]=to.lastMet[m.id]=now;
@@ -564,7 +601,7 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   const reject = (reason: string) => emit({...base, kind: 'decision_rejected', line: null, data: {...base.data, reason}, tags: []});
   if (d.freedom !== freedom) return reject('freedom mismatch');
   // What the scenario alone would have done this turn, to mark off-script choices (8.2).
-  const scripted = chooseDestination(s, m, rngFor(s.seed, s.tick, m.id, 'counterfactual'), localClock(now).hour);
+  const scripted = chooseDestination(s, m, rngFor(s.seed, s.tick, m.id, 'counterfactual'), localClock(now).hour, hooks, now);
   const here = placeById(m.place);
   if (freedom === 'where' || freedom === 'plan') {
     const dest = findPlaceByName(o.target_place);
@@ -579,6 +616,7 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   if (freedom === 'who') {
     const other = findMuse(s, o.target_agent);
     if (!other || other.id === m.id) return reject('unknown Muse: ' + o.target_agent.slice(0, 40));
+    if(hooks.socialStatus&&contactPolicy(s,m.id,other.id,now,hooks)!=='approach')return reject('social contact unavailable');
     m.intent = {kind: 'greet', target: other.id};
     emit({...base, kind: 'spotlight', place: here.id, other: other.id, line: o.line || null, data: {...base.data, live: true, offScript: true}, tags: ['off_script']});
     const there = placeById(other.travel?.to ?? other.place);
@@ -592,6 +630,7 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   const allowed=hooks.canProposeTrade?.(s,m.id,other.id,o.offer_item,o.want_item,now);
   if((m.id.startsWith('pm_')||other.id.startsWith('pm_'))&&allowed!==true)return reject('counterparty_pending_claim');
   if(allowed===false)return reject('trade proposal policy');
+  if(hooks.socialStatus&&contactPolicy(s,m.id,other.id,now,hooks)!=='approach')return reject('social contact unavailable');
   m.intent = {kind: 'trade', target: other.id, give: o.offer_item || null, want: o.want_item || null};
   if (o.want_item && ITEM_BY_ID.has(o.want_item) && !m.wants.items.includes(o.want_item)) updateWants(m, {items: [o.want_item, ...m.wants.items].slice(0, 4)}, d.source === 'live' ? 'spark' : m.wants.source, now);
   const there = placeById(other.travel?.to ?? other.place);

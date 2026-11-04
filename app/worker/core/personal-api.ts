@@ -3,6 +3,7 @@ import {originAllowed,OWNER_COOKIE} from './owner-session.ts';
 import type {DecisionOutcome} from './tasks.ts';
 import type {PersonalBinding} from './personal-registration.ts';
 import type {ActorProfile} from '../../src/identity/participant.ts';
+import {isSocialMode} from '../../src/engine/social-status.ts';
 import {personalAuthorizeUrl, personalThreadsIdentity, type PersonalThreadsConfig} from './threads.ts';
 import {
   PERSONAL_CLAIM_FLOW_COOKIE,PERSONAL_CLAIM_STATE_PREFIX,claimFlowCookie,clearClaimFlowCookie,
@@ -13,6 +14,8 @@ import {
 
 type MaybePromise<T> = T | Promise<T>;
 export interface PersonalAuthStub {
+  personalSocialStatusGet?(binding:PersonalBinding):MaybePromise<unknown>;
+  personalSocialStatusSet?(binding:PersonalBinding,input:unknown):MaybePromise<unknown>;
   personalLegacyView(binding:PersonalBinding,ownerCookie:string|null):MaybePromise<unknown>;
   personalLegacyAdopt(binding:PersonalBinding,ownerCookie:string|null,input:unknown):MaybePromise<unknown>;
   personalLegacyInbox(binding:PersonalBinding):MaybePromise<unknown>;
@@ -72,12 +75,12 @@ async function emptyWriteBody(request: Request): Promise<boolean> {
     return false;
   } catch { return false; } finally { if (timer !== undefined) clearTimeout(timer); void reader.cancel().catch(() => {}); }
 }
-const bootstrapMethods = (path:string):string[]|null => path===BASE+'/claim'?['GET','DELETE']:path===BASE+'/claim/start'?['POST']:path===BASE+'/location'?['GET','POST']:path===BASE+'/status'?['GET']:path===BASE+'/authority'?['GET','POST','DELETE']:path===BASE+'/keys'?['GET','POST']:/^\/api\/personal\/keys\/pak_[a-f0-9-]{36}$/.test(path)?['DELETE']:path===BASE+'/entry-attempts'?['POST']:/^\/api\/personal\/entry-attempts\/pea_[a-f0-9-]{36}$/.test(path)?['GET','DELETE']:null;
-async function bootstrapJSON(request:Request):Promise<unknown>{
+const bootstrapMethods = (path:string):string[]|null => path===BASE+'/social-status'?['GET','PATCH']:path===BASE+'/claim'?['GET','DELETE']:path===BASE+'/claim/start'?['POST']:path===BASE+'/location'?['GET','POST']:path===BASE+'/status'?['GET']:path===BASE+'/authority'?['GET','POST','DELETE']:path===BASE+'/keys'?['GET','POST']:/^\/api\/personal\/keys\/pak_[a-f0-9-]{36}$/.test(path)?['DELETE']:path===BASE+'/entry-attempts'?['POST']:/^\/api\/personal\/entry-attempts\/pea_[a-f0-9-]{36}$/.test(path)?['GET','DELETE']:null;
+async function bootstrapJSON(request:Request,limit=4096):Promise<unknown>{
  if(!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')||!request.body)throw Error('invalid_entry');
  const reader=request.body.getReader(),parts:number[]=[];let timer:ReturnType<typeof setTimeout>|undefined;
  const timeout=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('invalid_entry')),1000);});
- try{let reads=0;for(;;){if(++reads>4097)throw Error('invalid_entry');const p=await Promise.race([reader.read(),timeout]);if(p.done)break;if(parts.length+p.value.length>4096)throw Error('invalid_entry');for(const b of p.value)parts.push(b);}return JSON.parse(new TextDecoder('utf-8',{fatal:true,ignoreBOM:false}).decode(new Uint8Array(parts)));}finally{if(timer!==undefined)clearTimeout(timer);void reader.cancel().catch(()=>{});}
+ try{let reads=0;for(;;){if(++reads>limit+1)throw Error('invalid_entry');const p=await Promise.race([reader.read(),timeout]);if(p.done)break;if(parts.length+p.value.length>limit)throw Error('invalid_entry');for(const b of p.value)parts.push(b);}return JSON.parse(new TextDecoder('utf-8',{fatal:true,ignoreBOM:false}).decode(new Uint8Array(parts)));}finally{if(timer!==undefined)clearTimeout(timer);void reader.cancel().catch(()=>{});}
 }
 export async function personalRoutes(request: Request, url: URL, cfg: PersonalConfig, stub: PersonalAuthStub): Promise<Response> {
   try {
@@ -89,7 +92,7 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
     if (request.method !== method) { const r = failure('method_not_allowed', 405); r.headers.set('allow', bootstrap?bootstrap.join(', '):url.pathname === BASE + '/profile' ? 'GET, PATCH' : method); return r; }
     if (method !== 'GET' && !originAllowed(request, [cfg.origin])) return failure('origin_not_allowed', 403);
     const profileWrite = url.pathname === BASE + '/draft' || (url.pathname === BASE + '/profile' && request.method === 'PATCH');
-    const bootstrapWrite=!!bootstrap&&(request.method==='POST'||([BASE+'/authority',BASE+'/claim'].includes(url.pathname)&&request.method==='DELETE'));
+    const bootstrapWrite=!!bootstrap&&(request.method==='POST'||url.pathname===BASE+'/social-status'&&request.method==='PATCH'||([BASE+'/authority',BASE+'/claim'].includes(url.pathname)&&request.method==='DELETE'));
     if (method !== 'GET' && !profileWrite && !bootstrapWrite && !await emptyWriteBody(request)) return failure('body_not_allowed', 400);
     if (url.pathname !== PERSONAL_CALLBACK && url.search) return failure('bad_query', 400);
     const sessionReady = !!cfg.secret && typeof cfg.appId === 'string' && /^[0-9]{1,32}$/.test(cfg.appId);
@@ -105,7 +108,25 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
       const p=await current();
       if(!p){if(url.pathname===BASE+'/status')return json({profile:null,authority:null,keys:[],connection:{connected:false,lastSeenAt:null},entry:{state:'viewing',actor:null,attempt:null,receipt:null,reason:'signed_out'}});return failure('personal_session_required',401);}
       const binding:PersonalBinding={sidDigest:await personalDigest('sid',p.sid),appId:cfg.appId!,proof:{principalId:p.principalId,authVersion:p.authVersion,issuedAt:p.issuedAt,expiresAt:p.expiresAt}};
-      let input:unknown;if(bootstrapWrite){try{input=await bootstrapJSON(request);}catch{return failure('invalid_entry',400);}}
+      const social=url.pathname===BASE+'/social-status';
+      let input:unknown;if(bootstrapWrite){try{input=await bootstrapJSON(request,social?512:4096);}catch{return failure(social?'invalid_social_status':'invalid_entry',400);}}
+      if(social){
+       if(request.method==='PATCH'){
+        if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).sort().join(',')!=='expectedRevision,mode')return failure('invalid_social_status',400);
+        const x=input as {mode:unknown;expectedRevision:unknown};if(!isSocialMode(x.mode)||typeof x.expectedRevision!=='number'||!Number.isSafeInteger(x.expectedRevision)||x.expectedRevision<0||x.expectedRevision>=Number.MAX_SAFE_INTEGER)return failure('invalid_social_status',400);
+       }
+       try{
+        if(request.method==='GET'){if(!stub.personalSocialStatusGet)return failure('social_status_unavailable',503);return json(await stub.personalSocialStatusGet(binding));}
+        if(!stub.personalSocialStatusSet)return failure('social_status_unavailable',503);return json(await stub.personalSocialStatusSet(binding,input));
+       }catch(e){
+        let name:unknown,code:unknown;try{if(e&&typeof e==='object'){name='name'in e?e.name:null;code='code'in e?e.code:null;}}catch{}
+        if(name==='PersonalRegistryError'&&code==='personal_session_required')return failure('personal_session_required',401);
+        if(name==='SocialStatusError'&&code==='social_status_forbidden')return failure('social_status_forbidden',403);
+        if(name==='SocialStatusError'&&code==='invalid_social_status')return failure('invalid_social_status',400);
+        if(name==='SocialStatusError'&&code==='social_status_conflict')return failure('social_status_conflict',409);
+        return failure('social_status_unavailable',503);
+       }
+      }
       try{
        if(url.pathname===BASE+'/legacy-muse'){const ownerCookie=personalCookieValue(request,OWNER_COOKIE);return json(request.method==='GET'?await stub.personalLegacyView(binding,ownerCookie):await stub.personalLegacyAdopt(binding,ownerCookie,input));}
        if(url.pathname===BASE+'/inbox')return json(await stub.personalLegacyInbox(binding));

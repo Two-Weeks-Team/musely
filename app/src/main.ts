@@ -16,6 +16,7 @@ import type {RecordedFrame} from './replay/player';
 import {mountWorldPanel} from './ui/world-panel';
 import {isolation} from './ui/isolation';
 import {mountOnboarding} from './ui/onboarding';
+import {paintAvailabilityLabel} from './ui/social-status';
 import {setFlowCue} from './ui/preview-flows';
 import {pixelRatioFor,mountPerf} from './ui/perf';
 import {harnessById} from './engine/harness';
@@ -173,11 +174,13 @@ $('tour').onclick=()=>setMode('story');
 // Selected Muse line under the neighbors: same Muse, state and source when the close-up card is hidden.
 const selectedLine=document.createElement('p');selectedLine.id='selected-line';selectedLine.className='selected-line';document.querySelector('.neighbors')!.append(selectedLine);
 const museSource=document.createElement('span');museSource.id='muse-source';museSource.className='src src-scripted';document.querySelector('#muse-card .muse-heading > div:nth-child(2)')!.prepend(museSource);
+const museAvailability=document.createElement('span');museAvailability.id='muse-availability';museAvailability.className='src';museAvailability.hidden=true;museSource.after(museAvailability);
 function updateContinuity(){
  // updateUI first runs before this block is evaluated; the continuity UI joins from the next refresh.
  if(!museSource||!selectedLine||!cues)return;
  if(showingScene()){
   const shown=displayedWorld(),m=shown?.muses.find(m=>m.id===liveSelected),f=liveScene?.frames.get(liveSelected),p=presentationIn(liveSelected,shown);
+  paintAvailabilityLabel(museAvailability,(m as (typeof m & {availability?:unknown}))?.availability,navigator.language.startsWith('ko')?'ko':'en');
   const source=liveScene?.getMetrics().muses.find(m=>m.id===liveSelected)?.source?.toUpperCase()??'CONNECTING';
   museSource.textContent=(showingRecorded()?'REPLAY · originally ':'SHARED WORLD · ')+source;museSource.className='src src-'+(showingRecorded()?'replay':source.toLowerCase());
   $('muse-name').textContent=p.name;$('muse-role').textContent=p.kind==='unknown'?'Profile unavailable':ownerOf(liveSelected,m).label;$('avatar-large').style.setProperty('--muse',p.color);
@@ -189,6 +192,7 @@ function updateContinuity(){
   portraits.querySelectorAll<HTMLButtonElement>('button').forEach(b=>{const chosen=b.dataset.museId===liveSelected;b.classList.toggle('selected',chosen);b.setAttribute('aria-pressed',String(chosen));});
   return;
  }
+ paintAvailabilityLabel(museAvailability,undefined);
  $('muse-card').removeAttribute('data-muse-id');$('muse-card').removeAttribute('data-version');$('muse-card').removeAttribute('data-inventory');
  const name=PEOPLE[selected].name,state=stateAt(selected,lifeTime),cue=cues.find(c=>c.index===selected);
  const source=cue?'PREVIEW FLOW · SCRIPTED':'SCRIPTED · STORY CHARACTER';

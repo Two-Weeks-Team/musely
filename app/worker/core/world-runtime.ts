@@ -455,7 +455,7 @@ export class WorldRuntime {
     const preview=tick(before,{now,spot:{muse:serviceSpot.muse,priority:serviceSpot.priority},residentActors:actors,residentTurns:plans,residentFallback:fallback,requirePriorityApplication:true,residentFrozen:this.frozenResidents(before)},canMeet?{...this.engineHooks(),canMeet}:this.engineHooks());
     const recent=this.events(0,500,{tail:500}).filter(e=>e.at>=before.lastTickAt&&e.at<=now);
     const reacting={...preview.state,version:before.version,tick:before.tick,lastTickAt:before.lastTickAt};
-    const prepared=reactionCandidates(reacting,[...recent,...preview.events],life.dialogues??[],now,this.actionOwnership,this.statusOf,control);
+    const prepared=reactionCandidates(reacting,[...recent,...preview.events],life.dialogues??[],now,this.actionOwnership,this.statusOf,control,this.opts.socialStatus!==undefined);
     const reactions=await Promise.all(prepared.candidates.map(async candidate=>{
       const base={muse:candidate.muse,other:candidate.other,place:candidate.place,encounterId:candidate.encounterId};
       const rule=(reason:string):ResidentReaction=>({triggerId:candidate.triggerId,kind:candidate.kind,reply:{...base,source:'rule',output:null,reason}});
@@ -607,7 +607,9 @@ export class WorldRuntime {
     const release = this.modelSlot();
     if (!release) return {ok: false, reason: 'concurrency_limit'};
     try {
-      const messages = activity?activityMessages(input,residentContext):withResidentContext(buildMessages(action, input),residentContext);
+      const signalWorld=activity&&this.opts.socialStatus?this.state():null,signalAt=signalWorld?(this.opts.publicationNow??Date.now)():0;
+      const modelInput=signalWorld?{...input,public_availability:signalWorld.muses.map(m=>({actor_id:m.id,status:this.statusOf(signalWorld,m.id,signalAt)}))}:input;
+      const messages = activity?activityMessages(modelInput,residentContext):withResidentContext(buildMessages(action, input),residentContext);
       const personalPeer=action==='encounter'&&(input.other==='00-jolly'||typeof input.other==='string'&&this.opts.residentLife?.ownershipKind(input.other)==='personal');
       const res = this.opts.ledger.reserve({id, tier: 'world', session: 'world', ip: '', action, maxCostUsd: maxCostUsd(action, messages),...(this.opts.residentBudgetEnabled?{residentKind:residentKindFor(action,personalPeer)}:{})});
       if (!res.ok) return {ok: false, reason: res.reason};

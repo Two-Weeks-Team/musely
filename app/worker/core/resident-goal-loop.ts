@@ -43,7 +43,9 @@ export function runResidentGoalTurn(runtime:WorldRuntime,p:ResidentGoalLoopPolic
    const text=`Use ${row!.goal.beat.replace(/_/g,' ')}`;updateWants(actor,{goal:text,items:plan.missing.slice(0,4)},'harness',now);
    emit({at:now,source:'rule',kind:'resident_need_declared',muse:id,place:actor.place,line:null,data:{goalId:row!.goal.id,items:plan.missing.slice(0,4)},tags:[]});result='declared';
    s.inbox??=emptyInbox();
-   const c=plan.candidates.find(c=>p.goals.refusalUntil(s.worldId,id,c.peer,c.give,c.want)<=now&&p.authorize(s,id,c.peer,now)&&runtime.canResidentProposeTrade(s,id,c.peer,c.give,c.want,now));
+   // Only new automatic proposals consult availability. Existing Task answers keep their own consent path.
+   const welcoming=(peer:string)=>{if(!hooks.socialStatus)return true;try{return hooks.socialStatus(s,id,now)==='welcoming'&&hooks.socialStatus(s,peer,now)==='welcoming';}catch{return false;}};
+   const c=plan.candidates.find(c=>p.goals.refusalUntil(s.worldId,id,c.peer,c.give,c.want)<=now&&p.authorize(s,id,c.peer,now)&&runtime.canResidentProposeTrade(s,id,c.peer,c.give,c.want,now)&&welcoming(c.peer));
    if(c){const peer=s.muses.find(x=>x.id===c.peer)!;if(checkTrade(s.items,s.day,actor,peer,c.give,c.want,0,now).ok){const task={id:nextId(s.inbox,'task'),kind:'trade' as const,from:id,to:peer.id,status:'pending' as const,awaiting:peer.id,createdAt:now,deadline:now+TASK_TTL_MS,updatedAt:now,round:0,offer:{by:id,give:c.give,want:c.want},history:[{by:id,action:'propose' as const,at:now,give:c.give,want:c.want,via:'rule' as const}]};s.inbox.tasks.push(task);emit({at:now,source:'rule',kind:'trade_proposed',muse:id,other:peer.id,place:actor.place,line:null,data:{task_id:task.id,give:c.give,want:c.want,goalId:row!.goal.id,stage:'propose'},tags:[]});result='proposed';}}
   }
   p.goals.recordTurnInTransaction(s.worldId,s.day,s.tick,`goal:${row!.goal.id}:${s.tick}`);
