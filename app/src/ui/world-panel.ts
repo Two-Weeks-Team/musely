@@ -618,10 +618,11 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     if (!live.paused?.()) {pins.update(world, events); if (world) live.onWorld?.(world, events, observation!.observedAt);}
     const last = [...events].reverse().find(e => e.kind === 'spotlight' || e.kind === 'spotlight_fallback');
     if (world) {
-      const live = last && last.source === 'live', stalled = !wr.ok;
+      const stalled = !wr.ok;
       const recipient=last?speechRecipient(last,displayWorld()):null;
-      spot.textContent = `Spotlight · ${shortName(world.nextSpotlight.muse)} next${world.nextSpotlight.priority ? ' (priority)' : ''} · ${world.nextSpotlight.freedom}${last ? ' · last: ' + (live ? 'LIVE' : last.source.toUpperCase()) : ''}${recipient?' · → '+recipient.name:''}${stalled ? ' · not updating' : ''}`;
-      spot.dataset.state = stalled ? 'stale' : live ? 'live' : 'other';
+      spot.textContent = `Spotlight · ${shortName(world.nextSpotlight.muse)} next${world.nextSpotlight.priority ? ' (priority)' : ''} · ${world.nextSpotlight.freedom}${stalled ? ' · not updating' : ''}`;
+      if(last){const note=document.createElement('small');note.className='spot-last-action';note.textContent=`${navigator.language.startsWith('ko')?'지난 차례':'Last turn'} · ${shortName(last.muse)}${recipient?' → '+recipient.name:''} · ${last.source.toUpperCase()}`;spot.append(note);}
+      spot.dataset.state = stalled ? 'stale' : 'other';
       spot.title = stalled ? `The world did not answer (${wr.error}); this is the last data we received.` : last ? describe(last) : '';
       document.body.dataset.worldReady = '1';
     } else spot.textContent = 'Spotlight · world offline';

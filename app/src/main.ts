@@ -7,6 +7,7 @@ import {makeClock,advance,activityAt,positionAt,ROUNDS,FIXTURE_LABEL} from './ac
 import {surfaceHeightAt} from './surfaces';
 import {tourCameraAt} from './camera';
 import {makeBubbles} from './bubbles';
+import {sceneModeLabel,actionSourceLabel} from './ui/recorded-scene';
 import {paintFrameSpeech} from './ui/speech-recipient.ts';
 import {DURATION,LINES,conversationAt,chapterAt,stateAt} from './story';
 import assetData from '../assets/embedded.json';
@@ -175,6 +176,7 @@ $('tour').onclick=()=>setMode('story');
 // Selected Muse line under the neighbors: same Muse, state and source when the close-up card is hidden.
 const selectedLine=document.createElement('p');selectedLine.id='selected-line';selectedLine.className='selected-line';document.querySelector('.neighbors')!.append(selectedLine);
 const museSource=document.createElement('span');museSource.id='muse-source';museSource.className='src src-scripted';document.querySelector('#muse-card .muse-heading > div:nth-child(2)')!.prepend(museSource);
+const activitySource=document.createElement('small');activitySource.id='activity-source';activitySource.className='action-source';$('activity-detail').after(activitySource);
 const museAvailability=document.createElement('span');museAvailability.id='muse-availability';museAvailability.className='src';museAvailability.hidden=true;museSource.after(museAvailability);
 function updateContinuity(){
  // updateUI first runs before this block is evaluated; the continuity UI joins from the next refresh.
@@ -183,21 +185,21 @@ function updateContinuity(){
   const shown=displayedWorld(),m=shown?.muses.find(m=>m.id===liveSelected),f=liveScene?.frames.get(liveSelected),p=presentationIn(liveSelected,shown);
   paintAvailabilityLabel(museAvailability,(m as (typeof m & {availability?:unknown}))?.availability,navigator.language.startsWith('ko')?'ko':'en');
   const source=liveScene?.getMetrics().muses.find(m=>m.id===liveSelected)?.source?.toUpperCase()??'CONNECTING';
-  museSource.textContent=(showingRecorded()?'REPLAY · originally ':'SHARED WORLD · ')+source;museSource.className='src src-'+(showingRecorded()?'replay':source.toLowerCase());
+  museSource.textContent=sceneModeLabel(showingRecorded(),navigator.language);museSource.className='src scene-mode';
+  activitySource.hidden=false;activitySource.textContent=actionSourceLabel(source.toLowerCase(),showingRecorded(),navigator.language);activitySource.dataset.source=source.toLowerCase();
   $('muse-name').textContent=p.name;$('muse-role').textContent=p.kind==='unknown'?'Profile unavailable':ownerOf(liveSelected,m).label;$('avatar-large').style.setProperty('--muse',p.color);
   $('activity-title').textContent=f?.status??'Waiting for the shared world';paintFrameSpeech($('activity-detail'),f,shown,liveScene?.projection.events??[],m?inventorySummary(m.inventory).text:'The world has not answered yet.');
   $('muse-want-text').textContent=showingRecorded()?'Private or hashed goal unavailable in recording':m?.wants?.goal?'Wants: '+m.wants.goal:p.kind==='legacy'?'Wants: '+harnessById(liveSelected).wants.goal:'Public wants unavailable';
   $('meetup').hidden=true;$('card-candidate').hidden=true;$('decision-state').textContent=p.kind==='unknown'?'This actor has no valid public profile. Its identity and 3D appearance are unavailable.':f?.fallback??(liveScene?.getMetrics().muses.find(row=>row.id===liveSelected)?.rendered===false?'3D characters are unavailable or loading. The map and card still show shared state.':showingRecorded()?'Recorded public state only. No action or reward is re-executed.':'Actions follow the shared world. Commitments still need the owners.');
   $('muse-card').dataset.museId=liveSelected;$('muse-card').dataset.version=String(liveScene?.projection.world?.version??'');$('muse-card').dataset.inventory=JSON.stringify(m?.inventory??[]);
-  selectedLine.textContent=`${museName(liveSelected,shown)} · ${f?.status??'waiting for world'} · ${source.toLowerCase()}`;selectedLine.hidden=map.getZoom()>=20.35;
+  selectedLine.textContent=`${museName(liveSelected,shown)} · ${f?.status??'waiting for world'}`;selectedLine.hidden=map.getZoom()>=20.35;
   portraits.querySelectorAll<HTMLButtonElement>('button').forEach(b=>{const chosen=b.dataset.museId===liveSelected;b.classList.toggle('selected',chosen);b.setAttribute('aria-pressed',String(chosen));});
   return;
  }
  paintAvailabilityLabel(museAvailability,undefined);
  $('muse-card').removeAttribute('data-muse-id');$('muse-card').removeAttribute('data-version');$('muse-card').removeAttribute('data-inventory');
  const name=PEOPLE[selected].name,state=stateAt(selected,lifeTime),cue=cues.find(c=>c.index===selected);
- const source=cue?'PREVIEW FLOW · SCRIPTED':'SCRIPTED · STORY CHARACTER';
- museSource.textContent=source;
+ museSource.textContent=navigator.language.startsWith('ko')?'이야기':'Story';museSource.className='src scene-mode';activitySource.hidden=false;activitySource.textContent=actionSourceLabel('scripted',false,navigator.language);activitySource.dataset.source='scripted';
  selectedLine.textContent=`${name} · ${state} · ${cue?'preview flow':'scripted story'}`;
  selectedLine.hidden=map.getZoom()>=20.35;
 }
