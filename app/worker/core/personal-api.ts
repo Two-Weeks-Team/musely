@@ -57,7 +57,7 @@ const headers = () => new Headers({'cache-control': 'no-store', 'referrer-policy
 
 export function signInFailurePage():Response {
   const h = headers(); h.set('content-type', 'text/html; charset=utf-8'); h.set('content-security-policy', "default-src 'none'; base-uri 'none'; frame-ancestors 'none'");
-  return new Response('<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Threads 연결 확인 / Check Threads connection</title><body><h1>연결을 확인하지 못했어요 / Could not verify sign-in</h1><p>연결 요청이 만료됐거나 이미 사용됐어요. 관람으로 돌아가 준비되면 다시 로그인해 주세요. / This sign-in request expired or was already used. Return to the world and sign in when you are ready.</p><a href="/">관람으로 돌아가기 / Return to world</a></body></html>', {status:400, headers:h});
+  return new Response('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Check Threads connection</title><body><h1>Could not verify sign-in</h1><p>We could not finish connecting Threads. Keep watching, or accept your beta invitation in Threads Settings → Account → Website permissions → Invites before signing in.</p><a href="/">Keep watching</a></body></html>', {status:400, headers:h});
 }
 const json = (value: unknown, status = 200, cookie?: string) => { const h = headers(); if (cookie) h.append('set-cookie', cookie); return new Response(JSON.stringify(value), {status, headers: h}); };
 const failure = (error: string, status: number, clearFlow = false) => json({error}, status, clearFlow ? clearFlowCookie : undefined);
