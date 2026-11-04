@@ -2,7 +2,7 @@ import {participantName} from './participants.ts';
 // Engine hooks for the item and reward rules (direction v2, 9, 9.1, 12.2, 12.3).
 // Offline the engine resolves trades with a simple rule (accept when the item changes the receiver's
 // abilities); the world Durable Object replaces this with a live Muse Spark negotiation when budget allows.
-import type {Hooks, MuseState, WorldEvent, WorldState} from './world.ts';
+import type {TradeProposalGuard, Hooks, MuseState, WorldEvent, WorldState} from './world.ts';
 import {discover, receiveDiscovery, grantItem, checkTrade, commitTrade, speedFor, abilityGain, itemName, canCraftTransitPass, historyFault, type Ledger} from './items.ts';
 import {actorLabel} from './actor-display.ts';
 import {HARNESSES} from './harness.ts';
@@ -37,7 +37,7 @@ export function makeHooks(): Hooks {
       }
       return out;
     },
-    onEncounter: (s, a, b, place, rand, at) => resolveMeeting(s.items, s, a, b, place, rand, at),
+    onEncounter: (s, a, b, place, rand, at, canProposeTrade) => resolveMeeting(s.items, s, a, b, place, rand, at, canProposeTrade),
   };
 }
 
@@ -49,7 +49,7 @@ function pickTrade(a: MuseState, b: MuseState): {give: string; want: string} | n
 }
 
 /** Meeting stages 3–8 (12.3) for the offline rule path: greet → propose → negotiate → lock/swap → ability → reflect. */
-export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: MuseState, place: Place, rand: () => number, at: number): E[] {
+export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: MuseState, place: Place, rand: () => number, at: number,canProposeTrade?:TradeProposalGuard): E[] {
   const out: E[] = [];
   // A connected Muse (7.2, 8.8) thinks in its owner's runtime: the rule engine never decides for it.
   // Its initiations come only through MCP tools, and proposals to it wait in its inbox as Tasks.
@@ -61,11 +61,19 @@ export function resolveMeeting(ledger: Ledger, s: WorldState, a: MuseState, b: M
   if (toConnected) deliverMessage(inbox, {from: a.id, to: b.id, kind: 'greet', at, text: greeting});
   const t = a.intent?.kind === 'trade' && a.intent.target === b.id && a.intent.give && a.intent.want ? {give: a.intent.give, want: a.intent.want} : pickTrade(a, b);
   if (!t) return out;
+  // Public identity is not claim authority: personal participation requires an explicit server proof.
+  const allowed=canProposeTrade?.(s,a.id,b.id,t.give,t.want,at);
+  if((a.id.startsWith('pm_')||b.id.startsWith('pm_'))?allowed!==true:allowed===false)return out;
   // A tampered item history stops trades (I-06); the greeting above still happens.
   if (historyFault(ledger, false, at)) return out;
   const check = checkTrade(ledger, s.day, a, b, t.give, t.want, 0, at);
   out.push({at, source: 'rule', kind: 'trade_proposed', muse: a.id, other: b.id, place: place.id, line: `${itemName(t.give)} for your ${itemName(t.want)}?`, data: {give: t.give, want: t.want, stage: 'propose', check: check.ok ? 'ok' : check.reason}, tags: []});
   if (!check.ok) {
+    if (toConnected) {
+      // A rule/validation failure is not the personal recipient's decision or speech.
+      out.push({at, source: 'rule', kind: 'trade_refused', muse: a.id, other: b.id, place: place.id, line: null, data: {reason: check.reason, stage: 'validate', recipientDecision: 'not_requested'}, tags: ['trade_refused']});
+      return out;
+    }
     out.push({at, source: 'rule', kind: 'trade_rejected', muse: b.id, other: a.id, place: place.id, line: 'Not this time.', data: {reason_public: check.reason === 'relic' ? 'relics stay with their place' : null, stage: 'negotiate'}, tags: ['trade_rejected']});
     return out;
   }

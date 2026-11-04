@@ -4,7 +4,7 @@
 //   AC2 duplicate event ids are not counted, an empty denominator is unmeasured, model calls are unique request ids
 //   AC3 period / Muse / place / tag find a highlight, and its evidence opens by run id and event id
 //   AC4 period, sample, live / rule / scripted / replay and actorOrigin are kept apart
-import {test} from 'node:test';
+import {test, after} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {register} from 'node:module';
@@ -42,9 +42,15 @@ const TX_SQL = /^\s*(BEGIN|SAVEPOINT|COMMIT|ROLLBACK|RELEASE|END)\b/i;
 // Durable Object SQL stand-in (as in world-runtime.test.mjs): only transactionSync opens a transaction.
 const sqlite = (db = new DatabaseSync(':memory:')) => { let depth = 0; return {db, exec(q, ...b) { if (TX_SQL.test(q)) throw new Error('Durable Object SQL rejects transaction statements; use transactionSync'); const st = db.prepare(q); if (/^\s*(select|with|explain)/i.test(q)) return {toArray: () => st.all(...b)}; st.run(...b); return {toArray: () => []}; }, transactionSync(fn) { const sp = 'tx' + depth++; db.exec('SAVEPOINT ' + sp); try { const r = fn(); if (r && typeof r.then === 'function') throw new Error('transactionSync callback must be synchronous'); db.exec('RELEASE ' + sp); return r; } catch (e) { db.exec('ROLLBACK TO ' + sp); db.exec('RELEASE ' + sp); throw e; } finally { depth--; } }}; };
 const T0 = Date.parse('2026-11-03T16:00:00Z');
+// These are offline fixtures. Only an explicitly supplied fake transport enables
+// a model; undefined keys must never accidentally restore a live default config.
+const originalFetch = globalThis.fetch;
+let unexpectedNetworkCalls = 0;
+globalThis.fetch = async () => { unexpectedNetworkCalls++; throw new Error('run-log fixture forbids external network'); };
+after(() => { globalThis.fetch = originalFetch; assert.equal(unexpectedNetworkCalls, 0, 'no unintended external network attempts'); });
 function setup({sql = sqlite(), fetcher, key = 'k', now = T0, ...rest} = {}) {
   const ledger = new Ledger(sql, {dailyCapUsd: 20, now: () => T0}); ledger.init();
-  const rt = new WorldRuntime(sql, {worldId: 'w', meetingGate: 'off', ledger, model: {base: 'https://api.meta.ai/v1', key, model: 'muse-spark-1.3', timeoutMs: 2000, fetcher}, ...rest});
+  const rt = new WorldRuntime(sql, {worldId: 'w', meetingGate: 'off', ledger, model: fetcher ? {base: 'https://api.meta.ai/v1', key, model: 'muse-spark-1.3', timeoutMs: 2000, fetcher} : null, ...rest});
   rt.init(now);
   return {rt, ledger, sql};
 }
@@ -734,4 +740,16 @@ test('I-11 rebuilding a missing counter cache retains checkpoint bytes instead o
  const next = new WorldRuntime(sql, {worldId: 'w', ledger, meetingGate: 'off', model: null}); next.init(T0 + 2000);
  assert.equal(next.runLog.current.runId, runId);
  assert.equal(sql.exec('SELECT replay_bytes FROM run_counts WHERE run_id = ?', runId).toArray()[0].replay_bytes, bytes);
+});
+
+// A server-owned current-claim hook, not an ID prefix, decides verified personal participation.
+test('combined resident trade gate preserves explicit current personal authority and fails closed without it', () => {
+ const rt=Object.create(WorldRuntime.prototype), actor='01-sunny',peer='pm_11111111-1111-4111-8111-111111111111';
+ const state={muses:[]};rt.opts={hooks:{}};
+ assert.equal(rt.canResidentProposeTrade(state,actor,peer,'tea','clover_seed',T0),false);
+ rt.opts.hooks.canProposeTrade=()=>true;
+ assert.equal(rt.canResidentProposeTrade(state,actor,peer,'tea','clover_seed',T0),true);
+ rt.opts.hooks.canProposeTrade=()=>false;
+ assert.equal(rt.canResidentProposeTrade(state,actor,peer,'tea','clover_seed',T0),false);
+ assert.equal(rt.canResidentProposeTrade(state,actor,'09-copper','tea','clover_seed',T0),false);
 });

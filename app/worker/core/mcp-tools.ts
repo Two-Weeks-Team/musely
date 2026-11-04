@@ -263,7 +263,7 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
 }
 
 /** A resident's rule answer to the current offer (sealed: accept | counter | reject, no reasons). */
-function residentAnswers(st: WorldState, t: Task, rule: Emit, live: Emit, at: number, ownerMuse: string, ownerOf: OwnerOf) {
+function residentAnswers(st: WorldState, t: Task, rule: Emit, live: Emit, at: number, ownerMuse: string, ownerOf: OwnerOf, canPropose:NonNullable<Hooks['canProposeTrade']>=()=>true) {
   const offer = t.offer!, resident = museOf(st, t.awaiting!), proposer = museOf(st, offer.by);
   const rand = rngFor(st.seed, st.tick, t.id, t.round);
   const check = checkTrade(st.items, st.day, proposer, resident, offer.give, offer.want, t.round);
@@ -272,7 +272,7 @@ function residentAnswers(st: WorldState, t: Task, rule: Emit, live: Emit, at: nu
   if (check.ok || check.reason === 'no_ability_change') {
     // Counter with something the resident wants from the proposer, if counters remain.
     if (t.round < MAX_COUNTERS) {
-      const ask = wantsOf(resident).find(i => i !== offer.give && proposer.inventory.includes(i) && checkTrade(st.items, st.day, resident, proposer, offer.want, i, t.round + 1).ok);
+      const ask = wantsOf(resident).find(i => i !== offer.give && proposer.inventory.includes(i) && canPropose(st,resident.id,proposer.id,offer.want,i,at) && checkTrade(st.items, st.day, resident, proposer, offer.want, i, t.round + 1).ok);
       if (ask) {
         t.round += 1; t.offer = {by: resident.id, give: offer.want, want: ask}; t.awaiting = proposer.id; t.deadline = at + TASK_TTL_MS; t.updatedAt = at;
         t.history.push({by: resident.id, action: 'counter', at, give: offer.want, want: ask});
@@ -286,7 +286,7 @@ function residentAnswers(st: WorldState, t: Task, rule: Emit, live: Emit, at: nu
   return 'rejected';
 }
 
-function completeTrade(st: WorldState, t: Task, acceptor: string, live: Emit, rule: Emit, at: number, ownerMuse: string, by: 'live' | 'rule', ownerOf: OwnerOf) {
+export function completeTrade(st: WorldState, t: Task, acceptor: string, live: Emit, rule: Emit, at: number, ownerMuse: string, by: 'live' | 'rule', ownerOf: OwnerOf) {
   const offer = t.offer!, a = museOf(st, offer.by), b = museOf(st, acceptor);
   const first = st.items.history.filter(h => h.via === 'trade').length === 0;
   commitTrade(st.items, st.day, a, b, offer.give, offer.want, at);
@@ -497,7 +497,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         inbox.tasks.push(t);
         live({at, source: 'live', kind: 'trade_proposed', muse: me, other: to, place: a.place, line: `${itemName(give)} for your ${itemName(want)}?`, data: {task_id: t.id, give, want, stage: 'propose', deadline: t.deadline}, tags: []});
         // Residents answer by rule at once; a connected peer would see the Task in its own inbox instead.
-        const result = isRuntimeControlled(st, to, at) ? 'pending' : residentAnswers(st, t, rule, live, at, ownerMuse, c.ownerOf ?? definedOwnerOf);
+        const result = isRuntimeControlled(st, to, at) ? 'pending' : residentAnswers(st, t, rule, live, at, ownerMuse, c.ownerOf ?? definedOwnerOf,(s,a,b,g,w,n)=>c.runtime.canResidentProposeTrade(s,a,b,g,w,n));
         return {ok: true, data: {task: viewOf(t, me), result}};
       });
     }
@@ -517,7 +517,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         t.round += 1; t.offer = {by: me, give, want}; t.awaiting = otherId; t.deadline = at + TASK_TTL_MS; t.updatedAt = at;
         t.history.push({by: me, action: 'counter', at, give, want});
         live({at, source: 'live', kind: 'trade_countered', muse: me, other: otherId, place: a.place, line: `How about my ${itemName(give)} for your ${itemName(want)}?`, data: {task_id: t.id, give, want, round: t.round, deadline: t.deadline, stage: 'negotiate'}, tags: []});
-        const result = isRuntimeControlled(st, otherId, at) ? 'pending' : residentAnswers(st, t, rule, live, at, ownerMuse, c.ownerOf ?? definedOwnerOf);
+        const result = isRuntimeControlled(st, otherId, at) ? 'pending' : residentAnswers(st, t, rule, live, at, ownerMuse, c.ownerOf ?? definedOwnerOf,(s,a,b,g,w,n)=>c.runtime.canResidentProposeTrade(s,a,b,g,w,n));
         return {ok: true, data: {task: viewOf(t, me), result}};
       });
     }

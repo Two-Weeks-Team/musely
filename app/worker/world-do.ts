@@ -58,6 +58,13 @@ export class WorldDO extends DurableObject<Env> {
     this.ritual = new RitualStore(ctx.storage.sql);
     this.ownerRoot = env.OWNER_ROOT_JWK ? JSON.parse(env.OWNER_ROOT_JWK) : null;
     const hooks = makeHooks();
+    // The registry's current proof decides personal participation; a pm_ prefix is never authority.
+    // MeetingCheck still verifies both signed Cards/delegations and rechecks their exact proof at commit.
+    hooks.canProposeTrade = (_s,a,b,_give,_want,at) => [a,b].every(id => {
+      const agent=this.trust.agentByMuse(id);
+      if(!id.startsWith('pm_')&&agent?.kind!=='personal')return true;
+      return agent?.kind==='personal'&&!this.trust.suspended(id)&&this.trust.personalClaim(id,at).claimed;
+    });
     // The runtime commits inside the storage transaction; every other store shares the same SQL handle.
     const txSql = {exec: (q: string, ...b: unknown[]) => ctx.storage.sql.exec(q, ...b), transactionSync: <T>(fn: () => T) => ctx.storage.transactionSync(fn)};
     this.runtime = new WorldRuntime(txSql, {
