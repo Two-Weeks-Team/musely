@@ -18,7 +18,7 @@ Draft: **Two Weeks Team**. The representative must confirm the exact team name, 
 
 ## Which problem statement did you build towards?
 
-**Push the Frontier**.
+**Build for Your World**.
 
 ## Project Description
 
