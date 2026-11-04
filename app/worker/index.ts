@@ -11,7 +11,8 @@ import {readOwnerSession, ownerOrigins, originAllowed, OWNER_COOKIE, type OwnerT
 import {handleMcpHttp} from './core/mcp-server.ts';
 import {OWNER_SLOT} from './core/trust.ts';
 import {HARNESS_IDS} from '../src/engine/harness.ts';
-import {personalRoutes, isPersonalCallback} from './core/personal-api.ts';
+import {personalRoutes, isPersonalCallback,signInFailurePage} from './core/personal-api.ts';
+import type {PersonalBinding} from './core/personal-registration.ts';
 export {WorldDO} from './world-do.ts';
 
 const MODEL_TIMEOUT_MS = 8000;
@@ -31,6 +32,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   if (url.pathname.startsWith('/api/personal/') || isPersonalCallback(url)) return personalRoutes(request, url, {
     secret: env.SESSION_SECRET ?? '', origin: new URL(env.PUBLIC_ORIGIN).origin,
     appId: env.THREADS_APP_ID, appSecret: env.THREADS_APP_SECRET,
+    ownerSpecial:(request,path,binding)=>personalOwnerSpecial(request,path,binding,env),
     rateLimit: env.BURST ? async () => (await env.BURST!.limit({key: 'personal-auth:' + await hashIp(env.SESSION_SECRET ?? 'unset', ip)})).success : undefined,
   }, world(env));
   const session = await readSession(env.SESSION_SECRET ?? '', cookieValue(request.headers.get('cookie')));
@@ -41,6 +43,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   const realOwner = owner?.principal === 'owner';
   // Anything decided by the owner cookie is an owner write: it must come from one of our origins (CSRF). The judge path keeps its rules.
   const ownerWrite = realOwner && originAllowed(request, ownerCfg.origins);
+  const visitorAudience=request.headers.get('x-musely-audience')==='visitor';
 
   if (url.pathname === '/api/status' && request.method === 'GET') {
     const budget = await world(env).status();
@@ -99,7 +102,8 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     if (!isRitual || !session) return res;
     const out = await res.clone().json().catch(() => null) as any;
     const results = Array.isArray(out?.output?.results) ? out.output.results.map((r: any) => ({step: String(r.step).slice(0, 40), passed: r.passed === true, confidence: Number(r.confidence) || 0})) : [];
-    if (out && results.length === 3) await stub.ritualRecord({at: Date.now(), passed: out.source === 'live' && results.every((r: any) => r.passed), results, requestId: out.evidence?.requestId ?? null, model: out.evidence?.model ?? null, tier: ownerWrite ? 'owner' : session.tier}, session.sid.slice(0, 6), ownerWrite);
+    const byOwner=ownerWrite&&!visitorAudience;
+    if (out && results.length === 3) await stub.ritualRecord({at: Date.now(), passed: out.source === 'live' && results.every((r: any) => r.passed), results, requestId: out.evidence?.requestId ?? null, model: out.evidence?.model ?? null, tier: byOwner ? 'owner' : session.tier}, session.sid.slice(0, 6), byOwner);
     return res;
   }
 
@@ -138,6 +142,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   if (cardMatch && request.method === 'GET') { const card = await world(env).agentCard(cardMatch[1]); return card ? json(card) : json({error: 'unknown_agent'}, 404); }
   // P0 demonstration (judge link or the owner). It never revokes or delegates: those are the owner's own actions.
   if (url.pathname === '/api/p0/run' && request.method === 'POST') {
+    if(visitorAudience&&session?.tier!=='judge')return json({error:'judge_session_required'},403);
     if (session?.tier !== 'judge') {
       if (!realOwner) return json({error: 'judge_session_required'}, 403);
       if (!ownerWrite) return json({error: 'origin_not_allowed'}, 403);
@@ -184,7 +189,10 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     if (!cfg || !env.SESSION_SECRET) return json({error: 'threads_not_configured'}, 503);
     const [nonce, mac] = (url.searchParams.get('state') ?? '').split('.');
     const cookieNonce = cookieValue(request.headers.get('cookie'), 'musely_ts');
-    if (!nonce || !mac || nonce !== cookieNonce || !timingSafeEqual(mac, await hashIp(env.SESSION_SECRET, 'threads-state:' + nonce))) return json({error: 'state_mismatch'}, 400);
+    if (!nonce || !mac || nonce !== cookieNonce || !timingSafeEqual(mac, await hashIp(env.SESSION_SECRET, 'threads-state:' + nonce))) {
+      if(!url.searchParams.get('state')&&(url.searchParams.has('error')||url.searchParams.has('error_reason'))&&(request.headers.get('accept')??'').includes('text/html'))return signInFailurePage();
+      return json({error: 'state_mismatch'}, 400);
+    }
     const code = url.searchParams.get('code');
     if (!code) return redirectHome('claim=declined');
     const stub = world(env), expected = {agent: ownerClaim.agent, handle: ownerClaim.handle, display: ownerClaim.fingerprint_display, text: ownerClaim.claim_text};
@@ -216,6 +224,43 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   }
 
   return json({error: 'not_found'}, 404);
+}
+
+/** Personal owner camera/P0 adapters retain the existing visitor budget and ritual contracts. */
+async function personalOwnerSpecial(request:Request,path:string,binding:PersonalBinding,env:Env):Promise<Response>{
+  const stub=world(env),call=(operation:string,args:unknown[]=[])=>stub.personalOwnerCall(binding,operation,args);
+  if(new URL(request.url).search)return json({error:'bad_query'},400);
+  const method=path==='/status'||path==='/ritual/record'?'GET':'POST';
+  if(request.method!==method)return json({error:'method_not_allowed'},405,{allow:method});
+  if(path==='/status'){
+    const session=await readSession(env.SESSION_SECRET??'',cookieValue(request.headers.get('cookie')));
+    const value=await call('status') as {budget:any;owner:unknown};return json({model:{id:env.MODEL_ID,connected:!!env.MODEL_API_KEY,live:!!env.MODEL_API_KEY&&(value.budget.residentBudget?.interactive.availableUsd??value.budget.remainingUsd)>0},budget:value.budget,turnstile:{sitekey:env.TURNSTILE_SITEKEY,configured:!!env.TURNSTILE_SECRET},session:session?{tier:session.tier,expiresAt:session.exp,quota:await stub.quota(session.sid,session.tier)}:null,owner:value.owner,aiGateway:env.MODEL_BASE.includes('gateway.ai.cloudflare.com')});
+  }
+  if(path==='/ritual/record')return json({record:await call('ritualOwnerRecord')});
+  if(path==='/p0/run')return json(await call('p0'));
+  if(path==='/claim/permalink'){
+    let body:{permalink?:unknown};try{body=await readJson(request,2048);}catch{return json({error:'bad_request'},400);}
+    const record=ownerDirectRecord(ownerClaim.agent,ownerClaim.handle,ownerClaim.fingerprint_display,typeof body.permalink==='string'?body.permalink:'');
+    if(!record)return json({error:'not_a_post_by_owner'},400);return json({record:await call('setClaim',[record])});
+  }
+  const session=await readSession(env.SESSION_SECRET??'',cookieValue(request.headers.get('cookie')));
+  if(!session)return json({error:'session_required'},401);
+  if(path==='/ritual/start'){
+    if(env.BURST&&!(await env.BURST.limit({key:'ritual:'+session.sid})).success)return json({error:'slow_down'},429);
+    const started=await call('ritualStart',[session.sid]);return started?json(started):json({error:'too_many_open_rituals'},429);
+  }
+  let body:any;try{body=await readJson(request,1_300_000);}catch{return json({error:'bad_request'},400);}
+  if(body?.action!=='challenge')return json({error:'action_not_allowed'},400);
+  const steps=await call('ritualTake',[String(body?.input?.challengeId??''),session.sid]);if(!steps)return json({error:'ritual_expired_or_used'},400);
+  const response=await handleMuse({action:'challenge',input:{steps,frames:body?.input?.frames}},session,await hashIp(env.SESSION_SECRET??'unset',request.headers.get('cf-connecting-ip')??''),{
+    ledger:{reserve:r=>call('ritualReserve',[r]) as ReturnType<typeof stub.reserve>,settle:(id,cost,outcome)=>stub.settle(id,cost,outcome)},
+    model:{base:env.MODEL_BASE,key:env.MODEL_API_KEY,model:env.MODEL_ID,timeoutMs:MODEL_TIMEOUT_MS},burst:env.BURST?async key=>(await env.BURST!.limit({key})).success:undefined,
+  });
+  const out=await response.clone().json().catch(()=>null) as any;
+  const results=Array.isArray(out?.output?.results)?out.output.results.map((r:any)=>({step:String(r.step).slice(0,40),passed:r.passed===true,confidence:Number(r.confidence)||0})):[];
+  if(out&&results.length===3)await call('ritualRecord',[{at:Date.now(),passed:out.source==='live'&&results.every((r:any)=>r.passed),results,requestId:out.evidence?.requestId??null,model:out.evidence?.model??null,tier:'owner'},session.sid.slice(0,6)]);
+  // Even an unrecorded/failed answer cannot restore a logged-out owner's UI generation.
+  await stub.personalOwnerSession(binding);return response;
 }
 
 /** Non-negative integer query parameters (milliseconds or a cursor); absent ones are null, any invalid one makes it null. */

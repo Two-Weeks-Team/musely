@@ -9,7 +9,7 @@ import type {WorldRuntime} from './world-runtime.ts';
 import {pauseMuse, resumeMuse} from '../../src/engine/world.ts';
 import {cancelTasksFor, emptyInbox} from '../../src/engine/inbox.ts';
 
-export type ControlCtx = {trust: Trust; runtime: WorldRuntime; now?: () => number};
+export type ControlCtx = {trust: Trust; runtime: WorldRuntime; now?: () => number;authorize?:()=>void};
 const nowOf = (c: ControlCtx) => (c.now ? c.now() : Date.now());
 const uniq = () => Math.random().toString(36).slice(2, 8);
 
@@ -61,6 +61,7 @@ export function stopInWorld(st: State, emit: Emit, museId: string, version: numb
 }
 
 export async function revokeMuse(c: ControlCtx, museId: string, by: string): Promise<RevokeResult> {
+  c.authorize?.();
   const agent = c.trust.agentByMuse(museId);
   if (!agent) return {ok: false, reason: 'unknown_muse'};
   // A concurrent second revoke of the same Muse (both before the first finished) is the same as "already revoked".
@@ -78,6 +79,14 @@ export async function revokeMuse(c: ControlCtx, museId: string, by: string): Pro
     return {ok: true, muse: museId, already: true, repaired: true, version, cancelledTasks: out.cancelled, stopped: out.stopped};
   }
   busy.add(museId);
+  if(c.authorize){
+    let out={cancelled:[] as string[],stopped:null as ReturnType<typeof pauseMuse>};
+    try{const version=await c.trust.revoke(museId,apply=>{
+      c.authorize!();let version=0;const now=nowOf(c);
+      c.runtime.commitExternal(now,`owner-revoke-${museId}-${uniq()}`,(st,put)=>{c.authorize!();version=apply();const emit=byOwner(put);emit({at:now,source:'live',kind:'delegation_revoked',muse:museId,line:'Owner revoked the delegation',data:{newVersion:version,by},tags:['revocation']});out=stopInWorld(st,emit,museId,version,by,now,false);});return version;
+    });return{ok:true,muse:museId,already:false,repaired:false,version,cancelledTasks:out.cancelled,stopped:out.stopped};}
+    finally{busy.delete(museId);}
+  }
   let version: number;
   try { version = await c.trust.revoke(museId); } finally { busy.delete(museId); }
   // Synchronous from here: the revocation and its world effects are committed together, before any other request runs.
