@@ -8,3 +8,5 @@
 
 /* Studio setup shares the public touch and reading sizes. */
 .studio-preparation{font-size:14px}.studio-preparation p,.studio-preparation label,.studio-preparation input{font-size:14px}.studio-preparation button,.studio-tabs button,.studio-choices button,.studio-save,.studio-random{min-width:44px;min-height:44px;font-size:14px}.studio-preparation small,.credit{font-size:12px}.studio-preparation :focus-visible{outline:3px solid #ffcd8b;outline-offset:3px}
+
+.studio-navigation{display:flex;gap:10px;align-items:center;margin-top:12px}.studio-navigation>*{flex:1;min-height:44px}.studio-back{display:inline-flex;align-items:center;justify-content:center;font-size:14px;border:1px solid #53607b;border-radius:8px;text-decoration:none}.studio-navigation .studio-save{margin:0}
