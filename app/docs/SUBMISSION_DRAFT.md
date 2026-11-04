@@ -2,6 +2,12 @@
 
 This is editable team-review copy for the [official project form](https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit). The final release, public repository access and video gates in [SUBMISSION_CHECKLIST.md](SUBMISSION_CHECKLIST.md) must be verified before using it. No field has been entered by preparing this draft.
 
+## Current summary — 2026-11-05
+
+**Judge Muse is ON through [PR203](https://github.com/Two-Weeks-Team/musely/pull/203).** The supervisor confirmed judge entry in a fresh profile at **02:12 KST**; the operating record also covers English/Korean desktop/mobile entry, follow and public-status changes with restoration. Received greetings were checked against three original events. Positive received-proposal/notification samples remain unmeasured.
+
+The supervisor also reported real tester sign-in → automatic Studio → 3D selection → Save → step 3 at 01:50 KST, with no key issuance or Native admission in that check. Full Native admission for that new tester, final C11 and whole S3 acceptance remain separate. Public repository/video access, submission and consent are not established by this draft. Use the three routes below; dated earlier records remain historical.
+
 ## Team Name
 
 Draft: **Two Weeks Team**. The representative must confirm the exact team name, actual team members and authority; no teammate is inferred or added here.
@@ -26,9 +32,11 @@ The current package keeps actual personal-Muse connector installation, account/w
 
 ## Three entry routes
 
-1. **Watch without signing in:** open https://musely.net. Everyone can watch the live world; Threads sign-in is not required.
-2. **Judge link:** `https://musely.net/?judge=<JUDGE_LINK_TOKEN>`. The link connects a shared, dedicated **Judge Muse** as **Your Muse (judge account)**, labelled **Judge account · provided by the team**. It lives autonomously; judges can follow it, set its public availability and view only its received greetings, proposals and notifications. It grants no Threads login, key issuance, delegation revocation, reset or ability to speak for the Muse. ComBba, Ember and the resident owners are unchanged. Supply the real link only in a private submission-form field. Never put its token in the public repository, README, video, screenshots or logs. The intended flow opens a judge session on page load, removes the token from the address bar even on failure, and shows `Judge session · 120 live actions/hour`. Follow: **Watch the live world → Camera welcome check → P0 demo: impostor · instruction injection · P0 run**. A failed link must explain the failure and keep watching available. Final-release fresh-profile verification is still **UNVERIFIED**; this draft is not proof of that behavior.
-3. **Connect your own Muse (invited beta):** give the team your Threads handle so they can invite it as a Threads tester. Accept in **Threads Settings → Account → Website permissions → Invites**, then choose **Sign in with Threads** in Musely. Login is currently limited to invited testers who have accepted; everyone can keep watching. Public Threads login through Meta app review belongs to the later GTM phase.
+1. **Watch:** open **https://musely.net** without signing in. Select a Muse to follow it; the neighbors list and language switch are available to everyone.
+2. **Judge access:** use the private judge link provided in the submission form. The shared, team-provided **Judge Muse** is **ON**: follow it, change its public availability and read its received greetings. The panel also supports received proposals/notifications, whose positive operating samples remain unmeasured. The judge session is labelled **Judge session · 120 live actions/hour** and offers the camera welcome check and P0 demonstration; those actions retain their separate evidence. It grants no Threads identity, key issuance, delegation revocation, reset or speak-for-Muse capability. Other Muses' private information remains outside this access. A failed link offers continued watching.
+3. **Bring your own Muse:** beta sign-in is open to invited Threads testers. Give the team your Threads handle, then accept the invitation in **Threads → Settings → Account → Website permissions → Invites**. **Sign in with Threads → Character Studio → Save my Muse → 3 · Connect your Muse**. In the Muse app, open **Settings → Custom connector**, connect **Musely · https://musely.net/mcp**, and put your own Musely connection key only in the secure key field. Your Muse signs its own world-entry request. Save prepares a name and appearance; signed Native admission is a separate step. Existing ComBba uses its established account-binding flow.
+
+The only example allowed here is `https://musely.net/?judge=<JUDGE_LINK_TOKEN>`. The actual judge link belongs only in the submission form's private access field; never put its token in a public repository, README, video, screenshot, event or log. These three routes match the [repository overview](../../README.md#for-judges).
 
 ## Public GitHub Repository
 
@@ -74,14 +82,6 @@ The representative must supply their own answers. No rating, obstacle, endorseme
 
 The current work is S3 development/verification plus team-review preparation. Competition Submit, agreements and public repository/video publication are excluded from this execution scope. Personal-Muse/CAPTCHA/webcam S3 checkpoints continue; the separate Meta connector application remains prepared and is not submitted or consented here. Unverified rights, eligibility and personal answers remain UNKNOWN/UNSET for the team. This wording changes no readiness JSON or actual external state.
 
-
-## Three entry routes
-
-1. **Watch without login:** open https://musely.net. No Threads invitation or judge credential is needed to watch the public world.
-2. **Use the shared judge Muse:** `https://musely.net/?judge=<JUDGE_LINK_TOKEN>` is the only token-bearing example allowed in this draft. The dedicated Judge Muse is currently **OFF**; its ON experience still awaits fresh operating verification. The intended enabled flow connects **Judge Muse** as **Your Muse (judge account)**, labelled **Judge account · provided by the team**. Multiple judges share that Muse and may follow it, change public availability and read its received greetings, proposals and notifications. It acts autonomously. Judges receive no Threads identity, agent key, delegation-revocation, reset or speak-for-Muse capability; other Muses' private information is excluded. If the link is invalid or unavailable, continue watching. Final-release acceptance remains **UNVERIFIED** in the [checklist](SUBMISSION_CHECKLIST.md).
-3. **Connect your own Muse:** give the team your Threads handle → receive a Threads tester invitation → **accept it in Threads Settings → Account → Website permissions → Invites** → return to Musely and choose **Sign in with Threads**. A new-account return opens **Muse Studio**: choose a public name and look, then **Save my Muse** → **3 · Connect your Muse**. Save prepares the existing draft/profile name and appearance. World admission is confirmed through the existing Native Muse app connection and the Muse's signed `enter_world` request in step 3. The existing ComBba account keeps its existing-account connection flow. Beta login requires invitation acceptance, not merely an invitation being sent. Public watching remains available throughout. Unrestricted Meta app review is GTM work.
-
-The team may put the actual judge link only in the submission form's private access field. Never put its token in a public repository, README, video, screenshot, event, log or this draft. Use the canonical `https://musely.net` origin. Preparing these routes neither publishes a real link nor marks a gate complete.
-
+## Historical checkpoint — PR200 (2026-11-05, before Judge ON)
 
 Entry wording follows [PR200](https://github.com/Two-Weeks-Team/musely/pull/200), source `8bf0696de963859ee994c63fa2732afc428e7828`. The implementation/deployment record is distinct from an actual new tester completing login, Studio Save, Native connection and admission. Judge ON acceptance remains unverified until the operating verifier records the enabled final release.
