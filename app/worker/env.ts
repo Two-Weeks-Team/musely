@@ -13,6 +13,15 @@ export interface Env {
   PUBLIC_ORIGIN: string;
   /** Default absent/off. Server-only experimental installation; never set by a browser. */
   WORLD_LIFE_MODE?: string;
+  /** Trusted model-budget policy. No browser or Muse can modify these limits. */
+  RESIDENT_BUDGET_MODE?: string;
+  RESIDENT_MODEL_ENABLED?: string;
+  RESIDENT_DAILY_BUDGET_USD?: string;
+  INTERACTIVE_DAILY_BUDGET_USD?: string;
+  RESIDENT_HOURLY_BUDGET_USD?: string;
+  MODEL_PERIOD_BUDGET_USD?: string;
+  MODEL_BUDGET_START_AT?: string;
+  MODEL_BUDGET_END_AT?: string;
   /** Optional extra hosts allowed as an Origin on /mcp (comma-separated); requests without Origin are allowed. */
   MCP_ALLOWED_ORIGINS?: string;
   // Secrets (wrangler secret put); never in the repository or the client bundle.

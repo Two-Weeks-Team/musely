@@ -87,7 +87,7 @@ export async function prepareResidentTrade(c:WantsModelContext,goalId:string,tas
  if(!c.model?.key)return no('not_connected');const release=c.acquireSlot();if(!release)return no('concurrency_limit');
  const reservationId='wants:'+sha256Hex(JSON.stringify([before.worldId,goalId,row!.revision,taskId,task.round,before.version]));
  try {
-  const reservation=c.ledger.reserve({id:reservationId,tier:'world',session:'world',ip:'',action:'trade',maxCostUsd:maxCostUsd('trade',messages)});
+  const reservation=c.ledger.reserve({id:reservationId,tier:'world',session:'world',ip:'',action:'trade',maxCostUsd:maxCostUsd('trade',messages),residentKind:'trade'});
   if(!reservation.ok)return no(reservation.reason);if(reservation.existing)return no('already_reserved');
   const result=await callModel(c.model,'trade',messages);
   if(!result.ok){c.ledger.settle(reservationId,failureCostUsd(result),result.kind==='timeout'?'timeout':'error');return no(result.kind);}
