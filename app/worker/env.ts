@@ -42,6 +42,7 @@ export interface Env {
   MCP_ALLOWED_ORIGINS?: string;
   // Secrets (wrangler secret put); never in the repository or the client bundle.
   MODEL_API_KEY?: string;
+  MODEL_API_KEY_FALLBACK?: string;
   TURNSTILE_SECRET?: string;
   SESSION_SECRET?: string;
   JUDGE_TOKEN?: string;
