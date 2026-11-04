@@ -1,4 +1,5 @@
 import * as T from 'three';
+import {normalizeAppearance,resolveAppearance,appearanceLook,type AppearanceId} from './appearance.ts';
 import type {GLTF} from 'three/addons/loaders/GLTFLoader.js';
 import {BaseMuseActor} from './BaseMuseActor.ts';
 import {applyFaceControls} from './FaceControls.ts';
@@ -18,6 +19,7 @@ type Tagged=T.Object3D&{userData:{museLod?:Lod;museClip?:string}};
  */
 export class MuseActor extends BaseMuseActor{
  readonly variant:MuseVariantId;
+ readonly appearance:AppearanceId;
  /** LOD currently rendered (the closest loaded LOD to the requested one). */
  lod:Lod;
  /** LOD the selector asked for; rendered as soon as it is loaded. */
@@ -38,10 +40,10 @@ export class MuseActor extends BaseMuseActor{
   * Compatible form: `new MuseActor([lod0, lod1?, lod2?], attachment, variant, library)` (clips from LOD0).
   * Progressive form: pass `{gltf, lod, clips}` as the first argument with any single starting LOD.
   */
- constructor(base:readonly [GLTF,GLTF?,GLTF?]|{gltf:GLTF;lod:Lod;clips:readonly T.AnimationClip[]},attachment:GLTF|null,variant:MuseVariantId,library?:MaterialLibrary){
+ constructor(base:readonly [GLTF,GLTF?,GLTF?]|{gltf:GLTF;lod:Lod;clips:readonly T.AnimationClip[]},attachment:GLTF|null,variant:MuseVariantId,library?:MaterialLibrary,appearance:AppearanceId=variant){
   const start=Array.isArray(base)?{gltf:base[0],lod:0 as Lod,clips:base[0].animations}:base as {gltf:GLTF;lod:Lod;clips:readonly T.AnimationClip[]};
   super(start.gltf,start.clips);
-  this.variant=variant;this.root.name=`Muse_${variant}`;this.library=library;
+  this.appearance=normalizeAppearance(appearance);if(appearanceLook(this.appearance)!==variant)throw Error('appearance_look_mismatch');this.variant=variant;this.root.name=`Muse_${variant}`;this.library=library;
   this.skeleton=this.meshes[0].skeleton;
   for(const b of this.skeleton.bones)this.bones.set(b.name,b);
   this.bodyParent=this.meshes[0].parent!;
@@ -69,7 +71,7 @@ export class MuseActor extends BaseMuseActor{
    const lod=(node.userData.musely_lod??0) as Lod;
    if(node.userData.musely_kind==='prop'){
     const bone=this.bones.get(node.parent?.name??'');if(!bone)throw Error(`Prop ${node.name} has no matching bone ${node.parent?.name}`);
-    const c=node.clone(true);c.traverse(o=>{if(o instanceof T.Mesh)o.frustumCulled=false;});bone.add(c);this.tag(c,lod);
+    const c=node.clone(true);c.traverse(o=>{if(o instanceof T.Mesh){o.frustumCulled=false;this.tint([o]);}});bone.add(c);this.tag(c,lod);
    }else{
     const group=new T.Group();group.name=node.name;
     node.traverse(o=>{if(o instanceof T.SkinnedMesh){const m=this.rebind(o);group.add(m);this.meshes.push(m);this.tint([m]);}});
@@ -128,9 +130,9 @@ export class MuseActor extends BaseMuseActor{
  get carrying(){return this.carried;}
  /** True when the carried prop is bound and rendered. */
  carryShown(){if(!this.carried)return false;let n=0;this.root.traverseVisible(o=>{if((o as Tagged).userData.museClip===this.carried)n++;});return n>0;}
- private tint(meshes:readonly T.SkinnedMesh[]){
-  if(!this.library||this.variant==='00-jolly')return;
-  for(const m of meshes){const mat=m.material as T.MeshStandardMaterial;if(mat.name.startsWith('Fleece'))m.material=this.library.fleece(this.variant,mat);}
+ private tint(meshes:readonly T.Mesh[]){
+  if(!this.library)return;const custom=typeof this.appearance!=='string',style=resolveAppearance(this.appearance),deco=style.deco==='none'?null:variantById(style.deco),accent=deco?new T.Color(deco.accent):null;
+  for(const mesh of meshes){const mat=mesh.material as T.MeshStandardMaterial;if(mat.name.startsWith('Fleece')){if(custom)mesh.material=this.library.fleeceColor(style.bodyHex,mat);else if(this.variant!=='00-jolly')mesh.material=this.library.fleece(this.variant,mat);}else if(custom&&accent&&mat.name.startsWith('Acc ')&&Math.abs(mat.color.r-accent.r)+Math.abs(mat.color.g-accent.g)+Math.abs(mat.color.b-accent.b)<.04)mesh.material=this.library.accentColor(style.accentHex,mat);}
  }
  /** Bind another file's skinned geometry to this actor's skeleton, remapping joints by bone name. */
  private rebind(src:T.SkinnedMesh){
@@ -175,5 +177,5 @@ export class MuseActor extends BaseMuseActor{
  /** Materials of currently rendered meshes (diagnostics for material/tint checks). */
  visibleMaterials(){const out:{mesh:string;material:string;color:string;map:boolean;normal:boolean}[]=[];this.root.traverseVisible(o=>{if(o instanceof T.Mesh)for(const m of [o.material].flat() as T.MeshStandardMaterial[])out.push({mesh:o.name,material:m.name,color:'#'+m.color.getHexString(T.LinearSRGBColorSpace),map:!!m.map,normal:!!m.normalMap});});return out;}
  visibleTriangles(){let n=0;this.root.traverseVisible(o=>{if(o instanceof T.Mesh){const g=o.geometry;n+=(g.index?g.index.count:g.attributes.position.count)/3;}});return n;}
- getMetrics(){return {...super.getMetrics(),held:this.heldAction,blend:this.blendKey,carry:this.carried,variant:this.variant,lod:this.lod,wantedLod:this.wanted,loadedLods:[...this.loaded].sort(),attachment:this.attachmentLoaded,triangles:this.visibleTriangles(),tint:variantById(this.variant).body,fleeceFactor:fleeceFactor(variantById(this.variant).body)};}
+ getMetrics(){return {...super.getMetrics(),held:this.heldAction,blend:this.blendKey,carry:this.carried,variant:this.variant,lod:this.lod,wantedLod:this.wanted,loadedLods:[...this.loaded].sort(),attachment:this.attachmentLoaded,triangles:this.visibleTriangles(),appearance:this.appearance,tint:resolveAppearance(this.appearance).bodyHex,accent:resolveAppearance(this.appearance).accentHex,deco:resolveAppearance(this.appearance).deco,fleeceFactor:fleeceFactor(resolveAppearance(this.appearance).bodyHex)};}
 }

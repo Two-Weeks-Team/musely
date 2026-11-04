@@ -1,5 +1,6 @@
 import * as T from 'three';
 import {GLTFLoader,type GLTF} from 'three/addons/loaders/GLTFLoader.js';
+import {resolveAppearance,type AppearanceId} from './appearance.ts';
 import {MuseActor,type Lod} from './MuseActor.ts';
 import {attachmentUrl,fleeceFactor,lodUrl,propsUrl,variantById,type MuseVariantId} from './catalog.ts';
 
@@ -29,25 +30,22 @@ export class MaterialLibrary{
   }
   return this.files.get(url)!;
  }
- /** One tinted copy per variant and source fleece material; maps and normal/roughness stay shared. */
- fleece(variant:MuseVariantId,source:T.MeshStandardMaterial){
-  const key=variant+'|'+source.uuid;let m=this.fleeces.get(key);
-  if(!m){
-   m=source.clone();m.name=source.name+' · '+variant;const v=variantById(variant);const [r,g,b]=fleeceFactor(v.body);m.color.setRGB(r,g,b,T.LinearSRGBColorSpace);
-   // Fabric sheen takes the fiber color; the base's white sheen would wash a colored coat out to cream.
-   const phys=m as T.MeshPhysicalMaterial;if(phys.isMeshPhysicalMaterial&&phys.sheen>0)phys.sheenColor.set(v.body);
-   this.fleeces.set(key,m);
-  }
-  return m;
+ /** One tinted copy per color and source fleece material; maps and normal/roughness stay shared. */
+ fleece(variant:MuseVariantId,source:T.MeshStandardMaterial){return this.fleeceColor(variantById(variant).body,source);}
+ fleeceColor(body:string,source:T.MeshStandardMaterial){
+  const key='body|'+body+'|'+source.uuid;let m=this.fleeces.get(key);
+  if(!m){m=source.clone();m.name=source.name+' · '+body;const [r,g,b]=fleeceFactor(body);m.color.setRGB(r,g,b,T.LinearSRGBColorSpace);const phys=m as T.MeshPhysicalMaterial;if(phys.isMeshPhysicalMaterial&&phys.sheen>0)phys.sheenColor.set(body);this.fleeces.set(key,m);}return m;
  }
+ accentColor(accent:string,source:T.MeshStandardMaterial){const key='accent|'+accent+'|'+source.uuid;let m=this.fleeces.get(key);if(!m){m=source.clone();m.name=source.name+' · '+accent;m.color.set(accent);this.fleeces.set(key,m);}return m;}
+
  dispose(){for(const m of this.fleeces.values())m.dispose();this.fleeces.clear();}
 }
 
 /** Resolve the shared rig, all three body LODs and the variant attachment, returning an independent actor. */
-export async function loadMuse(id:MuseVariantId,library:MaterialLibrary,lods:readonly Lod[]=[0,1,2]){
- const att=attachmentUrl(id,library.base);
+export async function loadMuse(id:MuseVariantId,library:MaterialLibrary,lods:readonly Lod[]=[0,1,2],appearance:AppearanceId=id){
+ const deco=resolveAppearance(appearance).deco,att=deco==='none'?null:attachmentUrl(deco,library.base);
  const [l0,l1,l2,attachment]=await Promise.all([library.load(lodUrl(0,library.base)),lods.includes(1)?library.load(lodUrl(1,library.base)):undefined,lods.includes(2)?library.load(lodUrl(2,library.base)):undefined,att?library.load(att):null]);
- return new MuseActor([l0,l1,l2],attachment,id,library);
+ return new MuseActor([l0,l1,l2],attachment,id,library,appearance);
 }
 
 /** Rig + clips derived at build time from base/lod0.glb (scripts/clips-glb.mjs). */
@@ -58,13 +56,13 @@ export const clipsUrl=(base:string)=>`${base}base/clips.glb`;
  * those load; `upgrade()` then adds the attachment, LOD1 and LOD0 in that order without replacing the
  * actor. A failed attachment leaves the plain base Muse; a failed LOD keeps the closest loaded LOD.
  */
-export async function loadMuseLight(id:MuseVariantId,library:MaterialLibrary){
+export async function loadMuseLight(id:MuseVariantId,library:MaterialLibrary,appearance:AppearanceId=id){
  const [l2,clips]=await Promise.all([library.load(lodUrl(2,library.base)),library.load(clipsUrl(library.base))]);
- const actor=new MuseActor({gltf:l2,lod:2,clips:clips.animations},null,id,library);
+ const actor=new MuseActor({gltf:l2,lod:2,clips:clips.animations},null,id,library,appearance);
  const upgrade=async(steps:readonly ('attachment'|'props'|Lod)[]=['attachment',1,0,'props'])=>{
   for(const step of steps){
    try{
-    if(step==='attachment'){const url=attachmentUrl(id,library.base);if(url)actor.addAttachment(await library.load(url));}
+    if(step==='attachment'){const deco=resolveAppearance(appearance).deco,url=deco==='none'?null:attachmentUrl(deco,library.base);if(url)actor.addAttachment(await library.load(url));}
     else if(step==='props')actor.addProps(await library.load(propsUrl(library.base)));
     else actor.addLod(await library.load(lodUrl(step,library.base)),step);
    }catch(e){console.warn('Muse upgrade step unavailable, keeping current detail:',id,step,e);}
