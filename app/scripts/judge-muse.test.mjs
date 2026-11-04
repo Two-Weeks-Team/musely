@@ -165,3 +165,10 @@ for(const boundary of ['body','commit'])test('Judge team reset rechecks current 
  }finally{Date.now=clock;}
  assert.throws(()=>x.world.resetMuse('10-judge',PRINCIPALS['demo-peer'].ownerId,{principal:'demo-peer',ownerId:PRINCIPALS['demo-peer'].ownerId,exp:now+3600000}),e=>e.code==='not_your_muse');
 });
+
+test('judge-only legacy notification reads stay scoped to Judge and current flag; explicit owner authority remains separate',async t=>{
+ const x=await boot(t),now=Date.now();x.world.runtime.commitExternal(now,'legacy-notification-boundary',s=>{s.inbox.notifications.push({id:'owner-private-notice',muse:'00-jolly',kind:'blocked',at:now,line:'OWNER_PRIVATE_OVERVIEW',ref:'owner-ref',other:'01-sunny',detail:{private:'owner-owned'}},{id:'judge-only-notice',muse:'10-judge',kind:'blocked',at:now,line:'judge reason',ref:null,other:'02-moss'});});
+ const scoped=await x.go('GET','/api/owner/notifications',x.judge);assert.equal(scoped.status,200);assert.deepEqual(scoped.body.notifications.map(n=>n.id),['judge-only-notice']);assert.ok(!JSON.stringify(scoped.body).includes('OWNER_PRIVATE_OVERVIEW'));
+ const owner=await x.go('GET','/api/owner/notifications',x.judge+'; '+x.owner);assert.equal(owner.status,200);assert.deepEqual(owner.body.notifications.find(n=>n.id==='owner-private-notice').detail,{private:'owner-owned'});
+ x.env.JUDGE_MUSE_MODE='off';assert.equal((await x.go('GET','/api/owner/notifications',x.judge)).status,404);
+});
