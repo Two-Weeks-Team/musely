@@ -398,7 +398,7 @@ and rejection of an unreviewed conflict. No branch is merged by this script.
 
 ## Opt-in WorldDO installation and durable projection (supersedes earlier caller limitations)
 
-The new installation is absent/OFF by default. No deployment configuration enables it.
+The controller is absent/OFF when server configuration is absent or explicitly `off`. The approved release candidate now explicitly sets `WORLD_LIFE_MODE=sandbox-v1` in `app/wrangler.jsonc`; this prepares deployment activation and is not evidence that this candidate has been deployed.
 Only the server environment value WORLD_LIFE_MODE=sandbox-v1 installs the controller;
 unknown values fail closed. HTTP parameters and public requests cannot enable it. An
 installation without the resident service factory or resident-life storage fails explicitly.
@@ -489,3 +489,23 @@ Shared runtime merges preserve engineHooks (including all refusal gates), reside
 goal idle and exact run-log fields. Shared rules/world/MCP changes merge cleanly against
 the pinned reviewed source. CI still runs personal-scene tests with real repository assets;
 local broad server checks exclude that known-incomplete binary fixture only.
+
+
+## Approved release-candidate configuration (2026-11-04)
+
+The integrated candidate explicitly selects `WORLD_LIFE_MODE: "sandbox-v1"` in the
+trusted Worker deployment variables. `DAILY_BUDGET_USD` remains `"12"`; no new model
+provider, authentication, signing, migration or user-level activation route is added.
+Code still defaults OFF when the variable is absent/empty, and `WORLD_LIFE_MODE=off`
+is the server-side maintenance kill setting. Unsupported values fail closed. Browser
+query parameters and request bodies cannot enable or override this server setting.
+
+`activationStatus()` belongs to the original pure proposal-validator prototype. Its
+constant OFF and historical blockers are neither the installed controller status nor
+an assertion that this explicitly configured release is OFF. Earlier chronological
+OFF/no-production-caller observations above retain their original historical scope.
+Installed fixture tests bind the deployment mode to actual WorldDO construction and
+GET `/api/world/life`: configured ON returns 200, explicit OFF returns 404. Provider
+responses in those tests remain offline fixtures. Release merge/deployment, actual
+provider costs, production behavior and final performance evidence belong to the root
+release validation; configuration and passing fixtures do not establish those results.
