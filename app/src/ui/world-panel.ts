@@ -1,6 +1,7 @@
 import {observeWorld, type WorldObservation} from './world-observation.ts';
 import {presentationIn, resolveMuse, withSnapshotProfiles} from './personal-profile.ts';
 import {recordedSceneFrame} from './recorded-scene.ts';
+import {speechRecipient} from './speech-recipient.ts';
 import type {RecordedFrame, RecordedEvidence, RecordedEvent} from '../replay/player.ts';
 // Live world surface (direction v2, task 6): shows what the shared world is really doing and lets anyone
 // open the evidence behind it. Everything is built with textContent; nothing from the server is parsed as HTML.
@@ -62,6 +63,10 @@ const viewerZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'yo
 
 
 export function describe(e: Ev,w?: LiveWorld | null): string {
+  const recipient=speechRecipient(e,w),text=describeBody(e,w);
+  return recipient?`${text} · → ${recipient.name}`:text;
+}
+function describeBody(e: Ev,w?: LiveWorld | null): string {
   const a = publicShortName(e.muse,w), b = publicShortName(e.other,w);
   const d = e.data ?? {};
   switch (e.kind) {
@@ -78,7 +83,7 @@ export function describe(e: Ev,w?: LiveWorld | null): string {
     case 'spotlight_cancelled': if(d.reason==='unknown_muse')return `${a}: This Muse is no longer available. Watch current activity in the Feed. / 현재 세계에 없는 Muse예요. Feed에서 현재 활동을 볼 수 있어요.`; return `${a}: This Muse chooses for itself. Watch its activity in the Feed. / 이 Muse는 스스로 행동해요. Feed에서 활동을 볼 수 있어요.`;
     case 'spotlight_requested': return `${a} asked for the next spotlight turn (${d.origin === 'connected' ? 'your Muse' : 'visitor'}, #${d.position} in line)`;
     case 'cards_verified': return `${a} and ${b} verified each other's Agent Card`;
-    case 'greet': return `${a} greets ${b}`;
+    case 'greet': return e.other&&e.other!==e.muse?`${a} greets ${b}`:`${a} speaks`;
     case 'discover': return `${a} found ${itemName(d.item)} at ${placeName(e.place)}`;
     case 'craft': return `${a} crafted ${itemName(d.item)}`;
     case 'trade_proposed': return `${a} offers ${itemName(d.give)} for ${b}'s ${itemName(d.want)}`;
@@ -275,6 +280,8 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     const c = el('button', 'close', '×'); c.type = 'button'; c.setAttribute('aria-label', 'Close evidence'); c.onclick = () => evidence.hidePopover();
     const s = e.recorded ? {text: 'REPLAY · recorded ' + e.source.toUpperCase(), cls: 'src-replay'} : sourceLabel(e);
     const h3 = el('h3', '', describe(e)); h3.id = 'evidence-title'; h3.tabIndex = -1;
+    const recipient=speechRecipient(e,displayWorld());
+    if(recipient)h3.setAttribute('aria-label',`${describe(e)} · To ${recipient.name} / ${recipient.name}에게`);
     evidence.dataset.eventId = e.id;
     evidence.append(c, el('span', 'eyebrow', 'EVIDENCE'), h3, el('span', 'src ' + s.cls, s.text));
     const dl = el('dl', 'facts');
@@ -346,6 +353,8 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   function row(e: Ev) {
     const li = el('li', 'ev'); const s = sourceLabel(e);
     const b = el('button', 'ev-btn'); b.type = 'button'; b.dataset.eventId = e.id; b.onclick = () => openEvidence(e, b);
+    const recipient=speechRecipient(e,displayWorld());
+    if(recipient)b.setAttribute('aria-label',`${at(e.at)} · ${s.text} · ${describe(e)} · To ${recipient.name} / ${recipient.name}에게`);
     b.append(el('span', 'ev-time', at(e.at)), el('span', 'src ' + s.cls, s.text), el('span', 'ev-text', describe(e)));
     for (const t of e.tags) b.append(el('span', 'tag', t.replace(/_/g, ' ')));
     li.append(b);
@@ -610,7 +619,8 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     const last = [...events].reverse().find(e => e.kind === 'spotlight' || e.kind === 'spotlight_fallback');
     if (world) {
       const live = last && last.source === 'live', stalled = !wr.ok;
-      spot.textContent = `Spotlight · ${shortName(world.nextSpotlight.muse)} next${world.nextSpotlight.priority ? ' (priority)' : ''} · ${world.nextSpotlight.freedom}${last ? ' · last: ' + (live ? 'LIVE' : last.source.toUpperCase()) : ''}${stalled ? ' · not updating' : ''}`;
+      const recipient=last?speechRecipient(last,displayWorld()):null;
+      spot.textContent = `Spotlight · ${shortName(world.nextSpotlight.muse)} next${world.nextSpotlight.priority ? ' (priority)' : ''} · ${world.nextSpotlight.freedom}${last ? ' · last: ' + (live ? 'LIVE' : last.source.toUpperCase()) : ''}${recipient?' · → '+recipient.name:''}${stalled ? ' · not updating' : ''}`;
       spot.dataset.state = stalled ? 'stale' : live ? 'live' : 'other';
       spot.title = stalled ? `The world did not answer (${wr.error}); this is the last data we received.` : last ? describe(last) : '';
       document.body.dataset.worldReady = '1';

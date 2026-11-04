@@ -4,6 +4,7 @@ import type {CampfireScenePort} from '../../world-packs/campfire/scene-port.mjs'
 import * as T from 'three';
 import type {RecordedFrame} from '../replay/player.ts';
 import {SceneProjection, frameSource} from './recorded-scene.ts';
+import {frameSpeech} from './speech-recipient.ts';
 import {loadMuseLight, type MaterialLibrary} from '../character-kit/MaterialLibrary.ts';
 import type {MuseActor} from '../character-kit/MuseActor.ts';
 import {MUSE_VARIANTS, propsUrl, attachmentUrl, lodUrl, type MuseVariantId} from '../character-kit/catalog.ts';
@@ -153,7 +154,8 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
         const foot = project(new T.Vector3(f.x, y, f.z));
         e.label.hidden = Math.abs(foot.y - p.y) < 20 || p.x < 12 || p.y < 70 || p.x > innerWidth - 12 || p.y > innerHeight - 110;
         e.label.style.transform = `translate(${Math.round(p.x)}px,${Math.round(p.y)}px) translate(-50%,-100%)`;
-        e.label.textContent = `${museName(f.id,projection.world)}${f.line ? ': ' + f.line : f.card ? ' · ' + f.card : ''}`;
+        const speech=frameSpeech(f,projection.world,projection.events);
+        e.label.textContent = `${museName(f.id,projection.world)}${speech ? (speech.recipient?' ':': ')+speech.text : f.card ? ' · ' + f.card : ''}`;
         e.label.dataset.version = String(projection.world.version ?? projection.world.tick);
         e.label.dataset.source = sourceOf(f.id);
         e.label.dataset.replay = String(store.replay);
