@@ -2,10 +2,10 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {assertCompatible} from '../src/replay/player.ts';
 import {currentVersions} from '../src/replay/versions.ts';
-const expectedEngine=process.env.MUSELY_INTEGRATED_ENGINE??'engine-8';
-assert.ok(['engine-6','engine-7','engine-8'].includes(expectedEngine),'unsupported integration engine expectation');
+const expectedEngine=process.env.MUSELY_INTEGRATED_ENGINE??'engine-9';
+assert.ok(['engine-6','engine-7','engine-8','engine-9'].includes(expectedEngine),'unsupported integration engine expectation');
 const v4={schemaVersion:'run-log-2',engineVersion:'engine-4',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-c7068bfa0238'};
-test('combined consumed-ingredient semantics are explicitly engine-8 (or an exact requested historical composition)',()=>{assert.equal(currentVersions().engineVersion,expectedEngine);assert.doesNotThrow(()=>assertCompatible(currentVersions()));});
+test('completion-driven resident semantics are explicitly engine-9 (or an exact requested historical composition)',()=>{assert.equal(currentVersions().engineVersion,expectedEngine);assert.doesNotThrow(()=>assertCompatible(currentVersions()));});
 test('exact engine-4 checkpoint remains readable without rewriting its source version',()=>{const record={...v4};assert.doesNotThrow(()=>assertCompatible(record));assert.deepEqual(record,v4);});
 test('mixed historical catalog and unknown engine are refused',()=>{assert.throws(()=>assertCompatible({...v4,catalogVersion:'catalog-unknown'}),/incompatible_record/);assert.throws(()=>assertCompatible({...v4,engineVersion:'engine-999'}),/incompatible_record/);});
 test('explicit expected tuple cannot silently accept engine-4 as the current combined engine',()=>{assert.throws(()=>assertCompatible(v4,currentVersions()),/incompatible_record/);});
@@ -20,3 +20,5 @@ test('published goal-only engine-6 tuple remains checkpoint-compatible without a
  assert.throws(()=>assertCompatible({...goal6,catalogVersion:'catalog-ffb109917767'}),/incompatible_record/);
  assert.throws(()=>assertCompatible(goal6,currentVersions()),/incompatible_record/);
 });
+
+test('published engine-8 keeps its exact tuple and is not relabelled as the new activity engine',()=>{const v8={schemaVersion:'run-log-2',engineVersion:'engine-8',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-ffb109917767'};assert.doesNotThrow(()=>assertCompatible(v8));assert.throws(()=>assertCompatible(v8,currentVersions()),/incompatible_record/);assert.throws(()=>assertCompatible({...v8,catalogVersion:'catalog-c7068bfa0238'}),/incompatible_record/);});

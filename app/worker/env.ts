@@ -13,6 +13,9 @@ export interface Env {
   PUBLIC_ORIGIN: string;
   /** Default absent/off. Server-only experimental installation; never set by a browser. */
   WORLD_LIFE_MODE?: string;
+  /** Action-completion scheduling is opt-in and requires the protected model ledger. */
+  RESIDENT_ACTIONS_MODE?: string;
+  RESIDENT_ACTION_MAX_CONCURRENT?: string;
   /** Trusted model-budget policy. No browser or Muse can modify these limits. */
   RESIDENT_BUDGET_MODE?: string;
   RESIDENT_MODEL_ENABLED?: string;

@@ -9,16 +9,16 @@ import {projectResidentPromises} from './resident-promises.ts';
 
 /** Respect the real scheduler's chosen resident. Never steal visitor priority or personal control. */
 export type ResidentOwnershipKind = 'resident'|'legacy'|'personal'|'unknown';
-export const knownResident = (id:string,kind:(id:string)=>ResidentOwnershipKind):boolean =>
-  hasActorHarness(id) && !Object.values(PRINCIPALS).some(p=>p.muses.includes(id)) && kind(id)==='resident';
+export const knownResident = (id:string,kind:(id:string)=>ResidentOwnershipKind,includeOperatingResidents=false):boolean =>
+  hasActorHarness(id) && (includeOperatingResidents&&['04-ember','09-copper'].includes(id)||!Object.values(PRINCIPALS).some(p=>p.muses.includes(id))) && kind(id)==='resident';
 
 export function residentProposalForWorld(life:LifeState, world:WorldState, now:number,
-  options:{enabled:boolean;residentTurnAllowed:boolean;allowedPlaceIds:readonly string[];promiseLeadMs?:number;promiseGraceMs?:number;ownershipKind?:(id:string)=>ResidentOwnershipKind}):LifeProposal|null {
+  options:{enabled:boolean;residentTurnAllowed:boolean;includeOperatingResidents?:boolean;allowedPlaceIds:readonly string[];promiseLeadMs?:number;promiseGraceMs?:number;ownershipKind?:(id:string)=>ResidentOwnershipKind}):LifeProposal|null {
   if(options.enabled!==true || options.residentTurnAllowed!==true || world.muses.length===0) return null;
   const spot=spotlightFor(world,now);
   if(spot.priority) return null;
   const actor=world.muses.find(m=>m.id===spot.muse);
-  if(!actor || !options.ownershipKind || !knownResident(actor.id,options.ownershipKind) || actor.intent || actor.travel || (actor.beat && actor.beat.endsAt>now ) || world.paused?.[actor.id] || isRuntimeControlled(world,actor.id,now)) return null;
+  if(!actor || !options.ownershipKind || !knownResident(actor.id,options.ownershipKind,options.includeOperatingResidents) || actor.intent || actor.travel || (actor.beat && actor.beat.endsAt>now ) || world.paused?.[actor.id] || isRuntimeControlled(world,actor.id,now)) return null;
   const pending=world.inbox?.tasks.some(t=>t.status==='pending'&&(t.from===actor.id||t.to===actor.id));
   const invited=world.inbox?.invites?.some(i=>i.status==='open'&&(i.from===actor.id||i.to.includes(actor.id)));
   const approached=world.muses.some(m=>m.id!==actor.id&&m.intent?.target===actor.id);

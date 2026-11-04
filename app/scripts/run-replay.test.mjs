@@ -40,8 +40,8 @@ test('exact historical goal/resident/combined and engine5/4/3/2 tuples play snap
  }
 });
 
-test('combined engine8 keeps its exact resident catalog version', () => {
- assert.deepEqual(currentVersions(), {schemaVersion:'run-log-2',engineVersion:'engine-8',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-ffb109917767'});
+test('completion-driven engine9 keeps its exact resident catalog version', () => {
+ assert.deepEqual(currentVersions(), {schemaVersion:'run-log-2',engineVersion:'engine-9',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-ffb109917767'});
  const r=record();r.engineVersion='engine-6';rejects(r,'incompatible_record');
 });
 

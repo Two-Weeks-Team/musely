@@ -37,6 +37,12 @@ import {residentContextForWorld, withResidentContext, type ResidentContext} from
 import {noteServed, restoreLife, saveLife, type LifeState} from '../../src/engine/resident-life.ts';
 import {recountAutonomy, values} from './autonomy-oracle.ts';
 
+import {residentEligible,dueResidents,decisionWorld,handoffOperatingResidents,reactionCandidates,recordDialogue,settleDialogues,type OperatingResidentControl,type SocialStatus} from './resident-activity.ts';
+import {RESIDENT_ACTIVITY_SCHEMA,checkActivityOutput,activityMessages,type ResidentActivityOutput} from './resident-activity-schema.ts';
+import {participantName} from '../../src/engine/participants.ts';
+import {residentActivityCatalog} from '../../src/engine/world.ts';
+import {placeById} from '../../src/engine/places.ts';
+import type {ResidentReaction} from '../../src/engine/world.ts';
 /** The world's SQL handle plus the Durable Object storage transaction (ctx.storage.transactionSync). */
 export type TxSql = Sql & {transactionSync<T>(fn: () => T): T};
 /** Repeats of one refusal inside this window collapse into its first event (the count is kept in `refusals`). */
@@ -56,6 +62,9 @@ export type SpotlightOrigin = 'visitor' | 'judge' | 'connected';
 export type SpotlightRequestResult = {ok: true; muse: string; position: number; already: boolean; eventIds: string[]} | {ok: false; reason: 'unknown_muse' | 'paused' | 'queue_full' | 'hourly_limit'};
 
 export type RuntimeOptions = {
+  residentActions?:{enabled:boolean;maxConcurrent?:number};
+  operatingResidentControl?:OperatingResidentControl;
+  socialStatus?:(world:WorldState,actorId:string,now:number)=>SocialStatus;
   /** Split budget controls priorities; the old shared-pool floor applies only in legacy mode. */
   residentBudgetEnabled?:boolean;
   /** Default absent/off. Trusted server-only policy; no browser-controlled flags. */
@@ -114,7 +123,9 @@ export class WorldRuntime {
    * The returned release is idempotent; callers release it in a finally block.
    */
   modelSlot(): (() => void) | null {
-    if (this.slotsInUse >= MAX_MODEL_CALLS) return null;
+    const cap=this.opts.residentActions?.enabled?this.opts.residentActions.maxConcurrent??4:MAX_MODEL_CALLS;
+    if(!Number.isSafeInteger(cap)||cap<1||cap>8)throw Error('invalid_model_concurrency');
+    if (this.slotsInUse >= cap) return null;
     this.slotsInUse += 1;
     let held = true;
     return () => { if (held) { held = false; this.slotsInUse -= 1; } };
@@ -172,7 +183,7 @@ export class WorldRuntime {
       this.lifeStore=new ResidentLifeStore(this.sql);this.lifeStore.init();
       if(!this.lifeStore.load(this.worldId)){
         const initial=restoreLife(saveLife(this.opts.residentLife.initialState));
-        initial.residents=initial.residents.filter(r=>knownResident(r.id,this.opts.residentLife!.ownershipKind));
+        initial.residents=initial.residents.filter(r=>knownResident(r.id,this.opts.residentActions?.enabled?this.actionOwnership:this.opts.residentLife!.ownershipKind,this.opts.residentActions?.enabled));
         this.lifeStore.save(this.worldId,null,initial);
       }
     }
@@ -261,6 +272,7 @@ export class WorldRuntime {
     if (this.tickTaken(before)) return {status: 'skipped_duplicate', tick: before.tick, events: 0};
     const originalTickReservation=this.reservationId(before);
     try {
+      if(this.opts.residentActions?.enabled)return await this.activityHeartbeat(before,now);
       // Own this turn before any resident negotiation awaits; later visitors remain queued for the next tick.
       const spot = spotlightFor(before, now), turn = {muse: spot.muse, priority: spot.priority};
       const goals=this.opts.residentGoals;
@@ -346,6 +358,135 @@ export class WorldRuntime {
     }
   }
 
+  private actionOwnership=(id:string):ResidentOwnershipKind=>{
+    const kind=this.opts.residentLife?.ownershipKind(id)??'unknown';
+    return this.opts.residentActions?.enabled&&['04-ember','09-copper'].includes(id)&&kind==='legacy'?'resident':kind;
+  };
+  private statusOf=(s:WorldState,id:string,now:number):SocialStatus=>this.opts.socialStatus?.(s,id,now)??(s.muses.find(m=>m.id===id)?.travel?'busy':'welcoming');
+  private choiceAvailable(s:WorldState,d:Decision,now:number):boolean{
+    if(!this.opts.socialStatus||!['who','offer'].includes(d.freedom))return true;
+    const target=d.output.target_agent.trim().toLowerCase(),peer=s.muses.find(m=>m.id.toLowerCase()===target||participantName(s,m.id).toLowerCase()===target);
+    return !!peer&&this.statusOf(s,peer.id,now)==='welcoming';
+  }
+  private activityLife(life:LifeState,world:WorldState):LifeState{
+    const next=restoreLife(saveLife(life));
+    for(const id of ['04-ember','09-copper']){
+      const m=world.muses.find(m=>m.id===id);
+      if(!m||m.profile||m.controlMode==='personal'||this.actionOwnership(id)!=='resident'||next.residents.some(r=>r.id===id))continue;
+      next.residents.push({id,roleId:id,goal:m.wants.goal.slice(0,160),routine:[],memories:[],promises:[],lastServedAt:0,served:0});
+    }
+    return restoreLife(saveLife(next));
+  }
+  /** Life03 changes scheduling, not the engine/authority/ledger or commit transaction. */
+  private async activityHeartbeat(initial:WorldState,now:number):Promise<HeartbeatResult>{
+    if(!this.lifeStore||!this.opts.residentLife?.enabled)throw Error('resident_life_required');
+    let before=initial;
+    const control=this.opts.operatingResidentControl;
+    if(control){
+      const proposed=handoffOperatingResidents(before,now,this.actionOwnership,control);
+      if(proposed.changed)this.commitExternal(now,'resident-control-handoff',(s,emit)=>{
+        const fresh=handoffOperatingResidents(s,now,this.actionOwnership,control);
+        if(fresh.changed){s.inbox=fresh.world.inbox;for(const e of fresh.events)emit(e);}
+      });
+      before=this.state();
+    }
+    // Preserve the installed goal/Task services and their own transactional authority guards.
+    // Their selected turn is not a second freely chosen activity for the same actor.
+    const serviceSpot=spotlightFor(before,now),goals=this.opts.residentGoals,wants=this.opts.residentWants;
+    const goalResult=goals?.enabled?runResidentGoalTurn(this,{...goals,authorize:(s,a,b,at)=>goals.enabled===true&&goals.authorize(s,a,b,at)&&(!this.opts.delegationValid||(this.opts.delegationValid(a)&&(!b||this.opts.delegationValid(b)))),ownership:id=>this.opts.residentLife?.enabled===true?this.opts.residentLife.ownershipKind(id):'unknown'},now,this.opts.hooks):null;
+    const clock=()=>Math.max(now,wants?.context.now()??now);
+    const negotiated=wants?.enabled===true?await runResidentWantsTurn(this,{...wants,authorize:(s,a,b,at)=>wants.enabled===true&&wants.authorize(s,a,b,at)&&(!this.opts.delegationValid||(this.opts.delegationValid(a)&&this.opts.delegationValid(b))),context:{...wants.context,now:clock,ledger:this.opts.ledger,model:this.opts.model?.key?{...this.opts.model,key:this.opts.model.key}:null,ownership:id=>this.opts.residentLife?.enabled===true?this.opts.residentLife.ownershipKind(id):'unknown'}},now):null;
+    const refreshed=this.state();if(refreshed.tick!==before.tick||refreshed.day!==before.day)return{status:'skipped_duplicate',tick:refreshed.tick,events:0};
+    before=refreshed;now=Math.max(clock(),before.lastTickAt);
+    const serviceConsumed=goalResult?.ok===true||goalResult?.reason==='turn_already_consumed'||negotiated?.ok===true||['turn_already_consumed','already_reserved','timeout','network','upstream','bad_output','rate_limited','output_rejected','invalid_trade_choice','recent_explicit_refusal','goal_utility_not_improved','stale_authority_or_state','stale_task','trade_precondition_changed'].includes(negotiated?.reason??'');
+    const stored=this.lifeStore.load(this.worldId)!;
+    const life=this.activityLife(stored.state,before);
+    const allowed=(s:WorldState,id:string)=>residentEligible(s,id,now,this.actionOwnership,control)&&(!this.opts.delegationValid||this.opts.delegationValid(id));
+    const actors=before.muses.filter(m=>knownResident(m.id,this.actionOwnership,true)&&!m.profile&&m.controlMode!=='personal').map(m=>m.id);
+    const goalIdle=goals?.enabled===true?before.muses.filter(m=>goals.goals.activeFor(before.worldId,m.id).some(r=>r.goal.expiresAt>now)).map(m=>m.id):[];
+    const due=dueResidents(before,now,this.actionOwnership,control).filter(id=>allowed(before,id)&&!goalIdle.includes(id)&&!(serviceConsumed&&id===serviceSpot.muse))
+      .sort((a,b)=>(life.residents.find(r=>r.id===a)?.lastServedAt??0)-(life.residents.find(r=>r.id===b)?.lastServedAt??0)||a.localeCompare(b));
+    const context=(s:WorldState,id:string)=>residentContextForWorld({revision:stored.revision,state:life},s,id,now,{...this.opts.residentLife!,ownershipKind:this.actionOwnership,includeOperatingResidents:true});
+    const planning=tick(before,{now,spot:{muse:serviceSpot.muse,priority:serviceSpot.priority},residentActors:actors,requirePriorityApplication:true,residentFrozen:this.frozenResidents(before)},{...this.engineHooks(),canMeet:()=>({ok:false,event:null})}).state;
+    let priorityInfo:{source:string;reason?:string}={source:'rule',reason:'activity_or_authority_pending'};
+    let priorityAttempted=false;
+    const outcomes=await Promise.all([...due].sort((a,b)=>Number(b===serviceSpot.muse&&serviceSpot.priority)-Number(a===serviceSpot.muse&&serviceSpot.priority)).map(async id=>{
+      try{
+        const projected=decisionWorld(planning,id,now),base=validate('spotlight',spotlightInput(projected,id,'plan',now),this.trustedPersonalPeers(projected));
+        const input={...base,activities:residentActivityCatalog(projected,id,now)};
+        if(serviceSpot.priority&&id===serviceSpot.muse){
+          priorityAttempted=true;
+          const chosen=await this.liveSpotlight(projected,id,serviceSpot.freedom,now,true);priorityInfo=chosen.info;
+          if(!chosen.decision)return{id,reason:chosen.info.reason??'priority_unavailable',turn:null};
+          const output=chosen.decision.output as ResidentActivityOutput;
+          return{id,reason:null,turn:{decision:chosen.decision,stayMinutes:output.duration_minutes}};
+        }
+        const out=await this.modelCall('spotlight',input,`${this.worldId}:${before.day}:${before.tick}:activity:${id}`,context(projected,id),true);
+        if(!out.ok)return{id,reason:out.reason,turn:null};
+        const output=out.output as ResidentActivityOutput;
+        return{id,reason:null,turn:{decision:{muse:id,freedom:output.freedom,source:'live' as const,output,evidence:out.evidence},stayMinutes:output.duration_minutes}};
+      }catch{return{id,reason:'input_invalid',turn:null};}
+    }));
+    const plans=outcomes.flatMap(r=>r.turn?[r.turn]:[]),fallback=outcomes.filter(r=>!r.turn).map(r=>r.id);
+    const canMeet=await this.meetingGate(before,now);
+    const preview=tick(before,{now,spot:{muse:serviceSpot.muse,priority:serviceSpot.priority},residentActors:actors,residentTurns:plans,residentFallback:fallback,requirePriorityApplication:true,residentFrozen:this.frozenResidents(before)},canMeet?{...this.engineHooks(),canMeet}:this.engineHooks());
+    const recent=this.events(0,500,{tail:500}).filter(e=>e.at>=before.lastTickAt&&e.at<=now);
+    const reacting={...preview.state,version:before.version,tick:before.tick,lastTickAt:before.lastTickAt};
+    const prepared=reactionCandidates(reacting,[...recent,...preview.events],life.dialogues??[],now,this.actionOwnership,this.statusOf,control);
+    const reactions=await Promise.all(prepared.candidates.map(async candidate=>{
+      const base={muse:candidate.muse,other:candidate.other,place:candidate.place,encounterId:candidate.encounterId};
+      const rule=(reason:string):ResidentReaction=>({triggerId:candidate.triggerId,kind:candidate.kind,reply:{...base,source:'rule',output:null,reason}});
+      if(candidate.kind==='wave')return rule('passing_wave');
+      const m=reacting.muses.find(m=>m.id===candidate.muse)!,peer=reacting.muses.find(m=>m.id===candidate.other)!;
+      if(canMeet&&!canMeet(reacting,m,peer,placeById(m.place),now).ok)return rule('meeting_not_verified');
+      try{
+        const input=validate('encounter',encounterInput(reacting,m.id,peer.id,m.place,candidate.incoming,now),this.trustedPersonalPeers(reacting));
+        const out=await this.modelCall('encounter',input,`${this.worldId}:${before.day}:${before.tick}:reaction:${m.id}:${candidate.triggerId}`,context(reacting,m.id));
+        return out.ok?{triggerId:candidate.triggerId,kind:'reply' as const,reply:{...base,source:'live' as const,output:out.output as EncounterReply['output'],evidence:out.evidence}}:rule(out.reason);
+      }catch{return rule('input_invalid');}
+    }));
+    this.opts.beforeCommit?.();
+    return this.sql.transactionSync(()=>{
+      const raw=this.raw(),current:WorldState=JSON.parse(raw),fresh=this.lifeStore!.load(this.worldId)!;
+      if(current.tick!==before.tick||current.day!==before.day||this.sql.exec('SELECT 1 FROM ticks WHERE day=? AND tick=?',before.day,before.tick).toArray().length)return{status:'skipped_duplicate',tick:current.tick,events:0};
+      const stale=current.version!==before.version||fresh.revision!==stored.revision||this.opts.residentActions?.enabled!==true;
+      const late:Omit<WorldEvent,'id'|'tick'>[]=[];
+      const usable=plans.filter(p=>{
+        if(!stale&&allowed(current,p.decision.muse)&&this.choiceAvailable(current,p.decision,now))return true;
+        late.push({at:now,source:p.decision.source,kind:'decision_discarded',muse:p.decision.muse,data:{reason:stale?'world_or_life_changed':'resident_authority_changed',evidence:p.decision.evidence??null},tags:[]});return false;
+      });
+      const usableReactions=reactions.filter(r=>{
+        if(!stale&&allowed(current,r.reply.muse)&&this.statusOf(current,r.reply.muse,now)!=='do_not_disturb'&&this.statusOf(current,r.reply.other,now)!=='do_not_disturb')return true;
+        if(r.reply.source==='live')late.push({at:now,source:'live',kind:'encounter_reply_discarded',muse:r.reply.muse,other:r.reply.other,data:{reason:stale?'world_or_life_changed':'resident_authority_changed',triggerId:r.triggerId,evidence:r.reply.evidence??null},tags:[]});return false;
+      });
+      const currentActors=current.muses.filter(m=>knownResident(m.id,this.actionOwnership,true)&&!m.profile&&m.controlMode!=='personal').map(m=>m.id);
+      const failures=[...fallback,...plans.filter(p=>!usable.includes(p)).map(p=>p.decision.muse)].filter(id=>allowed(current,id));
+      const {state,events}=tick(current,{now,spot:{muse:serviceSpot.muse,priority:serviceSpot.priority},residentActors:currentActors,residentTurns:usable,residentFallback:failures,residentReactions:usableReactions,requirePriorityApplication:true,residentFrozen:this.frozenResidents(current)},canMeet?{...this.engineHooks(),canMeet:this.dedupMeetings(canMeet)}:this.engineHooks());
+      const activityApplied=(p:typeof plans[number])=>usable.includes(p)&&events.some(e=>e.muse===p.decision.muse&&e.source===p.decision.source&&['spotlight','beat','depart','trade_intent'].includes(e.kind));
+      const reactionApplied=(r:ResidentReaction)=>usableReactions.includes(r)&&events.some(e=>e.muse===r.reply.muse&&e.data?.triggerId===r.triggerId&&(e.kind==='encounter_reply'||e.kind==='resident_wave'));
+      for(const r of usableReactions)if(r.reply.source==='live'&&!reactionApplied(r))late.push({at:now,source:'live',kind:'encounter_reply_discarded',muse:r.reply.muse,other:r.reply.other,data:{reason:'reaction_not_applied',triggerId:r.triggerId,evidence:r.reply.evidence??null},tags:[]});
+      let next=rememberCommittedResidentEvents(this.activityLife(fresh.state,current),state,events,now,id=>knownResident(id,this.actionOwnership,true),current);
+      let dialogues=settleDialogues(next.dialogues??[],state,now);
+      for(const e of [...recent,...events]){
+        if(!e.muse||!e.other||!(e.kind==='greet'&&e.data?.public===true||e.kind==='encounter_reply')||!state.muses.some(m=>m.id===e.other)||!state.muses.some(m=>m.id===e.muse))continue;
+        if(!knownResident(e.muse,this.actionOwnership,true)&&!knownResident(e.other,this.actionOwnership,true))continue;
+        try{dialogues=recordDialogue(dialogues,{id:e.id,from:e.muse,to:e.other,at:e.at});}catch{/* bounded cooldown or duplicate public chatter adds no extra turn */}
+      }
+      next.dialogues=dialogues;
+      for(const id of due)if(next.residents.some(r=>r.id===id))next=noteServed(next,id,now);
+      this.lifeStore!.saveInTransaction(this.worldId,fresh.revision,next);
+      syncTasks(state.inbox);
+      for(const r of outcomes)if(r.reason)late.push({at:now,source:'rule',kind:'resident_activity_fallback',muse:r.id,data:{reason:reasonCode(r.reason)},tags:[]});
+      const all=[...events,...late.map((e,i)=>({...e,id:`${current.day}:${current.tick}:life03:${i}`,tick:current.tick}))];
+      this.sql.exec('UPDATE world SET state=?,version=? WHERE id=1',JSON.stringify(state),state.version);
+      this.sql.exec('INSERT INTO ticks(day,tick,committed_at,spotlight) VALUES(?,?,?,?)',current.day,current.tick,now,JSON.stringify({source:'rule',reason:'completion_driven_residents'}));
+      this.logCommit({at:now,kind:'tick',label:`${current.day}:${current.tick}`,beforeRaw:raw,before:current,after:state,changed:true,events:all,input:{seed:state.seed,residentActions:{policyVersion:1,actors:currentActors,due,priority:serviceSpot.priority?{muse:serviceSpot.muse,attempted:priorityAttempted,source:priorityInfo.source,reason:reasonCode(priorityInfo.reason),used:outcomes.some(r=>r.id===serviceSpot.muse&&!!r.turn&&activityApplied(r.turn))&&!state.spotlight.visitorQueue.includes(serviceSpot.muse)}:null,turns:outcomes.map(r=>({muse:r.id,reason:reasonCode(r.reason),used:!!r.turn&&activityApplied(r.turn),output:r.turn?outputFields(r.turn.decision.output):null,evidence:r.turn?evidenceIds(r.turn.decision.evidence):null})),reactions:reactions.map(r=>({muse:r.reply.muse,other:r.reply.other,triggerId:r.triggerId,kind:r.kind,source:r.reply.source,used:reactionApplied(r),output:outputFields(r.reply.output),evidence:evidenceIds(r.reply.evidence)}))}}});
+      this.notifyCommit(current,state,all,now);
+      const said=all.filter(e=>e.kind==='encounter_reply');
+      return{status:'committed',tick:current.tick,events:all.length,replies:{live:said.filter(e=>e.source==='live').length,rule:said.filter(e=>e.source==='rule').length}};
+    });
+  }
+
   private async meetingGate(s: WorldState, now: number): Promise<Hooks['canMeet']> {
     if (this.opts.meetingGate === 'off') return undefined;
     // Verification is never skipped and the world never stops: if the check cannot run, nobody meets this tick.
@@ -406,7 +547,7 @@ export class WorldRuntime {
     return false;
   }
 
-  private async liveSpotlight(s: WorldState, muse: string, freedom: Decision['freedom'], now: number): Promise<{decision: Decision | null; info: {source: string; reason?: string; requestId?: string | null}}> {
+  private async liveSpotlight(s: WorldState, muse: string, freedom: Decision['freedom'], now: number, activity=false): Promise<{decision: Decision | null; info: {source: string; reason?: string; requestId?: string | null}}> {
     // A paused Muse (owner revoked its delegation) has no turn: no model call, no fallback, no event.
     // Personal actors do not use the resident model/schema, even when presence is stale.
     if (isRuntimeControlled(s, muse, now)) return {decision: null, info: {source: 'scripted', reason: s.muses.find(m => m.id === muse)?.controlMode === 'personal' ? 'personal_muse' : 'connected_muse'}};
@@ -414,7 +555,7 @@ export class WorldRuntime {
     if(this.registryControls(muse))return {decision:null,info:{source:'scripted',reason:'registry_controlled_actor'}};
     // The world must never stop on one bad input: if the spotlight input cannot be built, the scenario continues.
     let input;
-    try { input = validate('spotlight', spotlightInput(s, muse, freedom, now),this.trustedPersonalPeers(s)); }
+    try { input = validate('spotlight', spotlightInput(s, muse, freedom, now),this.trustedPersonalPeers(s));if(activity)input={...input,activities:residentActivityCatalog(s,muse,now)}; }
     catch (e) { return {decision: null, info: {source: 'scripted', reason: 'input_invalid: ' + String((e as Error).message).slice(0, 80)}}; }
     const fallback = (reason: string) => {
       if(this.opts.residentBudgetEnabled&&isResidentBudgetRefusal(reason))return {decision:null,info:{source:'rule',reason}};
@@ -426,10 +567,10 @@ export class WorldRuntime {
     };
     // A connected Muse thinks in its owner's runtime (8.8): the team key never decides for it.
     if (!this.opts.model?.key) return fallback('not_connected');
-    const context=residentContextForWorld(this.lifeStore?.load(this.worldId) ?? null,s,muse,now,this.opts.residentLife);
-    const call = await this.modelCall('spotlight', input, this.reservationId(s),context);
+    const context=residentContextForWorld(this.lifeStore?.load(this.worldId) ?? null,s,muse,now,activity&&this.opts.residentLife?{...this.opts.residentLife,ownershipKind:this.actionOwnership,includeOperatingResidents:true}:this.opts.residentLife);
+    const call = await this.modelCall('spotlight', input, this.reservationId(s),context,activity);
     if (!call.ok) return fallback(call.reason);
-    return {decision: {muse, freedom, source: 'live', output: call.output as Decision['output'], evidence: call.evidence}, info: {source: 'live', requestId: call.evidence.requestId as string | null}};
+    return {decision: {muse, freedom:activity?(call.output as ResidentActivityOutput).freedom:freedom, source: 'live', output: call.output as Decision['output'], evidence: call.evidence}, info: {source: 'live', requestId: call.evidence.requestId as string | null}};
   }
 
   /**
@@ -437,21 +578,21 @@ export class WorldRuntime {
    * (an alarm retry cannot reserve twice), the 8-second model deadline, then the real cost settled whatever the
    * answer was. The slot is released in every path, including a throw.
    */
-  private async modelCall(action: 'spotlight' | 'encounter', input: Record<string, unknown>, id: string, residentContext:ResidentContext|null=null): Promise<{ok: true; output: unknown; evidence: Record<string, unknown>} | {ok: false; reason: string}> {
+  private async modelCall(action: 'spotlight' | 'encounter', input: Record<string, unknown>, id: string, residentContext:ResidentContext|null=null, activity=false): Promise<{ok: true; output: unknown; evidence: Record<string, unknown>} | {ok: false; reason: string}> {
     const model = this.opts.model;
     if (!model?.key) return {ok: false, reason: 'not_connected'};
     const release = this.modelSlot();
     if (!release) return {ok: false, reason: 'concurrency_limit'};
     try {
-      const messages = withResidentContext(buildMessages(action, input),residentContext);
+      const messages = activity?activityMessages(input,residentContext):withResidentContext(buildMessages(action, input),residentContext);
       const personalPeer=action==='encounter'&&(input.other==='00-jolly'||typeof input.other==='string'&&this.opts.residentLife?.ownershipKind(input.other)==='personal');
       const res = this.opts.ledger.reserve({id, tier: 'world', session: 'world', ip: '', action, maxCostUsd: maxCostUsd(action, messages),...(this.opts.residentBudgetEnabled?{residentKind:residentKindFor(action,personalPeer)}:{})});
       if (!res.ok) return {ok: false, reason: res.reason};
       // Reserved before (a retried tick after a crash): that call was already made or paid for; never call twice.
       if (res.existing) return {ok: false, reason: 'already_reserved'};
-      const result = await callModel({...model, key: model.key}, action, messages);
+      const result = await callModel({...model, key: model.key}, action, messages,activity?RESIDENT_ACTIVITY_SCHEMA:undefined);
       if (!result.ok) { this.opts.ledger.settle(id, failureCostUsd(result), result.kind === 'timeout' ? 'timeout' : 'error'); return {ok: false, reason: result.kind}; }
-      const problem = checkOutput(action, input, result.output);
+      const problem = activity?checkActivityOutput(input,result.output):checkOutput(action, input, result.output);
       this.opts.ledger.settle(id, actualCostUsd(result.usage), problem ? 'rejected' : 'live');
       if (problem) return {ok: false, reason: 'output_rejected:' + problem};
       return {ok: true, output: result.output, evidence: {model: model.model, requestId: result.requestId, responseId: result.responseId, latencyMs: result.latencyMs, reservationId: id, ...(residentContext ? {residentLifeRevision:residentContext.revision} : {})}};
@@ -663,9 +804,18 @@ export class WorldRuntime {
     const params = [from, to, ...(day ? [day + ':%'] : []), ...(runId ? [runId] : []), AUTONOMY_SAMPLE_MAX + 1];
     return {sql, params, period: from < to ? {from, to} : null, notes};
   }
+  /** Current public label only. Never persist private override reasons or inject into replay snapshots. */
+  publicAvailability(actorId:string,now:number):{status:SocialStatus}|undefined {
+    return this.availabilityIn(this.state(),actorId,now);
+  }
+  private availabilityIn(s:WorldState,actorId:string,now:number):{status:SocialStatus}|undefined {
+    if(!this.opts.socialStatus||!s.muses.some(m=>m.id===actorId))return undefined;
+    const value=this.opts.socialStatus(s,actorId,now);
+    return{status:['welcoming','busy','do_not_disturb'].includes(value)?value:'do_not_disturb'};
+  }
   /** Compact public view for clients: positions, current beats, inventories, spotlight. */
   view(now: number) {
     const s = this.state();
-    return {worldId: s.worldId, day: s.day, tick: s.tick, version: s.version, lastTickAt: s.lastTickAt, nextSpotlight: spotlightFor(s, now), spotlightQueue: s.spotlight.visitorQueue.filter(id => !s.paused?.[id]), muses: s.muses.map(m => ({id: m.id,...(m.residentRole?{residentRole:m.residentRole}:{}),...(m.residentFrozenAt!==undefined?{residentFrozenAt:m.residentFrozenAt}:{}),...(m.profile?{profile:actorProfile(m.profile,m.id)}:{}), place: m.place, travel: m.travel, beat: m.beat, inventory: m.inventory, reflection: m.reflection, wants: m.wants, paused: s.paused?.[m.id] ?? null}))};
+    return {worldId: s.worldId, day: s.day, tick: s.tick, version: s.version, lastTickAt: s.lastTickAt, nextSpotlight: spotlightFor(s, now), spotlightQueue: s.spotlight.visitorQueue.filter(id => !s.paused?.[id]), muses: s.muses.map(m => ({id: m.id,...(m.residentRole?{residentRole:m.residentRole}:{}),...(m.residentFrozenAt!==undefined?{residentFrozenAt:m.residentFrozenAt}:{}),...(m.profile?{profile:actorProfile(m.profile,m.id)}:{}), ...(this.opts.socialStatus?{availability:this.availabilityIn(s,m.id,now)}:{}),place: m.place, travel: m.travel, beat: m.beat, inventory: m.inventory, reflection: m.reflection, wants: m.wants, paused: s.paused?.[m.id] ?? null}))};
   }
 }

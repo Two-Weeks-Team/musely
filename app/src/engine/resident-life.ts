@@ -11,7 +11,7 @@ export type PromiseRecord = {id: string; other: string; place: string; dueAt: nu
   status: 'pending' | 'fulfilled' | 'cancelled'; evidenceId: string};
 export type ResidentLife = {id: string; roleId: string; goal: string; routine: Routine[];
   memories: Memory[]; promises: PromiseRecord[]; lastServedAt: number; served: number};
-export type LifeState = {schema: 1; residents: ResidentLife[]};
+export type LifeState = {schema: 1; residents: ResidentLife[];dialogues?:Dialogue[]};
 export type ActorAuthority = {id: string; connected: boolean; paused: boolean};
 export type ProposalContext = {now:number;hour:number;worldVersion:number;
   authorities:readonly ActorAuthority[];allowedPlaceIds:readonly string[];residentTurnAllowed:boolean;
@@ -26,6 +26,19 @@ const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFi
 const str = (s: unknown, max = 160): s is string => typeof s === 'string' && s.length > 0 && s.length <= max && !/[\u0000-\u001f<>]/.test(s);
 const unique = (xs: string[]) => new Set(xs).size === xs.length;
 const fail = () => {throw new Error('invalid resident life state');};
+
+const finiteTime=(n:unknown):n is number=>Number.isSafeInteger(n)&&Number(n)>=0;
+export type Dialogue={a:string;b:string;startedAt:number;lastAt:number;lastSpeaker:string;messages:number;closedAt:number|null;eventIds:string[]};
+export function restoreDialogues(value:unknown):Dialogue[]{
+ if(!Array.isArray(value)||value.length>256)throw Error('invalid dialogues');
+ const out:Dialogue[]=value.map(r=>{
+  if(!r||!str(r.a)||!str(r.b)||r.a>=r.b||!finiteTime(r.startedAt)||!finiteTime(r.lastAt)||r.lastAt<r.startedAt||![r.a,r.b].includes(r.lastSpeaker)||!Number.isSafeInteger(r.messages)||r.messages<1||r.messages>8
+   ||(r.closedAt!==null&&(!finiteTime(r.closedAt)||r.closedAt<r.lastAt))||!Array.isArray(r.eventIds)||r.eventIds.length!==r.messages||r.eventIds.some((id:unknown)=>!str(id))||new Set(r.eventIds).size!==r.eventIds.length)throw Error('invalid dialogue');
+  return{a:r.a,b:r.b,startedAt:r.startedAt,lastAt:r.lastAt,lastSpeaker:r.lastSpeaker,messages:r.messages,closedAt:r.closedAt,eventIds:[...r.eventIds]};
+ });
+ if(new Set(out.map(r=>r.a+'|'+r.b)).size!==out.length||new Set(out.flatMap(r=>r.eventIds)).size!==out.reduce((n,r)=>n+r.eventIds.length,0))throw Error('duplicate dialogue');
+ return out;
+}
 
 /** Strict restore validates bounded data. It does not load private personal-Muse memory. */
 export function restoreLife(raw: string): LifeState {
@@ -44,7 +57,7 @@ export function restoreLife(raw: string): LifeState {
   }
   if (!unique(s.residents.map(r => r.id))) fail();
   // Rebuild allowlisted fields: unknown fields (including private data) never survive.
-  return {schema: 1, residents: s.residents.map(r => ({id:r.id,roleId:r.roleId,goal:r.goal,
+  return {schema: 1, ...(s.dialogues===undefined?{}:{dialogues:restoreDialogues(s.dialogues)}), residents: s.residents.map(r => ({id:r.id,roleId:r.roleId,goal:r.goal,
     lastServedAt:r.lastServedAt,served:r.served,routine:r.routine.map(x=>({hour:x.hour,place:x.place})),
     memories:r.memories.map(m=>({id:m.id,kind:m.kind,at:m.at,subject:m.subject,publicSummary:m.publicSummary,source:m.source,evidenceId:m.evidenceId})),
     promises:r.promises.map(p=>({id:p.id,other:p.other,place:p.place,dueAt:p.dueAt,status:p.status,evidenceId:p.evidenceId}))}))};

@@ -178,6 +178,7 @@ export const EVENT_PROJECTION: Readonly<Record<string, Projection>> = {
   encounter: {phases: [{seconds: 2, muse: {clip: 'fist_bump'}, other: {clip: 'fist_bump'}, contact: true}], visual: 'complete', note: 'both turn to each other 0.9 m apart and touch fists at the clip contact frame'},
   cards_verified: {phases: [{seconds: 1.5, muse: {clip: 'nod'}, other: {clip: 'nod'}, face: true}], visual: 'complete', note: 'both nod after the Agent Card check'},
   greet: {phases: [{seconds: 4, muse: {clip: 'talk', line: true}, other: {clip: 'listen'}, face: true}], visual: 'complete', note: 'speaker talks with the greeting in a bubble, the other listens; seated Muses talk over sit_idle (blend)'},
+  resident_wave: {phases: [{seconds: 3, muse: {clip: 'wave'}}], visual: 'complete', note: 'a resident waves in place while continuing its authoritative activity; no peer response is inferred'},
   encounter_reply: {phases: [{seconds: 4, muse: {clip: 'talk', line: true}, other: {clip: 'listen'}, face: true}], visual: 'complete', note: 'the answering Muse talks, the other listens'},
   trade_proposed: {phases: [{seconds: 2.5, muse: {clip: 'offer_item', item: 'give'}, other: {clip: 'think'}, face: true}], visual: 'complete', note: 'offer_item holding the offered item; the other thinks'},
   trade_rejected: {phases: [{seconds: 2, muse: {clip: 'head_shake'}, other: {clip: 'listen'}, face: true}], visual: 'complete', note: 'the declining Muse shakes its head (no reason shown)'},
