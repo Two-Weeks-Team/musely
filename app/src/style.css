@@ -152,6 +152,10 @@ body:not([data-mode=world]) #muse-card .card-candidate:not([hidden]){display:blo
 
 /* Shared-world labels are data from the same snapshot as the actors. The scripted bubbles are hidden in live mode. */
 .live-muse-label{position:fixed;left:0;top:0;max-width:210px;padding:5px 9px;border:1px solid #53607b;border-radius:10px;background:#111827e8;color:#f4eee3;font:11px/1.35 system-ui;pointer-events:none;z-index:6;overflow-wrap:anywhere}
+/* Public addressees and literal names must wrap on narrow screens, including long unbroken names. */
+header .spot-chip{white-space:normal;overflow-wrap:anywhere}
+.ev-text,#activity-detail{overflow-wrap:anywhere;min-width:0}
+.speech-address-a11y{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 body[data-mode="story"] [data-live-only]{display:none}
 @media(max-width:700px){body[data-mode="world"] .neighbors{min-width:0;max-width:100%;box-sizing:border-box}body[data-mode="world"] #portraits{gap:5px;min-width:0}body[data-mode="world"] #portraits>.portrait{flex:1 1 0;min-width:0}}
 

@@ -7,6 +7,7 @@ import {makeClock,advance,activityAt,positionAt,ROUNDS,FIXTURE_LABEL} from './ac
 import {surfaceHeightAt} from './surfaces';
 import {tourCameraAt} from './camera';
 import {makeBubbles} from './bubbles';
+import {paintFrameSpeech} from './ui/speech-recipient.ts';
 import {DURATION,LINES,conversationAt,chapterAt,stateAt} from './story';
 import assetData from '../assets/embedded.json';
 import {MaterialLibrary,clipsUrl} from './character-kit/MaterialLibrary';
@@ -184,7 +185,7 @@ function updateContinuity(){
   const source=liveScene?.getMetrics().muses.find(m=>m.id===liveSelected)?.source?.toUpperCase()??'CONNECTING';
   museSource.textContent=(showingRecorded()?'REPLAY · originally ':'SHARED WORLD · ')+source;museSource.className='src src-'+(showingRecorded()?'replay':source.toLowerCase());
   $('muse-name').textContent=p.name;$('muse-role').textContent=p.kind==='unknown'?'Profile unavailable':ownerOf(liveSelected,m).label;$('avatar-large').style.setProperty('--muse',p.color);
-  $('activity-title').textContent=f?.status??'Waiting for the shared world';$('activity-detail').textContent=f?.line??(m?inventorySummary(m.inventory).text:'The world has not answered yet.');
+  $('activity-title').textContent=f?.status??'Waiting for the shared world';paintFrameSpeech($('activity-detail'),f,shown,liveScene?.projection.events??[],m?inventorySummary(m.inventory).text:'The world has not answered yet.');
   $('muse-want-text').textContent=showingRecorded()?'Private or hashed goal unavailable in recording':m?.wants?.goal?'Wants: '+m.wants.goal:p.kind==='legacy'?'Wants: '+harnessById(liveSelected).wants.goal:'Public wants unavailable';
   $('meetup').hidden=true;$('card-candidate').hidden=true;$('decision-state').textContent=p.kind==='unknown'?'This actor has no valid public profile. Its identity and 3D appearance are unavailable.':f?.fallback??(liveScene?.getMetrics().muses.find(row=>row.id===liveSelected)?.rendered===false?'3D characters are unavailable or loading. The map and card still show shared state.':showingRecorded()?'Recorded public state only. No action or reward is re-executed.':'Actions follow the shared world. Commitments still need the owners.');
   $('muse-card').dataset.museId=liveSelected;$('muse-card').dataset.version=String(liveScene?.projection.world?.version??'');$('muse-card').dataset.inventory=JSON.stringify(m?.inventory??[]);
