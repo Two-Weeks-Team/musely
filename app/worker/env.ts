@@ -11,6 +11,8 @@ export interface Env {
   ALLOWED_HOSTS: string;
   /** Canonical public origin of this deployment (Agent Cards, MCP page, claim text). */
   PUBLIC_ORIGIN: string;
+  /** Default absent/off. Server-only experimental installation; never set by a browser. */
+  WORLD_LIFE_MODE?: string;
   /** Optional extra hosts allowed as an Origin on /mcp (comma-separated); requests without Origin are allowed. */
   MCP_ALLOWED_ORIGINS?: string;
   // Secrets (wrangler secret put); never in the repository or the client bundle.

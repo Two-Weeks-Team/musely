@@ -32,7 +32,7 @@ export function residentProposalForWorld(life:LifeState, world:WorldState, now:n
  * Records small factual public receipts, never event.line/data or a user's private Wants.
  * This is not an authenticity verifier. Do not expose it as an untrusted client endpoint.
  */
-export function rememberCommittedResidentEvents(life:LifeState,world:WorldState,events:readonly WorldEvent[],now:number,allowed:(id:string)=>boolean=()=>true):LifeState {
+export function rememberCommittedResidentEvents(life:LifeState,world:WorldState,events:readonly WorldEvent[],now:number,allowed:(id:string)=>boolean=()=>true,before?:WorldState):LifeState {
   let next=restoreLife(saveLife(life));
   for(const e of events){
     if(!e.muse || !['arrive','encounter','craft','greet','encounter_reply'].includes(e.kind) || e.at>now || e.tick>world.tick) continue;
@@ -47,7 +47,7 @@ export function rememberCommittedResidentEvents(life:LifeState,world:WorldState,
         publicSummary:`Committed ${e.kind} event${receiving?' received':''}`,source:e.source,evidenceId:bounded(e.id)});
     }
   }
-  return projectResidentPromises(next,world,events,now,allowed);
+  return projectResidentPromises(next,world,events,now,allowed,before);
 }
 
 /** Matches the existing synchronous DO SQL/transaction shape, but owns a separate table.
