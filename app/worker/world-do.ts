@@ -97,6 +97,10 @@ export class WorldDO extends DurableObject<Env> {
     const actionsEnabled=actionMode==='action-v1',actionConcurrency=Number(env.RESIDENT_ACTION_MAX_CONCURRENT??'4');
     if(actionsEnabled&&(!active()||!residentBudget))throw Error('resident_actions_require_world_life_and_split_budget');
     if(actionsEnabled&&(!Number.isSafeInteger(actionConcurrency)||actionConcurrency<1||actionConcurrency>8))throw Error('invalid_RESIDENT_ACTION_MAX_CONCURRENT');
+    const jitterMs=Number(env.RESIDENT_CALL_JITTER_MS??'0');
+    if(!Number.isSafeInteger(jitterMs)||jitterMs<0||jitterMs>2000)throw Error('invalid_RESIDENT_CALL_JITTER_MS');
+    const fallbackMode=env.RESIDENT_FALLBACK_MODE;
+    if(fallbackMode!==undefined&&fallbackMode!==''&&fallbackMode!=='off'&&fallbackMode!=='short-v1')throw Error('unsupported_RESIDENT_FALLBACK_MODE');
     const reflectionMode=env.RESIDENT_REFLECTION_MODE;
     if(reflectionMode!==undefined&&reflectionMode!==''&&reflectionMode!=='off'&&reflectionMode!=='private-v1')throw Error('unsupported_RESIDENT_REFLECTION_MODE');
     const reflectionEnabled=reflectionMode==='private-v1';
@@ -107,7 +111,7 @@ export class WorldDO extends DurableObject<Env> {
       ...(valuesEnabled?{residentValuesEnabled:true}:{}),
       ...(reflectionEnabled?{residentReflection:{enabled:true,persona:residentPersona}}:{}),
       ...(socialEnabled?{socialStatus:currentSocialStatus}:{}),
-      ...(actionsEnabled?{residentActions:{enabled:true,maxConcurrent:actionConcurrency},operatingResidentControl:(id:string,now:number)=>this.operatingResidentControl(id,now)}:{}),
+      ...(actionsEnabled?{residentActions:{enabled:true,maxConcurrent:actionConcurrency,jitterMs,fallbackRecovery:fallbackMode==='short-v1'},operatingResidentControl:(id:string,now:number)=>this.operatingResidentControl(id,now)}:{}),
       // Live decisions for a Muse whose delegation was revoked (and not re-issued) are discarded.
       delegationValid: museId => !this.trust.suspended(museId),
       // Every meeting: both Agent Cards and delegations are verified before any greeting or trade.
@@ -222,7 +226,7 @@ export class WorldDO extends DurableObject<Env> {
   personalAuthRevoke(sidDigest: string, proof: PersonalSessionRow, appId: string, now: number) { return this.personalAuth.revoke(sidDigest, proof, appId, now); }
   reserve(r: ReserveRequest) { return this.ledger.reserve(r); }
   settle(id: string, costUsd: number, outcome: Outcome) { return this.ledger.settle(id, costUsd, outcome); }
-  status() { this.ledger.prune(); return this.ledger.status(); }
+  status() { this.ledger.prune(); return {...this.ledger.status(),residentExecution:this.runtime.modelExecutionStatus()}; }
   quota(session: string, tier: Tier) { return this.ledger.quotaFor(session, tier); }
   async alarm() {
     try {

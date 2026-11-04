@@ -22,6 +22,8 @@ export interface Env {
   /** Action-completion scheduling is opt-in and requires the protected model ledger. */
   RESIDENT_ACTIONS_MODE?: string;
   RESIDENT_ACTION_MAX_CONCURRENT?: string;
+  RESIDENT_CALL_JITTER_MS?:string;
+  RESIDENT_FALLBACK_MODE?:string;
   /** Trusted model-budget policy. No browser or Muse can modify these limits. */
   RESIDENT_BUDGET_MODE?: string;
   RESIDENT_MODEL_ENABLED?: string;

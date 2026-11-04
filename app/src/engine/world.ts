@@ -17,8 +17,8 @@ import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-12: resident-only public speech provenance and transactional duplicate suppression. */
-export const ENGINE_VERSION = 'engine-12';
+/** engine-13: opt-in short RULE fallback recovery, preserving LIVE choices and protected work. */
+export const ENGINE_VERSION = 'engine-13';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
@@ -85,6 +85,8 @@ export type ResidentTurn = {decision:Decision;stayMinutes:number};
 export type ResidentReaction = {reply:EncounterReply;triggerId:string;kind:'reply'|'wave'};
 export type TradeProposalGuard=(s:WorldState,actor:string,peer:string,give:string,want:string,at:number)=>boolean;
 export type Hooks = {
+  /** Explicit short RULE recovery only for managed failed resident decisions; default preserves old behavior. */
+  residentFallbackRecovery?:boolean;
   /** Complete committed public speech window supplied by the host; never a private inbox or tail sample. */
   residentSpeechHistory?:readonly PublicUtterance[];
   /** Internal server feature flag only; no public input can grant it. */
@@ -362,11 +364,13 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     if(hooks.socialStatus&&m.intent&&contactPolicy(s,m.id,m.intent.target,now,hooks)!=='approach'){
       m.intent=null;continue; // No replacement trip in this tick; pending agreements are unchanged.
     }
+    const recovering=hooks.residentFallbackRecovery===true&&managed(m)&&input.residentFallback?.includes(m.id)===true&&!m.intent;
     // Life03 choices use the existing movement/intent validation after real arrival/beat completion.
     // A reaction is independent; it never restarts this activity or changes its ETA.
     if(managed(m)){
       const turn=input.residentTurns?.find(t=>t.decision.muse===m.id);
       const waiting=s.inbox.tasks.some(t=>t.status==='pending'&&(t.from===m.id||t.to===m.id));
+      if(recovering&&(waiting||(s.inbox.invites??[]).some(i=>i.status==='open'&&(i.from===m.id||i.to.includes(m.id)))))continue;
       if(turn&&!m.intent&&!waiting&&Number.isFinite(turn.stayMinutes)&&turn.stayMinutes>=5&&turn.stayMinutes<=60){
         const d=turn.decision,o=d.output,here=placeById(m.place);
         const named=BEATS.find(b=>b.id===o.decision),rest=o.decision==='rest'||o.decision==='stay';
@@ -430,10 +434,13 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       if(!pending&&!invited&&!approached)continue;
     }
     const place = placeById(m.place);
-    const stay = eligibleBeats(m, place, clock.hour);
+    const stay = eligibleBeats(m, place, clock.hour).filter(b=>!recovering||(b.needs??[]).every(item=>!itemFault&&!isExpired(s.items,m.id,item,now)));
     // Intent from a spotlight decision takes priority over wandering.
-    const rhythm=hooks.residentValuesEnabled===true&&!connected&&!m.profile&&m.controlMode!=='personal'?residentRhythm(m.id,clock.hour):null;
-    const goTravel = !m.intent && (stay.length === 0 || rand() < (place.zone === 'commons' ? .22 : .45)*(rhythm?.moveMultiplier??1));
+    const rhythm=(hooks.residentValuesEnabled===true||recovering)&&!connected&&!m.profile&&m.controlMode!=='personal'?residentRhythm(m.id,clock.hour):null;
+    // Recovery gives another real choice sooner, not a prescribed destination or an always-move script.
+    // Extrovert/introvert active chances .60/.45; outside their rhythm .36/.27.
+    const moveChance=recovering?(residentSociability(m.id)===.45?.60:.45)*(rhythm?.active===false?.60:1):(place.zone==='commons'?.22:.45)*(rhythm?.moveMultiplier??1);
+    const goTravel = !m.intent && (stay.length === 0 || rand() < moveChance);
     if (goTravel) {
       // Choose among the area's places first; never discard an already-picked place at a cell edge.
       const dest = chooseDestination(s, m, rand, clock.hour, hooks, now);
@@ -441,7 +448,13 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     }
     const beat = weightedPick(rand, stay, b => beatWeight(b, m.id));
     if (beat) {const selected=managed(m)?{...beat,minutes:Math.max(5,Math.min(60,beat.minutes))}:beat;
-      startBeat(m,rhythm?{...selected,minutes:residentStayMinutes(m.id,selected.minutes,clock.hour)}:selected,place,now,managed(m)?'rule':'scripted',emit,s);}
+      const minutes=rhythm?residentStayMinutes(m.id,selected.minutes,clock.hour):selected.minutes;
+      startBeat(m,{...selected,minutes:recovering?Math.max(5,Math.min(10,minutes)):minutes},place,now,managed(m)?'rule':'scripted',emit,s);
+    }else if(recovering){
+      // No valid catalog activity/destination: a finite rest, never an invented recipe or item effect.
+      m.beat={id:'resident_stay',clip:'idle_breathe',startedAt:now,endsAt:now+5*60000,line:null};
+      emit({at:now,source:'rule',kind:'beat',muse:m.id,place:m.place,line:null,data:{beat:'resident_stay',clip:'idle_breathe',minutes:5,reason:'fallback_no_catalog_activity'},tags:[]});
+    }
   }
 
   // 3. Encounters: Muses at the same place, not travelling, who have not met in the last 30 minutes.
