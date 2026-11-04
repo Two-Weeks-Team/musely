@@ -1,3 +1,4 @@
+import {uiLanguage} from './i18n.ts';
 import {isSocialMode,isSocialStatus,type SocialMode,type SocialStatus} from '../engine/social-status.ts';
 export type OwnSocialStatus={muse:string;mode:SocialMode;revision:number;status:SocialStatus};
 type OwnerState={authenticated:boolean|null;muse:string|null;busy?:boolean};
@@ -19,7 +20,7 @@ export function parseOwnSocialStatus(value:unknown,muse:string):OwnSocialStatus 
 const element=<K extends keyof HTMLElementTagNameMap>(tag:K,text?:string)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;};
 /** Explicit mount only. Fetches no personal identity and never logs in, grants or emits world actions. */
 export function mountSocialStatus(host:HTMLElement,options:Options={}){
- const language=options.language??(typeof navigator!=='undefined'&&navigator.language.startsWith('ko')?'ko':'en'),t=texts[language];
+ const language=options.language??uiLanguage(),t=texts[language];
  const root=element('section');root.className='id-card social-status';host.append(root);
  let owner:OwnerState={authenticated:null,muse:null},data:OwnSocialStatus|null=null,selected:SocialMode='auto',phase:'idle'|'reading'|'writing'|'error'='idle';
  let visible=true,externalBusy=false,disposed=false,generation=0,controller:AbortController|null=null,notice='';

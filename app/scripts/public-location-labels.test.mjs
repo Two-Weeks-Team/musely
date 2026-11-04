@@ -1,3 +1,4 @@
+import './ui-language-fixture.mjs';
 // Exact-source synthetic UI only: no device location, account, production API or world writes.
 import test from 'node:test';import assert from 'node:assert/strict';import {build} from 'esbuild';
 import * as location from '../src/ui/location-state.ts';import {areaById} from '../src/engine/location.ts';import {BLOCKED} from '../src/ui/resource-state.ts';import {mountOwnerArea} from '../src/ui/area-map.ts';
