@@ -35,7 +35,7 @@ import {EMPTY_FILTER, matchFilter, dayBound, type Filter} from './replay-core';
 import {sourceLabel, modelNote} from './source-label';
 import {taskCancelledText, envelopeFacts} from './evidence-text';
 import {mountLocationChip, deviceLocationCard} from './location-bar';
-import {museLine, snapshotOf, type OwnerLocationView} from './location-state';
+import {museLine, snapshotOf, publicLocationName, type OwnerLocationView} from './location-state';
 import {mountOwnerArea} from './area-map';
 import {liveFrames, scheduleCues, sceneToLngLat, inventorySummary, ownerOf, type LiveWorld, type LiveEvent} from './live-scene-core';
 export {sourceLabel};
@@ -222,7 +222,9 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   header.insertBefore(spot, header.querySelector('#about'));
   header.insertBefore(open, header.querySelector('#about'));
   // Owner location (13.1): always on screen while the virtual location is used, in story and world mode alike.
-  const locChip = mountLocationChip(header, spot);
+  // This chip describes the last live location even during replay: recorded profiles must never rename it.
+  const locationName = (id: string) => publicLocationName(id, world);
+  const locChip = mountLocationChip(header, spot, locationName);
   const ownerAreaMap = mountOwnerArea(map);
   const paintOwnerArea = () => ownerAreaMap.update(locChip.snapshot?.view ?? null, !isolation.replay && (live.isLive?.() ?? true));
 
@@ -577,7 +579,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     const held = world?.muses.find(x => x.id === m.id)?.inventory.filter(i => i === 'taxi_token').length ?? null;
     f(uiText('내 동네 / My neighborhood'), uiText`${loc.area?.label ?? presetLabel} · ${loc.area?.radiusM ?? '?'} m radius · ${loc.area?.placeIds?.length ?? '?'} places · ${loc.neighborhood_verified ? uiText('가상 세계 인증됨 / virtual-world verified') : uiText('미인증 / not verified')}`);
     f(uiText('Muse가 있는 곳 / Muse’s place'), m.place ? `${m.place.name ?? m.place.id}${m.in_owner_area ? uiText(' · in your neighborhood') : ''}` : null);
-    f(uiText('Muse의 이동 / Muse’s trip'), museLine(snapshotOf(loc, r.at), Date.now()));
+    f(uiText('Muse의 이동 / Muse’s trip'), museLine(snapshotOf(loc, r.at), Date.now(), locationName));
     f(uiText('순간이동 / Teleport'), `${uiText('가상 동네 인증과 Taxi Token 1개가 필요해요. / Requires virtual-world verification and one Taxi Token')}${held === null ? '' : uiText` (${held} available)`}.`);
     box.append(dl, el('p', 'muted', uiText('Muse는 자기 동네 안을 자유롭게 걸어요. 다른 동네로 갈 때는 버스나 조건에 맞는 택시를 이용해요. / Your Muse walks freely within its neighborhood and uses the bus or an eligible taxi for other neighborhoods.')));
     const presets = (loc.presets ?? []) as {id: string; label: string}[];

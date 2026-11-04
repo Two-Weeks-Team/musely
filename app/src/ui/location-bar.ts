@@ -1,22 +1,22 @@
 import {uiText} from './i18n.ts';
 // Owner location in the page (direction v2, 13.1): the always-on header chip and the device location card of the Location tab.
 // The wording and the state transitions live in location-state.ts (no DOM); this file only paints them. Everything is textContent.
-import {locationLine, snapshotOf, deviceLocation, deviceText, type LocationSnapshot, type OwnerLocationView, type DeviceLocation} from './location-state';
+import {locationLine, snapshotOf, deviceLocation, deviceText, type LocationSnapshot, type OwnerLocationView, type DeviceLocation, type LocationName} from './location-state';
 import {PRESETS, type PresetId} from '../engine/location.ts';
 import {BLOCKED, type Fetched} from './resource-state';
 
 /**
- * The header chip: "Virtual location (demo)" for as long as the virtual source is used, the owner's destination, and the Muse's own
+ * The header chip: "Virtual neighborhood" for as long as the virtual source is used, the owner's destination, and the Muse's own
  * current place with its trip and ETA. It is shown in every mode (story and world). The panel's refresh feeds it the
  * /api/owner/location answers; it counts the ETA down by itself between them.
  */
-export function mountLocationChip(header: HTMLElement, before: Element | null) {
+export function mountLocationChip(header: HTMLElement, before: Element | null, nameOf?: LocationName) {
   const chip = document.createElement('span');
   chip.className = 'loc-chip'; chip.id = 'loc-chip';
   header.insertBefore(chip, before);
   let snap: LocationSnapshot | null = null, error: string | null = null, shown = '';
   const paint = () => {
-    const l = locationLine(snap, Date.now(), error);
+    const l = locationLine(snap, Date.now(), error, nameOf);
     if (l.text !== shown) { shown = l.text; chip.textContent = l.text; }
     chip.title = l.title; chip.dataset.state = l.state; chip.dataset.stale = l.stale ? '1' : '';
   };

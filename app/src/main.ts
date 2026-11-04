@@ -27,6 +27,7 @@ import {harnessById} from './engine/harness';
 import {RESIDENT_VARIANTS,MUSE_VARIANTS} from './character-kit/catalog';
 import {makeLiveScene} from './ui/live-scene';
 import {resolveMuse,presentationIn} from './ui/personal-profile';
+import {publicLocationName} from './ui/location-state.ts';
 import {museName,ownerOf,inventorySummary,type LiveWorld,type LiveEvent} from './ui/live-scene-core';
 import style from '../assets/map-style.json';
 import geography from '../assets/geography.json';
@@ -108,7 +109,7 @@ function syncProfilePortraits(w:LiveWorld|null){
  const ids=new Set(w?.muses.map(m=>m.id)??[]);
  for(const b of portraits.querySelectorAll<HTMLButtonElement>('button[data-personal="1"]'))if(!ids.has(b.dataset.museId!))b.remove();
  for(const m of w?.muses??[]){if(MUSE_VARIANTS.some(v=>v.id===m.id))continue;let b=[...portraits.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.dataset.museId===m.id);if(!b){b=document.createElement('button');b.type='button';b.className='portrait';b.dataset.liveOnly='1';b.dataset.personal='1';b.dataset.museId=m.id;const icon=document.createElement('span');icon.className='muse-icon';icon.append(document.createElement('i'));b.append(icon);b.onclick=()=>selectLive(m.id);portraits.append(b);}}
- for(const b of portraits.querySelectorAll<HTMLButtonElement>('button')){const id=b.dataset.museId!,p=presentationIn(id,w),story=!w?PEOPLE.find(p=>p.variant===id):undefined;b.style.setProperty('--muse',story?.color??p.color);b.title=story?.name??p.name+(p.kind==='personal'?' · '+id:'');b.setAttribute('aria-label',uiText('Select ')+b.title);}
+ for(const b of portraits.querySelectorAll<HTMLButtonElement>('button')){const id=b.dataset.museId!,p=presentationIn(id,w),story=!showingScene()?PEOPLE.find(p=>p.variant===id):undefined,ownerLive=showingLive()&&id==='00-jolly';b.style.setProperty('--muse',story?.color??p.color);b.title=story?.name??(ownerLive?publicLocationName(id,w):p.name)+(p.kind==='personal'&&!ownerLive?' · '+id:'');b.setAttribute('aria-label',uiText('Select ')+b.title);}
 }
 // Wants come from the character harness (direction 7, 9.1): the live world's value when available
 // (Spark or the connected Muse may update it), otherwise the harness default. Rendered as text only.
@@ -185,18 +186,18 @@ function updateContinuity(){
  // updateUI first runs before this block is evaluated; the continuity UI joins from the next refresh.
  if(!museSource||!selectedLine||!cues)return;
  if(showingScene()){
-  const shown=displayedWorld(),m=shown?.muses.find(m=>m.id===liveSelected),f=liveScene?.frames.get(liveSelected),p=presentationIn(liveSelected,shown);
+  const shown=displayedWorld(),m=shown?.muses.find(m=>m.id===liveSelected),f=liveScene?.frames.get(liveSelected),p=presentationIn(liveSelected,shown),displayName=showingLive()&&liveSelected==='00-jolly'?publicLocationName(liveSelected,shown):p.name;
   paintAvailabilityLabel(museAvailability,(m as (typeof m & {availability?:unknown}))?.availability,navigator.language.startsWith('ko')?'ko':'en');
   const source=liveScene?.getMetrics().muses.find(m=>m.id===liveSelected)?.source?.toUpperCase()??'CONNECTING';
   museSource.textContent=sceneModeLabel(showingRecorded(),navigator.language);museSource.className='src scene-mode';
   const events=liveScene?.projection.events??[],proof=actorProvenance({actorId:liveSelected,world:shown,frame:f,events})??recentConnectedAction(liveSelected,events,showingRecorded()?recordedFrame!.recordedAt:Date.now());
   const note=provenanceLabel(proof,uiLanguage(),showingRecorded());activitySource.hidden=!note;activitySource.textContent=note??'';activitySource.dataset.source=proof?.source??'';
-  $('muse-name').textContent=p.name;$('muse-role').textContent=p.kind==='unknown'?uiText('Profile unavailable'):catalogText(ownerOf(liveSelected,m).label);$('avatar-large').style.setProperty('--muse',p.color);
+  $('muse-name').textContent=displayName;$('muse-role').textContent=p.kind==='unknown'?uiText('Profile unavailable'):catalogText(ownerOf(liveSelected,m).label);$('avatar-large').style.setProperty('--muse',p.color);
   $('activity-title').textContent=f?activityStatus(f.status):uiText('Waiting for the shared world');paintFrameSpeech($('activity-detail'),f,shown,liveScene?.projection.events??[],m?inventoryText(m.inventory):uiText('The world has not answered yet.'));
   $('muse-want-text').textContent=showingRecorded()?uiText('Private or hashed goal unavailable in recording'):m?.wants?.goal?uiText('Wants: ')+m.wants.goal:p.kind==='legacy'?uiText('Wants: ')+catalogText(harnessById(liveSelected).wants.goal):uiText('Public wants unavailable');
   $('meetup').hidden=true;$('card-candidate').hidden=true;$('decision-state').textContent=p.kind==='unknown'?uiText('This actor has no valid public profile. Its identity and 3D appearance are unavailable.'):(f?.fallback?activityStatus(f.fallback):undefined)??(liveScene?.getMetrics().muses.find(row=>row.id===liveSelected)?.rendered===false?uiText('3D characters are unavailable or loading. The map and card still show shared state.'):showingRecorded()?uiText('Recorded public state only. No action or reward is re-executed.'):uiText('Actions follow the shared world. Commitments still need the owners.'));
   $('muse-card').dataset.museId=liveSelected;$('muse-card').dataset.version=String(liveScene?.projection.world?.version??'');$('muse-card').dataset.inventory=JSON.stringify(m?.inventory??[]);
-  selectedLine.textContent=`${museName(liveSelected,shown)} · ${f?activityStatus(f.status):uiText('waiting for world')}`;selectedLine.hidden=map.getZoom()>=20.35;
+  selectedLine.textContent=`${displayName} · ${f?activityStatus(f.status):uiText('waiting for world')}`;selectedLine.hidden=map.getZoom()>=20.35;
   portraits.querySelectorAll<HTMLButtonElement>('button').forEach(b=>{const chosen=b.dataset.museId===liveSelected;b.classList.toggle('selected',chosen);b.setAttribute('aria-pressed',String(chosen));});
   return;
  }
