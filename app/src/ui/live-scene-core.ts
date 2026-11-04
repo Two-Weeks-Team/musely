@@ -294,7 +294,6 @@ export type ActorFrame = {
 };
 const placeName = (id: string) => PLACE_BY_ID.get(id)?.name ?? id;
 const humanize = (s: string) => s.replace(/_/g, ' ');
-const smooth = (t: number) => { const c = Math.min(1, Math.max(0, t)); return c * c * (3 - 2 * c); };
 
 function baseFrame(v: LiveMuse, now: number, participants: readonly LiveMuse[]): ActorFrame | null {
   const frozen=resolveMuse(v).kind==='resident'&&typeof v.residentFrozenAt==='number';
@@ -349,7 +348,9 @@ export function liveFrames(world: LiveWorld, cues: readonly Cue[], now: number):
       const needsClearance = !LEGACY_IDS.has(leader) || !LEGACY_IDS.has(follower);
       if (needsClearance) occupied ||= [...homes].some(([id, p]) => id !== leader && id !== follower && segmentDistance(p, a, contactSpot!) < 2 * PRESENTATION_RADIUS);
       const blockedByFurniture = needsClearance && Object.hasOwn(COMMONS_SLOTS, f.place) && !clearsContactMove(a, contactSpot);
-      if (occupied || blockedByFurniture) { occupied = true; clip = 'wave'; f.visual = 'fallback'; f.fallback = blockedByFurniture ? 'The contact movement would cross commons furniture: shown as a wave.' : 'The contact slot is occupied by another Muse: shown as a wave.'; }
+      // A contact clip cannot invent a trip. Keep both authoritative slots even for legacy actors.
+      const outsideReach = Math.abs(Math.hypot(a.x - b.x, a.z - b.z) - PARTNER_DISTANCE) > .15;
+      if (occupied || blockedByFurniture || outsideReach) { clip = 'wave'; f.visual = 'fallback'; f.fallback = blockedByFurniture ? 'The contact movement would cross commons furniture: shown as a wave.' : occupied ? 'The contact slot is occupied by another Muse: shown as a wave.' : 'The partner is beyond in-place contact reach: shown as a wave.'; }
     }
     if ((c.contact || c.face) && c.partner && !together) {
       if (c.contact) { clip = 'wave'; f.visual = 'fallback'; f.fallback = `${museName(c.partner, world)} is not here: ${c.clip} is shown as wave`; }
@@ -368,21 +369,9 @@ export function liveFrames(world: LiveWorld, cues: readonly Cue[], now: number):
     if (c.item && !c.prop && f.visual === 'complete') { f.visual = 'fallback'; f.fallback = `no 3D prop for ${itemName(c.item)}: shown as an item card`; }
     if (c.effect) f.effects.push({kind: c.effect, progress: Math.min(1, local / ((c.end - c.start) / 1000))});
     if (c.kind === 'discover' && c.effect === 'stamp') f.effects.push({kind: 'item', progress: Math.min(1, local / ((c.end - c.start) / 1000))});
-    // Facing and contact distance: the partner stays on its slot, this Muse steps beside it (tangent to the partner's
-    // facing, on the side it came from) at PARTNER_DISTANCE and both turn to each other. Eased in and out.
-    if (together && partner && (c.face || c.contact)) {
-      const me = homes.get(c.muse)!;
-      if (c.contact && !occupied && contactSpot) {
-        const leader = c.muse < c.partner!; // one of the two moves: the one with the smaller id steps beside the other
-        if (leader) {
-          const w = smooth(Math.min((now - c.start) / PAIR_EASE_MS, (c.end - now) / PAIR_EASE_MS));
-          const tgt = contactSpot;
-          f.x = me.x + (tgt.x - me.x) * w; f.z = me.z + (tgt.z - me.z) * w;
-        }
-      }
-    }
+    // Facing is applied below; contact cues never translate an authoritative root.
   }
-  // Turn the pairs to each other once every position is known (the stepping Muse may have moved).
+  // Turn the pairs toward one another without changing their authoritative positions.
   for (const c of active) {
     const f = frames.get(c.muse), q = c.partner ? frames.get(c.partner) : undefined;
     if (!f || !q || frozenIds.has(c.muse) || frozenIds.has(c.partner!) || f.travel || q.travel || q.place !== f.place || !(c.face || c.contact) || f.cue?.eventId !== c.eventId) continue;
