@@ -8,14 +8,14 @@ import {BEATS, CLIP_FALLBACK, inHours, type Beat} from './beats.ts';
 import {PLACES, PLACE_BY_ID, placeById, distanceM, WALK_MPS, type Place} from './places.ts';
 import {actorLabel, knownActorNamed} from './actor-display.ts';
 import {HARNESSES, harnessById, hasActorHarness, harnessRoleId,isResidentInstance} from './harness.ts';
-import {ITEM_BY_ID, itemUpkeep, grantItem, putTimed, historyFault, spendSpotlightTickets} from './items.ts';
+import {ITEM_BY_ID, itemUpkeep, grantItem, putTimed, isExpired, historyFault, spendSpotlightTickets} from './items.ts';
 import {rngFor, weightedPick, daySeed} from './rng.ts';
 import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** Branch-specific fixed NPC enrollment/freeze semantics; combined goal integration uses a distinct version. */
-export const ENGINE_VERSION = 'engine-6-resident-v2';
+/** engine-8: combined resident enrollment/freeze and atomic goal/craft semantics. */
+export const ENGINE_VERSION = 'engine-8';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
@@ -70,13 +70,16 @@ export type Decision = {muse: string; freedom: Freedom; source: 'live' | 'replay
  * `Decision`: live (a model answer, with evidence) or rule (no model answer; `reason` says why). `muse` answers `other`.
  */
 export type EncounterReply = {muse: string; other: string; place: string; encounterId: string; source: 'live' | 'replay' | 'rule'; output: {intent: string; item: string; line: string; public_reason: string; injection_suspected: boolean} | null; reason?: string; evidence?: Record<string, unknown>};
+export type TradeProposalGuard=(s:WorldState,actor:string,peer:string,give:string,want:string,at:number)=>boolean;
 export type Hooks = {
+  /** Trusted server policy for each autonomous offer; unrelated greetings remain allowed. */
+  canProposeTrade?:TradeProposalGuard;
   /** Item discovery etc. when a Muse arrives somewhere (task 4 rules). */
   onArrive?: (s: WorldState, m: MuseState, place: Place, rand: () => number, at: number) => Omit<WorldEvent, 'id' | 'tick'>[];
   /** Speed a Muse may use for a trip (items change abilities; task 4). `s` lets the hook check neighborhood verification (13.1). */
   speedFor?: (m: MuseState, from: Place, to: Place, s?: WorldState) => Speed;
   /** Trades, gifts and help when two Muses meet (task 4 rules). */
-  onEncounter?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, rand: () => number, at: number) => Omit<WorldEvent, 'id' | 'tick'>[];
+  onEncounter?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, rand: () => number, at: number, canProposeTrade?:TradeProposalGuard) => Omit<WorldEvent, 'id' | 'tick'>[];
   /** Credential check before two Muses meet (C04). On refusal neither Muse changes; only `event` is logged. */
   canMeet?: (s: WorldState, initiator: MuseState, other: MuseState, place: Place, at: number) => {ok: boolean; event: Omit<WorldEvent, 'id' | 'tick'> | null};
   /** World upkeep after this tick's moves and meetings (campfire invites, I-13: worker/core/messages.ts inviteUpkeep). */
@@ -234,7 +237,7 @@ export function setResidentFrozen(s:WorldState,ids:readonly string[],now:number)
   }
 }
 
-export function tick(prev: WorldState, input: {now: number; decision?: Decision | null; replies?: EncounterReply[]; spot?: {muse: string; priority: boolean}; residentMove?: {muse:string;place:string;expectedVersion:number};residentIdle?:readonly string[];residentFrozen?:readonly string[]}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
+export function tick(prev: WorldState, input: {now: number; decision?: Decision | null; replies?: EncounterReply[]; spot?: {muse: string; priority: boolean}; residentMove?: {muse:string;place:string;expectedVersion:number};residentIdle?:readonly string[];residentFrozen?:readonly string[];residentGoalIdle?:readonly string[]}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
   const now = input.now, clock = localClock(now);
   const s: WorldState = structuredClone(prev);
   if(input.residentFrozen!==undefined)setResidentFrozen(s,input.residentFrozen,now);
@@ -300,7 +303,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       const speed = m.travel.speed, chosen = !!m.travel.chosen;
       m.place = place.id; m.travel = null;
       // A Muse that chose this place itself stays for a beat instead of wandering off at once.
-      if (chosen && !connected) { const b = weightedPick(rand, eligibleBeats(m, place, clock.hour), x => beatWeight(x, m.id)); if (b) { emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed, chosen}, tags: speed === 'taxi' ? ['teleport'] : []}); for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e); startBeat(m, b, place, now, 'rule', emit, s); continue; } }
+      if (chosen && !connected && !input.residentGoalIdle?.includes(m.id)) { const b = weightedPick(rand, eligibleBeats(m, place, clock.hour), x => beatWeight(x, m.id)); if (b) { emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed, chosen}, tags: speed === 'taxi' ? ['teleport'] : []}); for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e); startBeat(m, b, place, now, 'rule', emit, s); continue; } }
       emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed}, tags: speed === 'taxi' ? ['teleport'] : []});
       for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e);
     }
@@ -324,6 +327,8 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       }
       continue;
     }
+    // Trusted goal scheduler owns idle boundaries, never personal commands or live decisions.
+    if(input.residentGoalIdle?.includes(m.id)&&!m.intent&&input.decision?.muse!==m.id)continue;
     // Optional resident-life rule intent after expired activity finishes. Never overrides a
     // live/replay decision, active trip/beat, personal command or pending commitment.
     const plan=input.residentMove;
@@ -384,7 +389,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       const byIntent = initiator.intent?.target === other.id;
       emit({at: now, source: 'rule', kind: 'encounter', muse: initiator.id, other: other.id, place: placeId, data: {encounterId: meeting, initiatedByIntent: byIntent, actorOrigin: byIntent && isConnected(s.inbox, initiator.id, now) ? 'connected' : 'system', stage: 'recognize'}, tags: []});
       if (gate?.event) emit(gate.event);
-      for (const e of hooks.onEncounter?.(s, initiator, other, placeById(placeId), rngFor(s.seed, s.tick, initiator.id, other.id, 'meet'), now) ?? []) emit(e);
+      for (const e of hooks.onEncounter?.(s, initiator, other, placeById(placeId), rngFor(s.seed, s.tick, initiator.id, other.id, 'meet'), now,hooks.canProposeTrade) ?? []) emit(e);
       // The other Muse answers (8.3). A connected Muse answers from its owner's runtime, so nothing is said for it here.
       if (input.replies && !isRuntimeControlled(s, other.id, now)) replyTo(s, other, initiator, placeId, meeting, input.replies.find(r => r.encounterId === meeting && r.muse === other.id && r.other === initiator.id), now, emit);
       if (initiator.intent?.target === other.id) initiator.intent = null;
@@ -459,10 +464,26 @@ function startBeat(m: MuseState, beat: Beat, place: Place, now: number, source: 
 
 function finishBeat(m: MuseState, now: number, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void, ledger: ItemLedger, itemsHalted: boolean) {
   const beat = BEATS.find(b => b.id === m.beat!.id);
-  // With the item history halted the beat still ends, but it neither consumes nor crafts.
-  if (beat?.result && !itemsHalted) {
-    for (const c of beat.result.consume ?? []) { const k = m.inventory.indexOf(c); if (k >= 0) m.inventory.splice(k, 1); }
-    if (beat.result.craft) { grantItem(ledger, m, beat.result.craft, now, m.place, 'craft'); emit({at: now, source: 'rule', kind: 'craft', muse: m.id, place: m.place, data: {item: beat.result.craft, from: beat.result.consume ?? []}, tags: ['ability_change']}); }
+  // Revalidate consumed ingredients at completion: inventory may have changed while the
+  // beat was running. Preflight the whole consumption multiset before any mutation.
+  const remaining = [...m.inventory];
+  let blocked = itemsHalted ? 'item_history_untrusted' : null;
+  if (beat?.result && !blocked) {
+    for (const id of beat.result.consume ?? []) {
+      const i = remaining.indexOf(id);
+      if (i < 0 || isExpired(ledger, m.id, id, now)) { blocked = 'lost_ingredient'; break; }
+      remaining.splice(i, 1);
+    }
+    if (!blocked) {
+      m.inventory = remaining;
+      if (beat.result.craft) { grantItem(ledger, m, beat.result.craft, now, m.place, 'craft'); emit({at: now, source: 'rule', kind: 'craft', muse: m.id, place: m.place, data: {item: beat.result.craft, from: beat.result.consume ?? []}, tags: ['ability_change']}); }
+    }
+  }
+  if (beat?.result && blocked) {
+    emit({at: now, source: 'rule', kind: 'beat_cancelled', muse: m.id, place: m.place, data: {beat: beat.id, reason: blocked}, tags: []});
+    m.reflection = `Could not complete ${beat.id.replace(/_/g, ' ')} at ${placeById(m.place).name}`;
+    m.beat = null;
+    return;
   }
   // One-line reflection (#9): what the Muse takes from the last thing it did.
   m.reflection = `Last: ${beat?.id.replace(/_/g, ' ') ?? 'rest'} at ${placeById(m.place).name}`;
@@ -521,6 +542,9 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   if (o.offer_item && !m.inventory.includes(o.offer_item)) return reject('offered item not held: ' + o.offer_item.slice(0, 40));
   const other = findMuse(s, o.target_agent);
   if (!other || other.id === m.id) return reject('offer needs another Muse');
+  const allowed=hooks.canProposeTrade?.(s,m.id,other.id,o.offer_item,o.want_item,now);
+  if((m.id.startsWith('pm_')||other.id.startsWith('pm_'))&&allowed!==true)return reject('counterparty_pending_claim');
+  if(allowed===false)return reject('trade proposal policy');
   m.intent = {kind: 'trade', target: other.id, give: o.offer_item || null, want: o.want_item || null};
   if (o.want_item && ITEM_BY_ID.has(o.want_item) && !m.wants.items.includes(o.want_item)) updateWants(m, {items: [o.want_item, ...m.wants.items].slice(0, 4)}, d.source === 'live' ? 'spark' : m.wants.source, now);
   const there = placeById(other.travel?.to ?? other.place);
@@ -529,3 +553,15 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
 }
 
 export const placeOf = (id: string) => PLACE_BY_ID.get(id) ?? null;
+
+/** Trusted resident rule intent. Uses the same engine travel/activity implementation.
+ * Host must additionally verify current server ownership and delegation. No user/model prose. */
+export function startResidentGoalActivity(s:WorldState,id:string,beatId:string,now:number,emit:(e:Omit<WorldEvent,'id'|'tick'>)=>void,hooks:Hooks={}):'move'|'activity'|null {
+ const m=s.muses.find(x=>x.id===id),beat=BEATS.find(x=>x.id===beatId);
+ if(!m||!beat?.result?.craft||m.travel||m.beat||m.intent||s.paused?.[id]||isRuntimeControlled(s,id,now)||historyFault(s.items,false,now))return null;
+ if((beat.needs??[]).some(item=>!m.inventory.includes(item)||isExpired(s.items,id,item,now))||!inHours(beat,localClock(now).hour))return null;
+ const from=placeById(m.place);if(from.zone!=='commons')return null;
+ if(beat.kinds.includes(from.kind)){startBeat(m,beat,from,now,'rule',emit,s);return 'activity';}
+ const to=PLACES.filter(p=>p.zone==='commons'&&sameArea(from,p)&&beat.kinds.includes(p.kind)).sort((a,b)=>distanceM(from,a)-distanceM(from,b)||a.id.localeCompare(b.id))[0];
+ if(!to)return null;startTrip(s,m,from,to,now,'rule',emit,hooks);return m.travel?'move':null;
+}
