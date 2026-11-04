@@ -1,5 +1,7 @@
 # D-01 product path acceptance
 
+> Latest status: [M4 path evidence update, 2026-11-05](#m4-path-evidence-update-2026-11-05). D01 remains open; earlier dated pending-camera/C3 statements are historical.
+
 Status: **PREPARED — actual end-to-end acceptance remains PENDING**.
 
 This is the D-01 working record for [the execution contract](../../docs/roadmap/task-execution.md). It does not replace the shared release acceptance or evidence index. No production authentication, write, claim, camera capture, revocation, upload or submission is authorized by this document.
@@ -105,3 +107,16 @@ External artifacts: `final-d01-anonymous-observer/a858-final-1104-1-results.json
 The [later activation checkpoint](RELEASE_ACCEPTANCE.md#world-life-activation-and-evidence-limits-2026-11-04) records merged/deployed135→137→138→139→140 and165ON:24NPCs/27total actors, with ComBba's permanent identity/key/schedule preserved and no personal decisions delegated to NPC policy. The earlier a858 anonymous25/25 remains evidence for that source; activation does not establish the new build's complete personal path.
 
 D01 remains open, including the remaining #51 choice/response evidence; NPC actions or Task expiry are not ComBba's proposal/rejection. The a858 four-hour run stopped incomplete; the old13:04 freeze is historical, and a new final-build four-hour result is still needed. Camera/location outcomes above are retained without another human request. C3 account adoption remains on hold, not a D01 prerequisite.
+
+
+## M4 path evidence update (2026-11-05)
+
+This dated update supersedes the earlier pending-camera/C3-hold descriptions, not their original failure records. It is documentation of existing evidence, not a new browser, account, camera or model execution. [D01 remains open](https://github.com/Two-Weeks-Team/musely/issues/61).
+
+- **Anonymous watch/selection/reconnect:** the [a858 run](https://github.com/Two-Weeks-Team/musely/issues/61#issuecomment-6618966328) passed 25/25 with 154 GETs and no writes. It retains its a858 source/deployment; it is not a new final-build run.
+- **Actual camera:** [PR188 owner LIVE pass](https://github.com/Two-Weeks-Team/musely/issues/61#issuecomment-6627920486), source `6955722e24403943b6cca7c395a47bbf4a15f4a4`, Worker `cf9532ed-55b4-4c79-bb8f-1136530c68e9`, ROW `e26a677a-418c-4717-b700-248522fbc05f`. At 2026-11-04 18:55:58.842 KST, event 18945/input 3288/run `run-14-mw1u1bcm-0b2cd79c`: body-only three steps passed, source live, framesStored false. The earlier paper-step failure and v7 false result remain unchanged. No repeat camera request is introduced.
+- **C3 existing-account binding:** the reported 20:50 KST success followed removal of the Meta account restriction, using the existing `/me` path on PR189 merge `6b0a8219403aed3bd8298b2920dd0e573e994ea6`, Worker `2fb2dc55-209a-42ca-88ef-275d1f7f2ee4`. The user saw authenticated → existing ComBba → connected success. The recorded 20:58 KST audit found a completed flow with no failure and a sanitized matching adoption receipt; public `legacy_profile_updated` event 20239/input 3433/run14 matches. The success UI requires adopted true and entry joined; the auditing agent did not re-call the private personal endpoint. A public profile event alone is not binding proof. This completes that existing-account binding checkpoint, not a new connector installation, scheduler proof or the whole D01 path. C3 is not an extra D01 prerequisite.
+- **Personal autonomous actions:** retain the [actual Copper acceptance](https://github.com/Two-Weeks-Team/musely/issues/61#issuecomment-6618509145) and [later Ellis acceptance/independent movement](https://github.com/Two-Weeks-Team/musely/issues/51#issuecomment-6627249688). The inspected later progress still reports no new personal own proposal or explicit rejection. NPC decisions, silence, expiry and server command refusal cannot fill those #51 gaps.
+- **Two-principal outcomes and revocation:** retain `production-owner-flows/REPORT_MEETUPS.md` and its original runs/receipts for agreement, reward, decline, change, expiry and reconnect. These are operator-controlled independent principals on the original release. `candidate_mismatch` is not private-condition empty-intersection proof. The retained temporary-key direct MCP 200 → revoke that key → same request 401/public unchanged is not a second Muse-app connector or a new revocation test on the final build.
+
+The final source/deployment/config must still be matched to the whole path and failure branches, including the dedicated judge-Muse entry. Fresh final-profile checking belongs to the designated operating verifier. No issue is closed, no extra human gate is created, and a documentation PR is not a deployment or whole-S3 acceptance. See the [M4 handoff](RELEASE_ACCEPTANCE.md#m4-evidence-and-closeout-handoff-2026-11-05).

@@ -1,5 +1,7 @@
 # Experience matrix (P-01)
 
+> Latest status: [M4 evidence status, 2026-11-05](#m4-evidence-status-2026-11-05). Catalog coverage does not establish whole-path or final-release acceptance.
+
 Status: S1 preview, issue #40. Generated from the source catalogs on `main` at `7d4a696` (`src/engine/items.ts`, `src/engine/beats.ts`, `src/engine/places.ts`, `character-kit/runtime/animations/manifest.json`, `worker/core/mcp-tools.ts`). Row schema follows contract C02.
 
 I-06 update (#53, 2026-11-02, `feature/i06-item-effects`): the 58 item rows in section 3 are regenerated from `ITEM_EFFECTS` in `src/engine/items.ts`. Earlier rows marked every item `rule / complete`; that overstated the build. Now each row names the implemented effect rule or says `effect none (fallback)` with the reason, the visual status is `fallback` unless the item is a modelled prop, and items with no source and no rule are `planned`. `scripts/items.test.mjs` (`AC1 coverage`) fails if a row's effect or trade column disagrees with the source (`ITEM_EFFECTS`, `checkTrade`).
@@ -543,3 +545,8 @@ Technical projection evidence may be reused during upstream verification, but it
 The [activation checkpoint](RELEASE_ACCEPTANCE.md#world-life-activation-and-evidence-limits-2026-11-04) records135→137→138→139→140 merged/deployed and165ON:24NPCs within27total actors. Existing role/appearance reuse keeps actor identities distinct; legacy00/04/09 and personal control remain separate. Rule/model NPC events are not ComBba's own decisions or personal-Muse completion.
 
 The short activity observation is in progress, not a completed living-world acceptance. #51 personal proposal/explicit rejection and D01/D02/D04 closure remain pending. The stopped incomplete a8584h, uncalibrated12433ms first ready and old-build PSS evidence are preserved with their limits; no final-build C11/PSS/four-hour PASS is asserted.
+
+
+## M4 evidence status (2026-11-05)
+
+The [M4 handoff](RELEASE_ACCEPTANCE.md#m4-evidence-and-closeout-handoff-2026-11-05) and [D01 path update](D01_ACCEPTANCE.md#m4-path-evidence-update-2026-11-05) supersede the earlier camera/C3 pending descriptions. Actual PR188 camera success and the recorded C3 existing-account binding are scoped checkpoints. D01 whole-path/#51 choices, dependent D02/D04 closure, final judge-Muse operating checks and supervisor-started M5 remain separate. The earlier 107-place catalog reconciliation is retained; this M4 supplement adds no catalog IDs. Fixture, RULE resident and connected personal-Muse evidence keep their respective source and build identities.

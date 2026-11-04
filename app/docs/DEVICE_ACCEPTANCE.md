@@ -1,5 +1,7 @@
 # D-04 device acceptance — approved reference and observed scoped results
 
+> Latest status: [M4 device handoff, 2026-11-05](#m4-device-handoff-2026-11-05). Historical numeric/physical evidence is retained; final-build and D01 judgments remain separate.
+
 The dated preparation protocol below is preserved. Later physical and client measurements satisfy the scoped C11 numeric gates recorded in the closeout below; whole D04 still awaits the original D01 acceptance output; the actual later I09 full handoff is recorded below. A physical client comparison, an emulated layout, an operating cold-entry measurement and a live ten-actor observation remain separate evidence layers. The original MacBook Air M1 requirement is historical; the approved MacBookPro18,2 amendment is explicit below.
 
 ## Approved reference amendment, 2026-11-02
@@ -133,3 +135,10 @@ The [later activation checkpoint](RELEASE_ACCEPTANCE.md#world-life-activation-an
 The a858 cold/desktop values and original FAIL remain unchanged. Historical physical S23/PSS measurements and prepared comparison inputs are not final-build PSS acceptance. D04 remains open pending its original evidence/prerequisite handoff;24NPC/27actor activation and the ongoing short activity observation are not device-performance proof. The old a8584h was stopped incomplete and needs a separate new final-build run.
 
 For the later166 product, the [unchanged controlled C11 runner passed](https://github.com/Two-Weeks-Team/musely/pull/166#issuecomment-6621314847): first scene3964.7ms/readable3978.3ms,4Mbps/150ms/no-cache/DPR1.5,27 actor projection, errors0. Source58492c0/appTreeb19534f9/Workere9a78682 are fixed in that C10. Result SHA256 `8f1ae05e2fcee6d47326e346c061d618fb898d8c03f24db85753b4d0c9bf0e1d`; custody `c11-first-arrival-personal-d452-actual-1/world-166-c11-1104-1-results.json`. The earlier165 numeric pass/overallFAIL is retained. This is controlled local-client performance with a recorded public GET fixture, not a live account/backend verdict or final phone PSS.
+
+
+## M4 device handoff (2026-11-05)
+
+[D04 #64](https://github.com/Two-Weeks-Team/musely/issues/64) is still OPEN. Preserve the earlier accepted Pro18,2/S23 physical/PSS scope and the explicit distinction between the original a858 desktop collector failure and its separate completed after-source proof. The [supplement](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6619008504) accepts only the scoped desktop numeric gate; it does not turn the original complete=false/measuredChecksPass=false into a successful rerun. The [390×844 supplement](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6619023526) establishes emulated geometry, not physical S23 FPS/PSS or completed clicks.
+
+The later controlled PR166 scene3964.7ms/readable3978.3ms belongs to that recorded source and GET-fixture client; preserve its 4Mbps/150ms/no-cache/DPR1.5 contract. Subsequent local-perception, entry and screen changes are not covered by relabelling that number. Recent non-controlled ready times, screenshots, test totals and HTML200 are not final C11 results. Final-build device/C11 impact judgment and the original D01 predecessor remain pending; this documentation runs no new benchmark or device check and requests no new human action. See [M4 handoff](RELEASE_ACCEPTANCE.md#m4-evidence-and-closeout-handoff-2026-11-05).

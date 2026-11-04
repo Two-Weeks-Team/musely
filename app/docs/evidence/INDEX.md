@@ -1,5 +1,7 @@
 # Release evidence index
 
+> Latest status: [M4 source map, 2026-11-05](#m4-source-map-2026-11-05). Original evidence is retained under its original source and scope.
+
 Both scopes retain their original evidence environment and pending acceptance boundaries. Preparation and local checks do not establish operational acceptance.
 
 ## D02 controlled proof and raw recount
@@ -75,3 +77,13 @@ The [later activation checkpoint](../RELEASE_ACCEPTANCE.md#world-life-activation
 New calibrated C11 and final-build S23/PSS acceptance are not yet measured here; activated-build12433ms first ready is non-C11. #51 choice/response and D01/D02/D04 remain unclosed. Existing `personal-muse-runtime-plan-1103/resident-activity.jsonl` contains the bounded activation observation, not a full four-hour or personal-choice PASS. No new artifact custody, human gate, Threads action or team video/submission work is created by this index.
 
 The activated world's [30-minute actual per-Muse C10](https://github.com/Two-Weeks-Team/musely/issues/134#issuecomment-6621237188) and [166 controlled C11 correction/pass](https://github.com/Two-Weeks-Team/musely/pull/166#issuecomment-6621314847) are later supplements, with the earlier165 FAIL preserved. Both retain their measurement boundaries and do not close D01, the actual-personal choice gaps, final phone PSS or the new final four-hour run.
+
+
+## M4 source map (2026-11-05)
+
+- [D01 actual camera C10](https://github.com/Two-Weeks-Team/musely/issues/61#issuecomment-6627920486) records PR188/source6955722e, event18945/input3288/run14, three body-only LIVE passes and framesStored=false. Older failed camera results remain unchanged.
+- [D01 path update](../D01_ACCEPTANCE.md#m4-path-evidence-update-2026-11-05) records the later C3 reported success with its sanitized completed-flow/adoption and public-event correlation; event20239/input3433 is only the public corroboration, not sufficient proof by itself. No account subject, credential or private response is copied here.
+- [D02 technical handoff](https://github.com/Two-Weeks-Team/musely/issues/62#issuecomment-6591725010) retains P0 production/P1 simulation/P2 captured replay and the fixed C09 cohort; D01 remains the unclosed predecessor.
+- [D04 scoped desktop supplement](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6619008504), [emulated geometry](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6619023526) and [controlled166 C11](https://github.com/Two-Weeks-Team/musely/pull/166#issuecomment-6621314847) remain separate dated evidence; none is a new final-build S23/PSS test.
+
+The [M4 handoff](../RELEASE_ACCEPTANCE.md#m4-evidence-and-closeout-handoff-2026-11-05) owns the remaining closure distinctions. Original evidence bytes, failures and cohort units are preserved. M5 is supervisor-started after the final deployment; old fixed start/freeze times are superseded. [Judge-link examples](../SUBMISSION_DRAFT.md#three-entry-routes) contain only `<JUDGE_LINK_TOKEN>`; final operating verification stays pending. This index adds no evidence folder, harness, credential, GO or attestation procedure.
