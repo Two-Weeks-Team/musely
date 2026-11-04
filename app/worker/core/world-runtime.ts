@@ -62,6 +62,7 @@ export type SpotlightOrigin = 'visitor' | 'judge' | 'connected';
 export type SpotlightRequestResult = {ok: true; muse: string; position: number; already: boolean; eventIds: string[]} | {ok: false; reason: 'unknown_muse' | 'paused' | 'queue_full' | 'hourly_limit' | 'self_directed' | 'model_unavailable'};
 
 export type RuntimeOptions = {
+  residentValuesEnabled?:boolean;
   residentActions?:{enabled:boolean;maxConcurrent?:number};
   operatingResidentControl?:OperatingResidentControl;
   socialStatus?:(world:WorldState,actorId:string,now:number)=>SocialStatus;
@@ -280,7 +281,7 @@ export class WorldRuntime {
       const wants=this.opts.residentWants;
       // Never allow a plugin to substitute a second budget/model/registry or ignore revocation.
       const clock=()=>Math.max(now,wants?.context.now()??now);
-      const negotiated=wants?.enabled===true ? await runResidentWantsTurn(this,{...wants,authorize:(s,a,b,at)=>wants.enabled===true&&wants.context.enabled===true&&wants.authorize(s,a,b,at)&&(!this.opts.delegationValid||(this.opts.delegationValid(a)&&this.opts.delegationValid(b))),context:{...wants.context,now:clock,ledger:this.opts.ledger,model:this.opts.model?.key?{...this.opts.model,key:this.opts.model.key}:null,ownership:id=>{const registry=(this.opts as RuntimeOptions & {residentLife?:{enabled:boolean;ownershipKind:(id:string)=>'resident'|'personal'|'legacy'|'unknown'}}).residentLife;return registry?.enabled===true?registry.ownershipKind(id):'unknown';}}},now) : null;
+      const negotiated=wants?.enabled===true ? await runResidentWantsTurn(this,{...wants,authorize:(s,a,b,at)=>wants.enabled===true&&wants.context.enabled===true&&wants.authorize(s,a,b,at)&&(!this.opts.delegationValid||(this.opts.delegationValid(a)&&this.opts.delegationValid(b))),context:{...wants.context,residentValuesEnabled:this.opts.residentValuesEnabled===true,now:clock,ledger:this.opts.ledger,model:this.opts.model?.key?{...this.opts.model,key:this.opts.model.key}:null,ownership:id=>{const registry=(this.opts as RuntimeOptions & {residentLife?:{enabled:boolean;ownershipKind:(id:string)=>'resident'|'personal'|'legacy'|'unknown'}}).residentLife;return registry?.enabled===true?registry.ownershipKind(id):'unknown';}}},now) : null;
       const refreshed=this.state();
       if(refreshed.tick!==before.tick||refreshed.day!==before.day)return {status:'skipped_duplicate',tick:refreshed.tick,events:0};
       before=refreshed;now=Math.max(clock(),before.lastTickAt);
@@ -418,7 +419,7 @@ export class WorldRuntime {
     const serviceSpot=spotlightFor(before,now),goals=this.opts.residentGoals,wants=this.opts.residentWants;
     const goalResult=goals?.enabled?runResidentGoalTurn(this,{...goals,authorize:(s,a,b,at)=>goals.enabled===true&&goals.authorize(s,a,b,at)&&(!this.opts.delegationValid||(this.opts.delegationValid(a)&&(!b||this.opts.delegationValid(b)))),ownership:id=>this.opts.residentLife?.enabled===true?this.opts.residentLife.ownershipKind(id):'unknown'},now,this.opts.hooks):null;
     const clock=()=>Math.max(now,wants?.context.now()??now);
-    const negotiated=wants?.enabled===true?await runResidentWantsTurn(this,{...wants,authorize:(s,a,b,at)=>wants.enabled===true&&wants.authorize(s,a,b,at)&&(!this.opts.delegationValid||(this.opts.delegationValid(a)&&this.opts.delegationValid(b))),context:{...wants.context,now:clock,ledger:this.opts.ledger,model:this.opts.model?.key?{...this.opts.model,key:this.opts.model.key}:null,ownership:id=>this.opts.residentLife?.enabled===true?this.opts.residentLife.ownershipKind(id):'unknown'}},now):null;
+    const negotiated=wants?.enabled===true?await runResidentWantsTurn(this,{...wants,authorize:(s,a,b,at)=>wants.enabled===true&&wants.authorize(s,a,b,at)&&(!this.opts.delegationValid||(this.opts.delegationValid(a)&&this.opts.delegationValid(b))),context:{...wants.context,residentValuesEnabled:this.opts.residentValuesEnabled===true,now:clock,ledger:this.opts.ledger,model:this.opts.model?.key?{...this.opts.model,key:this.opts.model.key}:null,ownership:id=>this.opts.residentLife?.enabled===true?this.opts.residentLife.ownershipKind(id):'unknown'}},now):null;
     const refreshed=this.state();if(refreshed.tick!==before.tick||refreshed.day!==before.day)return{status:'skipped_duplicate',tick:refreshed.tick,events:0};
     before=refreshed;now=Math.max(clock(),before.lastTickAt);
     const serviceConsumed=goalResult?.ok===true||goalResult?.reason==='turn_already_consumed'||negotiated?.ok===true||['turn_already_consumed','already_reserved','timeout','network','upstream','bad_output','rate_limited','output_rejected','invalid_trade_choice','recent_explicit_refusal','goal_utility_not_improved','stale_authority_or_state','stale_task','trade_precondition_changed'].includes(negotiated?.reason??'');
@@ -608,8 +609,9 @@ export class WorldRuntime {
     if (!release) return {ok: false, reason: 'concurrency_limit'};
     try {
       const signalWorld=activity&&this.opts.socialStatus?this.state():null,signalAt=signalWorld?(this.opts.publicationNow??Date.now)():0;
-      const modelInput=signalWorld?{...input,public_availability:signalWorld.muses.map(m=>({actor_id:m.id,status:this.statusOf(signalWorld,m.id,signalAt)}))}:input;
-      const messages = activity?activityMessages(modelInput,residentContext):withResidentContext(buildMessages(action, input),residentContext);
+      const signalledInput=signalWorld?{...input,public_availability:signalWorld.muses.map(m=>({actor_id:m.id,status:this.statusOf(signalWorld,m.id,signalAt)}))}:input;
+      const modelInput=this.opts.residentValuesEnabled===true?{...signalledInput,residentValuesEnabled:true}:signalledInput;
+      const messages = activity?activityMessages(modelInput,residentContext):withResidentContext(buildMessages(action, modelInput),residentContext);
       const personalPeer=action==='encounter'&&(input.other==='00-jolly'||typeof input.other==='string'&&this.opts.residentLife?.ownershipKind(input.other)==='personal');
       const res = this.opts.ledger.reserve({id, tier: 'world', session: 'world', ip: '', action, maxCostUsd: maxCostUsd(action, messages),...(this.opts.residentBudgetEnabled?{residentKind:residentKindFor(action,personalPeer)}:{})});
       if (!res.ok) return {ok: false, reason: res.reason};

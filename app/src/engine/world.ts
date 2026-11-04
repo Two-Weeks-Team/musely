@@ -1,3 +1,4 @@
+import {residentRhythm,residentPlaceWeight,residentStayMinutes,residentSociability} from './resident-values.ts';
 import {participantName,participantLikes} from './participants.ts';
 import type {ActorProfile} from '../identity/participant.ts';
 // Scenario engine and spotlight rotation (direction v2, 8.1–8.4, 8.6, 8.8).
@@ -15,8 +16,8 @@ import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-9: opt-in completion-driven resident activities and bounded, independent reactions. */
-export const ENGINE_VERSION = 'engine-9';
+/** engine-10: opt-in confirmed resident values and rhythms over completion-driven activities. */
+export const ENGINE_VERSION = 'engine-10';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
@@ -83,6 +84,8 @@ export type ResidentTurn = {decision:Decision;stayMinutes:number};
 export type ResidentReaction = {reply:EncounterReply;triggerId:string;kind:'reply'|'wave'};
 export type TradeProposalGuard=(s:WorldState,actor:string,peer:string,give:string,want:string,at:number)=>boolean;
 export type Hooks = {
+  /** Internal server feature flag only; no public input can grant it. */
+  residentValuesEnabled?:boolean;
   /** Optional current server preference, never an authority proof or replay-state field. */
   socialStatus?: (world:WorldState,actorId:string,now:number)=>SocialStatus;
   /** Trusted server policy for each autonomous offer; unrelated greetings remain allowed. */
@@ -229,10 +232,10 @@ function chooseDestination(s: WorldState, m: MuseState, rand: () => number, hour
   const socialWeight=(place:string)=>{
     if(!hooks.socialStatus||isRuntimeControlled(s,m.id,now)||m.profile||m.id==='00-jolly'||m.controlMode==='personal')return 1;
     try{if(hooks.socialStatus(s,m.id,now)!=='welcoming')return 1;
-      return 1+4*s.muses.filter(p=>p.place===place&&!p.travel&&!s.paused?.[p.id]).reduce((sum,p)=>sum+personalApproachProbability(s,m.id,p.id,now,hooks.socialStatus!(s,p.id,now)),0);
+      return 1+4*s.muses.filter(p=>p.place===place&&!p.travel&&!s.paused?.[p.id]).reduce((sum,p)=>sum+personalApproachProbability(s,m.id,p.id,now,hooks.socialStatus!(s,p.id,now),hooks.residentValuesEnabled===true),0);
     }catch{return 1;}
   };
-  return weightedPick(rand, options, p => (liked.has(p.kind) ? 4 : 1) * (p.zone === 'commons' ? 2.5 : 1) / (1 + distanceM(here, p) / 300) * socialWeight(p.id));
+  return weightedPick(rand, options, p => (liked.has(p.kind) ? 4 : 1) * (p.zone === 'commons' ? 2.5 : 1) / (1 + distanceM(here, p) / 300) * socialWeight(p.id) * (hooks.residentValuesEnabled===true&&!isRuntimeControlled(s,m.id,now)&&!m.profile&&m.controlMode!=='personal'?residentPlaceWeight(m.id,p.kind,hour):1));
 }
 
 export function tripMs(from: Place, to: Place, speed: Speed) {
@@ -403,14 +406,16 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     const place = placeById(m.place);
     const stay = eligibleBeats(m, place, clock.hour);
     // Intent from a spotlight decision takes priority over wandering.
-    const goTravel = !m.intent && (stay.length === 0 || rand() < (place.zone === 'commons' ? .22 : .45));
+    const rhythm=hooks.residentValuesEnabled===true&&!connected&&!m.profile&&m.controlMode!=='personal'?residentRhythm(m.id,clock.hour):null;
+    const goTravel = !m.intent && (stay.length === 0 || rand() < (place.zone === 'commons' ? .22 : .45)*(rhythm?.moveMultiplier??1));
     if (goTravel) {
       // Choose among the area's places first; never discard an already-picked place at a cell edge.
       const dest = chooseDestination(s, m, rand, clock.hour, hooks, now);
       if (dest) { startTrip(s, m, place, dest, now, managed(m)?'rule':'scripted', emit, hooks); continue; }
     }
     const beat = weightedPick(rand, stay, b => beatWeight(b, m.id));
-    if (beat) startBeat(m, managed(m)?{...beat,minutes:Math.max(5,Math.min(60,beat.minutes))}:beat, place, now, managed(m)?'rule':'scripted', emit, s);
+    if (beat) {const selected=managed(m)?{...beat,minutes:Math.max(5,Math.min(60,beat.minutes))}:beat;
+      startBeat(m,rhythm?{...selected,minutes:residentStayMinutes(m.id,selected.minutes,clock.hour)}:selected,place,now,managed(m)?'rule':'scripted',emit,s);}
   }
 
   // 3. Encounters: Muses at the same place, not travelling, who have not met in the last 30 minutes.
@@ -444,6 +449,9 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
           continue;
         }
       }
+      // A personality is a nonzero tendency for a new resident approach, never a veto on an explicit intent or Personal speech.
+      const probability=hooks.residentValuesEnabled===true&&initiator.intent?.target!==other.id&&!isRuntimeControlled(s,initiator.id,now)&&!initiator.profile&&initiator.controlMode!=='personal'?residentSociability(initiator.id):null;
+      if(probability!==null&&rngFor(s.seed,s.tick,initiator.id,other.id,'values-approach')()>=probability)continue;
       a.lastMet[b.id] = b.lastMet[a.id] = now;
       const meeting = encounterId(s, a.id, b.id);
       // C03/C09: a start is by intent only when the initiator was heading for this very Muse (not a coin toss, not an

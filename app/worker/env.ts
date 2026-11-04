@@ -15,6 +15,8 @@ export interface Env {
   WORLD_LIFE_MODE?: string;
   /** Public label only; absent/off retains the legacy world and private routes. */
   SOCIAL_STATUS_MODE?: string;
+  /** Confirmed resident persona tendencies only; absent/off retains legacy behavior. */
+  RESIDENT_VALUES_MODE?: string;
   /** Action-completion scheduling is opt-in and requires the protected model ledger. */
   RESIDENT_ACTIONS_MODE?: string;
   RESIDENT_ACTION_MAX_CONCURRENT?: string;

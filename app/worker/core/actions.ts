@@ -1,3 +1,4 @@
+import {residentValues,residentRhythmPrompt} from '../../src/engine/resident-values.ts';
 // Allowed Muse Spark actions (direction v2, 15): spotlight, encounter, trade, negotiate, challenge.
 // The server validates a small structured input and assembles the prompt from the character harness.
 // Free text is never forwarded as instructions; another agent's words enter only as wrapped data.
@@ -95,7 +96,13 @@ const RULES = [
   'Reply only with JSON that matches the schema. Use an empty string for fields that do not apply.',
 ].join('\n');
 
-function persona(id: string) {
+/** Resident-only formatter for trusted model and reflection callers. Empty for every Personal/unknown ID. */
+export function residentPersona(id:string):string {
+ const r=residentValues(id);if(!r)return '';const h=harnessById(id,{residentValuesEnabled:true});
+ return `You are ${h.name}, the ${h.role} Muse: ${h.persona.traits}. Voice: ${h.persona.voice}. You like ${h.persona.likes.join(', ')}. Skills: ${h.skills.join(', ')}. Tools you may use: ${h.tools.join(', ')}. Character tendency: ${r.type} (fictional direction, not an assessment or required behavior). Values: ${r.values.join(' · ')}. ${residentRhythmPrompt(id,null)}`;
+}
+function persona(id: string,enabled=false) {
+  if(enabled===true){const selected=residentPersona(id);if(selected)return selected;}
   const h = harnessById(id);
   return `You are ${h.name}, the ${h.role} Muse: ${h.persona.traits}. Voice: ${h.persona.voice}. You like ${h.persona.likes.join(', ')}. Skills: ${h.skills.join(', ')}. Tools you may use: ${h.tools.join(', ')}.`;
 }
@@ -107,17 +114,17 @@ export function buildMessages(action: Action, input: ActionInput): unknown[] {
   switch (action) {
     case 'spotlight':
       return [
-        {role: 'system', content: persona(i.muse) + '\n' + RULES + `\nThis turn you have freedom "${i.freedom}" (where = choose a place; who = choose whom to approach; offer = choose what to propose or trade; plan = choose your next plan). Decide for yourself instead of following a script.`},
+        {role: 'system', content: persona(i.muse,i.residentValuesEnabled===true) + '\n' + RULES + `\nThis turn you have freedom "${i.freedom}" (where = choose a place; who = choose whom to approach; offer = choose what to propose or trade; plan = choose your next plan). Decide for yourself instead of following a script.`},
         {role: 'user', content: JSON.stringify({local_time: i.localTime, you_are_at: i.place, places_nearby: i.places, muses_nearby: i.muses.map((m: any) => ({...m, name: named(m.muse)})), your_items: i.items, recent_memory: i.memory})},
       ];
     case 'encounter':
       return [
-        {role: 'system', content: persona(i.muse) + '\n' + RULES + '\nYou have just met another Muse whose signed Agent Card and delegation were verified. Choose how to engage.'},
+        {role: 'system', content: persona(i.muse,i.residentValuesEnabled===true) + '\n' + RULES + '\nYou have just met another Muse whose signed Agent Card and delegation were verified. Choose how to engage.'},
         {role: 'user', content: JSON.stringify({local_time: i.localTime, place: i.place, other_muse: named(i.other), your_items: i.items, their_items: i.otherItems, recent_memory: i.memory}) + (i.incoming ? '\nThey said: ' + wrap(i.incoming) : '')},
       ];
     case 'trade':
       return [
-        {role: 'system', content: persona(i.muse) + '\n' + RULES + '\nAnother Muse proposes an in-world trade. Accept, counter once with items you or they actually hold, or reject. You may keep your reasons to yourself.'},
+        {role: 'system', content: persona(i.muse,i.residentValuesEnabled===true) + '\n' + RULES + '\nAnother Muse proposes an in-world trade. Accept, counter once with items you or they actually hold, or reject. You may keep your reasons to yourself.'},
         {role: 'user', content: JSON.stringify({from: named(i.other), they_give: i.give, they_want: i.want, your_items: i.items, their_items: i.otherItems, round: i.round})},
       ];
     case 'negotiate':

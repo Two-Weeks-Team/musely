@@ -61,7 +61,7 @@ export class ResidentGoalStore {
   this.sql.exec('INSERT INTO resident_wants_goals (world_id,goal_id,revision,body) VALUES (?,?,?,?) ON CONFLICT(world_id,goal_id) DO UPDATE SET revision=excluded.revision,body=excluded.body',world,g.id,revision,JSON.stringify(g));return revision;
  }
 }
-export type WantsModelContext={enabled?:boolean;world:()=>WorldState;now:()=>number;ownership:(id:string)=>'resident'|'personal'|'legacy'|'unknown';
+export type WantsModelContext={enabled?:boolean;residentValuesEnabled?:boolean;world:()=>WorldState;now:()=>number;ownership:(id:string)=>'resident'|'personal'|'legacy'|'unknown';
  /** Shared runtime slot gate, not a second independent concurrency pool. */
  acquireSlot:()=>null|(()=>void);ledger:Ledger;model:ModelConfig|null;goals:ResidentGoalStore};
 export type TradeChoice={decision:'accept'|'counter'|'reject';counter_give:string;counter_want:string;line:string};
@@ -76,7 +76,7 @@ export async function prepareResidentTrade(c:WantsModelContext,goalId:string,tas
  const other=before.muses.find(m=>m.id===task.offer!.by);if(!other||other.id===actor.id||other.travel)return no('invalid_peer');
  if(!hasResidentHarness(other.id))return no('unsupported_peer_harness');
  let input:ReturnType<typeof validate>,messages:unknown[];
- try {input=validate('trade',{muse:actor.id,other:other.id,give:task.offer.give,want:task.offer.want,items:actor.inventory.slice(0,12),otherItems:other.inventory.slice(0,12),round:task.round+1});messages=buildMessages('trade',input);}
+ try {input=validate('trade',{muse:actor.id,other:other.id,give:task.offer.give,want:task.offer.want,items:actor.inventory.slice(0,12),otherItems:other.inventory.slice(0,12),round:task.round+1});messages=buildMessages('trade',c.residentValuesEnabled===true?{...input,residentValuesEnabled:true}:input);}
  catch{return no('unsupported_trade_context');}
  // Only bounded objective IDs, no free-text private reasons or peer instructions.
  const recipe=BEATS.find(b=>b.id===row!.goal.beat);
