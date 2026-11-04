@@ -4,6 +4,7 @@ import type {CampfireScenePort} from '../../world-packs/campfire/scene-port.mjs'
 import * as T from 'three';
 import type {RecordedFrame} from '../replay/player.ts';
 import {SceneProjection, frameSource} from './recorded-scene.ts';
+import {layoutLiveLabels,type LabelCandidate,type LabelBox} from './live-label-layout.ts';
 import {frameSpeech} from './speech-recipient.ts';
 import {loadMuseLight, type MaterialLibrary} from '../character-kit/MaterialLibrary.ts';
 import type {MuseActor} from '../character-kit/MuseActor.ts';
@@ -30,6 +31,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
   let lods = MUSE_VARIANTS.map(() => 2 as 0 | 1 | 2);
   const root = typeof document === 'undefined' ? null : document.createElement('div');
   if (root) {root.id = 'live-muse-labels'; root.setAttribute('aria-hidden', 'true'); document.body.append(root);}
+  const labelSizes=new WeakMap<HTMLElement,{key:string;width:number;height:number}>();
   function add(actor: MuseActor, shadow: T.Mesh, extra: boolean, id: string = actor.variant, isPersonal = false) {
     let label: HTMLElement | null = null;
     if (root) {label = document.createElement('div'); label.className = 'live-muse-label'; label.dataset.museId = id; label.hidden = true; root.append(label);}
@@ -137,6 +139,9 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
     }
     host.campfireVisual?.setWorld(projection.world, store.replay ? store.recordedAt ?? at : liveObservedAt);
     frames = projection.frames(at);
+    const labelCandidates:LabelCandidate[]=[],labelNodes=new Map<string,HTMLElement>();
+    const groupSizes=new Map<string,number>();
+    for(const f of frames.values())if(!f.travel)groupSizes.set(f.place,(groupSizes.get(f.place)??0)+1);
     for (const e of allEntries()) {
       const f = entries.get(e.id) === e && personal.has(e.id) ? undefined : frames.get(e.id), actor = e.actor;
       actor.root.visible = !!f; shadowVisible(e, !!f);
@@ -152,16 +157,35 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
       if (e.label) {
         const p = project(new T.Vector3(f.x, y + 1.12, f.z));
         const foot = project(new T.Vector3(f.x, y, f.z));
-        e.label.hidden = Math.abs(foot.y - p.y) < 20 || p.x < 12 || p.y < 70 || p.x > innerWidth - 12 || p.y > innerHeight - 110;
-        e.label.style.transform = `translate(${Math.round(p.x)}px,${Math.round(p.y)}px) translate(-50%,-100%)`;
+        e.label.hidden = (e.id!==selectedId&&Math.abs(foot.y-p.y)<20)||p.x<0||p.y<0||p.x>innerWidth||p.y>innerHeight;
+        e.label.dataset.selected=String(e.id===selectedId);
+        e.label.dataset.clustered=String(!f.travel&&(groupSizes.get(f.place)??0)>1);
+        e.label.dataset.clusterCount='';
         const speech=frameSpeech(f,projection.world,projection.events);
-        e.label.textContent = `${museName(f.id,projection.world)}${speech ? (speech.recipient?' ':': ')+speech.text : f.card ? ' · ' + f.card : ''}`;
+        const text=`${museName(f.id,projection.world)}${speech ? (speech.recipient?' ':': ')+speech.text : f.card ? ' · ' + f.card : ''}`;
+        if(e.label.textContent!==text)e.label.textContent=text;
+        if(!e.label.hidden){
+          labelNodes.set(e.id,e.label);
+          labelCandidates.push({id:e.id,group:f.travel?'travel:'+e.id:f.place,groupSize:f.travel?1:groupSizes.get(f.place),x:p.x,y:p.y,width:0,height:0,selected:e.id===selectedId,speaking:!!speech});
+        }
         e.label.dataset.version = String(projection.world.version ?? projection.world.tick);
         e.label.dataset.source = sourceOf(f.id);
         e.label.dataset.replay = String(store.replay);
         e.label.dataset.visual = f.visual;
         e.label.title = `${store.replay ? 'REPLAY · ' : ''}${f.status}${f.fallback ? ' · ' + f.fallback : ''}`;
       }
+    }
+    if(root){
+    // Measure only when text/viewport/priority changes, then place all boxes together.
+    for(const c of labelCandidates){const node=labelNodes.get(c.id)!,key=`${innerWidth}:${node.textContent}:${node.dataset.clustered}:${node.dataset.selected}`;
+      let size=labelSizes.get(node);if(size?.key!==key){const rect=node.getBoundingClientRect?.();size={key,width:rect?.width||Math.min(240,innerWidth-24),height:rect?.height||36};labelSizes.set(node,size);}c.width=size.width;c.height=size.height;
+    }
+    const obstacles:LabelBox[]=[];
+    for(const selector of ['header','footer','#muse-card','.map-tools']){const node=document.querySelector?.<HTMLElement>(selector);if(!node||node.hidden)continue;const r=node.getBoundingClientRect();if(r.width&&r.height)obstacles.push({left:r.left,top:r.top,width:r.width,height:r.height});}
+    for(const p of layoutLiveLabels(labelCandidates,{left:12,right:innerWidth-12,top:70,bottom:innerHeight-32},obstacles)){
+      const node=labelNodes.get(p.id)!;node.hidden=p.hidden;node.dataset.clusterCount=p.count?`+${p.count}`:'';
+      node.style.transform=`translate(${Math.round(p.left)}px,${Math.round(p.top)}px)`;
+    }
     }
     const ordered = [...MUSE_VARIANTS.map(v => personal.get(v.id) ?? entries.get(v.id)), ...[...personal.values()].filter(e=>!MUSE_VARIANTS.some(v=>v.id===e.id)).sort((a,b)=>a.id.localeCompare(b.id))];
     const heights = ordered.map(e => {if (!e?.actor.root.visible) return 0; const p = e.actor.root.position; return Math.abs(project(p.clone()).y - project(p.clone().add(new T.Vector3(0, .95, 0))).y);});
