@@ -1,3 +1,4 @@
+import {PUBLIC_SPEECH_NOT_ENGLISH} from './resident-english-speech.ts';
 /** Opt-in model preparation boundary. No production caller or executor is installed.
  * Reuse the existing transport/schema/budget. Returned choices are NOT committed actions.
  */
@@ -91,7 +92,7 @@ export async function prepareResidentTrade(c:WantsModelContext,goalId:string,tas
   if(!reservation.ok)return no(reservation.reason);if(reservation.existing)return no('already_reserved');
   const result=await callModel(c.model,'trade',messages);
   if(!result.ok){c.ledger.settle(reservationId,failureCostUsd(result),result.kind==='timeout'?'timeout':'error');return no(result.kind);}
-  const problem=checkOutput('trade',input,result.output);c.ledger.settle(reservationId,actualCostUsd(result.usage),problem?'rejected':'live');if(problem)return no('output_rejected');
+  const problem=checkOutput('trade',input,result.output);c.ledger.settle(reservationId,actualCostUsd(result.usage),problem?'rejected':'live');if(problem)return no(problem===PUBLIC_SPEECH_NOT_ENGLISH?'output_rejected:'+PUBLIC_SPEECH_NOT_ENGLISH:'output_rejected');
   const current=c.world(),latest=c.goals.load(current.worldId,goalId);
   if(c.enabled!==true||current.worldId!==before.worldId||current.version!==before.version||latest?.revision!==row!.revision||!eligible(current,latest))return no('stale_authority_or_state');
   const fresh=current.inbox?.tasks.find(t=>t.id===taskId);if(!fresh||fresh.status!=='pending'||fresh.awaiting!==actor.id||fresh.deadline<=c.now())return no('stale_task');

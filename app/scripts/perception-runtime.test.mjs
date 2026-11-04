@@ -33,6 +33,19 @@ test('duplicate public names cannot resolve an arbitrary actor, while an explici
  assert.equal(checkOutput('spotlight',input,{...output,target_agent:'Same Name'}),'recipient_not_observed');assert.equal(checkOutput('spotlight',input,output),null);
 });
 
+test('English speech preserves only public names from the trusted conversation packet',t=>{
+ const s=world();s.muses.find(m=>m.id==='00-jolly').profile.displayName='은별';
+ const place=placeById('commons:cafe'),visible='perception-name:visible';PLACE_BY_ID.set(visible,{...place,id:visible,x:place.x+100});t.after(()=>PLACE_BY_ID.delete(visible));
+ const distant=s.muses.find(m=>m.id==='03-ripple');distant.place=visible;distant.profile={actorId:distant.id,displayName:'먼별',appearanceId:distant.id,revision:1};
+ const perception=localPerception(s,'01-sunny',NOW),input=bindPerceptionInput(raw,perception);
+ assert.ok(perception.visibleGroups.some(g=>g.placeId===visible&&g.count===1));assert.doesNotMatch(JSON.stringify(perception),/먼별|03-ripple/);
+ assert.equal(input.muses,undefined);assert.match(JSON.stringify(buildMessages('spotlight',input)),/은별/);
+ assert.equal(checkOutput('spotlight',input,{...output,line:'Hello, 은별!'}),null);
+ assert.equal(checkOutput('spotlight',input,{...output,line:'안녕하세요, 은별!'}),'public_speech_not_english');
+ assert.equal(checkOutput('spotlight',input,{...output,line:'Hello, 먼별!'}),'public_speech_not_english');
+ assert.equal(checkOutput('spotlight',{...raw,local_perception:{current:perception,notices:[]}},{...output,line:'Hello, 은별!'}),'public_speech_not_english');
+});
+
 test('local encounter prompts identify the verified addressed peer among multiple nearby Muses',()=>{
  const p=localPerception(world(),'01-sunny',NOW),base={muse:'01-sunny',localTime:'12:00',place:'Commons Cafe',items:[],otherItems:[],memory:[],incoming:'Hello'};
  const first=buildMessages('encounter',bindPerceptionInput({...base,other:'00-jolly'},p));
@@ -45,6 +58,15 @@ test('local encounter prompts identify the verified addressed peer among multipl
 import{bootWorldDo}from'./test-support/world-life-harness.mjs';
 import{PLACE_BY_ID,placeById}from'../src/engine/places.ts';
 import{encounterInput}from'../src/engine/world.ts';
+test('actual Runtime prepared local model input preserves an observed Korean public name without exempting Korean sentences',async t=>{
+ let calls=0,line='Hello, 은별!';const packets=[];
+ const a=await bootWorldDo(t,{mode:'sandbox-v1',envOverrides:{LOCAL_PERCEPTION_MODE:'local-v1'},modelFetcher:async(_url,init)=>{calls++;packets.push(JSON.parse(init.body));return new Response(JSON.stringify({id:'synthetic-public-name',usage:{prompt_tokens:1,completion_tokens:1},choices:[{message:{content:JSON.stringify({intent:'greet',item:'',line,public_reason:'A hello',injection_suspected:false})}}]}));}});
+ a.edit(s=>{for(const m of s.muses){m.place='bay:sf';m.travel=null;m.beat=null;}s.muses.find(m=>m.id==='01-sunny').place='commons:cafe';const peer=s.muses.find(m=>m.id==='00-jolly');peer.place='commons:cafe';peer.profile={actorId:peer.id,displayName:'은별',appearanceId:peer.id,revision:1};peer.memory=['PRIVATE_PEER_MEMORY_CANARY'];});
+ const input=validate('encounter',encounterInput(a.runtime.state(),'01-sunny','00-jolly','commons:cafe','Hello',Date.now()));
+ const accepted=await a.runtime.modelCall('encounter',input,'observed-public-name');assert.equal(accepted.ok,true);assert.equal(accepted.output.line,line);assert.equal(calls,1);
+ const packet=JSON.stringify(packets[0]);assert.match(packet,/public_local_perception/);assert.match(packet,/은별/);assert.doesNotMatch(packet,/PRIVATE_PEER_MEMORY_CANARY/);
+ line='안녕하세요, 은별!';assert.deepEqual(await a.runtime.modelCall('encounter',input,'observed-public-name-foreign-sentence'),{ok:false,reason:'output_rejected:public_speech_not_english'});assert.equal(calls,2,'each prepared response uses one call and no retry');
+});
 test('an encounter peer absent from trusted conversation range is refused before reservation or provider call',async t=>{
  let calls=0;const a=await bootWorldDo(t,{mode:'sandbox-v1',envOverrides:{LOCAL_PERCEPTION_MODE:'local-v1'},modelFetcher:async()=>{calls++;return new Response(JSON.stringify({usage:{prompt_tokens:1,completion_tokens:1},choices:[{message:{content:JSON.stringify({intent:'greet',item:'',line:'Hi',public_reason:'A hello',injection_suspected:false})}}]}));}});
  a.edit(s=>{const me=s.muses.find(m=>m.id==='01-sunny'),peer=s.muses.find(m=>m.id==='03-ripple');me.place='commons:cafe';peer.place='bay:sf';for(const m of[me,peer]){m.travel=null;m.beat=null;}});

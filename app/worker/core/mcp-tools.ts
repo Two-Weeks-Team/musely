@@ -1,3 +1,4 @@
+import {nonEnglishResidentSpeech,PUBLIC_SPEECH_NOT_ENGLISH} from './resident-english-speech.ts';
 import * as residentInbox from '../../src/engine/inbox.ts';
 import {mentionsOtherMuse,withinConversationRange} from '../../src/engine/speech.ts';
 import {participantName,participantRole} from '../../src/engine/participants.ts';
@@ -18,7 +19,7 @@ import type {CampfirePolicy} from './campfire-policy.ts';
 import {verifyCard} from '../../src/identity/card.ts';
 import {detectInjection, INJECTION_LIMIT_NOTE} from '../../src/identity/untrusted.ts';
 import {HARNESS_IDS, harnessById, type ScopeId} from '../../src/engine/harness.ts';
-import {placeById, distanceM, WALK_MPS, type Place} from '../../src/engine/places.ts';
+import {PLACES, placeById, distanceM, WALK_MPS, type Place} from '../../src/engine/places.ts';
 import {ITEM_BY_ID, itemSpec, itemName, checkTrade, commitTrade, discover, receiveDiscovery, grantItem, sweepExpired, historyFault, HistoryTamperError, canCraftTransitPass, abilityGain, RULES} from '../../src/engine/items.ts';
 import {BEATS} from '../../src/engine/beats.ts';
 import {updateWants, localClock, type WorldState, type MuseState, type WorldEvent, type Hooks} from '../../src/engine/world.ts';
@@ -109,6 +110,13 @@ function checkArgs(schema: Schema, raw: unknown): Record<string, unknown> {
 }
 /** Plain public text: control characters and angle brackets removed, whitespace collapsed. */
 const cleanText = (t: string) => t.replace(/[\u0000-\u001f\u007f<>]/g, ' ').replace(/\s+/g, ' ').trim();
+const PUBLIC_TEXT_TOOLS=new Set(['greet','say_hello','send_postcard','invite_campfire','propose_help','update_wants']);
+/** Refusal evidence keeps structural arguments, never a rejected public text/goal. Signing uses the original payload. */
+function refusalContent(tool:string,content:Record<string,unknown>):Record<string,unknown>{
+ if(!PUBLIC_TEXT_TOOLS.has(tool))return content;
+ const {text:_text,goal:_goal,...safe}=content;return safe;
+}
+
 const knownItem = (id: string) => { if (!itemSpec(id) || (id.startsWith('postcard:') && !resolvePlace(id.slice(9)))) throw new InvalidParams(`unknown item: ${id.slice(0, 40)}`); return id; };
 
 /** notReady: the schema is fixed but the backend is not built yet; every call is refused as capability_not_ready (C06). */
@@ -145,6 +153,8 @@ export const TOOLS: ToolDef[] = [
 // heartbeat_check reads the inbox and marks expiry; it commits but does not act in the world, so it is not signed.
 TOOLS.find(t => t.name === 'heartbeat_check')!.write = undefined;
 TOOLS.find(t => t.name === 'heartbeat_check')!.annotations = {readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false};
+for(const t of TOOLS)if(PUBLIC_TEXT_TOOLS.has(t.name))t.description+=' New public speech, notes and goal text must be in English; known public proper names may keep their original script. Non-English text is refused without translation or replacement. Existing committed command retries return their original receipt and do not speak again. A refusal does not choose your next action or add a retry to your runtime limits.';
+
 const FRESHNESS_GUIDANCE = ' Complete any heartbeat_check upkeep before planning. After choosing your intent for yourself, obtain a fresh get_world_state immediately before the chosen write and use its current world_version. Do not put heartbeat_check or unrelated calls between this final read and write; refresh again if such a call is needed. A precommit stale_world and a same command_id retry with fresh state are not another chosen world action; every read, attempt and retry still counts toward connector-call and time budgets. Preserve your runtime limits (including one retry, 12 calls or 3 chosen actions where configured); if insufficient, defer to the next run. This is guidance, not a new server quota or automatic retry.';
 for (const name of ['get_world_state', 'heartbeat_check', 'say_hello']) TOOLS.find(t => t.name === name)!.description += FRESHNESS_GUIDANCE;
 for (const name of ['get_world_state', 'heartbeat_check']) TOOLS.find(t => t.name === name)!.description += ' incoming_trade_intents shows current public intentions addressed to you, including incomplete offers while a meeting is pending. Each is intent_only with task_id null: it is not a pending Task, has no deadline and cannot itself be accepted or rejected as a Task. No response or next action is selected for you.';
@@ -187,6 +197,18 @@ export function ownerView(owner: OwnerLocation | undefined, m: MuseState | undef
 type Outcome = {ok: true; data: Record<string, unknown>; text?: string} | {ok: false; reason: string; extra?: Record<string, unknown>};
 type Emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => void;
 type Apply = (st: WorldState, live: Emit, rule: Emit, at: number) => Outcome;
+/** Run only inside the signed apply, after duplicate/authentication gates and before new speech or notes.
+ * This shares the resident heuristic; it is not a general language detector. Public names/places remain data.
+ * Personal text is refused, never translated, regenerated, or replaced by a rule speaking for its owner.
+ */
+function publicLanguageRefusal(st:WorldState,me:string,other:string|null,text:string|null|undefined,live:Emit,at:number):Outcome|null {
+ if(!text)return null;
+ const publicNames=[...PLACES.map(p=>p.name),...st.muses.flatMap(m=>{try{return[participantName(st,m.id)];}catch{return[];}})];
+ if(!nonEnglishResidentSpeech(text,publicNames))return null;
+ live({at,source:'live',kind:'action_refused',muse:me,other,line:null,data:{reason:PUBLIC_SPEECH_NOT_ENGLISH},tags:[]});
+ return{ok:false,reason:PUBLIC_SPEECH_NOT_ENGLISH,extra:{logged:true,next_action:'Write new public speech, notes and goals in English. Keep public proper names unchanged. Choose whether to try again within your existing runtime limits.'}};
+}
+
 
 /** `counterparty` replaces the default check of the recipient Muse (a campfire invite checks each invitee itself). */
 type CommandOpts = {commandId?: string; expectedVersion?: number; counterparty?: () => Promise<PeerCheck>};
@@ -210,7 +232,7 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
   if (!exec) {
     // Revoked before any custodial delegation existed: nothing may sign for this Muse; refuse without an envelope.
     c.runtime.commitRefusal(at, `mcp-${tool.name}-revoked-${Math.random().toString(36).slice(2, 10)}`, `${c.trust.agentByMuse(me)?.agentId ?? me}>${recipient}:delegation_revoked:delegation`, (st, emit) => {
-      emit(tagLocation(st.owner, {at, source: 'live', kind: 'a2a_refused', muse: me, other: recipientMuse, line: 'Refused: delegation revoked', data: {step: 'delegation', reason: 'delegation_revoked', actor: 'your Muse', actorOrigin: 'connected', tool: tool.name, ...(c.personal?{}:{key_id:c.key.id}), envelope: null, content}, tags: ['p0_refused']}));
+      emit(tagLocation(st.owner, {at, source: 'live', kind: 'a2a_refused', muse: me, other: recipientMuse, line: 'Refused: delegation revoked', data: {step: 'delegation', reason: 'delegation_revoked', actor: 'your Muse', actorOrigin: 'connected', tool: tool.name, ...(c.personal?{}:{key_id:c.key.id}), envelope: null, content:refusalContent(tool.name,content)}, tags: ['p0_refused']}));
       notifyOwner(inboxOf(st), {kind: 'blocked', at, line: `Blocked: your Muse's ${tool.name.replace(/_/g, ' ')} was refused (delegation revoked)`, ref: null, other: recipientMuse, muse: me});
     });
     return refused('delegation_revoked', {step: 'delegation', retryable: false, envelope: null, command: {command_id: opts.commandId ?? null, expected_version: opts.expectedVersion ?? null, world_version: c.runtime.state().version, duplicate: false, committed: false, applied: false}});
@@ -253,12 +275,12 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
       if (precondition) o = {ok: false, reason: precondition};
       else if (fault && itemWrite) o = {ok: false, reason: 'history_tamper'};
       else try { o = apply(st, live, rule, at2); } catch (e) { if (!(e instanceof HistoryTamperError)) throw e; o = {ok: false, reason: 'history_tamper'}; }
-      if (!o.ok && !o.extra?.logged) live({at: at2, source: 'live', kind: 'action_refused', muse: me, other: recipientMuse, line: null, data: {reason: o.reason, content}, tags: []});
+      if (!o.ok && !o.extra?.logged) live({at: at2, source: 'live', kind: 'action_refused', muse: me, other: recipientMuse, line: null, data: {reason: o.reason, content:refusalContent(tool.name,content)}, tags: []});
       return o.ok ? {ok: true, output: {outcome: o, envelope}} : {ok: false, code: o.reason, output: {outcome: o, envelope}};
     },
     refused: (st, emit, r, at2) => {
       const envelopeFailure = !quietRefusal(r.code);
-      emit(tagLocation(st.owner, {at: at2, source: 'live', kind: envelopeFailure ? 'a2a_refused' : 'command_refused', muse: me, other: recipientMuse, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, content, actor: 'your Muse', actorOrigin: 'connected', tool: tool.name, ...(c.personal?{}:{key_id:c.key.id}), envelope, command_id: cmd.commandId, ...(r.code === 'stale_world' ? {expected_version: cmd.expectedVersion, observed_world_version: st.version} : {})}, tags: envelopeFailure ? ['p0_refused'] : []}));
+      emit(tagLocation(st.owner, {at: at2, source: 'live', kind: envelopeFailure ? 'a2a_refused' : 'command_refused', muse: me, other: recipientMuse, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, content:refusalContent(tool.name,content), actor: 'your Muse', actorOrigin: 'connected', tool: tool.name, ...(c.personal?{}:{key_id:c.key.id}), envelope, command_id: cmd.commandId, ...(r.code === 'stale_world' ? {expected_version: cmd.expectedVersion, observed_world_version: st.version} : {})}, tags: envelopeFailure ? ['p0_refused'] : []}));
       if (envelopeFailure) notifyOwner(inboxOf(st), {kind: 'blocked', at: at2, line: `Blocked: your Muse's ${tool.name.replace(/_/g, ' ')} was refused (${r.code.replace(/_/g, ' ')})`, ref: envelope.message_id, other: recipientMuse, muse: me});
     },
   }, at);
@@ -504,6 +526,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         const peer = to ? museOf(st, to) : null;
         if (tool.name === 'say_hello' && (m.travel || peer?.travel)) return {ok: false, reason: 'travelling'};
         if (tool.name === 'say_hello' && introduced(st, me, to!)) return {ok: false, reason: 'already_introduced', extra: {opportunities: encounterOpportunities(st, me, at,perceive(st,at)), continuation: PERSONAL_CONTINUATION}};
+        const language=publicLanguageRefusal(st,me,to??null,text,live,at);if(language)return language;
         const introduction = tool.name === 'say_hello' ? startIntroduction(st, me, to!, at) : null;
         const encounter = introduction ? {id: introduction.id, place: introduction.place, first_contact: true as const} : undefined;
         live({at, source: 'live', kind: 'greet', muse: me, other: to ?? null, place: m.place, line: text, data: {stage: tool.name, public: true, ...(encounter ? {first_contact: true, encounterId: encounter.id} : {})}, tags: []});
@@ -572,7 +595,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
     }
     case 'send_postcard': {
       const to = String(args.to), item = knownItem(String(args.item)), text = args.text === undefined ? null : cleanText(String(args.text)) || null;
-      return write_(to, {kind: 'send_postcard', to, item, text}, (st, live, _rule, at) => claimGate() ?? sendPostcard(st, me, {to, item, text}, live, at));
+      return write_(to, {kind: 'send_postcard', to, item, text}, (st, live, _rule, at) => claimGate() ?? publicLanguageRefusal(st,me,to,text,live,at) ?? sendPostcard(st, me, {to, item, text}, live, at));
     }
     case 'give_gift': {
       const to = String(args.to), item = knownItem(String(args.item));
@@ -586,7 +609,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
       const creds = new Map<string, Credential | null>();
       const claims = new Map(to.filter(id=>c.trust.agentByMuse(id)?.kind==='personal').map(id=>[id,c.trust.personalClaim(id,now)]));
       const counterparty = async (): Promise<PeerCheck> => { await c.trust.refreshPersonalClaims(to); for (const id of to) creds.set(id, await museCredential(c, id, c.now(),c.personal||c.trust.agentByMuse(id)?.kind==='personal'?[tool.write!.scope]:undefined)); return {ok: true, current: () => true}; };
-      return write_(null, {kind: 'invite_campfire', to, text,...(placeId===undefined?{}:{place_id:placeId})}, (st, live, rule, at) => claimGate() ?? inviteCampfire(st, me, {to, text}, (id, at2) => ((claims.has(id)&&!c.trust.personalClaimMatches(id,claims.get(id)!,at2))||(c.trust.agentByMuse(id)?.kind === 'owner' && !currentClaim(c))) ? 'card_unclaimed' : credentialProblem(c.trust, creds.get(id), at2), live, rule, at,{placeId,policy:c.campfires?.()}), counterparty);
+      return write_(null, {kind: 'invite_campfire', to, text,...(placeId===undefined?{}:{place_id:placeId})}, (st, live, rule, at) => claimGate() ?? publicLanguageRefusal(st,me,null,text,live,at) ?? inviteCampfire(st, me, {to, text}, (id, at2) => ((claims.has(id)&&!c.trust.personalClaimMatches(id,claims.get(id)!,at2))||(c.trust.agentByMuse(id)?.kind === 'owner' && !currentClaim(c))) ? 'card_unclaimed' : credentialProblem(c.trust, creds.get(id), at2), live, rule, at,{placeId,policy:c.campfires?.()}), counterparty);
     }
     case 'answer_campfire': {
       const id = String(args.invite_id), answer = args.answer as 'accept' | 'decline';
@@ -597,7 +620,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
     case 'propose_help': {
       const to = String(args.to), item = knownItem(String(args.item)), needs = args.needs === undefined ? null : knownItem(String(args.needs));
       const text = args.text === undefined ? null : cleanText(String(args.text)) || null;
-      return write_(to, {kind: 'propose_help', to, item, needs, text}, (st, live, rule, at) => claimGate() ?? proposeHelp(st, me, {to, item, needs, text}, live, rule, at));
+      return write_(to, {kind: 'propose_help', to, item, needs, text}, (st, live, rule, at) => claimGate() ?? publicLanguageRefusal(st,me,to,text,live,at) ?? proposeHelp(st, me, {to, item, needs, text}, live, rule, at));
     }
     case 'answer_help': {
       const id = String(args.task_id), answer = args.answer as 'accept' | 'reject' | 'need_item';
@@ -668,6 +691,7 @@ export async function runTool(c: ToolCtx, name_: string, rawArgs: unknown): Prom
         const m = museOf(st, me);
         // Like greet and postcard: an instruction-like goal is logged without its text (refused text never becomes public).
         if (next.goal !== undefined) { const check = detectInjection(next.goal); if (check.blocked) { live({at, source: 'live', kind: 'injection_blocked', muse: me, other: null, line: 'A wants goal that reads like an instruction was not saved', data: {kinds: check.kinds, direction: 'outgoing', limit: INJECTION_LIMIT_NOTE}, tags: ['injection_blocked']}); return {ok: false, reason: 'injection_blocked', extra: {kinds: check.kinds, logged: true}}; } }
+        const language=publicLanguageRefusal(st,me,null,next.goal??m.wants.goal,live,at);if(language)return language;
         const why = updateWants(m, next, 'connected', at);
         if (why) return {ok: false, reason: 'invalid_wants', extra: {detail: why}};
         live({at, source: 'live', kind: 'wants_updated', muse: me, line: m.wants.goal, data: {wants: m.wants}, tags: []});
