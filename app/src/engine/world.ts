@@ -16,8 +16,8 @@ import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-10: opt-in confirmed resident values and rhythms over completion-driven activities. */
-export const ENGINE_VERSION = 'engine-10';
+/** engine-11: explicit catalog stays preserve chosen duration and LIVE evidence. */
+export const ENGINE_VERSION = 'engine-11';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
@@ -365,14 +365,32 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       const turn=input.residentTurns?.find(t=>t.decision.muse===m.id);
       const waiting=s.inbox.tasks.some(t=>t.status==='pending'&&(t.from===m.id||t.to===m.id));
       if(turn&&!m.intent&&!waiting&&Number.isFinite(turn.stayMinutes)&&turn.stayMinutes>=5&&turn.stayMinutes<=60){
+        const d=turn.decision,o=d.output,here=placeById(m.place);
+        const named=BEATS.find(b=>b.id===o.decision),rest=o.decision==='rest'||o.decision==='stay';
+        const dest=o.target_place.trim()?findPlaceByName(o.target_place):here;
+        // A catalog activity is a current-place choice, not a movement/offer with missing targets.
+        // Keep the model's chosen activity and duration; never silently substitute an ineligible beat.
+        if((named||rest)&&(!dest||dest.id===here.id)){
+          const selected=named&&eligibleBeats(m,here,clock.hour).find(b=>b.id===named.id);
+          const reason=!dest?'unknown place: '+o.target_place.slice(0,40):
+            o.target_agent||o.offer_item||o.want_item?'stay cannot contain a social or item target':named&&!selected?'activity unavailable here':null;
+          if(reason){emit({at:now,source:d.source,kind:'decision_rejected',muse:m.id,place:m.place,line:null,data:{freedom:d.freedom,decision:o.decision,public_reason:o.public_reason,evidence:d.evidence??null,reason},tags:[]});continue;}
+          const withEvidence=(e:Omit<WorldEvent,'id'|'tick'>)=>emit({...e,data:{...e.data,evidence:d.evidence??null,freedom:d.freedom,decision:o.decision}});
+          if(selected)startBeat(m,{...selected,minutes:turn.stayMinutes},here,now,d.source,withEvidence,s);
+          else{m.beat={id:'resident_stay',clip:'idle_breathe',startedAt:now,endsAt:now+turn.stayMinutes*60000,line:null};
+            withEvidence({at:now,source:d.source,kind:'beat',muse:m.id,place:m.place,line:null,data:{beat:'resident_stay',clip:'idle_breathe',minutes:turn.stayMinutes},tags:[]});}
+          continue;
+        }
         const first=events.length;
-        applyDecision(s,turn.decision,turn.decision.freedom,now,emit,hooks);
+        // A non-catalog action may still choose a real destination or social interaction.
+        if((d.freedom==='where'||d.freedom==='plan')&&dest?.id===here.id){
+          emit({at:now,source:d.source,kind:'decision_rejected',muse:m.id,place:m.place,line:null,data:{freedom:d.freedom,decision:o.decision,public_reason:o.public_reason,evidence:d.evidence??null,reason:'unknown activity'},tags:[]});continue;
+        }
+        applyDecision(s,d,d.freedom,now,emit,hooks);
         const rejected=events.slice(first).some(e=>e.kind==='decision_rejected');
         if(!rejected&&!m.travel){
-          const selected=eligibleBeats(m,placeById(m.place),clock.hour).find(b=>b.id===turn.decision.output.decision);
-          if(selected){startBeat(m,{...selected,minutes:turn.stayMinutes},placeById(m.place),now,turn.decision.source,emit,s);continue;}
           m.beat={id:'resident_stay',clip:'idle_breathe',startedAt:now,endsAt:now+turn.stayMinutes*60000,line:null};
-          emit({at:now,source:turn.decision.source,kind:'beat',muse:m.id,place:m.place,line:null,data:{beat:'resident_stay',clip:'idle_breathe',minutes:turn.stayMinutes,evidence:turn.decision.evidence??null},tags:[]});
+          emit({at:now,source:d.source,kind:'beat',muse:m.id,place:m.place,line:null,data:{beat:'resident_stay',clip:'idle_breathe',minutes:turn.stayMinutes,evidence:d.evidence??null},tags:[]});
         }
         continue;
       }
