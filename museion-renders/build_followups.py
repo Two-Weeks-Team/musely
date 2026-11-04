@@ -4,7 +4,7 @@ Run through mcp_client.py after visual inspection of the hero preview.
 import bpy, math, random, json
 from pathlib import Path
 from mathutils import Vector
-OUT=Path('/Users/kimsejun/museion-renders')
+OUT=Path.home()/'museion-renders'
 hero=bpy.context.scene
 hero.render.resolution_percentage=100
 hero.render.filepath=str(OUT/'diorama-hero.png')

@@ -1,7 +1,7 @@
 """Read back the saved .blend and PNG bytes; no scene mutations or render."""
 import bpy, json, struct, hashlib
 from pathlib import Path
-OUT=Path('/Users/kimsejun/museion-renders')
+OUT=Path('/Users/you/museion-renders')
 checks=[]
 for name in ('01 • Campfire','02 • Ember split','03 • Cold open'):
     s=bpy.data.scenes[name]

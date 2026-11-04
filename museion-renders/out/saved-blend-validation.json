@@ -1,6 +1,6 @@
 {
   "status": "PASS",
-  "file": "/Users/kimsejun/museion-renders/out/museion-enhanced.blend",
+  "file": "/Users/you/museion-renders/out/museion-enhanced.blend",
   "readback": "fresh Blender background process; no render or file mutation",
   "scenes": [
     "01 • Campfire",

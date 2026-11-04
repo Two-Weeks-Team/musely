@@ -1,4 +1,4 @@
-exec(open('/Users/kimsejun/museion-renders/out/scripts/enhance_common.py').read())
+exec(open('/Users/you/museion-renders/out/scripts/enhance_common.py').read())
 draft=bpy.data.scenes.get('99 • Avatar preview before pose repair')
 if draft:bpy.data.scenes.remove(draft)
 inspection=json.loads((OUT/'canonical-inspection.json').read_text());camera_original=inspection['scenes'][0]['camera']

@@ -19,3 +19,5 @@ All meshes, curves and materials are procedural and locally authored; no externa
 Not included (regenerable or local-only): `out/.tools/` (Python env with an ffmpeg binary),
 `out/ember-frames/` (72 PNG frames; the MP4 and `out/ember-check/` remain), `*.blend1` backups,
 and browser-tool caches. The `norcal.osm.pbf` extract read by `map/extract_osm.py` was not in the original folder either.
+
+> Note: scripts in this record keep the absolute paths of the machine they were run on, written here as `/Users/you/…`. Point them at your own checkout before running.

@@ -17,9 +17,9 @@ assert out.inputs['Image'].is_linked
 def render_preview():
     try:
         bpy.ops.render.render(write_still=True)
-        Path('/Users/kimsejun/museion-renders/preview-status.txt').write_text('DONE: fixed compositor')
+        Path('/Users/you/museion-renders/preview-status.txt').write_text('DONE: fixed compositor')
     except Exception:
-        Path('/Users/kimsejun/museion-renders/preview-status.txt').write_text(traceback.format_exc())
+        Path('/Users/you/museion-renders/preview-status.txt').write_text(traceback.format_exc())
     return None
 bpy.app.timers.register(render_preview,first_interval=2)
 print('Compositor repaired using verified Blender 5.2 socket API; preview queued')

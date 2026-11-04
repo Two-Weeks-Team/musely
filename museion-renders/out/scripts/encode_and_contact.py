@@ -4,7 +4,7 @@ from PIL import Image,ImageDraw
 import imageio_ffmpeg
 
 parser=argparse.ArgumentParser();parser.add_argument('mode',choices=['check','encode']);args=parser.parse_args()
-root=Path('/Users/kimsejun/museion-renders/out')
+root=Path('/Users/you/museion-renders/out')
 if args.mode=='encode':
     frames=sorted((root/'ember-frames').glob('frame-*.png'));assert len(frames)==72
     assert [p.name for p in frames]==['frame-%04d.png'%i for i in range(1,73)]

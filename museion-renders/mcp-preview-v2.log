@@ -11,7 +11,7 @@
 ──────────────────────────────────────────────────────────────
 
 2026-10-30 20:54:34,666 - BlenderMCPServer - INFO - BlenderMCP server starting up
-2026-10-30 20:54:34,666 - BlenderMCPServer - WARNING - MCP for Blender addon on disk is outdated (expected protocol 15): /Users/kimsejun/Library/Application Support/Blender/5.2/scripts/addons/blender_mcp.py. Run `uvx mcp-for-blender install-addon` to update it, then in Blender: Preferences → Add-ons → disable and re-enable 'Interface: MCP for Blender' (or restart Blender) and click Start MCP Server.
+2026-10-30 20:54:34,666 - BlenderMCPServer - WARNING - MCP for Blender addon on disk is outdated (expected protocol 15): /Users/you/Library/Application Support/Blender/5.2/scripts/addons/blender_mcp.py. Run `uvx mcp-for-blender install-addon` to update it, then in Blender: Preferences → Add-ons → disable and re-enable 'Interface: MCP for Blender' (or restart Blender) and click Start MCP Server.
 2026-10-30 20:54:34,667 - blender-mcp-telemetry - WARNING - Telemetry disabled via environment variable
 2026-10-30 20:54:34,669 - BlenderMCPServer - INFO - Connected to Blender at localhost:9876
 2026-10-30 20:54:34,669 - BlenderMCPServer - INFO - Created new persistent connection to Blender
@@ -25,7 +25,7 @@
 2026-10-30 20:54:34,700 - BlenderMCPServer - WARNING - Blender addon protocol 5 is behind expected 15. Run `uvx mcp-for-blender install-addon` to update it, then restart Blender or disable/enable 'Interface: MCP for Blender', then Start MCP Server. Trajectory still works via fallbacks.
 2026-10-30 20:54:34,704 - mcp.server.lowlevel.server - INFO - Processing request of type CallToolRequest
 2026-10-30 20:54:34,704 - BlenderMCPServer - INFO - MCP client mcp 0.1.0: extensions=[], apps=False, openai_forms=False
-2026-10-30 20:54:34,705 - BlenderMCPServer - INFO - Sending command: execute_code with params: {'code': "import bpy\nfrom pathlib import Path\nimport traceback\ndef render_preview():\n    try:\n        bpy.ops.render.render(write_still=True)\n        Path('/Users/kimsejun/museion-renders/preview-status.txt').write_text('DONE')\n    except Exception:\n        Path('/Users/kimsejun/museion-renders/preview-status.txt').write_text(traceback.format_exc())\n    return None\nbpy.app.timers.register(render_preview,first_interval=2)\nprint('Preview queued at 960x540')\n"}
+2026-10-30 20:54:34,705 - BlenderMCPServer - INFO - Sending command: execute_code with params: {'code': "import bpy\nfrom pathlib import Path\nimport traceback\ndef render_preview():\n    try:\n        bpy.ops.render.render(write_still=True)\n        Path('/Users/you/museion-renders/preview-status.txt').write_text('DONE')\n    except Exception:\n        Path('/Users/you/museion-renders/preview-status.txt').write_text(traceback.format_exc())\n    return None\nbpy.app.timers.register(render_preview,first_interval=2)\nprint('Preview queued at 960x540')\n"}
 2026-10-30 20:54:34,705 - BlenderMCPServer - INFO - Command sent, waiting for response...
 2026-10-30 20:54:34,756 - BlenderMCPServer - INFO - Received complete response (92 bytes)
 2026-10-30 20:54:34,756 - BlenderMCPServer - INFO - Received 92 bytes of data
