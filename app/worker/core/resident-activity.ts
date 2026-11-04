@@ -65,7 +65,7 @@ export function closeDialogue(input:readonly Dialogue[],from:string,to:string,no
 export type SocialStatus='welcoming'|'busy'|'do_not_disturb';
 export type ReactionCandidate={muse:string;other:string;place:string;triggerId:string;encounterId:string;incoming:string|null;kind:'reply'|'wave'};
 export function reactionCandidates(world:WorldState,events:readonly WorldEvent[],input:readonly Dialogue[],now:number,
- ownership:(id:string)=>ResidentOwnershipKind,status:(world:WorldState,id:string,now:number)=>SocialStatus,control?:OperatingResidentControl):{candidates:ReactionCandidate[];dialogues:Dialogue[]}{
+ ownership:(id:string)=>ResidentOwnershipKind,status:(world:WorldState,id:string,now:number)=>SocialStatus,control?:OperatingResidentControl,respectAvailability=false):{candidates:ReactionCandidate[];dialogues:Dialogue[]}{
  let rows=settleDialogues(input,world,now);const candidates:ReactionCandidate[]=[];
  for(const e of events){
   if(!e.muse||!e.other||e.at<world.lastTickAt||e.at>now||!(e.kind==='greet'&&e.data?.public===true||e.kind==='encounter_reply')||!residentEligible(world,e.other,now,ownership,control)||world.paused?.[e.muse])continue;
@@ -77,7 +77,7 @@ export function reactionCandidates(world:WorldState,events:readonly WorldEvent[]
   if(!canReply(rows,a.id,b.id,now))continue;
   const personal=b.controlMode==='personal'||!hasActorHarness(b.id)||b.id==='00-jolly'||ownership(b.id)==='personal';
   const busy=!!a.travel||!!b.travel||status(world,a.id,now)==='busy'||status(world,b.id,now)==='busy';
-  candidates.push({muse:a.id,other:b.id,place:a.place,triggerId:e.id,encounterId:`reply:${e.id}`,incoming:typeof e.line==='string'?e.line.slice(0,400):null,kind:busy&&!personal?'wave':'reply'});
+  candidates.push({muse:a.id,other:b.id,place:a.place,triggerId:e.id,encounterId:`reply:${e.id}`,incoming:typeof e.line==='string'?e.line.slice(0,400):null,kind:(respectAvailability&&(status(world,a.id,now)==='busy'||status(world,b.id,now)==='busy')||busy&&!personal)?'wave':'reply'});
  }
  // Passing is a public world fact, not a hello or answer chosen for the other Muse.
  const personal=(id:string)=>id==='00-jolly'||world.muses.find(m=>m.id===id)?.controlMode==='personal'||ownership(id)==='personal';
@@ -89,7 +89,7 @@ export function reactionCandidates(world:WorldState,events:readonly WorldEvent[]
    .sort((a,b)=>Number(personal(b.id))-Number(personal(a.id))||socialDistance(world,actor.id,a.id,now)-socialDistance(world,actor.id,b.id,now)||a.id.localeCompare(b.id));
   const peer=peers[0];if(!peer)continue;
   const triggerId=`passby:${world.day}:${world.tick}:${[actor.id,peer.id].sort().join('|')}`;
-  candidates.push({muse:actor.id,other:peer.id,place:actor.place,triggerId,encounterId:triggerId,incoming:null,kind:personal(peer.id)?'reply':'wave'});
+  candidates.push({muse:actor.id,other:peer.id,place:actor.place,triggerId,encounterId:triggerId,incoming:null,kind:personal(peer.id)&&(!respectAvailability||status(world,actor.id,now)==='welcoming'&&status(world,peer.id,now)==='welcoming')?'reply':'wave'});
  }
  return{candidates,dialogues:rows};
 }

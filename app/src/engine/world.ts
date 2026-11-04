@@ -468,6 +468,11 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     const r=reaction.reply,m=s.muses.find(m=>m.id===r.muse),to=s.muses.find(m=>m.id===r.other),key=r.muse+'|'+reaction.triggerId;
     if(!m||!to||!managed(m)||paused(m.id)||paused(to.id)||isRuntimeControlled(s,m.id,now)||handled.has(key)||socialDistance(s,m.id,to.id,now)>100)continue;
     const gate=hooks.canMeet?.(s,m,to,placeById(m.place),now);if(gate&&!gate.ok)continue;
+    if(hooks.socialStatus){
+      const policy=contactPolicy(s,m.id,to.id,now,hooks);
+      if(policy==='none'||policy==='wave'&&reaction.kind!=='wave')continue;
+      if(reaction.kind==='wave'&&events.some(e=>e.kind==='resident_wave'&&((e.muse===m.id&&e.other===to.id)||(e.muse===to.id&&e.other===m.id))))continue;
+    }
     handled.add(key);
     if(reaction.triggerId.startsWith('passby:')){
       m.lastMet[to.id]=to.lastMet[m.id]=now;
@@ -596,7 +601,7 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   const reject = (reason: string) => emit({...base, kind: 'decision_rejected', line: null, data: {...base.data, reason}, tags: []});
   if (d.freedom !== freedom) return reject('freedom mismatch');
   // What the scenario alone would have done this turn, to mark off-script choices (8.2).
-  const scripted = chooseDestination(s, m, rngFor(s.seed, s.tick, m.id, 'counterfactual'), localClock(now).hour);
+  const scripted = chooseDestination(s, m, rngFor(s.seed, s.tick, m.id, 'counterfactual'), localClock(now).hour, hooks, now);
   const here = placeById(m.place);
   if (freedom === 'where' || freedom === 'plan') {
     const dest = findPlaceByName(o.target_place);

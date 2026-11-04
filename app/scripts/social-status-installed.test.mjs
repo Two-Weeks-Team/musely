@@ -41,3 +41,25 @@ test('current personal session, entry and application binding are required befor
  assert.throws(()=>a.world.personalSocialStatusSet(x.binding,{mode:'welcoming',expectedRevision:0}),forbidden);
  assert.equal(a.db.prepare('SELECT count(*) n FROM social_status_overrides').get().n,0);
 });
+
+test('MCP current world exposes own and neighbor status labels only; recorded state and OFF stay unchanged',async t=>{
+ const a=await bootWorldDo(t,{mode:'sandbox-v1',envOverrides:ON});a.prepare();
+ const p=await a.ownerFor('owner'),q=await a.ownerFor('demo-peer');
+ a.world.ownerSocialStatusSet(p,'00-jolly',{mode:'busy',expectedRevision:0});
+ a.world.ownerSocialStatusSet(q,'09-copper',{mode:'do_not_disturb',expectedRevision:0});
+ const read=await a.call('owner','get_world_state');assert.equal(read.status,200);assert.equal(read.body.result.isError,false);
+ const dto=read.body.result.structuredContent;assert.deepEqual(dto.muse.availability,{status:'busy'});assert.deepEqual(dto.neighbors.find(n=>n.id==='09-copper').availability,{status:'do_not_disturb'});
+ for(const n of[dto.muse,...dto.neighbors])assert.deepEqual(Object.keys(n.availability),['status']);
+ assert.equal(a.runtime.state().muses.some(m=>Object.hasOwn(m,'availability')),false);
+ const off=await bootWorldDo(t,{mode:'sandbox-v1'}),old=(await off.call('owner','get_world_state')).body.result.structuredContent;
+ assert.equal(Object.hasOwn(old.muse,'availability'),false);assert.equal(old.neighbors.some(n=>Object.hasOwn(n,'availability')),false);
+});
+
+test('actual resident model packet receives only public availability labels from private preferences',async t=>{
+ const packets=[];const a=await bootWorldDo(t,{mode:'sandbox-v1',envOverrides:{...ON,RESIDENT_BUDGET_MODE:'split-v1',DAILY_BUDGET_USD:'30',RESIDENT_ACTIONS_MODE:'action-v1'},modelFetcher:async(_url,init)=>{const packet=JSON.parse(init.body);packets.push(packet);return new Response(JSON.stringify({id:'fixture-public-labels',usage:{prompt_tokens:10,completion_tokens:10},choices:[{message:{content:JSON.stringify({freedom:'where',decision:'rest',target_place:'Commons Cafe',target_agent:'',offer_item:'',want_item:'',line:'',public_reason:'A quiet break',duration_minutes:15})}}]}),{headers:{'x-request-id':'fixture-public-labels'}});}});
+ const owner=await a.ownerFor('owner');a.world.ownerSocialStatusSet(owner,'00-jolly',{mode:'busy',expectedRevision:0});await a.runtime.heartbeat(Date.now());
+ const activity=packets.find(p=>p.response_format.json_schema.name==='resident_next_activity');assert(activity);
+ const metadata=activity.messages.filter(m=>m.role==='user').flatMap(m=>{try{const x=JSON.parse(m.content);return x.public_availability??[];}catch{return[];}});
+ assert.deepEqual(metadata.find(x=>x.actor_id==='00-jolly'),{actor_id:'00-jolly',status:'busy'});
+ assert.doesNotMatch(JSON.stringify(metadata),/mode|revision|sid|reason|location|schedule/);
+});

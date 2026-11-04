@@ -250,7 +250,7 @@ export class WorldDO extends DurableObject<Env> {
     // A unique label: two rituals judged in the same millisecond must not share an event id (the second would be dropped).
     return this.runtime.commitExternal(Date.now(), 'ritual-' + Math.random().toString(36).slice(2, 10), (_s, emit) => emit({at: Date.now(), source: rec.requestId ? 'live' : 'replay', kind: 'ritual_judged', muse: null, line: rec.passed ? 'Welcome ritual passed' : 'Welcome ritual not passed', data: {passed: rec.passed, results: rec.results, evidence: rec.requestId ? {model: rec.model, requestId: rec.requestId} : null, who: byOwner ? 'owner (owner session)' : rec.tier === 'judge' ? 'judge link ' + sessionTag : 'visitor ' + sessionTag, framesStored: false, ...(byOwner ? {actor: 'owner'} : {actorOrigin: 'trial'})}, tags: ['ritual']}));
   }
-  worldView() { const view=this.runtime.view(Date.now());return this.socialStatus?{...view,muses:view.muses.map(m=>({...m,availability:this.socialStatus!.public(m.id)}))}:view; }
+  worldView() { return this.runtime.view(Date.now()); }
   worldLifeView() { return worldLifeEnabled(this.env.WORLD_LIFE_MODE)?this.worldLife?.view()??null:null; }
   /** A visitor's priority spotlight request (8.2); the Worker route checks the session and passes an opaque requester id. */
   requestSpotlight(muse: string, origin: 'visitor' | 'judge', requester: string) {
