@@ -168,9 +168,10 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
         e.label.dataset.clustered=String(!f.travel&&(groupSizes.get(f.place)??0)>1);
         e.label.dataset.clusterCount='';
         const speech=frameSpeech(f,projection.world,projection.events);
-        const text=museName(f.id,projection.world)+'\n'+liveActivity(f);
+        const showActivity=innerWidth>=700||e.id===selectedId||!!speech;
+        const text=museName(f.id,projection.world)+(showActivity?'\n'+liveActivity(f):'');
         e.label.className='live-muse-label live-status-bubble';
-        if(e.label.dataset.displayKey!==text){e.label.dataset.displayKey=text;const name=document.createElement('strong'),status=document.createElement('small');name.textContent=museName(f.id,projection.world);status.textContent=liveActivity(f);e.label.replaceChildren(name,status);}
+        if(e.label.dataset.displayKey!==text){e.label.dataset.displayKey=text;const name=document.createElement('strong'),status=document.createElement('small');name.textContent=museName(f.id,projection.world);status.textContent=liveActivity(f);e.label.replaceChildren(...(showActivity?[name,status]:[name]));}
         if(!e.label.hidden){
           labelNodes.set(e.id,e.label);
           labelCandidates.push({id:e.id,group:f.travel?'travel:'+e.id:f.place,groupSize:f.travel?1:groupSizes.get(f.place),x:p.x,y:p.y,width:0,height:0,selected:e.id===selectedId,speaking:!!speech});
@@ -188,7 +189,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
       let size=labelSizes.get(node);if(size?.key!==key){const rect=node.getBoundingClientRect?.();size={key,width:rect?.width||Math.min(240,innerWidth-24),height:rect?.height||36};labelSizes.set(node,size);}c.width=size.width;c.height=size.height;
     }
     const obstacles:LabelBox[]=[];
-    for(const selector of ['header','footer','#muse-card','.map-tools','#loading','#network-note','#judge-entry']){const node=document.querySelector?.<HTMLElement>(selector);if(!node||node.hidden)continue;const r=node.getBoundingClientRect();if(r.width&&r.height)obstacles.push({left:r.left,top:r.top,width:r.width,height:r.height});}
+    for(const selector of ['header','footer','#muse-card','.map-tools','#loading','#network-note','#judge-entry','#first-visit-hint']){const node=document.querySelector?.<HTMLElement>(selector);if(!node||node.hidden)continue;const r=node.getBoundingClientRect();if(r.width&&r.height)obstacles.push({left:r.left,top:r.top,width:r.width,height:r.height});}
     // Live speech uses the preview's candidate offsets and stays literal, including its public recipient.
     const cards=store.replay?[]:recentLiveSpeech(projection.events,projection.world,at,selectedId,ownId,50).filter(e=>labelCandidates.some(c=>c.id===e.muse)).slice(0,innerWidth<700?1:2);
     for(const [i,s]of speechCards.entries()){if(!s)continue;const event=cards[i],anchor=event?heads.get(event.muse!):null;s.card.hidden=true;s.svg.style.display='none';if(!event||!anchor)continue;const value=speechDisplay(event,projection.world),key=event.id+'|'+value.name+'|'+value.recipient+'|'+innerWidth;if(s.card.dataset.contentKey!==key){const speaker=document.createElement('span'),line=document.createElement('p'),source=document.createElement('small');speaker.className='bubble-speaker';speaker.style.color=resolveMuse(projection.world!.muses.find(m=>m.id===event.muse)!).color;speaker.textContent=value.name+(value.recipient?' → '+value.recipient:'');line.textContent=value.line;source.textContent=value.source;s.card.replaceChildren(speaker,line,source);s.card.dataset.contentKey=key;delete s.card.dataset.width;}s.card.hidden=false;s.card.style.visibility='hidden';const rect=s.card.getBoundingClientRect?.()??{width:230,height:96},box=placeLiveBubble(anchor,{width:rect.width||230,height:rect.height||96},{width:innerWidth,height:innerHeight},obstacles);if(!box){s.card.hidden=true;continue;}s.card.dataset.museId=event.muse!;s.card.dataset.source=event.source!;s.card.style.left=box.left+'px';s.card.style.top=box.top+'px';s.card.style.visibility='visible';s.svg.style.display='block';s.svg.setAttribute('viewBox',`0 0 ${innerWidth} ${innerHeight}`);s.leader.setAttribute('d',`M ${box.left+box.width/2} ${box.top+box.height} L ${anchor.x} ${anchor.y}`);obstacles.push(box);}
