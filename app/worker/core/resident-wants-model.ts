@@ -1,3 +1,4 @@
+import {bindWorldClock} from './world-clock-input.ts';
 import {PUBLIC_SPEECH_NOT_ENGLISH} from './resident-english-speech.ts';
 /** Opt-in model preparation boundary. No production caller or executor is installed.
  * Reuse the existing transport/schema/budget. Returned choices are NOT committed actions.
@@ -77,7 +78,7 @@ export async function prepareResidentTrade(c:WantsModelContext,goalId:string,tas
  const other=before.muses.find(m=>m.id===task.offer!.by);if(!other||other.id===actor.id||other.travel)return no('invalid_peer');
  if(!hasResidentHarness(other.id))return no('unsupported_peer_harness');
  let input:ReturnType<typeof validate>,messages:unknown[];
- try {input=validate('trade',{muse:actor.id,other:other.id,give:task.offer.give,want:task.offer.want,items:actor.inventory.slice(0,12),otherItems:other.inventory.slice(0,12),round:task.round+1});messages=buildMessages('trade',c.residentValuesEnabled===true?{...input,residentValuesEnabled:true}:input);}
+ try {input=validate('trade',{muse:actor.id,other:other.id,give:task.offer.give,want:task.offer.want,items:actor.inventory.slice(0,12),otherItems:other.inventory.slice(0,12),round:task.round+1});messages=buildMessages('trade',bindWorldClock(c.residentValuesEnabled===true?{...input,residentValuesEnabled:true}:input,now));}
  catch{return no('unsupported_trade_context');}
  // Only bounded objective IDs, no free-text private reasons or peer instructions.
  const recipe=BEATS.find(b=>b.id===row!.goal.beat);

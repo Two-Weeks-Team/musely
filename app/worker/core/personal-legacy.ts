@@ -17,7 +17,7 @@ import type {ConnectedHost} from './connected.ts';
 import type {DecisionOutcome} from './tasks.ts';
 
 type Deps={storage:PersonalStorage;auth:PersonalAuthStore;adoption:PersonalAdoption;runtime:WorldRuntime;trust:Trust;connected:ConnectedHost;legacyProfile:LegacyProfile;now?:()=>number};
-export type LegacyEntryProjection={state:'joined'|'viewing';actor:{id:string;displayName:string;appearanceId:string;profileRevision:number};attempt:null;receipt:{kind:'legacy_adoption';id:string;actorId:string;worldId:string;committedAt:number}|null;reason:'paused'|'unavailable'|null};
+export type LegacyEntryProjection={state:'joined'|'viewing';actor:{id:string;displayName:string;appearanceId:ActorProfile['appearanceId'];profileRevision:number};attempt:null;receipt:{kind:'legacy_adoption';id:string;actorId:string;worldId:string;committedAt:number}|null;reason:'paused'|'unavailable'|null};
 export type PersonalLegacyView={available:boolean;adopted:boolean;profile:ActorProfile|null;connection:{connected:boolean;lastSeenAt:number|null};entry:LegacyEntryProjection|null};
 type Code='personal_session_required'|'adoption_required'|'invalid_approval'|'legacy_unavailable';
 export class PersonalLegacyError extends Error{readonly code:Code;constructor(code:Code){super(code);this.code=code;this.name='PersonalLegacyError';}}

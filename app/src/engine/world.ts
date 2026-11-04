@@ -1,3 +1,4 @@
+import {localClock} from './world-clock.ts';
 import {JUDGE_MUSE} from './judge-muse.ts';
 import {withinConversationRange} from './speech.ts';
 import {ruleResidentUtterance,ruleResidentGreeting,filterResidentUtterance,type PublicUtterance} from './resident-utterance.ts';
@@ -19,10 +20,10 @@ import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-17: separate shared Judge resident and flag freeze; exact engines5–16 remain checkpoint-only. */
-export const ENGINE_VERSION = 'engine-17';
+/** engine-19: allowlisted cosmetic specifications; exact engines5–18 stay checkpoint-only. */
+export const ENGINE_VERSION = 'engine-19';
 export const TICK_MS = 60_000;
-export const TIME_ZONE = 'America/Los_Angeles';
+export {TIME_ZONE,localClock} from './world-clock.ts';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
 export type Freedom = 'where' | 'who' | 'offer' | 'plan';
 export type Speed = 'walk' | 'bus' | 'taxi';
@@ -44,6 +45,8 @@ export type MuseState = {
   memory: string[];
   reflection: string;
   lastMet: Record<string, number>;
+  /** Public wave receipt only, independent of the conversation cooldown. Older actors start absent. */
+  lastWave?: Record<string,number>;
   /** Absent in older worlds; no unrecorded historical introductions are inferred. */
   introductions?: Record<string, Introduction>;
   /** Once personally connected, loss of presence/credentials never hands this actor to resident rules. */
@@ -93,6 +96,15 @@ export function lastConversationAt(world:WorldState,a:string,b:string,now:number
   for(const e of [...(history??[]),...pending])if(['encounter','greet','encounter_reply'].includes(e.kind)&&Number.isSafeInteger(e.at)&&e.at<=now&&e.at>=now-30*60000&&((e.muse===a&&e.other===b)||(e.muse===b&&e.other===a)))at=Math.max(at,e.at);
   return at;
 }
+/** One public wave per unordered pair per thirty minutes. A wave never consumes a conversation. */
+export const WAVE_COOLDOWN_MS=30*60_000;
+export function canWave(world:Pick<WorldState,'muses'>,a:string,b:string,now:number):boolean {
+ const first=world.muses.find(m=>m.id===a),second=world.muses.find(m=>m.id===b);
+ if(!first||!second||a===b)return false;
+ const last=Math.max(first.lastWave?.[b]??-Infinity,second.lastWave?.[a]??-Infinity);
+ return now-last>=WAVE_COOLDOWN_MS;
+}
+function noteWave(a:MuseState,b:MuseState,now:number):void {(a.lastWave??={})[b.id]=now;(b.lastWave??={})[a.id]=now;}
 export type Hooks = {
   /** Host supplies the complete committed public 30-minute window, never a tail sample. */
   conversationHistory?:readonly ConversationReceipt[];
@@ -124,11 +136,6 @@ export type Hooks = {
   onTick?: (s: WorldState, now: number) => Omit<WorldEvent, 'id' | 'tick'>[];
 };
 
-const fmt = new Intl.DateTimeFormat('en-CA', {timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
-export function localClock(ms: number) {
-  const parts = Object.fromEntries(fmt.formatToParts(new Date(ms)).map(p => [p.type, p.value]));
-  return {date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour), minute: Number(parts.minute), hhmm: `${parts.hour}:${parts.minute}`};
-}
 
 /** Freedoms unlock as the local day goes on, so the world visibly grows more autonomous (8.2). */
 export function unlockedFreedoms(hour: number): Freedom[] {
@@ -499,7 +506,8 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
         if(policy==='none')continue;
         if(policy==='wave'){
           const waver=[initiator,other].find(m=>!isRuntimeControlled(s,m.id,now)&&m.id!=='00-jolly'&&!m.profile&&m.controlMode!=='personal'&&hasActorHarness(m.id));
-          if(!waver)continue;
+          if(!waver||!canWave(s,a.id,b.id,now))continue;
+          noteWave(a,b,now);
           if(gate?.event)emit(gate.event);
           emit({at:now,source:'rule',kind:'resident_wave',muse:waver.id,other:waver===a?b.id:a.id,place:placeId,line:null,data:{clip:'wave',actorOrigin:'system'},tags:[]});
           if(waver.intent?.target===(waver===a?b.id:a.id))waver.intent=null;
@@ -540,6 +548,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       if(policy==='none'||policy==='wave'&&reaction.kind!=='wave')continue;
       if(reaction.kind==='wave'&&events.some(e=>e.kind==='resident_wave'&&((e.muse===m.id&&e.other===to.id)||(e.muse===to.id&&e.other===m.id))))continue;
     }
+    if(reaction.kind==='wave'){if(!canWave(s,m.id,to.id,now))continue;noteWave(m,to,now);}
     handled.add(key);
     if(reaction.triggerId.startsWith('passby:')){
       if(reaction.kind==='reply')m.lastMet[to.id]=to.lastMet[m.id]=now;

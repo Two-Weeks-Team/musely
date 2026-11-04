@@ -348,7 +348,7 @@ export class WorldDO extends DurableObject<Env> {
     if (this.trust.suspended(muse)) return {ok: false as const, reason: 'paused' as const};
     return this.runtime.requestSpotlight(muse, Date.now(), {origin, requester});
   }
-  worldEvents(since: number, limit: number, opts: {day?: string; tail?: number; runId?: string} = {}) { return this.runtime.events(since, Math.min(2000, Math.max(1, limit)), opts); }
+  worldEvents(since: number, limit: number, opts: {day?: string; tail?: number; runId?: string} = {}) { const bounded=Math.min(2000,Math.max(1,limit));return opts.runId||opts.day?this.runtime.events(since,bounded,opts):this.runtime.feedEvents(since,bounded,opts); }
   /** One page of highlights (at most 300), newest first; `before` is the cursor of the next page, `from`/`to` the period. */
   worldHighlights(limit: number, opts: {before?: number | null; from?: number | null; to?: number | null} = {}) { return this.runtime.highlights(Math.min(300, Math.max(1, limit)), opts); }
   // Run log (8.6, C08, C09): the current run, its ordered inputs, one event with its commit, the server recount.

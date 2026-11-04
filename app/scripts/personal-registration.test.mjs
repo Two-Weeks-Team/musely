@@ -65,3 +65,22 @@ test('serialized RPC registry errors preserve only allowlisted public status cod
   const unexpected=await a.go(method,path,body,u.cookie);assert.deepEqual(unexpected.body,{error:'registration_unavailable'});assert.equal(unexpected.status,503);a.do_[name]=original;
  }
 });
+
+const CUSTOM_APPEARANCES=[{look:'03-ripple',body:'sage',accent:'04-ember',deco:'06-ink'},{look:'00-jolly',body:'wheat',accent:'09-copper',deco:'none'},{look:'07-tempo',body:'01-sunny',accent:'08-orbit',deco:'02-moss'}];
+test('three custom appearance combinations round-trip through the existing draft/profile API and SQLite restart without admission or new powers',async t=>{
+ const a=await boot(t),legacy=JSON.stringify(a.db.prepare('SELECT * FROM agents ORDER BY agent_id').all()),before=JSON.stringify(a.do_.worldView()),rows=[];
+ for(let i=0;i<CUSTOM_APPEARANCES.length;i++){const u=await a.login(String(900+i)),appearanceId=CUSTOM_APPEARANCES[i],r=await a.go('POST',D,intent({displayName:'Custom '+i,appearanceId}),u.cookie);assert.equal(r.status,200);publicProfile(r.body.profile);assert.deepEqual(r.body.profile.appearanceId,appearanceId);assert.equal(r.body.entry.state,'registered');assert.equal((await a.go('GET','/api/personal/status',undefined,u.cookie)).body.entry.state,'viewing');assert.equal(a.db.prepare('SELECT appearance_id FROM personal_profiles WHERE actor_id=?').get(r.body.profile.actorId).appearance_id,JSON.stringify(appearanceId));rows.push({u,profile:r.body.profile});}
+ assert.equal(JSON.stringify(a.do_.worldView()),before);assert.equal(JSON.stringify(a.db.prepare('SELECT * FROM agents ORDER BY agent_id').all()),legacy);assert.equal(count(a,'agent_keys'),0);await a.restart();
+ for(const {u,profile}of rows){const read=await a.go('GET',P,undefined,u.cookie);assert.equal(read.status,200);assert.deepEqual(read.body.profile,profile);}
+});
+test('custom appearance intents compare by canonical value and name-only PATCH retains the appearance and existing root',async t=>{
+ const a=await boot(t),u=await a.login(),appearanceId=CUSTOM_APPEARANCES[0],first=await a.go('POST',D,intent({appearanceId}),u.cookie);assert.equal(first.status,200);
+ const retry=await a.go('POST',D,intent({appearanceId:{deco:appearanceId.deco,accent:appearanceId.accent,body:appearanceId.body,look:appearanceId.look}}),u.cookie);assert.deepEqual(retry.body,first.body);assert.equal(count(a,'personal_actor_roots'),1);
+ assert.equal((await a.go('POST',D,intent({appearanceId:{...appearanceId,body:'wheat'}}),u.cookie)).status,409);
+ const roots=JSON.stringify(a.db.prepare('SELECT * FROM personal_actor_roots').all()),patch=await a.go('PATCH',P,{displayName:'Changed name',expectedRevision:1},u.cookie);assert.equal(patch.status,200);assert.deepEqual(patch.body.profile.appearanceId,appearanceId);assert.equal(JSON.stringify(a.db.prepare('SELECT * FROM personal_actor_roots').all()),roots);
+ assert.deepEqual((await a.go('POST',D,intent({appearanceId}),u.cookie)).body,patch.body);
+});
+test('invalid cosmetic specifications fail before root generation/persistence; legacy SQL and intent JSON remain unchanged',async t=>{
+ const a=await boot(t),u=await a.login(),base=CUSTOM_APPEARANCES[0];for(const appearanceId of[{...base,body:'#abcdef'},{...base,deco:'00-jolly'},{...base,accent:'bad'},{...base,look:'pm_other'},{...base,extra:'PRIVATE_CANARY'}])assert.equal((await a.go('POST',D,intent({appearanceId}),u.cookie)).status,400);
+ assert.equal(count(a,'personal_actors'),0);assert.equal(count(a,'personal_actor_roots'),0);const r=await a.go('POST',D,intent(),u.cookie);assert.equal(r.status,200);assert.equal(r.body.profile.appearanceId,'00-jolly');assert.equal(a.db.prepare('SELECT appearance_id FROM personal_profiles').get().appearance_id,'00-jolly');assert.equal(typeof JSON.parse(a.db.prepare('SELECT payload FROM personal_registrations').get().payload)[1],'string');
+});
