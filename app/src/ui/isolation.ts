@@ -1,3 +1,4 @@
+import {apiRequestInit} from './api-fetch.ts';
 // Set while the fixture replay is on screen (P-06): replay makes no requests. The polls wait on this flag, and because a request
 // chain that started before the replay opened (a button that fetches status, then posts; a paged log read) would otherwise
 // continue, same-origin /api and /.well-known requests are also refused at the fetch layer while the flag is set.
@@ -12,11 +13,12 @@ export function enforceIsolation() {
   const real = window.fetch.bind(window);
   recordTransport = real;
   window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
+    const api=url.origin===location.origin&&(url.pathname.startsWith('/api/')||url.pathname==='/mcp'||url.pathname.startsWith('/.well-known/'));
     if (isolation.replay) {
-      const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
       if (url.origin === location.origin && (url.pathname.startsWith('/api/') || url.pathname === '/mcp' || url.pathname.startsWith('/.well-known/'))) return Promise.reject(new Error(BLOCKED));
     }
-    return real(input, init);
+    return real(input,api?apiRequestInit(init):init);
   };
 }
 
@@ -27,5 +29,5 @@ export function readRecordedApi(path: string, signal?: AbortSignal) {
   const url = new URL(path, location.href);
   const allowed = ['/api/world/run', '/api/world/run/inputs', '/api/world/events'];
   if (url.origin !== location.origin || !allowed.includes(url.pathname) || (url.pathname !== '/api/world/run' && !url.searchParams.get('runId'))) return Promise.reject(new Error('record_read_not_allowed'));
-  return (recordTransport ?? window.fetch.bind(window))(url.href, {method: 'GET', cache: 'no-store', signal});
+  return (recordTransport ?? window.fetch.bind(window))(url.href, apiRequestInit({method: 'GET', cache: 'no-store', signal}));
 }

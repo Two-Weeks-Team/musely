@@ -110,11 +110,12 @@ export const clearOwnerCookie = `${OWNER_COOKIE}=; Path=/api; Max-Age=0; HttpOnl
 /** Origins a browser may send owner writes from: the canonical origin and every allowed host over https. */
 export const ownerOrigins = (publicOrigin: string, allowedHosts: string) => [...new Set([new URL(publicOrigin).origin, ...allowedHosts.split(',').map(h => h.trim()).filter(Boolean).map(h => 'https://' + h)])];
 
-/** CSRF check for owner writes: the Origin header must be present and one of ours; a cross-site fetch is refused. */
+/** CSRF check for owner writes: exact origins stay required; WebKit opaque Origin needs exact same-origin Fetch Metadata. */
 export function originAllowed(request: Request, origins: string[]) {
   const origin = request.headers.get('origin');
-  if (!origin || !origins.includes(origin)) return false;
   const site = request.headers.get('sec-fetch-site');
+  if (origin === 'null') return site === 'same-origin';
+  if (!origin || !origins.includes(origin)) return false;
   return !site || site === 'same-origin';
 }
 

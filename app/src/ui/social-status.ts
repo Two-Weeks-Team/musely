@@ -1,3 +1,4 @@
+import {apiFetcher} from './api-fetch.ts';
 import {uiLanguage} from './i18n.ts';
 import {isSocialMode,isSocialStatus,type SocialMode,type SocialStatus} from '../engine/social-status.ts';
 export type OwnSocialStatus={muse:string;mode:SocialMode;revision:number;status:SocialStatus};
@@ -56,7 +57,7 @@ export function mountSocialStatus(host:HTMLElement,options:Options={}){
   let timer:ReturnType<typeof setTimeout>|undefined;
   const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{abort.abort();reject(Error('social_status_timeout'));},10000);});
   try{
-   const r=await Promise.race([(options.fetcher??fetch)(path(muse),{method,mode:'same-origin',credentials:'same-origin',redirect:'error',cache:'no-store',signal:abort.signal,...(intent?{headers:{'content-type':'application/json'},body:JSON.stringify(intent)}:{})}),deadline]);
+   const r=await Promise.race([apiFetcher(options.fetcher)(path(muse),{method,mode:'same-origin',credentials:'same-origin',redirect:'error',cache:'no-store',signal:abort.signal,...(intent?{headers:{'content-type':'application/json'},body:JSON.stringify(intent)}:{})}),deadline]);
    if(mine!==generation||!eligible())return;
    if(r.status===401){data=null;owner={authenticated:false,muse:null};notice='';try{options.onSessionLost?.();}catch{}return;}
    if(!r.ok||r.redirected){data=null;phase='error';notice=r.status===409?t.conflict:r.status===503?t.unavailable:t.error;return;}

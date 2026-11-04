@@ -1,3 +1,4 @@
+import {apiFetcher} from './api-fetch.ts';
 import {uiText} from './i18n.ts';
 // Optional account proof, independent of connector permissions and committed world entry.
 import {claimText} from '../identity/fingerprint.ts';
@@ -26,7 +27,7 @@ function authorize(v:unknown):string {
 
 /** Mount is inert; a certain own profile enables a pure GET. Only explicit controls write. */
 export function mountPersonalClaim(host:HTMLElement,options:PersonalClaimOptions={}) {
- const fetcher=options.fetcher??fetch,navigate=options.navigate??(url=>window.location.assign(url));
+ const fetcher=apiFetcher(options.fetcher),navigate=options.navigate??(url=>window.location.assign(url));
  const root=document.createElement('section');root.className='personal-claim';host.append(root);
  let context:ProfileState={authenticated:null,profile:null,busy:true},data:PersonalClaim|null=null,phase:'observer'|'loading'|'ready'|'error'='observer';
  let disposed=false,visible=true,externalBusy=false,busy=false,writing=false,copying=false,generation=0,controller:AbortController|null=null,expanded:boolean|null=null;

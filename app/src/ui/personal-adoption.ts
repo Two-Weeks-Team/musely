@@ -1,3 +1,4 @@
+import {apiFetcher} from './api-fetch.ts';
 import {uiText} from './i18n.ts';
 // Existing-Muse account binding only. Never creates a key, grant or MCP world-entry command.
 import {MUSE_VARIANTS} from '../character-kit/catalog.ts';
@@ -28,7 +29,7 @@ export function parsePersonalAdoption(v:unknown,worldId:string|null):PersonalAdo
 }
 class Failure extends Error{readonly status:number;constructor(status=0){super('personal_adoption_unavailable');this.status=status;}}
 export function mountPersonalAdoption(host:HTMLElement,options:Options={}){
- const fetcher=options.fetcher??fetch,newId=options.newOperationId??(()=>crypto.randomUUID());const root=document.createElement('section');root.className='personal-adoption';host.append(root);
+ const fetcher=apiFetcher(options.fetcher),newId=options.newOperationId??(()=>crypto.randomUUID());const root=document.createElement('section');root.className='personal-adoption';host.append(root);
  let profile:ProfileState={authenticated:null,profile:null,busy:true},mode:Mode='observer',data:PersonalAdoption|null=null,alias=false,choiceNew=false,visible=true,disposed=false,busy=false,writing=false,externalBusy=false,generation=0,controller:AbortController|null=null,intent:{body:string;id:string}|null=null;
  const eligible=()=>profile.authenticated===true&&!profile.busy&&(!profile.profile||profile.profile.actorId==='00-jolly');
  const foreground=()=>document.visibilityState!=='hidden';
