@@ -33,8 +33,25 @@ test('duplicate public names cannot resolve an arbitrary actor, while an explici
  assert.equal(checkOutput('spotlight',input,{...output,target_agent:'Same Name'}),'recipient_not_observed');assert.equal(checkOutput('spotlight',input,output),null);
 });
 
+test('local encounter prompts identify the verified addressed peer among multiple nearby Muses',()=>{
+ const p=localPerception(world(),'01-sunny',NOW),base={muse:'01-sunny',localTime:'12:00',place:'Commons Cafe',items:[],otherItems:[],memory:[],incoming:'Hello'};
+ const first=buildMessages('encounter',bindPerceptionInput({...base,other:'00-jolly'},p));
+ const second=buildMessages('encounter',bindPerceptionInput({...base,other:'02-moss'},p));
+ assert.equal(JSON.parse(first[1].content.split('\nThey said:')[0]).other_muse,'00-jolly');
+ assert.equal(JSON.parse(second[1].content.split('\nThey said:')[0]).other_muse,'02-moss');
+ assert.notDeepEqual(first,second);assert.doesNotMatch(JSON.stringify(first),/Ripple|FAR_ACTOR_CANARY/);
+});
+
 import{bootWorldDo}from'./test-support/world-life-harness.mjs';
 import{PLACE_BY_ID,placeById}from'../src/engine/places.ts';
+import{encounterInput}from'../src/engine/world.ts';
+test('an encounter peer absent from trusted conversation range is refused before reservation or provider call',async t=>{
+ let calls=0;const a=await bootWorldDo(t,{mode:'sandbox-v1',envOverrides:{LOCAL_PERCEPTION_MODE:'local-v1'},modelFetcher:async()=>{calls++;return new Response(JSON.stringify({usage:{prompt_tokens:1,completion_tokens:1},choices:[{message:{content:JSON.stringify({intent:'greet',item:'',line:'Hi',public_reason:'A hello',injection_suspected:false})}}]}));}});
+ a.edit(s=>{const me=s.muses.find(m=>m.id==='01-sunny'),peer=s.muses.find(m=>m.id==='03-ripple');me.place='commons:cafe';peer.place='bay:sf';for(const m of[me,peer]){m.travel=null;m.beat=null;}});
+ const input=validate('encounter',encounterInput(a.runtime.state(),'01-sunny','03-ripple','commons:cafe','Hello',Date.now()));
+ const before=a.world.status().liveCalls,result=await a.runtime.modelCall('encounter',input,'unobserved-peer-fixture');
+ assert.deepEqual(result,{ok:false,reason:'recipient_not_observed'});assert.equal(calls,0);assert.equal(a.world.status().liveCalls,before);
+});
 test('real Runtime stores crossing notices with their commit and keeps reads/restarts idempotent',async t=>{
  const a=await bootWorldDo(t,{mode:'sandbox-v1',envOverrides:{LOCAL_PERCEPTION_MODE:'local-v1'}}),now=Date.now(),p=placeById('commons:cafe');
  for(const [id,x]of[['perception-sql:near',49],['perception-sql:far',70]]){PLACE_BY_ID.set(id,{...p,id,x:p.x+x});t.after(()=>PLACE_BY_ID.delete(id));}

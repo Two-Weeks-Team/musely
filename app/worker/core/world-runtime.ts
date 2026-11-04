@@ -1,7 +1,7 @@
 import {compactResidentContext} from './resident-recovery-context.ts';
 import {residentCallJitterMs} from './resident-call-jitter.ts';
 import {withinConversationRange} from '../../src/engine/speech.ts';
-import {perceptionView,perceptionHistory,derivedPerceptionEvents,bindPerceptionInput,type PerceptionPolicy} from './local-perception-runtime.ts';
+import {perceptionView,perceptionHistory,derivedPerceptionEvents,bindPerceptionInput,observedActorId,type PerceptionPolicy} from './local-perception-runtime.ts';
 import {finalizeResidentSpeech} from '../../src/engine/world.ts';
 import type {PublicUtterance} from '../../src/engine/resident-utterance.ts';
 import {setResidentFrozen} from '../../src/engine/world.ts';
@@ -708,6 +708,7 @@ export class WorldRuntime {
       const packet=this.opts.perception?.enabled===true?this.perceptionFor(String(input.muse),frame.at,frame.world):null;
       if(this.opts.perception?.enabled===true&&!packet)return{ok:false,reason:'perception_unavailable'};
       const modelInput=packet?bindPerceptionInput(brandedInput,packet,this.perceptionNotices(String(input.muse)),activity):brandedInput;
+      if(packet&&action==='encounter'&&!observedActorId(modelInput,input.other))return{ok:false,reason:'recipient_not_observed'};
       const selectedContext=this.opts.residentActions?.fallbackRecovery?compactResidentContext(residentContext):residentContext;
       const messages = activity?activityMessages(modelInput,selectedContext):withResidentContext(buildMessages(action, modelInput),selectedContext);
       const personalPeer=action==='encounter'&&(input.other==='00-jolly'||typeof input.other==='string'&&this.opts.residentLife?.ownershipKind(input.other)==='personal');

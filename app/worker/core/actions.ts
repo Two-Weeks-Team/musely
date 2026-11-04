@@ -1,5 +1,5 @@
 import {residentValues,residentRhythmPrompt} from '../../src/engine/resident-values.ts';
-import {perceptionPacket,perceptionMessage,perceptionOutputProblem} from './local-perception-runtime.ts';
+import {perceptionPacket,perceptionMessage,perceptionOutputProblem,observedActorId} from './local-perception-runtime.ts';
 // Allowed Muse Spark actions (direction v2, 15): spotlight, encounter, trade, negotiate, challenge.
 // The server validates a small structured input and assembles the prompt from the character harness.
 // Free text is never forwarded as instructions; another agent's words enter only as wrapped data.
@@ -122,7 +122,7 @@ export function buildMessages(action: Action, input: ActionInput): unknown[] {
     case 'encounter':
       return [
         {role: 'system', content: persona(i.muse,i.residentValuesEnabled===true) + '\n' + RULES + '\nYou have just met another Muse whose signed Agent Card and delegation were verified. Choose how to engage.'},
-        {role: 'user', content: JSON.stringify({local_time: i.localTime, place: perceptionPacket(input)?.current.place?.name??(perceptionPacket(input)?'In transit':i.place), ...(!perceptionPacket(input)?{other_muse:named(i.other),their_items:i.otherItems}:{}), your_items: i.items, recent_memory: i.memory}) + (i.incoming ? '\nThey said: ' + wrap(i.incoming) : '')},
+        {role: 'user', content: JSON.stringify({local_time: i.localTime, place: perceptionPacket(input)?.current.place?.name??(perceptionPacket(input)?'In transit':i.place), ...(!perceptionPacket(input)?{other_muse:named(i.other),their_items:i.otherItems}:{other_muse:observedActorId(input,i.other)}), your_items: i.items, recent_memory: i.memory}) + (i.incoming ? '\nThey said: ' + wrap(i.incoming) : '')},
         ...(perceptionMessage(input)?[perceptionMessage(input)!]:[]),
       ];
     case 'trade':
