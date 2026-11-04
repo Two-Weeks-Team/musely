@@ -1,4 +1,6 @@
-import {modelKeyStatus} from './core/model.ts';
+import {callModel} from './core/model.ts';
+import {ModelKeyState} from './core/model-key-state.ts';
+import type {Action} from './core/actions.ts';
 import {JUDGE_MUSE,judgeMuseEnabled} from '../src/engine/judge-muse.ts';
 import {JudgeMuseError} from './core/judge-api.ts';
 import {judgeInbox,judgeNotifications} from './core/judge-projection.ts';
@@ -47,6 +49,7 @@ type SocialBinding={kind:'judge';session:Session}|{kind:'legacy';proof:LegacyOwn
 import {CONNECTED_MS} from '../src/engine/inbox.ts';
 
 export class WorldDO extends DurableObject<Env> {
+  private modelKeys:ModelKeyState;
   private ledger: Ledger;
   private legacyProfile:LegacyProfile;
   private personalAdoption:PersonalAdoption;
@@ -68,6 +71,7 @@ export class WorldDO extends DurableObject<Env> {
   private retentionAt = 0;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
+    this.modelKeys=new ModelKeyState(ctx.storage.sql);
     this.origin = env.PUBLIC_ORIGIN;
     if (!this.origin) throw new Error('PUBLIC_ORIGIN is not set');
     this.personalAuth = new PersonalAuthStore(ctx.storage);
@@ -119,7 +123,7 @@ export class WorldDO extends DurableObject<Env> {
     if(reflectionMode!==undefined&&reflectionMode!==''&&reflectionMode!=='off'&&reflectionMode!=='private-v1')throw Error('unsupported_RESIDENT_REFLECTION_MODE');
     const reflectionEnabled=reflectionMode==='private-v1';
     if(reflectionEnabled&&(!valuesEnabled||!active()||!residentBudget))throw Error('reflection_requires_confirmed_values_world_life_and_split_budget');
-    if(active())this.worldLife=new WorldLifeController(txSql,this.personalAuth.owners,this.trust,this.ledger,env.MODEL_API_KEY?{base:env.MODEL_BASE,key:env.MODEL_API_KEY,fallbackKey:env.MODEL_API_KEY_FALLBACK,model:env.MODEL_ID,timeoutMs:8000}:null,muse=>this.personalWorld.ownerOf(muse),active,judgeEnabled);
+    if(active())this.worldLife=new WorldLifeController(txSql,this.personalAuth.owners,this.trust,this.ledger,env.MODEL_API_KEY?{base:env.MODEL_BASE,key:env.MODEL_API_KEY,fallbackKey:env.MODEL_API_KEY_FALLBACK,keyPolicy:this.modelKeys,model:env.MODEL_ID,timeoutMs:8000}:null,muse=>this.personalWorld.ownerOf(muse),active,judgeEnabled);
     this.runtime = new WorldRuntime(txSql, {
       ...this.worldLife?.runtimeOptions(),
       judgeMuseEnabled:judgeEnabled,
@@ -136,7 +140,7 @@ export class WorldDO extends DurableObject<Env> {
       ledger: this.ledger,
       residentBudgetEnabled:residentBudget?.enabled===true,
       hooks,
-      model: {base: env.MODEL_BASE, key: env.MODEL_API_KEY, fallbackKey:env.MODEL_API_KEY_FALLBACK, model: env.MODEL_ID, timeoutMs: 8000},
+      model: {base: env.MODEL_BASE, key: env.MODEL_API_KEY, fallbackKey:env.MODEL_API_KEY_FALLBACK,keyPolicy:this.modelKeys, model: env.MODEL_ID, timeoutMs: 8000},
     });
     this.worldLife?.bind(this.runtime);
     // Stable personal/legacy ownership never falls back to resident consent when login is unavailable.
@@ -152,6 +156,7 @@ export class WorldDO extends DurableObject<Env> {
     this.personalLegacy=new PersonalLegacy({storage:ctx.storage,auth:this.personalAuth,adoption:this.personalAdoption,runtime:this.runtime,trust:this.trust,connected:this.connected,legacyProfile:this.legacyProfile});
     if(socialEnabled||judgeEnabled())this.socialStatus=new SocialStatusStore(ctx.storage,{residentValuesEnabled:valuesEnabled,world:()=>this.runtime.state(),authorize:(binding,muse,now)=>this.authorizeSocialStatus(binding,muse,now)});
     ctx.blockConcurrencyWhile(async () => {
+      await this.modelKeys.init(env.MODEL_API_KEY,env.MODEL_API_KEY_FALLBACK);
       this.ledger.init();
       this.personalAuth.init();
       this.personalAdoption.init();
@@ -321,7 +326,8 @@ export class WorldDO extends DurableObject<Env> {
   personalAuthRevoke(sidDigest: string, proof: PersonalSessionRow, appId: string, now: number) { return this.personalAuth.revoke(sidDigest, proof, appId, now); }
   reserve(r: ReserveRequest) { return this.ledger.reserve(r); }
   settle(id: string, costUsd: number, outcome: Outcome) { return this.ledger.settle(id, costUsd, outcome); }
-  status() { this.ledger.prune(); return {...this.ledger.status(),...modelKeyStatus({key:this.env.MODEL_API_KEY,fallbackKey:this.env.MODEL_API_KEY_FALLBACK}),residentExecution:this.runtime.modelExecutionStatus()}; }
+  status() { this.ledger.prune(); return {...this.ledger.status(),...this.modelKeys.status(),residentExecution:this.runtime.modelExecutionStatus()}; }
+  modelCall(action:Action,messages:unknown[],format:unknown,deadlineAt=Date.now()+8000){return callModel({base:this.env.MODEL_BASE,key:this.env.MODEL_API_KEY??'',fallbackKey:this.env.MODEL_API_KEY_FALLBACK,keyPolicy:this.modelKeys,model:this.env.MODEL_ID,timeoutMs:8000,deadlineAt},action,messages,format);}
   quota(session: string, tier: Tier) { return this.ledger.quotaFor(session, tier); }
   async alarm() {
     try {
