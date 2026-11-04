@@ -312,7 +312,7 @@ export class WorldRuntime {
       const answers = await this.encounterReplies(before, now, decision, canMeet, turn, residentMove,residentIdle);
       this.opts.beforeCommit?.();
       // Commit point: everything below is synchronous and one storage transaction.
-      return this.sql.transactionSync(() => {
+      const result=this.sql.transactionSync<HeartbeatResult>(() => {
       const raw = this.raw(), current: WorldState = JSON.parse(raw);
       if (current.tick !== before.tick || current.day !== before.day || this.sql.exec('SELECT 1 FROM ticks WHERE day = ? AND tick = ?', before.day, before.tick).toArray().length) return {status: 'skipped_duplicate', tick: before.tick, events: 0};
       const freshLife=this.lifeStore?.load(this.worldId) ?? null;
@@ -371,6 +371,8 @@ export class WorldRuntime {
       const said = all.filter(e => e.kind === 'encounter_reply');
       return {status: 'committed' as const, tick: current.tick, events: all.length, spotlight: {muse: turn.muse, ...(typeof decision?.evidence?.residentLifeRevision==='number'?{residentLifeRevision:decision.evidence.residentLifeRevision}:{}), priority: turn.priority, ...info}, replies: {live: said.filter(e => e.source === 'live').length, rule: said.filter(e => e.source === 'rule').length}};
       });
+      if(result.status==='committed')await this.reflectResident(now);
+      return result;
     } finally {
       this.inFlight.delete(originalTickReservation);
     }

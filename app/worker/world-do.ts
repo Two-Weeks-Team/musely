@@ -104,7 +104,7 @@ export class WorldDO extends DurableObject<Env> {
     const reflectionMode=env.RESIDENT_REFLECTION_MODE;
     if(reflectionMode!==undefined&&reflectionMode!==''&&reflectionMode!=='off'&&reflectionMode!=='private-v1')throw Error('unsupported_RESIDENT_REFLECTION_MODE');
     const reflectionEnabled=reflectionMode==='private-v1';
-    if(reflectionEnabled&&(!valuesEnabled||!actionsEnabled||!active()||!residentBudget))throw Error('reflection_requires_confirmed_values_and_resident_actions');
+    if(reflectionEnabled&&(!valuesEnabled||!active()||!residentBudget))throw Error('reflection_requires_confirmed_values_world_life_and_split_budget');
     if(active())this.worldLife=new WorldLifeController(txSql,this.personalAuth.owners,this.trust,this.ledger,env.MODEL_API_KEY?{base:env.MODEL_BASE,key:env.MODEL_API_KEY,model:env.MODEL_ID,timeoutMs:8000}:null,muse=>this.personalWorld.ownerOf(muse),active);
     this.runtime = new WorldRuntime(txSql, {
       ...this.worldLife?.runtimeOptions(),
