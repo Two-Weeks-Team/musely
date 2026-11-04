@@ -20,6 +20,9 @@ import {sparkStatus,statusLabel,type SparkStatus} from './live';
 import type {RecordedFrame} from './replay/player';
 import {mountWorldPanel} from './ui/world-panel';
 import {isolation} from './ui/isolation';
+import {JUDGE_MUSE} from './engine/judge-muse.ts';
+import {judgeMuseAccess} from './ui/judge-muse-access.ts';
+import {personalOwnerAccess} from './ui/personal-owner.ts';
 import {mountJudgeEntry} from './ui/judge-entry.ts';
 import {paintAppearanceIcon} from './ui/appearance-icon.ts';
 import {mountScreenUI} from './ui/screen-ui.ts';
@@ -38,7 +41,8 @@ import style from '../assets/map-style.json';
 import geography from '../assets/geography.json';
 import {mountArrivalOverview} from './arrival-overview';
 localizeStaticUI();
-const judgeEntry=mountJudgeEntry({watch:()=>window.__world?.setMode('world'),camera:()=>window.__world?.worldPanel.openTab('identity'),demo:()=>window.__world?.worldPanel.openTab('identity')});document.body.append(judgeEntry.box);
+const startupStatus=sparkStatus();personalOwnerAccess.setJudgeContext(startupStatus.then(async s=>{if(s?.session?.tier==='judge')await judgeMuseAccess.start();return !!s;}));
+const judgeEntry=mountJudgeEntry({judge:()=>void judgeMuseAccess.start(),watch:()=>window.__world?.setMode('world'),camera:()=>window.__world?.worldPanel.openTab('identity'),demo:()=>window.__world?.worldPanel.openTab('identity')});document.body.append(judgeEntry.box);
 declare global {interface Window {__world:any}}
 // Production uses a hash-pinned same-origin classic worker; .cjs selects its supported worker mode.
 // The inline local proof keeps its data/Blob worker behavior.
@@ -129,7 +133,7 @@ $('story-title').textContent=catalogText(chapter.title);$('story-speaker').textC
 updateContinuity();syncCardScroll();
 }
 let spark:SparkStatus|null=null;
-void sparkStatus().then(s=>{spark=s;judgeEntry.sync(s?.session??null);const l=statusLabel(s),el=$('spark-status');el.textContent=catalogText(l.text);el.title=activityStatus(l.title);el.dataset.state=l.state;});
+void startupStatus.then(s=>{spark=s;judgeEntry.sync(s?.session??null);const l=statusLabel(s),el=$('spark-status');el.textContent=catalogText(l.text);el.title=activityStatus(l.title);el.dataset.state=l.state;});
 let bubbles:ReturnType<typeof makeBubbles>;
 let world:Awaited<ReturnType<typeof makeWorld>>,renderer:T.WebGLRenderer,camera:T.Camera,projection=new T.Matrix4();
 const localMatrix=new T.Matrix4().makeTranslation(origin.x,origin.y,origin.z).multiply(new T.Matrix4().makeScale(unit,-unit,unit)).multiply(new T.Matrix4().makeRotationX(Math.PI/2)).multiply(new T.Matrix4().makeRotationY(-gridYaw));
@@ -164,7 +168,7 @@ setTimeout(()=>{if(!ready){$('loading').innerHTML=uiText('불러오는 중이에
 // ?perf=1: on-device frame rate and render cost; ?dpr= compares pixel-ratio caps on one phone.
 const perf=mountPerf(()=>({drawCalls,triangles,canvas:map.getCanvas()}),ratio);
 // Live world surface (task 6): map pins, spotlight chip, feed, highlights, evidence, P1, autonomy, identity, location.
-const worldPanel=mountWorldPanel(map,{onWorld:(w,events,observedAt)=>{pendingLive={world:w,events,observedAt};liveWants=Object.fromEntries(w.muses.filter(m=>m.wants?.goal).map(m=>[m.id,{goal:m.wants!.goal,source:String(m.wants!.source)}]));liveScene?.accept(w,events,observedAt);updateUI();},onReturnLive:()=>setMode('world'),onSelect:selectLive,isLive:()=>mode==='world',paused:()=>mode==='world'&&clock.paused&&!cues.length});
+const worldPanel=mountWorldPanel(map,{onWorld:(w,events,observedAt)=>{pendingLive={world:w,events,observedAt};liveWants=Object.fromEntries(w.muses.filter(m=>m.wants?.goal).map(m=>[m.id,{goal:m.wants!.goal,source:String(m.wants!.source)}]));liveScene?.accept(w,events,observedAt);updateUI();},onReturnLive:()=>setMode('world'),onJudgeFollow:followJudge,onSelect:selectLive,isLive:()=>mode==='world',paused:()=>mode==='world'&&clock.paused&&!cues.length});
 worldPanel.onReplayFrame(frame=>{recordedFrame=frame;liveScene?.setRecordedFrame(frame);updateUI();});
 // P-05: one continuous scene. Story (scripted) and live world are explicit modes you can switch between and back;
 // the selected Muse, its state and its source stay visible at every zoom; preview-flow item changes play on the
@@ -197,7 +201,7 @@ function updateContinuity(){
   museSource.textContent=sceneModeLabel(showingRecorded(),uiLocale());museSource.className='src scene-mode';
   const events=liveScene?.projection.events??[],proof=actorProvenance({actorId:liveSelected,world:shown,frame:f,events})??recentConnectedAction(liveSelected,events,showingRecorded()?recordedFrame!.recordedAt:Date.now());
   const note=provenanceLabel(proof,uiLanguage(),showingRecorded());activitySource.hidden=!note;activitySource.textContent=note??'';activitySource.dataset.source=proof?.source??'';
-  $('muse-name').textContent=displayName;$('muse-role').textContent=p.kind==='unknown'?uiText('Profile unavailable'):catalogText(ownerOf(liveSelected,m).label);$('avatar-large').style.setProperty('--muse',p.color);paintAppearanceIcon($('avatar-large'),p.appearance);
+  $('muse-name').textContent=displayName;$('muse-role').textContent=showingLive()&&judgeMuseAccess.active()&&liveSelected===JUDGE_MUSE.id?uiText('내 Muse (심사용 계정) · 팀이 제공 / Your Muse (judge account) · provided by the team'):p.kind==='unknown'?uiText('Profile unavailable'):catalogText(ownerOf(liveSelected,m).label);$('avatar-large').style.setProperty('--muse',p.color);paintAppearanceIcon($('avatar-large'),p.appearance);
   $('activity-title').textContent=f?liveActivity(f):uiText('Waiting for the shared world');const trip=destinationLine(f);destination.hidden=!trip;destination.textContent=trip??'';const recent=showingLive()?recentLiveSpeech(liveScene?.projection.events??[],shown,Date.now(),liveSelected,personalMuseId(),50).find(e=>e.muse===liveSelected):null;if(recent){const speech=speechDisplay(recent,shown);$('activity-detail').textContent=(speech.recipient?'→ '+speech.recipient+': ':'')+'“'+speech.line+'”';activitySource.textContent=provenanceLabel(recentConnectedAction(liveSelected,[recent]),uiLanguage())??speech.source;activitySource.hidden=false;}else paintFrameSpeech($('activity-detail'),f,shown,liveScene?.projection.events??[],uiText('아직 최근 공개 대사가 없어요. / No recent public speech.'));const itemNode=document.getElementById('muse-items');if(itemNode)itemNode.textContent=m?inventoryText(m.inventory):uiText('The world has not answered yet.');
   $('muse-want-text').textContent=showingRecorded()?uiText('Private or hashed goal unavailable in recording'):m?.wants?.goal?uiText('Wants: ')+m.wants.goal:p.kind==='legacy'?uiText('Wants: ')+catalogText(harnessById(liveSelected).wants.goal):uiText('Public wants unavailable');
   $('meetup').hidden=true;$('card-candidate').hidden=true;$('decision-state').textContent=p.kind==='unknown'?uiText('This actor has no valid public profile. Its identity and 3D appearance are unavailable.'):(f?.fallback?activityStatus(f.fallback):undefined)??(liveScene?.getMetrics().muses.find(row=>row.id===liveSelected)?.rendered===false?uiText('3D characters are unavailable or loading. The map and card still show shared state.'):showingRecorded()?uiText('Recorded public state only. No action or reward is re-executed.'):uiText('Actions follow the shared world. Commitments still need the owners.'));
@@ -273,7 +277,9 @@ markMode(mode);
 // The ordinary door is an invitation, never a join receipt. Explicit entryPreview=1 retains the local walkthrough.
 // Mounted last because watching can switch modes through the existing controls.
 let focusedPersonalEntry:string|null=null;
+function followJudge(){if(!judgeMuseAccess.active()||isolation.replay||!liveScene?.liveProjection.world?.muses.some(m=>m.id===JUDGE_MUSE.id))return;setMode('world');selectLive(JUDGE_MUSE.id);follow=true;$('follow').classList.add('active');}
 const onboarding=mountOnboarding({
+ onJudgeFollow:followJudge,
  onWatch:()=>{if(mode!=='world')setMode('world');},initial:entryParams,
  getWorldId:()=>liveScene?.liveProjection.world?.worldId??pendingLive?.world.worldId??null,
  onPersonalEntry:entry=>{

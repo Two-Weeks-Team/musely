@@ -1,5 +1,6 @@
 // Product wording only; public names, NPC speech and proof payloads remain literal.
 export const KO_UI:Readonly<Record<string,string>>={
+ "Judge account · provided by the team": "심사용 계정 · 팀이 제공",
  " (by rule, any candidate)": " (규칙으로 후보 선택)",
  " (check the Feed)": " (활동에서 확인)",
  " (priority)": " (우선)",

@@ -35,6 +35,8 @@ import {EMPTY_FILTER, matchFilter, dayBound, type Filter} from './replay-core';
 import {sourceLabel, modelNote} from './source-label';
 import {taskCancelledText, envelopeFacts} from './evidence-text';
 import {mountLocationChip, deviceLocationCard} from './location-bar';
+import {judgeMuseAccess} from './judge-muse-access.ts';
+import {mountJudgeMuse} from './judge-muse.ts';
 import {personalOwnerAccess} from './personal-owner.ts';
 import {museLine, snapshotOf, publicLocationName, type OwnerLocationView} from './location-state';
 import {mountOwnerArea} from './area-map';
@@ -210,7 +212,7 @@ const describeEvent = describe;
 type EvidenceEv = Ev & {fixture?: boolean; recorded?: RecordedEvidence};
 const PARTS: [Filter['part'], string][] = [['', uiText('Any time')], ['night', uiText('Night 0–6')], ['morning', uiText('Morning 6–12')], ['afternoon', uiText('Afternoon 12–18')], ['evening', uiText('Evening 18–24')]];
 
-export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorld, events: readonly LiveEvent[], observedAt: number) => void; onSelect?: (id: string) => void; isLive?: () => boolean; paused?: () => boolean; onReturnLive?: () => void} = {}) {
+export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorld, events: readonly LiveEvent[], observedAt: number) => void; onJudgeFollow?:()=>void;onSelect?: (id: string) => void; isLive?: () => boolean; paused?: () => boolean; onReturnLive?: () => void} = {}) {
   enforceIsolation();
   const displayWorld=()=>currentRecorded?withSnapshotProfiles(recordedSceneFrame(currentRecorded).world,currentRecorded.publicState):world;
   const museName=(id:string|null|undefined)=>publicMuseName(id,displayWorld());
@@ -255,6 +257,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   let world: WorldView | null = null, events: Ev[] = [], tab = 'feed', hf: Filter = {...EMPTY_FILTER};
   let ownerInboxView: ReturnType<typeof ownerInboxCard> | null = null;
   let ownerSocialView:ReturnType<typeof mountSocialStatus>|null=null;
+  let judgeView:ReturnType<typeof mountJudgeMuse>|null=null;
   let ownerControlView:ReturnType<typeof ownerControlCard>|null=null,ownerPrivateView:HTMLElement|null=null;
   personalOwnerAccess.subscribe(reason=>{
     if(reason==='available'){if(panel.matches(':popover-open')&&tab==='location')void render();return;}
@@ -263,6 +266,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     if(ownerPrivateView){ownerPrivateView.hidden=true;ownerPrivateView.replaceChildren();}
     panel.querySelector('.location-owner-controls')?.remove();
   });
+  judgeMuseAccess.subscribe(()=>{if(!judgeMuseAccess.state().mode)return;ownerInboxView?.setOwnerSession(null);ownerSocialView?.setVisible(false);ownerControlView?.dispose();ownerControlView=null;if(ownerPrivateView){ownerPrivateView.hidden=true;ownerPrivateView.replaceChildren();}if(tab==='identity'&&panel.matches(':popover-open'))void render();});
   const pins = museMarkers(map, live.onSelect ?? (() => {}), live.isLive ?? (() => true));
 
   const stateCard = (heading: string, detail: string, retry: () => void) => {
@@ -388,7 +392,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     showEvidence: (e: ReplayEvent | RecordedEvent, trigger: HTMLElement) => openEvidence(e, trigger),
     sourceLabel: (e: ReplayEvent | RecordedEvent) => sourceLabel(e), describe: (e: ReplayEvent | RecordedEvent) => describe(e), museName, placeName, at,
   };
-  panel.addEventListener('toggle', ev => { if ((ev as ToggleEvent).newState === 'closed') {ownerSocialView?.setVisible(false);leaveReplay();} });
+  panel.addEventListener('toggle', ev => { if ((ev as ToggleEvent).newState === 'closed') {ownerSocialView?.setVisible(false);judgeView?.setVisible(false);leaveReplay();} });
 
   /** Highlights: find a moment by period, tag, Muse, place or time of day. Tag, Muse, place and time of day narrow the loaded
    *  list without a request; the period asks the server again, and "Load older moments" reads the next page. */
@@ -458,7 +462,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     tabs.querySelectorAll('button').forEach(b => { const on = (b as HTMLElement).dataset.tab === tab; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
     if (tab !== 'replay') leaveReplay();
     else if (replayView && body.querySelector('.replay-view')) return; // already on screen: keep playing
-    ownerInboxView?.dispose(); ownerInboxView = null;ownerSocialView?.dispose();ownerSocialView=null;ownerControlView?.dispose();ownerControlView=null;ownerPrivateView=null;
+    judgeView?.dispose();judgeView=null;ownerInboxView?.dispose(); ownerInboxView = null;ownerSocialView?.dispose();ownerSocialView=null;ownerControlView?.dispose();ownerControlView=null;ownerPrivateView=null;
     body.replaceChildren();
     if (tab === 'feed') {
       const evH = health.get('events'), s = resState(evH, events.length > 0);
@@ -532,6 +536,8 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   }
 
   async function renderIdentity(stale: () => boolean) {
+    if(judgeMuseAccess.state().mode){const host=el('div');body.append(host);judgeView=mountJudgeMuse(host,{follow:()=>live.onJudgeFollow?.(),isActive:()=>!stale()&&!isolation.replay&&panel.matches(':popover-open'),name:shortName});const demos=el('div','id-actions');for(const [title,path]of [[uiText('Try an impostor'),'/api/demo/impostor'],[uiText('Try an instruction injection'),'/api/demo/injection'],[uiText('Run P0 step (judge link or owner)'),'/api/p0/run']]){const b=el('button','secondary',title);b.type='button';const result=el('p','muted');b.onclick=async()=>{if(stale()||isolation.replay)return;b.disabled=true;try{const status=await sparkStatus();if(status)await ensureSession(status);const r=await visitorFetch(path,{method:'POST'}),j=await r.json();if(!stale())result.textContent=r.ok?(path==='/api/p0/run'?p0Text(j):uiText('Done. The result is in the Feed and Highlights.')):uiText('Could not run: ')+String(r.status);}catch{if(!stale())result.textContent=uiText('Could not run: ')+uiText('network error');}finally{b.disabled=false;}};demos.append(b,result);}body.append(ritualCard(()=>void refresh(),{active:()=>!stale()&&!isolation.replay}),demos);return;}
+
     const r = await load<any>('claim', '/api/claim/owner-muse');
     if (stale()) return;
     const claim = r.ok ? r.data : null;
@@ -594,6 +600,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     f(uiText('Muse의 이동 / Muse’s trip'), museLine(snapshotOf(loc, r.at), Date.now(), locationName));
     f(uiText('순간이동 / Teleport'), `${uiText('가상 동네 인증과 Taxi Token 1개가 필요해요. / Requires virtual-world verification and one Taxi Token')}${held === null ? '' : uiText` (${held} available)`}.`);
     box.append(dl, el('p', 'muted', uiText('Muse는 자기 동네 안을 자유롭게 걸어요. 다른 동네로 갈 때는 버스나 조건에 맞는 택시를 이용해요. / Your Muse walks freely within its neighborhood and uses the bus or an eligible taxi for other neighborhoods.')));
+    if(judgeMuseAccess.state().mode){box.append(el('p','muted',uiText('공개 동네 보기예요. 심사용 Muse 설정은 내 Muse에서 확인해 주세요. / This is the public neighborhood view. Open Your Muse for the judge account controls.')));return;}
     const ownerCheck=await personalOwnerAccess.fetch('/api/owner/session',{method:'GET'});if(stale())return;
     if(!ownerCheck.ok){box.append(el('p','muted',uiText('ComBba에 연결한 Threads 계정으로 로그인하면 주인 기능을 사용할 수 있어요. / Sign in with the Threads account connected to ComBba to use its owner controls.')));return;}
     const presets = (loc.presets ?? []) as {id: string; label: string}[];
