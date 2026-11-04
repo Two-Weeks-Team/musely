@@ -3,7 +3,7 @@
  */
 import {hasActorHarness} from '../../src/engine/harness.ts';
 import {isRuntimeControlled} from '../../src/engine/inbox.ts';
-import {socialDistance,type WorldEvent,type WorldState} from '../../src/engine/world.ts';
+import {lastConversationAt,socialDistance,type ConversationReceipt,type WorldEvent,type WorldState} from '../../src/engine/world.ts';
 import type {ResidentOwnershipKind} from './resident-life-adapter.ts';
 export type OperatingResidentControl=(id:string,now:number)=>'resident'|'connected'|'unknown';
 const operating=(id:string)=>id==='04-ember'||id==='09-copper';
@@ -65,7 +65,7 @@ export function closeDialogue(input:readonly Dialogue[],from:string,to:string,no
 export type SocialStatus='welcoming'|'busy'|'do_not_disturb';
 export type ReactionCandidate={muse:string;other:string;place:string;triggerId:string;encounterId:string;incoming:string|null;kind:'reply'|'wave'};
 export function reactionCandidates(world:WorldState,events:readonly WorldEvent[],input:readonly Dialogue[],now:number,
- ownership:(id:string)=>ResidentOwnershipKind,status:(world:WorldState,id:string,now:number)=>SocialStatus,control?:OperatingResidentControl,respectAvailability=false):{candidates:ReactionCandidate[];dialogues:Dialogue[]}{
+ ownership:(id:string)=>ResidentOwnershipKind,status:(world:WorldState,id:string,now:number)=>SocialStatus,control?:OperatingResidentControl,respectAvailability=false,conversationHistory?:readonly ConversationReceipt[]):{candidates:ReactionCandidate[];dialogues:Dialogue[]}{
  let rows=settleDialogues(input,world,now);const candidates:ReactionCandidate[]=[];
  for(const e of events){
   if(!e.muse||!e.other||e.at<world.lastTickAt||e.at>now||!(e.kind==='greet'&&e.data?.public===true||e.kind==='encounter_reply')||!residentEligible(world,e.other,now,ownership,control)||world.paused?.[e.muse])continue;
@@ -85,7 +85,7 @@ export function reactionCandidates(world:WorldState,events:readonly WorldEvent[]
   if(candidates.some(c=>c.muse===actor.id)||!residentEligible(world,actor.id,now,ownership,control)||status(world,actor.id,now)==='do_not_disturb')continue;
   const peers=world.muses.filter(other=>other.id!==actor.id&&!world.paused?.[other.id]&&(actor.travel&&actor.travel.arriveAt>now||other.travel&&other.travel.arriveAt>now)
    &&status(world,other.id,now)!=='do_not_disturb'&&socialDistance(world,actor.id,other.id,now)<=100
-   &&now-(actor.lastMet[other.id]??0)>=PAIR_COOLDOWN_MS&&canReply(rows,actor.id,other.id,now))
+   &&now-lastConversationAt(world,actor.id,other.id,now,conversationHistory,events)>=PAIR_COOLDOWN_MS&&canReply(rows,actor.id,other.id,now))
    .sort((a,b)=>Number(personal(b.id))-Number(personal(a.id))||socialDistance(world,actor.id,a.id,now)-socialDistance(world,actor.id,b.id,now)||a.id.localeCompare(b.id));
   const peer=peers[0];if(!peer)continue;
   const triggerId=`passby:${world.day}:${world.tick}:${[actor.id,peer.id].sort().join('|')}`;

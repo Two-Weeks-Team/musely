@@ -17,8 +17,8 @@ import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-13: opt-in short RULE fallback recovery, preserving LIVE choices and protected work. */
-export const ENGINE_VERSION = 'engine-13';
+/** engine-14: wave-only contact never consumes conversation cooldown; preserves recorded engine13 snapshots. */
+export const ENGINE_VERSION = 'engine-14';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
@@ -84,7 +84,16 @@ export type EncounterReply = {muse: string; other: string; place: string; encoun
 export type ResidentTurn = {decision:Decision;stayMinutes:number};
 export type ResidentReaction = {reply:EncounterReply;triggerId:string;kind:'reply'|'wave'};
 export type TradeProposalGuard=(s:WorldState,actor:string,peer:string,give:string,want:string,at:number)=>boolean;
+export type ConversationReceipt = {at:number;kind:'encounter'|'greet'|'encounter_reply'|'resident_wave'|'resident_passby';muse:string;other:string};
+/** Complete public committed receipts supersede legacy lastMet polluted by waves. No history means fail closed. */
+export function lastConversationAt(world:WorldState,a:string,b:string,now:number,history?:readonly ConversationReceipt[],pending:readonly WorldEvent[]=[]):number {
+  let at=history===undefined?Math.max(world.muses.find(m=>m.id===a)?.lastMet[b]??0,world.muses.find(m=>m.id===b)?.lastMet[a]??0):0;
+  for(const e of [...(history??[]),...pending])if(['encounter','greet','encounter_reply'].includes(e.kind)&&Number.isSafeInteger(e.at)&&e.at<=now&&e.at>=now-30*60000&&((e.muse===a&&e.other===b)||(e.muse===b&&e.other===a)))at=Math.max(at,e.at);
+  return at;
+}
 export type Hooks = {
+  /** Host supplies the complete committed public 30-minute window, never a tail sample. */
+  conversationHistory?:readonly ConversationReceipt[];
   /** Explicit short RULE recovery only for managed failed resident decisions; default preserves old behavior. */
   residentFallbackRecovery?:boolean;
   /** Complete committed public speech window supplied by the host; never a private inbox or tail sample. */
@@ -469,7 +478,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
         if (isRuntimeControlled(s, a.id, now)) noteEncounter(s.inbox!, a.id, b.id, placeId, now);
         if (isRuntimeControlled(s, b.id, now)) noteEncounter(s.inbox!, b.id, a.id, placeId, now);
       }
-      if (now - (a.lastMet[b.id] ?? 0) < 30 * 60_000) continue;
+      if (now - lastConversationAt(s,a.id,b.id,now,hooks.conversationHistory,events) < 30 * 60_000) continue;
       const initiator = a.intent?.target === b.id ? a : b.intent?.target === a.id ? b : (rngFor(s.seed, s.tick, a.id, b.id)() < .5 ? a : b);
       const other = initiator === a ? b : a;
       const gate = hooks.canMeet?.(s, initiator, other, placeById(placeId), now);
@@ -481,7 +490,6 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
         if(policy==='wave'){
           const waver=[initiator,other].find(m=>!isRuntimeControlled(s,m.id,now)&&m.id!=='00-jolly'&&!m.profile&&m.controlMode!=='personal'&&hasActorHarness(m.id));
           if(!waver)continue;
-          a.lastMet[b.id]=b.lastMet[a.id]=now;
           if(gate?.event)emit(gate.event);
           emit({at:now,source:'rule',kind:'resident_wave',muse:waver.id,other:waver===a?b.id:a.id,place:placeId,line:null,data:{clip:'wave',actorOrigin:'system'},tags:[]});
           if(waver.intent?.target===(waver===a?b.id:a.id))waver.intent=null;
@@ -490,7 +498,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       }
       // A personality is a nonzero tendency for a new resident approach, never a veto on an explicit intent or Personal speech.
       const probability=hooks.residentValuesEnabled===true&&initiator.intent?.target!==other.id&&!isRuntimeControlled(s,initiator.id,now)&&!initiator.profile&&initiator.controlMode!=='personal'?residentSociability(initiator.id):null;
-      if(probability!==null&&rngFor(s.seed,s.tick,initiator.id,other.id,'values-approach')()>=probability)continue;
+      if(probability!==null&&rngFor(s.seed,s.tick,initiator.id,other.id,'values-approach')()>=probability*(residentRhythm(initiator.id,clock.hour)?.moveMultiplier??1))continue;
       a.lastMet[b.id] = b.lastMet[a.id] = now;
       const meeting = encounterId(s, a.id, b.id);
       // C03/C09: a start is by intent only when the initiator was heading for this very Muse (not a coin toss, not an
@@ -522,7 +530,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     }
     handled.add(key);
     if(reaction.triggerId.startsWith('passby:')){
-      m.lastMet[to.id]=to.lastMet[m.id]=now;
+      if(reaction.kind==='reply')m.lastMet[to.id]=to.lastMet[m.id]=now;
       emit({at:now,source:'rule',kind:'resident_passby',muse:m.id,other:to.id,place:m.place,data:{triggerId:reaction.triggerId,peerSpoke:false},tags:[]});
     }
     if(reaction.kind==='wave')emit({at:now,source:'rule',kind:'resident_wave',muse:m.id,other:to.id,place:m.place,data:{triggerId:reaction.triggerId,continuingActivity:true},tags:[]});
