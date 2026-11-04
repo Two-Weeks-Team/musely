@@ -1,4 +1,6 @@
+import {emptyWriteBody} from './empty-write-body.ts';
 import {personalAuthFailure, type PersonalAuthFailure, type PersonalAuthReason} from './personal-auth-failure.ts';
+import {personalOwnerRoutes,type PersonalOwnerStub,type PersonalOwnerConfig} from './personal-owner-api.ts';
 // Personal authentication route adapter only. A valid login never creates an actor or inherits legacy owner powers.
 import {originAllowed,OWNER_COOKIE} from './owner-session.ts';
 import type {DecisionOutcome} from './tasks.ts';
@@ -14,7 +16,7 @@ import {
 } from './personal-session.ts';
 
 type MaybePromise<T> = T | Promise<T>;
-export interface PersonalAuthStub {
+export interface PersonalAuthStub extends PersonalOwnerStub {
   personalSocialStatusGet?(binding:PersonalBinding):MaybePromise<unknown>;
   personalSocialStatusSet?(binding:PersonalBinding,input:unknown):MaybePromise<unknown>;
   personalLegacyView(binding:PersonalBinding,ownerCookie:string|null):MaybePromise<unknown>;
@@ -47,11 +49,16 @@ export interface PersonalAuthStub {
   personalAuthActive(sidDigest: string, proof: PersonalSessionRow, appId: string, now: number): MaybePromise<boolean>;
   personalAuthRevoke(sidDigest: string, proof: PersonalSessionRow, appId: string, now: number): MaybePromise<boolean>;
 }
-export type PersonalConfig = {secret: string; origin: string; appId?: string; appSecret?: string; rateLimit?: () => Promise<boolean>; fetcher?: typeof fetch; now?: () => number};
+export type PersonalConfig = PersonalOwnerConfig & {appSecret?: string; rateLimit?: () => Promise<boolean>; fetcher?: typeof fetch};
 const BASE = '/api/personal';
 const START = BASE + '/auth/threads/start';
 const VIEWING = {entry: {state: 'viewing'}};
 const headers = () => new Headers({'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'content-type': 'application/json; charset=utf-8'});
+
+export function signInFailurePage():Response {
+  const h = headers(); h.set('content-type', 'text/html; charset=utf-8'); h.set('content-security-policy', "default-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+  return new Response('<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Threads 연결 확인 / Check Threads connection</title><body><h1>연결을 확인하지 못했어요 / Could not verify sign-in</h1><p>연결 요청이 만료됐거나 이미 사용됐어요. 관람으로 돌아가 준비되면 다시 로그인해 주세요. / This sign-in request expired or was already used. Return to the world and sign in when you are ready.</p><a href="/">관람으로 돌아가기 / Return to world</a></body></html>', {status:400, headers:h});
+}
 const json = (value: unknown, status = 200, cookie?: string) => { const h = headers(); if (cookie) h.append('set-cookie', cookie); return new Response(JSON.stringify(value), {status, headers: h}); };
 const failure = (error: string, status: number, clearFlow = false) => json({error}, status, clearFlow ? clearFlowCookie : undefined);
 function redirect(result: 'authenticated' | 'failed' | 'declined', session?: string) {
@@ -63,20 +70,6 @@ const nonceValid = (v: string | null): v is string => !!v && /^[A-Za-z0-9_-]{43}
 /** Cookie presence never selects the handler. Ambiguous mixed states are routed here and rejected. */
 export const isPersonalCallback = (url: URL) => url.pathname === PERSONAL_CALLBACK && url.searchParams.getAll('state').some(s => (s.startsWith(PERSONAL_STATE_PREFIX)||s.startsWith(PERSONAL_CLAIM_STATE_PREFIX)));
 /** Every exception is reduced to a fixed category here, before the legacy API's general logging handler. */
-// An incoming empty HTTP write can have a non-null, already closed body stream.
-async function emptyWriteBody(request: Request): Promise<boolean> {
-  if (!request.body) return true;
-  const reader = request.body.getReader(); let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('body_deadline')), 1000); });
-  try {
-    for (let i = 0; i < 8; i++) {
-      const part = await Promise.race([reader.read(), deadline]);
-      if (part.done) return true;
-      if (part.value.byteLength) return false;
-    }
-    return false;
-  } catch { return false; } finally { if (timer !== undefined) clearTimeout(timer); void reader.cancel().catch(() => {}); }
-}
 const bootstrapMethods = (path:string):string[]|null => path===BASE+'/social-status'?['GET','PATCH']:path===BASE+'/claim'?['GET','DELETE']:path===BASE+'/claim/start'?['POST']:path===BASE+'/location'?['GET','POST']:path===BASE+'/status'?['GET']:path===BASE+'/authority'?['GET','POST','DELETE']:path===BASE+'/keys'?['GET','POST']:/^\/api\/personal\/keys\/pak_[a-f0-9-]{36}$/.test(path)?['DELETE']:path===BASE+'/entry-attempts'?['POST']:/^\/api\/personal\/entry-attempts\/pea_[a-f0-9-]{36}$/.test(path)?['GET','DELETE']:null;
 async function bootstrapJSON(request:Request,limit=4096):Promise<unknown>{
  if(!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')||!request.body)throw Error('invalid_entry');
@@ -86,6 +79,7 @@ async function bootstrapJSON(request:Request,limit=4096):Promise<unknown>{
 }
 export async function personalRoutes(request: Request, url: URL, cfg: PersonalConfig, stub: PersonalAuthStub): Promise<Response> {
   try {
+    if(url.pathname.startsWith(BASE+'/owner/'))return personalOwnerRoutes(request,url,cfg,stub);
     const now = cfg.now ?? Date.now;
     const routes = new Map([[START, 'POST'], [PERSONAL_CALLBACK, 'GET'], [BASE + '/me', 'GET'], [BASE + '/session', 'DELETE'], [BASE + '/draft', 'POST'], [BASE + '/profile', request.method === 'PATCH' ? 'PATCH' : 'GET']]);
     const bootstrap=url.pathname===BASE+'/legacy-muse'?['GET','POST']:url.pathname===BASE+'/inbox'?['GET']:url.pathname===BASE+'/approvals'?['POST']:bootstrapMethods(url.pathname);
@@ -221,11 +215,10 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
     const logFailure = (detail: PersonalAuthFailure) => console.error(JSON.stringify({event: 'personal_auth_failed', ...personalAuthFailure(detail.reason, detail.metaCode, detail.metaSubcode)}));
     const callbackFailure = (reason: 'state_invalid' | 'auth_code_invalid' = 'state_invalid') => {
       if (!(request.headers.get('accept') ?? '').includes('text/html')) return failure(reason === 'state_invalid' ? 'auth_flow_invalid' : reason, 400, true);
-      const h = headers(); h.set('content-type', 'text/html; charset=utf-8'); h.set('content-security-policy', "default-src 'none'; base-uri 'none'; frame-ancestors 'none'"); h.append('set-cookie', clearFlowCookie);
-      return new Response('<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Threads 연결 확인 / Check Threads connection</title><body><h1>연결을 확인하지 못했어요 / Could not verify sign-in</h1><p>연결 요청이 만료됐거나 이미 사용됐어요. 관람으로 돌아가 준비되면 다시 로그인해 주세요. / This sign-in request expired or was already used. Return to the world and sign in when you are ready.</p><a href="/">관람으로 돌아가기 / Return to world</a></body></html>', {status:400, headers:h});
+      const response=signInFailurePage();response.headers.append('set-cookie',clearFlowCookie);return response;
     };
     const invalid = () => { logFailure({reason:'state_invalid'}); return callbackFailure(); };
-    if ([...q.keys()].some(k => !['state', 'code', 'error', 'error_reason', 'error_description'].includes(k)) || q.getAll('state').length !== 1 || q.getAll('code').length > 1 || q.getAll('error').length > 1 || (q.has('code') && q.has('error'))) return invalid();
+    if ([...q.keys()].some(k => !['state', 'code', 'error', 'error_reason', 'error_description'].includes(k)) || q.getAll('state').length !== 1 || ['code','error','error_reason','error_description'].some(k=>q.getAll(k).length>1) || (q.has('code') && (q.has('error')||q.has('error_reason')))) return invalid();
     const state = q.get('state'), verifier = personalCookieValue(request, PERSONAL_FLOW_COOKIE);
     if (!state?.startsWith(PERSONAL_STATE_PREFIX) || !nonceValid(state.slice(PERSONAL_STATE_PREFIX.length)) || !nonceValid(verifier)) return invalid();
     const stateDigest = await personalDigest('state', state);
@@ -237,7 +230,7 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
     try { if (!await stub.personalAuthConsume(binding, now())) return invalid(); }
     // An RPC error does not prove this invocation consumed the flow; a replay must not poison its owner.
     catch { logFailure({reason:'state_store_failed'}); return redirect('failed'); }
-    if (q.has('error')) { await record({reason:'provider_declined'}); return redirect('declined'); }
+    if (q.has('error')||q.has('error_reason')) { await record({reason:'provider_declined'}); return redirect('declined'); }
     const code = q.get('code');
     if (!code || code.length > 4096 || /[\u0000-\u001f\u007f]/.test(code)) { await record({reason:'auth_code_invalid'}); return callbackFailure('auth_code_invalid'); }
     let stage: PersonalAuthReason = 'token_exchange_failed';

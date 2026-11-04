@@ -5,6 +5,7 @@ import {register} from 'node:module';
 import {DatabaseSync} from 'node:sqlite';
 import {issueSession} from '../worker/core/session.ts';
 import {issueOwnerSession} from '../worker/core/owner-session.ts';
+import {personalDigest} from '../worker/core/personal-session.ts';
 register('data:text/javascript,' + encodeURIComponent(`export async function resolve(s,c,n){if(s==='cloudflare:workers')return{url:'data:text/javascript,export class DurableObject {constructor(ctx,env){this.ctx=ctx;this.env=env;}}',shortCircuit:true};return n(s,c);}`));
 const ORIGIN='https://musely.net', START='/api/personal/auth/threads/start', CALLBACK='/api/threads/callback', ME='/api/personal/me', LOGOUT='/api/personal/session';
 const OWNER='synthetic-owner-control-token-0000000001';
@@ -202,4 +203,24 @@ test('ambiguous replay consume RPC cannot mark the valid in-flight callback fail
  const consume=a.dobj.personalAuthConsume.bind(a.dobj);a.dobj.personalAuthConsume=(...args)=>{const ok=consume(...args);if(!ok)throw Error('PRIVATE_REPLAY_RPC_CANARY');return ok;};
  const f=await start(a),first=callback(a,f);await ready;const replay=await callback(a,f);release();const r=await first;
  assert.equal(replay.status,303);assert.equal(r.status,303);assert.ok(cookie(r,'musely_p'));assert.equal(a.db.prepare('SELECT * FROM personal_auth_flows').get().failed_at,null);assert.equal(a.db.prepare('SELECT count(*) n FROM personal_auth_sessions').get().n,1);assert.doesNotMatch(JSON.stringify(logs),/PRIVATE_REPLAY_RPC_CANARY/);
+});
+
+test('valid personal cancellation uses error_reason presence once and rejects mixed or duplicate query fields before provider work',async t=>{
+ const a=await boot(t),calls=provider(t);
+ for(const query of [{error_reason:'PRIVATE_REASON_CANARY'},{error:'PRIVATE_ERROR_CANARY',error_reason:'PRIVATE_REASON_CANARY'},{error_reason:''}]){
+  const f=await start(a),r=await a.go('GET',CALLBACK+'?'+new URLSearchParams({state:f.state,...query}),{cookie:f.c,accept:'text/html'});assert.equal(r.status,303);assert.equal(r.headers.get('location'),'/?personal=declined');assert.equal(cookie(r,'musely_p'),undefined);assert.doesNotMatch(await r.text(),/PRIVATE_(?:REASON|ERROR)_CANARY/);const flow=a.db.prepare('SELECT failure_reason,consumed_at FROM personal_auth_flows WHERE state_digest=?').get(await personalDigest('state',f.state));assert.equal(flow.failure_reason,'provider_declined');assert.ok(flow.consumed_at);assert.equal((await callback(a,f)).status,400);
+ }
+ for(const suffix of ['code=synthetic&error_reason=cancel','error_reason=one&error_reason=two','error=one&error=two','error_description=one&error_description=two']){
+  const f=await start(a),r=await a.go('GET',CALLBACK+'?state='+encodeURIComponent(f.state)+'&'+suffix,{cookie:f.c,accept:'text/html'});assert.equal(r.status,400);const row=a.db.prepare('SELECT consumed_at FROM personal_auth_flows ORDER BY created_at DESC,rowid DESC LIMIT 1').get();assert.equal(row.consumed_at,null);
+ }
+ assert.equal(calls.length,0);assert.equal(a.db.prepare('SELECT count(*) n FROM personal_auth_sessions').get().n,0);
+});
+
+test('state-less cancellation has a fixed browser return link while the legacy JSON400 contract and zero-auth boundary stay intact',async t=>{
+ const a=await boot(t),calls=provider(t),before=dbText(a.db);
+ for(const query of ['error=PRIVATE_ERROR_CANARY','error_reason=PRIVATE_REASON_CANARY','error=one&error_reason=two']){
+  const r=await a.go('GET',CALLBACK+'?'+query,{accept:'text/html'});assert.equal(r.status,400);assert.match(r.headers.get('content-type'),/text\/html/);assert.equal(r.headers.get('cache-control'),'no-store');assert.equal(r.headers.get('referrer-policy'),'no-referrer');assert.match(await r.text(),/href="\/"/);assert.equal(r.headers.get('location'),null);assert.equal(r.headers.getSetCookie().length,0);
+  const api=await a.go('GET',CALLBACK+'?'+query,{accept:'application/json'});assert.equal(api.status,400);assert.deepEqual(await api.json(),{error:'state_mismatch'});
+ }
+ assert.equal(dbText(a.db),before);assert.equal(calls.length,0);
 });

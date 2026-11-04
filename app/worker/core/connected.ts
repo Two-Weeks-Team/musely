@@ -63,10 +63,12 @@ export class ConnectedHost {
   }
 
   // ----- agent keys -----
-  async issueKey(muse = OWNER_MUSE) {
+  async issueKey(muse = OWNER_MUSE,authorize?:()=>void) {
     const now = this.now();
-    const {key, row} = await this.keys.issue(muse, now);
-    this.d.runtime.commitExternal(now, 'agent-key-' + uniq(), (_s, emit) => emit({at: now, source: 'live', kind: 'agent_key_issued', muse, line: 'A Musely agent key was issued for a custom connector', data: {key_id: row.id, signer_kind: row.signerKind}, tags: []}));
+    const {key, row} = await this.keys.issue(muse, now,authorize?(insert,row)=>{
+      authorize();this.d.runtime.commitExternal(now,'agent-key-'+uniq(),(_s,emit)=>{authorize();insert();emit({at:now,source:'live',kind:'agent_key_issued',muse,line:'A Musely agent key was issued for a custom connector',data:{key_id:row.id,signer_kind:row.signerKind},tags:[]});});
+    }:undefined);
+    if(!authorize)this.d.runtime.commitExternal(now, 'agent-key-' + uniq(), (_s, emit) => emit({at: now, source: 'live', kind: 'agent_key_issued', muse, line: 'A Musely agent key was issued for a custom connector', data: {key_id: row.id, signer_kind: row.signerKind}, tags: []}));
     return {key, id: row.id, muse, signer_kind: row.signerKind, created_at: row.createdAt, shown_once: true};
   }
 
