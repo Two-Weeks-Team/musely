@@ -9,7 +9,7 @@ import {extname, join, normalize} from 'node:path';
 
 const root = new URL('../dist/', import.meta.url).pathname, port = Number(process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : 8788);
 const apiAt = process.argv.indexOf('--api'), api = apiAt > 0 ? process.argv[apiAt + 1] : null;
-const types = {'.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.glb': 'model/gltf-binary', '.png': 'image/png', '.ktx2': 'image/ktx2'};
+const types = {'.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.css': 'text/css', '.glb': 'model/gltf-binary', '.png': 'image/png', '.svg': 'image/svg+xml', '.txt': 'text/plain; charset=utf-8', '.xml': 'application/xml; charset=utf-8', '.webmanifest': 'application/manifest+json', '.ktx2': 'image/ktx2'};
 const cache = new Map();
 createServer(async (req, res) => {
   try {
@@ -21,6 +21,7 @@ createServer(async (req, res) => {
     let path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^(\.\.[/\\])+/, '');
     let file = join(root, path);
     if ((await stat(file).catch(() => null))?.isDirectory()) file = join(file, 'index.html');
+    else if (!extname(file) && !(await stat(file).catch(() => null))) file += '.html';
     const info = await stat(file), key = file + ':' + info.mtimeMs;
     const body = await readFile(file), type = types[extname(file)] ?? 'application/octet-stream';
     const headers = {'content-type': type, 'cache-control': 'no-cache'};

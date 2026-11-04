@@ -16,7 +16,7 @@ const app=await writeHashed('dist','app','js',bundle.outputFiles[0].text),style=
 const template=(await readFile('src/index.html','utf8')).replace('Application code, character assets and a geographic overview are embedded in this file.','Application code and character files are served as hash-pinned resources. The geographic overview loads on demand when viewing the Bay.');
 const html=renderExternalTemplate(template,'/'+style,'/'+app);await writeFile('dist/index.html',html);
 await copyFile('static/_headers','dist/_headers');
-for(const f of['privacy.html','terms.html','icon.svg','icon-512.png','mcp-docs.html'])await copyFile('static/'+f,'dist/'+f);
+for(const f of['privacy.html','terms.html','icon.svg','musely-logo.svg','og-image.png','apple-touch-icon.png','icon-512.png','mcp-docs.html','llms.txt','robots.txt','sitemap.xml','manifest.webmanifest'])await copyFile('static/'+f,'dist/'+f);
 const viewer=await build({entryPoints:['src/character-kit/MaterialProof.ts'],bundle:true,write:false,format:'esm',target:'es2022',minify:true});
 const viewerApp=await writeHashed('dist','character-viewer','js',viewer.outputFiles[0].text),viewerCSS=await writeHashed('dist','character-viewer','css',await readFile('src/character-kit/proof.css'));
 await mkdir('dist/characters');await writeFile('dist/characters/index.html',renderExternalTemplate(await readFile('src/character-kit/materialProof.html','utf8'),'/'+viewerCSS,'/'+viewerApp,true));

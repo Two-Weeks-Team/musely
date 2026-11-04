@@ -91,7 +91,7 @@ map.getCanvas().addEventListener('pointerdown',manual,{passive:true});
 map.getCanvas().addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','+','-','='].includes(e.key))manual();});
 map.on('dragstart',e=>{if(e.originalEvent)manual();});map.on('zoomstart',e=>{if(e.originalEvent)manual();});map.on('pitchstart',e=>{if(e.originalEvent)manual();});
 map.on('error',e=>{const text=String(e.error?.message||e.error);errors.push(text);$('network-note').hidden=false;$('network-note').textContent=uiText('Some map details could not load. Check your connection.');});
-const pin=document.createElement('button');pin.className='place-pin';pin.type='button';pin.innerHTML=uiText('<span class="pin-star">✳</span><span>The commons<small>8 Muses · an imagined place at HQ</small></span>');pin.setAttribute('aria-label',uiText('Visit the commons'));pin.onclick=()=>visit(21.2);
+const pin=document.createElement('button');pin.className='place-pin';pin.type='button';pin.innerHTML=uiText('<span class="pin-star"><img src="/icon.svg" alt="" width="28" height="28"></span><span>The commons<small>8 Muses · an imagined place at HQ</small></span>');pin.setAttribute('aria-label',uiText('Visit the commons'));pin.onclick=()=>visit(21.2);
 const marker=new Marker({element:pin,anchor:'bottom',offset:[0,-8]}).setLngLat(anchor).addTo(map);
 function visit(zoom=21.7){manual();map.flyTo({center:anchor,zoom,pitch:54,bearing:BEARING,duration:4500,essential:true});}
 $('visit').onclick=()=>visit();$('bay').onclick=()=>{manual();map.flyTo({center:anchor,zoom:10.25,pitch:42,bearing:BEARING,duration:5000,essential:true});};

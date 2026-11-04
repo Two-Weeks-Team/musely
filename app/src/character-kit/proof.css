@@ -13,3 +13,6 @@
 
 /* Studio audit: preserve the prepared viewer while making its entry copy readable. */
 .onboarding-studio header>span,.studio-preparation>label,.onboarding-studio .credit,.onboarding-studio #status{color:#505c4d}.onboarding-studio .studio-existing{display:none!important}.onboarding-studio header a{display:inline-flex;align-items:center;min-height:44px}.studio-preparation input{min-height:44px}
+
+header a.studio-brand{display:inline-flex;align-items:center;min-width:44px;min-height:44px;padding:6px 10px;border-radius:12px;background:#101623}header .studio-brand img{display:block;height:30px;width:auto}
+@media(max-width:700px){header .studio-brand img{height:26px}}

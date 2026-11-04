@@ -1,0 +1,8 @@
+User-agent: *
+Content-Signal: search=yes, ai-input=yes
+Allow: /
+Disallow: /api/personal/
+Disallow: /mcp$
+Disallow: /*?judge=
+
+Sitemap: https://musely.net/sitemap.xml
