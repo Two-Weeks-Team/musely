@@ -1,12 +1,12 @@
 # Submission text draft — not entered or submitted
 
-This is editable team-review copy for the [official project form](https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit). The final release and representative-owned publication/submission states are recorded in [SUBMISSION_CHECKLIST.md](SUBMISSION_CHECKLIST.md). The public 180-second video is user-confirmed; repository visibility change remains pending. No field has been entered by preparing this draft.
+This is editable team-review copy for the [official project form](https://cerebralvalley.ai/e/meta-ai-developer-hackathon/hackathon/submit). The final release and representative-owned publication/submission states are recorded in [SUBMISSION_CHECKLIST.md](SUBMISSION_CHECKLIST.md). The public 180-second video is user-confirmed; repository PUBLIC visibility and logged-out access are supervisor-confirmed at 07:35 KST. No field has been entered by preparing this draft.
 
 ## Current summary — 2026-11-05
 
 **Judge Muse is ON through [PR203](https://github.com/Two-Weeks-Team/musely/pull/203).** The supervisor confirmed judge entry in a fresh profile at **02:12 KST**; the operating record also covers English/Korean desktop/mobile entry, follow and public-status changes with restoration. Received greetings were checked against three original events. Positive received-proposal/notification samples remain unmeasured.
 
-The supervisor also reported real tester sign-in → automatic Studio → 3D selection → Save → step 3 at 01:50 KST, with no key issuance or Native admission in that check. Full Native admission for that new tester and whole S3 acceptance remain separate; existing source-bound technical evidence and current-source impact judgments keep their recorded scope. The representative confirmed the public 180-second demo at [YouTube](https://youtu.be/rOo4lyCQMik). Repository visibility is awaiting representative change; form entry, submission and consent remain unperformed by this documentation work. Use the three routes below; dated earlier records remain historical.
+The supervisor also reported real tester sign-in → automatic Studio → 3D selection → Save → step 3 at 01:50 KST, with no key issuance or Native admission in that check. Full Native admission for that new tester and whole S3 acceptance remain separate; existing source-bound technical evidence and current-source impact judgments keep their recorded scope. The representative confirmed the public 180-second demo at [YouTube](https://youtu.be/rOo4lyCQMik). Repository PUBLIC visibility and logged-out access were confirmed by the supervisor at 07:35 KST; form entry, submission and consent remain unperformed by this documentation work. Use the three routes below; dated earlier records remain historical.
 
 ## Team Name
 
@@ -44,7 +44,7 @@ The only example allowed here is `https://musely.net/?judge=<JUDGE_LINK_TOKEN>`.
 
 Draft URL: `https://github.com/Two-Weeks-Team/musely`.
 
-**Awaiting representative visibility change (대표자 전환 대기).** This documentation work does not change visibility or establish logged-out access. After the representative changes visibility, record the actual public access result; do not describe the repository as already public.
+**PUBLIC — supervisor-confirmed, 2026-11-05 07:35 KST.** `gh repo view` reported PUBLIC and the custom social preview was applied. Logged-out GET of the repository returned HTTP200; raw README, two brand logo assets, screenshots, ONBOARDING, BUILD_TIMELINE and LICENSE also returned200. Logged-out headless viewing confirmed the GitHub README logos rendered correctly in light and dark themes. These are the supervisor's recorded checks, not new execution by this documentation task. Form entry, media consent, Submit and receipt/confirmation remain representative-owned and are not established by repository publication.
 
 ## 3-Minute Demo Video
 
