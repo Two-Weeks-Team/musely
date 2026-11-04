@@ -35,6 +35,9 @@ export type PeerCheck = {ok: true; current: (at: number) => boolean} | {ok: fals
 export type CommandHandler<T = unknown> = {
   /** Who this command must be addressed to, decided by the verifier: the peer agent, or worldHandler(worldId). */
   recipient: string;
+  /** Server-only opt-in for nonconflicting speech. Older plans may proceed only while current action
+   * prerequisites still hold. Future versions and every handler without this check remain strict. */
+  revalidateStale?: (st: WorldState, at: number) => boolean;
   counterparty?: () => Promise<PeerCheck>;
   /** Claim-required mutations only. New commit, after stored-row recheck and before nonce spending. */
   claimCurrent?: (at: number) => string | null;
@@ -125,8 +128,12 @@ export async function executeCommand<T>(c: CommandCtx, cmd: WorldCommand, h: Com
     if (h.counterparty) { try { peer = await within(h.counterparty(), deadline); } catch { return refuse('counterparty', 'counterparty_unavailable', {verified: true}); } }
     if (peer && !peer.ok) return refuse('counterparty', peer.reason, {verified: true});
     // 5. The world the actor planned against (if it named one).
-    const stale = () => cmd.expectedVersion !== null && c.runtime.state().version !== cmd.expectedVersion;
-    if (stale()) return refuse('version', 'stale_world', {verified: true});
+    const stale = (at: number) => {
+      const st=c.runtime.state();
+      return cmd.expectedVersion!==null&&cmd.expectedVersion!==st.version&&
+        (cmd.expectedVersion>st.version||!h.revalidateStale?.(st,at));
+    };
+    if (stale(c.now?c.now():now)) return refuse('version', 'stale_world', {verified: true});
     // 6. Outside the transaction.
     let thought: T | undefined;
     if (h.think) {
@@ -146,7 +153,7 @@ export async function executeCommand<T>(c: CommandCtx, cmd: WorldCommand, h: Com
         if (again) return again.payloadHash === hash ? 'duplicate' : 'command_conflict';
         const claim = h.claimCurrent?.(atCommit);
         if (claim) return claim;
-        if (stale()) return 'stale_world';
+        if (stale(atCommit)) return 'stale_world';
         if (!current() || (peer?.ok && !peer.current(atCommit))) return 'delegation_revoked';
         if (sig.delegation.exp <= atCommit) return 'delegation_expired';
         if (e.expires_at <= atCommit) return 'expired';

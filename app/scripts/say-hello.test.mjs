@@ -79,12 +79,16 @@ test('say_hello validates public text before any greeting or inbox delivery', as
   assert.deepEqual(domainState(t), before);
 });
 
-test('say_hello respects the caller world version before delivering', async test => {
+test('say_hello refuses an impossible future world version before delivering', async test => {
   const t = await httpsWorld(test), before = structuredClone(domainState(t));
-  const result = await t.tool(JOLLY, 'say_hello', {to: COPPER, expected_version: 0, command_id: 'hello-stale-world-001'});
+  const result = await t.tool(JOLLY, 'say_hello', {to: COPPER, expected_version: t.state().version + 1, command_id: 'hello-stale-world-001'});
   assert.equal(result.structuredContent.refused, 'stale_world');
+  assert.equal(result.structuredContent.command.world_version,t.state().version);
   assert.deepEqual(domainState(t), before);
   assert.equal(t.events().filter(event => event.kind === 'greet').length, 0);
+  const planned=t.state().version;t.edit(s=>{s.muses.find(m=>m.id===COPPER).place='bay:stanford:reading';});
+  const moved=structuredClone(domainState(t)),conflict=await t.tool(JOLLY,'say_hello',{to:COPPER,expected_version:planned,command_id:'hello-peer-left-001'});
+  assert.equal(conflict.structuredContent.refused,'stale_world');assert.equal(conflict.structuredContent.command.world_version,t.state().version);assert.deepEqual(domainState(t),moved);assert.equal(t.events().filter(e=>e.kind==='greet').length,0);
 });
 
 test('say_hello cannot bypass bearer revocation even to replay an earlier hello', async test => {

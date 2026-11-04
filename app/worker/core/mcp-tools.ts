@@ -2,6 +2,7 @@ import {nonEnglishResidentSpeech,PUBLIC_SPEECH_NOT_ENGLISH} from './resident-eng
 import * as residentInbox from '../../src/engine/inbox.ts';
 import {mentionsOtherMuse,withinConversationRange} from '../../src/engine/speech.ts';
 import {participantName,participantRole} from '../../src/engine/participants.ts';
+import {resolveSocialStatus} from '../../src/engine/social-status.ts';
 // Musely MCP tools (direction v2, 7.2). A connected Muse calls these from its owner's runtime; Musely only
 // checks and commits. Every write tool goes through the same path:
 //   1. build the payload  2. sign a WorldCommand with the owner's server_custodial executor (Trust)
@@ -161,7 +162,7 @@ for (const name of ['get_world_state', 'heartbeat_check']) TOOLS.find(t => t.nam
 for (const name of ['get_world_state','heartbeat_check']) TOOLS.find(t=>t.name===name)!.description+=' perception names and details only Muses within 50 metres at current in-world positions. From over 50 through 400 metres it gives anonymous place/status counts; farther Muses are not perceived. Own Tasks, messages and historical notices are a separate authorized inbox, not proof of a peer\'s current location.';
 const COMMAND_PROPS: Record<string, Prop> = {
   command_id: {type: 'string', pattern: '^[A-Za-z0-9_-]{8,64}$', description: 'Optional idempotency key. Once a call with this id has committed, a retry with the same id and arguments returns that first result without acting again; other arguments with the same id are refused as command_conflict. A call refused before it commits (stale_world, in_progress, a credential or envelope check) spends nothing and is not stored, so you may retry the same id (for example after stale_world with a fresh expected_version). A call the world rules refuse (for example no_taxi_token or already_here) is a stored result: a retry with the same id returns that refusal again, so after changing the conditions use a new command_id. While the first call is still running, a retry is refused as in_progress (retryable).'},
-  expected_version: {type: 'integer', minimum: 0, description: 'Optional world_version from get_world_state you planned against; if the world moved, the call is refused as stale_world (retryable) and nothing changes. Complete heartbeat upkeep before planning; get a fresh get_world_state immediately before your chosen write and use that current version. Respect your existing retry, connector-call and time budgets.'},
+  expected_version: {type: 'integer', minimum: 0, description: 'Optional world_version from get_world_state you planned against. greet and say_hello may accept an older version only after current local conversation prerequisites are rechecked; conflicting premises or a future version are refused as stale_world with the current world_version. All other writes keep strict world-version checks. Complete heartbeat upkeep before planning; get a fresh get_world_state before your chosen write. Respect existing retry, connector-call and time budgets.'},
 };
 for (const t of TOOLS) if (t.write) Object.assign(t.inputSchema.properties, COMMAND_PROPS);
 const PERSONAL_ENTRY_TOOL = write('enter_world','Enter your registered Muse','Explicit signed admission for your own pending entry attempt. Does not grant any other scope or choose your next action.',obj({attempt_id:{type:'string',pattern:'^pea_[a-f0-9-]{36}$'},command_id:{type:'string',pattern:'^[A-Za-z0-9_-]{8,64}$'},expected_version:{type:'integer',minimum:0}},['attempt_id','command_id']),'world_entry');
@@ -241,6 +242,16 @@ async function signedWrite(c: ToolCtx, tool: ToolDef, recipientMuse: string | nu
   const envelope = envelopeEvidence(cmd.signed);
   const out = await executeCommand(c, cmd, {
     recipient,
+    // Greeting only: unrelated world activity does not invalidate a still-safe local conversation.
+    // Authority, peer verification, replay and nonce checks remain executeCommand's responsibility.
+    revalidateStale: ['greet','say_hello'].includes(tool.name) ? (st,at2) => {
+      const a=st.muses.find(m=>m.id===me),b=recipientMuse?st.muses.find(m=>m.id===recipientMuse):null;
+      const available=(id:string)=>(c.runtime.publicAvailability(id,at2)?.status??resolveSocialStatus(st,id,at2))==='welcoming';
+      if(!a||st.paused?.[me]||frozenResident(c.runtime,st,me)||!available(me))return false;
+      if(recipientMuse&&(!b||recipientMuse===me||st.paused?.[recipientMuse]||frozenResident(c.runtime,st,recipientMuse)||!available(recipientMuse)||!withinConversationRange(a,b,at2)))return false;
+      if(!recipientMuse&&mentionsOtherMuse(st,me,String(content.text)))return false;
+      return tool.name!=='say_hello'||!!b&&!a.travel&&!b.travel&&!introduced(st,me,b.id);
+    } : undefined,
     // A resident answers by rule inside this commit, so its own card and delegation are checked first.
     counterparty: needsClaim || opts.counterparty || peer ? async () => {
       // executeCommand reaches this only after stored duplicate / in-flight checks.

@@ -285,7 +285,7 @@ test('I-03B stored command survives WorldDO restart; payload conflict/stale vers
  const before=structuredClone(domainState(t));await t.restart();
  const duplicate=data(await t.tool(COPPER,'give_gift',{to:JOLLY,item:'tea',command_id:id}));assert.equal(duplicate.command.duplicate,true);assert.deepEqual(domainState(t),before);
  const bad=await t.tool(COPPER,'give_gift',{to:JOLLY,item:'fruit',command_id:id});assert.equal(bad.structuredContent.refused,'command_conflict');assert.deepEqual(domainState(t),before);
- const stale=await t.tool(COPPER,'greet',{text:'old plan',command_id:'stale-retry-00001',expected_version:0});assert.equal(stale.structuredContent.refused,'stale_world');assert.deepEqual(domainState(t),before);
+ const stale=await t.tool(COPPER,'greet',{text:'old plan',command_id:'stale-retry-00001',expected_version:t.state().version+1});assert.equal(stale.structuredContent.refused,'stale_world');assert.equal(stale.structuredContent.command.world_version,t.state().version);assert.deepEqual(domainState(t),before);
  const retry=data(await t.tool(COPPER,'greet',{text:'old plan',command_id:'stale-retry-00001',expected_version:t.state().version}));assert.equal(retry.command.duplicate,false);
 });
 
