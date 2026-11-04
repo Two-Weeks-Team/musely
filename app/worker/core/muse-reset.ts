@@ -1,3 +1,4 @@
+import {JUDGE_MUSE} from '../../src/engine/judge-muse.ts';
 // Reviewer Muse reset (G-08): POST /api/owner/reset, reviewer session only (checked by the Worker route).
 // The reviewer's Muse goes back to its review start state in one world commit: its place and inventory (with items a
 // nearby resident can trade for, the garden pass on a fresh 24-hour clock), its public wants, no trip, beat or intent,
@@ -20,6 +21,7 @@ const POSTCARD_PLACE = PLACES.find(p => p.id === 'osm:node/4869055832') ?? PLACE
  * craft a Bloom at the Garden; a postcard and a Postage Stamp make send_postcard possible.
  */
 export const START_STATE: Record<string, {place: string; inventory: readonly string[]}> = {
+ [JUDGE_MUSE.id]:{place:'commons:campfire',inventory:['sun_badge']},
   [REVIEWER_MUSE]: {place: 'commons:campfire', inventory: ['brass_lantern', 'coffee', 'tea', 'fruit', 'wildflower', 'clover_seed', 'garden_pass', 'postage_stamp', postcardId(POSTCARD_PLACE)]},
 };
 
@@ -29,13 +31,15 @@ export type ResetResult =
 
 const uniq = () => Math.random().toString(36).slice(2, 8);
 
-export function resetMuse(c: ControlCtx, museId: string, by: string): ResetResult {
+export function resetMuse(c: ControlCtx, museId: string, by: string,authorize?:()=>void): ResetResult {
+  authorize?.();
   const start = START_STATE[museId];
   if (!start || !c.trust.agentByMuse(museId) || !c.runtime.state().muses.some(m => m.id === museId)) return {ok: false, reason: 'unknown_muse'};
   if (c.trust.suspended(museId)) return {ok: false, reason: 'delegation_revoked'};
   const now = c.now ? c.now() : Date.now();
   let out: Extract<ResetResult, {ok: true}> | null = null;
   c.runtime.commitExternal(now, `muse-reset-${museId}-${uniq()}`, (st, emit) => {
+    authorize?.();
     const m = st.muses.find(x => x.id === museId)!, inbox = (st.inbox ??= emptyInbox());
     const cancelled: string[] = [];
     for (const t of cancelTasksFor(inbox, museId, now, by)) {

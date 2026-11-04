@@ -1,3 +1,4 @@
+import {JUDGE_MUSE} from './judge-muse.ts';
 import {residentValues} from './resident-values.ts';
 import {RESIDENT_INSTANCES,residentInstance,isResidentInstance} from './resident-catalog.ts';
 export {isResidentInstance};
@@ -52,15 +53,15 @@ export function harnessById(id:string):Harness;
 export function harnessById(id:string,options:{residentValuesEnabled?:boolean}):Harness;
 export function harnessById(id:string,options:{residentValuesEnabled?:boolean}={}):Harness {
   const instance=residentInstance(id);
-  const h = HARNESSES.find(h => h.id === (instance?.roleId ?? id));
+  const h = HARNESSES.find(h => h.id === (instance?.roleId ?? (id===JUDGE_MUSE.id?JUDGE_MUSE.roleId:id)));
   if (!h) throw new Error('Unknown Muse harness: ' + id);
-  const base=instance ? {...h,id:instance.id,name:instance.name} : h;
+  const base=instance ? {...h,id:instance.id,name:instance.name} : id===JUDGE_MUSE.id?{...h,id,name:JUDGE_MUSE.name,persona:{...h.persona,traits:"friendly, curious and kind; welcomes conversation without pressure",voice:"warm, lively, brief English; asks thoughtful questions"}}:h;
   const values=options&&options.residentValuesEnabled===true?residentValues(id):null;
   return values?{...base,persona:{...base.persona,traits:values.traits,voice:values.voice}}:base;
 };
 export const HARNESS_IDS = HARNESSES.map(h => h.id);
 
 /** Actor IDs are distinct from the ten reusable harness/appearance templates. */
-export const ACTOR_IDS = Object.freeze([...HARNESS_IDS,...RESIDENT_INSTANCES.map(r=>r.id)]);
+export const ACTOR_IDS = Object.freeze([...HARNESS_IDS,...RESIDENT_INSTANCES.map(r=>r.id),JUDGE_MUSE.id]);
 export const hasActorHarness = (id:string):boolean => ACTOR_IDS.includes(id);
-export const harnessRoleId = (id:string):string => residentInstance(id)?.roleId ?? (HARNESS_IDS.includes(id)?id:(()=>{throw Error('Unknown Muse harness: '+id);})());
+export const harnessRoleId = (id:string):string => residentInstance(id)?.roleId ?? (id===JUDGE_MUSE.id?JUDGE_MUSE.roleId:undefined) ?? (HARNESS_IDS.includes(id)?id:(()=>{throw Error('Unknown Muse harness: '+id);})());

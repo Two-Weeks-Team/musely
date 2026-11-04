@@ -1,3 +1,4 @@
+import {JUDGE_MUSE} from './judge-muse.ts';
 /** In-world public speech only. Never owner coordinates, private inbox, identity or authority. */
 import type {MuseState,WorldState} from './world.ts';
 import {placeById} from './places.ts';
@@ -5,6 +6,7 @@ import {participantName} from './participants.ts';
 export const CONVERSATION_RANGE_M=50;
 export function publicActorPosition(actor:MuseState,now:number):{x:number;z:number}|null {
  if(!Number.isSafeInteger(now)||now<0)return null;
+ if(actor.id===JUDGE_MUSE.id&&Number.isSafeInteger(actor.residentFrozenAt))now=Math.min(now,actor.residentFrozenAt!);
  try{const from=placeById(actor.place),t=actor.travel;if(!t)return{x:from.x,z:from.z};
   if(![t.departAt,t.arriveAt].every(n=>Number.isFinite(n)&&n>=0&&n<=Number.MAX_SAFE_INTEGER)||t.arriveAt<=t.departAt)return null;
   const to=placeById(t.to),progress=Math.max(0,Math.min(1,(now-t.departAt)/(t.arriveAt-t.departAt)));

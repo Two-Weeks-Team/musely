@@ -1,0 +1,36 @@
+// Worker auth transport and a VM bootstrap only. No browser, real token or external networking.
+import {test,after} from 'node:test';import assert from 'node:assert/strict';import {register} from 'node:module';import {runInNewContext} from 'node:vm';import {createHash} from 'node:crypto';
+register('data:text/javascript,'+encodeURIComponent(`export async function resolve(s,c,n){if(s==='cloudflare:workers')return{url:'data:text/javascript,export class DurableObject{constructor(ctx,env){this.ctx=ctx;this.env=env;}}',shortCircuit:true};return n(s,c);}`));
+const {default:worker,canonicalRedirect}=await import('../worker/index.ts');
+const HOME='https://musely.net',WWW='https://www.musely.net',CANARY='synthetic-judge-canonical-canary-00001';
+const original=globalThis.fetch;globalThis.fetch=()=>{throw Error('external networking prohibited');};after(()=>globalThis.fetch=original);
+function env(){let calls=0;return{PUBLIC_ORIGIN:HOME,ALLOWED_HOSTS:'musely.net,www.musely.net',SESSION_SECRET:'synthetic-session-secret',JUDGE_TOKEN:CANARY,MODEL_BASE:'https://not-called.invalid',WORLD:{idFromName:()=> 'world',get:()=>({quota:async()=>{calls++;return{perHour:120};}})},ASSETS:{fetch:async()=>new Response('asset')},get calls(){return calls;}};}
+function request(origin,method='GET',headers={},body){return new Request(origin,{method,headers,body:body===undefined?undefined:JSON.stringify(body)});}
+
+test('www judge query never appears in a redirect/header/body and receives only a noncacheable static bootstrap',async()=>{
+ const e=env(),r=await worker.fetch(request(WWW+'/?judge='+CANARY+'&other='+CANARY),e),html=await r.text();assert.equal(r.status,200);assert.equal(r.headers.get('location'),null);assert.equal(r.headers.get('cache-control'),'no-store');assert.equal(r.headers.get('referrer-policy'),'no-referrer');assert.ok(!html.includes(CANARY));assert.ok(!JSON.stringify([...r.headers]).includes(CANARY));assert.equal(e.calls,0);
+ const script=html.match(/<script[^>]*>([\s\S]*?)<\/script>/)?.[1];assert.ok(script);const digest=createHash('sha256').update(script).digest('base64');assert.ok(r.headers.get('content-security-policy').includes("'sha256-"+digest+"'"));
+ const arbitrary=canonicalRedirect(new URL('https://unrecognized.invalid/?judge='+CANARY),HOME);assert.ok(arbitrary);assert.equal(arbitrary.headers.get('location'),null);assert.ok(!(await arbitrary.text()).includes(CANARY));
+ const plain=canonicalRedirect(new URL(WWW+'/mcp?x=1'),HOME);assert.equal(plain.status,308);assert.equal(plain.headers.get('location'),HOME+'/mcp?x=1');
+});
+
+test('www bootstrap synchronously removes the URL then performs exactly one credentialed canonical POST and clean navigation',async()=>{
+ const html=await(await worker.fetch(request(WWW+'/?judge='+CANARY),env())).text(),script=html.match(/<script[^>]*>([\s\S]*?)<\/script>/)?.[1];let url=new URL(WWW+'/?judge='+CANARY+'&next='+CANARY+'#'+CANARY),calls=0;const events=[],location={get search(){return url.search;},replace(target){events.push(['navigate',target]);}};
+ const result=runInNewContext(script,{URLSearchParams,AbortController,setTimeout,clearTimeout,Date,location,history:{replaceState(_state,_title,target){url=new URL(target,url);events.push(['clear',url.href]);}},fetch:async(target,init)=>{calls++;events.push(['fetch',target]);assert.equal(url.search,'');assert.equal(url.hash,'');assert.equal(target,HOME+'/api/session');assert.equal(init.credentials,'include');assert.equal(init.mode,'cors');assert.equal(init.referrerPolicy,'no-referrer');assert.deepEqual(JSON.parse(init.body),{judge:CANARY});return new Response(JSON.stringify({tier:'judge',expiresAt:Date.now()+10000,quota:{perHour:120}}));}});await result;
+ assert.equal(calls,1);assert.deepEqual(events.map(e=>e[0]),['clear','fetch','navigate']);assert.equal(events.at(-1)[1],HOME+'/');for(const event of events)assert.ok(!event[1].includes(CANARY));
+});
+
+test('invalid, duplicate and network-failed www links navigate only to a fixed safe error page with no retry',async()=>{
+ const html=await(await worker.fetch(request(WWW+'/?judge='+CANARY),env())).text(),script=html.match(/<script[^>]*>([\s\S]*?)<\/script>/)?.[1];
+ for(const search of['?judge=','?judge='+CANARY+'&judge='+CANARY,'?judge='+CANARY]){let current=search,fetches=0,destination;await runInNewContext(script,{URLSearchParams,AbortController,setTimeout,clearTimeout,Date,location:{get search(){return current;},replace(target){destination=target;}},history:{replaceState(){current='';}},fetch:async()=>{fetches++;throw Error('synthetic network failure');}});assert.equal(current,'');assert.equal(fetches,search==='?judge='+CANARY?1:0);assert.equal(destination,HOME+'/judge-entry-failed');assert.ok(!destination.includes(CANARY));}
+ const failed=await worker.fetch(request(HOME+'/judge-entry-failed'),env()),body=await failed.text();assert.equal(failed.headers.get('cache-control'),'no-store');assert.equal(failed.headers.get('referrer-policy'),'no-referrer');assert.match(body,/Keep watching/);assert.ok(!body.includes(CANARY));
+});
+
+test('canonical session CORS is credentialed and exactly www; preflight cannot authorize another origin, method or header',async()=>{
+ const e=env(),pre=await worker.fetch(request(HOME+'/api/session','OPTIONS',{origin:WWW,'access-control-request-method':'POST','access-control-request-headers':'content-type'}),e);assert.equal(pre.status,204);assert.equal(pre.headers.get('access-control-allow-origin'),WWW);assert.equal(pre.headers.get('access-control-allow-credentials'),'true');assert.equal(pre.headers.get('access-control-allow-methods'),'POST');assert.equal(pre.headers.get('vary'),'Origin');assert.equal(e.calls,0);
+ for(const headers of[{origin:'https://evil.invalid','access-control-request-method':'POST'},{origin:WWW,'access-control-request-method':'PATCH'},{origin:WWW,'access-control-request-method':'POST','access-control-request-headers':'content-type, authorization'}]){const r=await worker.fetch(request(HOME+'/api/session','OPTIONS',headers),e);assert.equal(r.status,403);assert.equal(r.headers.get('access-control-allow-origin'),null);}
+ const good=await worker.fetch(request(HOME+'/api/session','POST',{origin:WWW,'content-type':'application/json'},{judge:CANARY}),e);assert.equal(good.status,200);assert.equal(good.headers.get('access-control-allow-origin'),WWW);assert.equal(good.headers.get('access-control-allow-credentials'),'true');assert.match(good.headers.get('set-cookie'),/^musely_s=.*; Path=\/api;.*HttpOnly; Secure; SameSite=Strict$/);assert.doesNotMatch(good.headers.get('set-cookie'),/Domain=/);assert.ok(!(await good.text()).includes(CANARY));
+ const bad=await worker.fetch(request(HOME+'/api/session','POST',{origin:WWW,'content-type':'application/json'},{judge:'synthetic-invalid'}),e);assert.equal(bad.status,403);assert.equal(bad.headers.get('access-control-allow-origin'),WWW);
+ const other=await worker.fetch(request(HOME+'/api/session','POST',{origin:'https://evil.invalid','content-type':'application/json'},{judge:CANARY}),e);assert.equal(other.status,403);assert.equal(other.headers.get('access-control-allow-origin'),null);
+ const same=await worker.fetch(request(HOME+'/api/session','POST',{'content-type':'application/json'},{judge:CANARY}),e);assert.equal(same.status,200);assert.equal(same.headers.get('access-control-allow-origin'),null);
+});

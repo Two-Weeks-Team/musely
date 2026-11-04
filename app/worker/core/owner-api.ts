@@ -26,7 +26,7 @@ export interface ConnectedStub {
   agentKeyMuse(id: string): MaybePromise<string | null>;
   revokeAgentKey(id: string): MaybePromise<unknown | null>;
   purgeAgentKey(id: string, by: string): MaybePromise<unknown | null>;
-  resetMuse(muse: string, by: string): MaybePromise<{ok: boolean; reason?: string}>;
+  resetMuse(muse: string, by: string, team?:LegacyOwnerProof): MaybePromise<{ok: boolean; reason?: string}>;
   ownerNotifications(detailFor: string[]): MaybePromise<unknown>;
   ownerRevoke(muse: string, by: string): MaybePromise<{ok: boolean; reason?: string}>;
   ownerRedelegate(muse: string, by: string): MaybePromise<{ok: boolean; reason?: string}>;
@@ -57,7 +57,7 @@ async function profileBody(request: Request): Promise<unknown> {
   finally {if(timer!==undefined)clearTimeout(timer);void reader.cancel().catch(()=>{});}
 }
 
-async function socialBody(request:Request):Promise<{mode:unknown;expectedRevision:number}> {
+export async function socialBody(request:Request):Promise<{mode:unknown;expectedRevision:number}> {
  if(!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')||!request.body)throw Error('invalid_social_status');
  const reader=request.body.getReader(),bytes:number[]=[];let timer:ReturnType<typeof setTimeout>|undefined;
  const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('invalid_social_status')),1000);});
@@ -155,16 +155,21 @@ export async function connectedRoutes(request: Request, url: URL, auth: OwnerAut
   // ----- reviewer Muse reset (G-08): the reviewer session only, for its own Muse -----
   if (p === '/api/owner/reset' && method === 'POST') {
     if (!originAllowed(request, cfg.origins)) return json({error: 'origin_not_allowed'}, 403);
-    if (!reviewerConfigured(cfg.tokens)) return json({error: 'not_configured', detail: 'The reviewer principal is not configured: REVIEWER_CONTROL_TOKEN is missing or invalid.'}, 503);
+    if (!reviewerConfigured(cfg.tokens)&&auth.owner?.principal!=='owner') return json({error: 'not_configured', detail: 'The reviewer principal is not configured: REVIEWER_CONTROL_TOKEN is missing or invalid.'}, 503);
     const pre = gate({write: true});
     if (pre instanceof Response) return pre;
-    if (pre.principal !== 'reviewer') return json({error: 'reviewer_only', detail: 'Only the reviewer session can reset its Muse.'}, 403);
     const b = await body(request, 512);
     if (!b) return json({error: 'bad_request'}, 400);
     const muse = b.muse === undefined ? PRINCIPALS.reviewer.muses[0] : String(b.muse);
-    const s = gate({write: true, muse});
+    const shared=muse==='10-judge'&&(pre.principal==='owner'||pre.principal==='reviewer');
+    if(!shared&&!reviewerConfigured(cfg.tokens))return json({error:'not_configured'},503);
+    if(!shared&&pre.principal!=='reviewer')return json({error:'reviewer_only'},403);
+    const s = gate({write:true,...(shared?{}:{muse})});
     if (s instanceof Response) return s;
-    const r = await stub.resetMuse(muse, s.ownerId);
+    if(shared&&(!Number.isSafeInteger(s.exp)||s.exp<=Date.now()))return json({error:'owner_session_required'},401);
+    let r:{ok:boolean;reason?:string};
+    try{r=shared?await stub.resetMuse(muse,s.ownerId,{principal:s.principal,ownerId:s.ownerId,exp:s.exp}):await stub.resetMuse(muse,s.ownerId);}
+    catch(e){const code=e&&typeof e==='object'&&'code'in e?e.code:null;if(shared&&code==='owner_session_required')return json({error:code},401);if(shared&&code==='not_your_muse')return json({error:code},403);throw e;}
     if (r.ok) return json(r);
     return r.reason === 'delegation_revoked' ? json({error: 'delegation_revoked', detail: 'The Muse is revoked. Delegate it again (POST /api/owner/redelegate) before a reset.'}, 409) : json({error: r.reason ?? 'refused'}, 404);
   }

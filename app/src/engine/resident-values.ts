@@ -1,3 +1,4 @@
+import {JUDGE_MUSE} from './judge-muse.ts';
 /** Confirmed fictional character tendencies, not personality assessments or action mandates.
  * Static resident-only data. Never owner/private profile data and never an authority decision. */
 export type ResidentRhythm='morning'|'daytime'|'evening'|'night';
@@ -344,8 +345,9 @@ export const RESIDENT_VALUES:readonly ResidentValues[]=Object.freeze((
   "rhythm": "daytime"
  }
 ] as const).map(r=>Object.freeze({...r,values:Object.freeze([...r.values])})));
+export const JUDGE_VALUES:ResidentValues=Object.freeze({id:JUDGE_MUSE.id,name:JUDGE_MUSE.name,role:'Host',type:'ENFP',values:Object.freeze(['kindness','curiosity']),traits:'A friendly, curious neighbor who makes room for others',voice:'Warm, brief English with curious questions and no pressure',rhythm:'daytime'});
 const BY_ID=new Map(RESIDENT_VALUES.map(r=>[r.id,r]));
-export const residentValues=(id:string):ResidentValues|null=>BY_ID.get(id)??null;
+export const residentValues=(id:string):ResidentValues|null=>id===JUDGE_MUSE.id?JUDGE_VALUES:BY_ID.get(id)??null;
 const HOURS:Record<ResidentRhythm,readonly[number,number]>={morning:[6,11],daytime:[11,17],evening:[17,22],night:[20,2]};
 const clock=new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',hour:'numeric',hourCycle:'h23'});
 export function residentLocalHour(now:number):number|null {

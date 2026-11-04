@@ -1,3 +1,4 @@
+import {JUDGE_MUSE} from './judge-muse.ts';
 import {withinConversationRange} from './speech.ts';
 import {ruleResidentUtterance,ruleResidentGreeting,filterResidentUtterance,type PublicUtterance} from './resident-utterance.ts';
 import {residentRhythm,residentPlaceWeight,residentStayMinutes,residentSociability,residentValues} from './resident-values.ts';
@@ -18,8 +19,8 @@ import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-16: persona English greetings and explicit English-policy RULE fallback; engine15 stays checkpoint-only. */
-export const ENGINE_VERSION = 'engine-16';
+/** engine-17: separate shared Judge resident and flag freeze; exact engines5–16 remain checkpoint-only. */
+export const ENGINE_VERSION = 'engine-17';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
@@ -274,7 +275,7 @@ export function tripMs(from: Place, to: Place, speed: Speed) {
 export function setResidentFrozen(s:WorldState,ids:readonly string[],now:number):void {
   // Only enrolled fixed-catalog NPCs can be paused by this switch. Personal and legacy actors are untouched.
   for(const m of s.muses){
-    if(!isResidentInstance(m.id)||m.residentRole!==harnessRoleId(m.id)||m.controlMode==='personal'||m.profile)continue;
+    if(!(isResidentInstance(m.id)||m.id===JUDGE_MUSE.id)||m.residentRole!==harnessRoleId(m.id)||m.controlMode==='personal'||m.profile)continue;
     if(ids.includes(m.id)){if(m.residentFrozenAt===undefined)m.residentFrozenAt=now;}
     else if(m.residentFrozenAt!==undefined){
       const delay=Math.max(0,now-m.residentFrozenAt);
@@ -338,7 +339,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   const d = input.decision && input.decision.muse === spot.muse && !paused(spot.muse) && !isRuntimeControlled(s,spot.muse,now) ? input.decision : null;
   if (input.decision && !d) emit({at: now, source: input.decision.source, kind: 'decision_rejected', muse: input.decision.muse, data: {reason: paused(input.decision.muse) ? 'paused: the owner revoked this Muse\'s delegation' : isRuntimeControlled(s,input.decision.muse,now) ? 'personal or connected control' : 'not this Muse\'s spotlight turn'}, tags: []});
   if (d) applyDecision(s, d, spot.freedom, now, emit, hooks);
-  else if (!paused(spot.muse)&&!(input.requirePriorityApplication&&spot.priority)) emit({at: now, source: 'scripted', kind: 'spotlight', muse: spot.muse, data: {freedom: spot.freedom, live: false}, tags: []});
+  else if (!paused(spot.muse)&&!(input.requirePriorityApplication&&spot.priority)) emit({at: now, source: spot.muse===JUDGE_MUSE.id?'rule':'scripted', kind: 'spotlight', muse: spot.muse, data: {freedom: spot.freedom, live: false}, tags: []});
 
   // 2. Every Muse advances: arrivals, then a new beat or a trip when the current beat ends.
   for (const m of s.muses) {
@@ -462,12 +463,12 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     if (goTravel) {
       // Choose among the area's places first; never discard an already-picked place at a cell edge.
       const dest = chooseDestination(s, m, rand, clock.hour, hooks, now);
-      if (dest) { startTrip(s, m, place, dest, now, managed(m)||englishFallback(m)?'rule':'scripted', emit, hooks); continue; }
+      if (dest) { startTrip(s, m, place, dest, now, managed(m)||englishFallback(m)||m.id===JUDGE_MUSE.id?'rule':'scripted', emit, hooks); continue; }
     }
     const beat = weightedPick(rand, stay, b => beatWeight(b, m.id));
     if (beat) {const selected=managed(m)?{...beat,minutes:Math.max(5,Math.min(60,beat.minutes))}:beat;
       const minutes=rhythm?residentStayMinutes(m.id,selected.minutes,clock.hour):selected.minutes;
-      startBeat(m,{...selected,...(englishFallback(m)?{line:ruleResidentUtterance(s,m.id,selected.id,now)??undefined}:{}),minutes:recovering?Math.max(5,Math.min(10,minutes)):minutes},place,now,managed(m)||englishFallback(m)?'rule':'scripted',emit,s);
+      startBeat(m,{...selected,...((englishFallback(m)||m.id===JUDGE_MUSE.id)?{line:ruleResidentUtterance(s,m.id,selected.id,now)??undefined}:{}),minutes:recovering?Math.max(5,Math.min(10,minutes)):minutes},place,now,managed(m)||englishFallback(m)||m.id===JUDGE_MUSE.id?'rule':'scripted',emit,s);
     }else if(recovering){
       // No valid catalog activity/destination: a finite rest, never an invented recipe or item effect.
       m.beat={id:'resident_stay',clip:'idle_breathe',startedAt:now,endsAt:now+5*60000,line:null};

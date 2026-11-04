@@ -10,7 +10,7 @@ const values=await import('../src/engine/resident-values.ts').catch(e=>{if(e.cod
 const input={muse:'nr_olive',freedom:'where',localTime:'18:00',place:'Commons Cafe',places:[],muses:[],items:[],memory:[]};
 test('confirmed values have exactly the 26 fixed resident IDs, never a personal identity, with immutable bounded fields',()=>{
  assert(Array.isArray(values.RESIDENT_VALUES));const rows=values.RESIDENT_VALUES;assert.equal(rows.length,26);assert.equal(new Set(rows.map(r=>r.id)).size,26);
- assert.deepEqual(rows.map(r=>r.id).sort(),ACTOR_IDS.filter(id=>id!=='00-jolly').sort());assert.equal(rows.filter(r=>r.type[0]==='E').length,12);
+ assert.deepEqual(rows.map(r=>r.id).sort(),ACTOR_IDS.filter(id=>!['00-jolly','10-judge'].includes(id)).sort());assert.equal(rows.filter(r=>r.type[0]==='E').length,12);
  for(const r of rows){assert.match(r.type,/^[EI][SN][TF][JP]$/);assert(r.values.length>=1&&r.values.length<=2);assert.equal(r.role,harnessById(r.id).role);assert(Object.isFrozen(r));assert(Object.isFrozen(r.values));}
  for(const id of['00-jolly','pm_someone','nr_unknown'])assert.equal(values.residentValues(id),null);
 });

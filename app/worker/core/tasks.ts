@@ -1,3 +1,4 @@
+import {JUDGE_MUSE} from '../../src/engine/judge-muse.ts';
 import {participantName,participantLikes} from '../../src/engine/participants.ts';
 // Shared workflow Tasks (C06): the version 2 Task record, its migration, and the meetup owner approval (I-07).
 // I-03A made the facade; I-07 owns the stored version 2 fields, the migration, trade and meetup; I-13 adds help through
@@ -334,7 +335,7 @@ export function reviseMeetup(t: Task, candidates: MeetupCandidate[], at: number)
 /** Who decides for a Muse: its owner's id (a principal that can sign in on this deployment), or null for a resident. */
 export type OwnerOf = (museId: string) => string | null;
 /** Every Muse assigned to a principal stays owned, including when its login token is temporarily unavailable. */
-export const definedOwnerOf: OwnerOf = museId => Object.values(PRINCIPALS).find(p => p.muses.includes(museId))?.ownerId ?? null;
+export const definedOwnerOf: OwnerOf = museId => museId===JUDGE_MUSE.id?null:Object.values(PRINCIPALS).find(p => p.muses.includes(museId))?.ownerId ?? null;
 
 /**
  * Both Muses accepted: the meetup waits for the owners (stage owner_approval, a new 30-minute deadline). A resident's side

@@ -1,3 +1,4 @@
+import {JUDGE_MUSE} from '../../src/engine/judge-muse.ts';
 /** Trusted WorldDO installation. OFF by default; no client/model can change this configuration.
  * Dependency capabilities must exist before enabling. This module never signs as a personal Muse.
  */
@@ -40,12 +41,12 @@ export class WorldLifeController {
  private ready=false;
  private ownership:(id:string)=>Ownership;
  private sql:TxSql;private owners:PersonalOwners;private trust:Trust;private active:()=>boolean;
- constructor(sql:TxSql,owners:PersonalOwners,trust:Trust,ledger:Ledger,model:ModelConfig|null,ownerOf:OwnerOf,active:()=>boolean){
+ constructor(sql:TxSql,owners:PersonalOwners,trust:Trust,ledger:Ledger,model:ModelConfig|null,ownerOf:OwnerOf,active:()=>boolean,judgeActive:()=>boolean=()=>false){
   this.sql=sql;this.owners=owners;this.trust=trust;this.active=active;
   const factory=(WorldRuntime as Capability).createResidentServices;
   if(typeof factory!=='function')throw Error('resident_dependencies_not_installed');
   if(!Array.isArray(roster.ACTOR_IDS)||typeof roster.harnessRoleId!=='function'||typeof roster.isResidentInstance!=='function')throw Error('resident_roster_dependency_not_installed');
-  this.ownership=id=>{const kind=createOwnershipAdapter(this.owners).resolve(id).kind;return kind==='unknown'&&isInstalledResidentId(id)?'resident':kind;};
+  this.ownership=id=>{if(id===JUDGE_MUSE.id&&!judgeActive())return 'unknown';const kind=createOwnershipAdapter(this.owners).resolve(id).kind;return kind==='unknown'&&isInstalledResidentId(id)?'resident':kind;};
   this.reader=new WorldLifeEventReader(sql);
   this.services=factory(sql,{enabled:true,world:()=>this.requireRuntime().state(),ownership:this.ownership,
    authorize:(s,a,b,at)=>this.authorize(s,a,b,at),goalBeatsFor:id=>BEATS.filter(b=>b.result?.craft&&b.roles?.includes(roster.harnessRoleId!(id))).map(b=>b.id),
@@ -57,7 +58,7 @@ export class WorldLifeController {
  /** All options are server-created. Runtime independently replaces budget/model and registry authority. */
  runtimeOptions():Partial<RuntimeOptions> {
   const active=this.active;
-  const ids=roster.ACTOR_IDS!.filter(id=>!['00-jolly','04-ember','09-copper'].includes(id)); // Templates only; runtime rechecks initialized registry before enrollment.
+  const ids=roster.ACTOR_IDS!.filter(id=>!['00-jolly','04-ember','09-copper','10-judge'].includes(id)); // Templates only; runtime rechecks initialized registry before enrollment.
   return {residentGoals:this.services.residentGoals,residentWants:this.services.residentWants,
    residentLife:{roster:'neighborhood-24-v1',get enabled(){return active();},ownershipKind:this.ownership,allowedPlaceIds:WORLD_LIFE_PLACES,
     initialState:{schema:1,residents:ids.map((id,i)=>({id,roleId:roster.harnessRoleId!(id),goal:'Use an available catalog activity',routine:[0,8,16].map((hour,j)=>({hour,place:WORLD_LIFE_PLACES[(i+j)%WORLD_LIFE_PLACES.length]})),memories:[],promises:[],lastServedAt:0,served:0}))}},

@@ -1,3 +1,4 @@
+import {JUDGE_MUSE} from '../../src/engine/judge-muse.ts';
 // Owner sessions (contract C06): owner control is separate from the judge tier. A Worker secret per principal
 // (OWNER_CONTROL_TOKEN for the real owner, DEMO_PEER_CONTROL_TOKEN for the team-controlled demo peer,
 // REVIEWER_CONTROL_TOKEN for the connector directory reviewer's Muse) is
@@ -10,17 +11,18 @@ import {b64url, unb64url, hmac, timingSafeEqual} from './session.ts';
 export const OWNER_COOKIE = 'musely_o';
 export const OWNER_SESSION_TTL_MS = 3_600_000;
 
-export type PrincipalId = 'owner' | 'demo-peer' | 'reviewer';
+export type PrincipalId = 'owner' | 'demo-peer' | 'reviewer' | 'shared-judge';
 export type Principal = {id: PrincipalId; ownerId: string; muses: string[]; label: string; demo: boolean; note: string};
 /** The Muse kept for the connector directory review (G-08): a resident, not the owner's Muse or the demo peer's. */
 export const REVIEWER_MUSE = '04-ember';
 /** The principals of this deployment. Each owns its own Muse; none can act on another's. */
 export const PRINCIPALS: Record<PrincipalId, Principal> = {
+ 'shared-judge':{id:'shared-judge',ownerId:'system:shared-judge',muses:[JUDGE_MUSE.id],label:JUDGE_MUSE.label,demo:true,note:'A shared judge account provided by the team; its Muse acts autonomously.'},
   owner: {id: 'owner', ownerId: 'owner:kim-sejun', muses: ['00-jolly'], label: "Kim Sejun · owner of Jolly", demo: false, note: 'The real owner of this deployment.'},
   'demo-peer': {id: 'demo-peer', ownerId: 'system:demo-peer', muses: ['09-copper'], label: 'Demo peer · system principal (team-controlled)', demo: true, note: 'A system principal the team controls for the two-owner checks. It is not a second real Meta account or person.'},
   reviewer: {id: 'reviewer', ownerId: 'system:reviewer', muses: [REVIEWER_MUSE], label: 'Directory reviewer · system principal (team-controlled)', demo: true, note: 'A system principal the team controls for the connector directory review. Its Muse is a resident the operators reset on request; it is not a real person\'s Muse.'},
 };
-const PRINCIPAL_IDS = Object.keys(PRINCIPALS) as PrincipalId[];
+const PRINCIPAL_IDS:readonly PrincipalId[] = ['owner','demo-peer','reviewer'];
 export const ownsMuse = (s: OwnerSession, museId: string) => PRINCIPALS[s.principal].muses.includes(museId);
 
 export type OwnerSession = {sid: string; principal: PrincipalId; ownerId: string; exp: number; tk: string};
@@ -28,7 +30,7 @@ export type OwnerSession = {sid: string; principal: PrincipalId; ownerId: string
 export type OwnerTokens = {owner?: string; peer?: string; reviewer?: string; judge?: string};
 export const MIN_TOKEN_LENGTH = 32;
 
-const tokenOf = (tokens: OwnerTokens, p: PrincipalId) => (p === 'owner' ? tokens.owner : p === 'demo-peer' ? tokens.peer : tokens.reviewer) || '';
+const tokenOf = (tokens: OwnerTokens, p: PrincipalId) => (p === 'owner' ? tokens.owner : p === 'demo-peer' ? tokens.peer : p==='reviewer'?tokens.reviewer:undefined) || '';
 const tokenTag = async (secret: string, token: string) => b64url(await hmac(secret, 'owner-token:' + token)).slice(0, 22);
 const sign = async (secret: string, body: string) => b64url(await hmac(secret, 'owner-session.' + body));
 
@@ -50,7 +52,7 @@ export function reviewerConfigured(t: OwnerTokens) {
   return !!r && usable(r, t.judge) && r !== t.owner && r !== t.peer && !coreBroken(t);
 }
 /** The token that currently signs a principal in, or '' when that principal is off. */
-const activeToken = (t: OwnerTokens, p: PrincipalId) => (p === 'reviewer' ? (reviewerConfigured(t) ? t.reviewer! : '') : coreConfigured(t) ? tokenOf(t, p) : '');
+const activeToken = (t: OwnerTokens, p: PrincipalId) => (p==='shared-judge'?'':p === 'reviewer' ? (reviewerConfigured(t) ? t.reviewer! : '') : coreConfigured(t) ? tokenOf(t, p) : '');
 
 /**
  * A usable setup: the owner/demo-peer rule holds, or only a valid reviewer token is set. Otherwise no owner session is
@@ -78,6 +80,7 @@ export function principalForToken(tokens: OwnerTokens, presented: unknown): Prin
 }
 
 export async function issueOwnerSession(secret: string, tokens: OwnerTokens, principal: PrincipalId, now = Date.now()): Promise<{token: string; session: OwnerSession}> {
+  if(!PRINCIPAL_IDS.includes(principal))throw Error('owner_principal_required');
   const session: OwnerSession = {sid: b64url(crypto.getRandomValues(new Uint8Array(16))), principal, ownerId: PRINCIPALS[principal].ownerId, exp: now + OWNER_SESSION_TTL_MS, tk: await tokenTag(secret, tokenOf(tokens, principal))};
   const body = b64url(new TextEncoder().encode(JSON.stringify(session)));
   return {token: body + '.' + (await sign(secret, body)), session};

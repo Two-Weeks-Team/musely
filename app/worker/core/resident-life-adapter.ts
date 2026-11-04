@@ -10,7 +10,7 @@ import {projectResidentPromises} from './resident-promises.ts';
 /** Respect the real scheduler's chosen resident. Never steal visitor priority or personal control. */
 export type ResidentOwnershipKind = 'resident'|'legacy'|'personal'|'unknown';
 export const knownResident = (id:string,kind:(id:string)=>ResidentOwnershipKind,includeOperatingResidents=false):boolean =>
-  hasActorHarness(id) && (includeOperatingResidents&&['04-ember','09-copper'].includes(id)||!Object.values(PRINCIPALS).some(p=>p.muses.includes(id))) && kind(id)==='resident';
+  hasActorHarness(id) && (includeOperatingResidents&&['04-ember','09-copper'].includes(id)||!Object.values(PRINCIPALS).some(p=>p.id!=='shared-judge'&&p.muses.includes(id))) && kind(id)==='resident';
 
 export function residentProposalForWorld(life:LifeState, world:WorldState, now:number,
   options:{enabled:boolean;residentTurnAllowed:boolean;includeOperatingResidents?:boolean;allowedPlaceIds:readonly string[];promiseLeadMs?:number;promiseGraceMs?:number;ownershipKind?:(id:string)=>ResidentOwnershipKind}):LifeProposal|null {
