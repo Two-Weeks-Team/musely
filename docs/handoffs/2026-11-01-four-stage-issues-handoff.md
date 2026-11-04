@@ -16,7 +16,7 @@
 
 ## 대상과 소유권
 
-- 실행 수신 탭: museion-renders 프로젝트/폴더 `~/museion-renders`, `web-terminal-3043583f-98c1-4641-9c88-403d07da933a`.
+- 실행 수신 탭: museion-renders 프로젝트/폴더 `~/museion-renders`, (Orca terminal handle).
 - 2026-11-01 발견한 수신 handle: `(Orca terminal handle)`. runtime 재시작 후에는 재발견한다.
 - 같은 프로젝트에 다른 Claude 탭이 이미 있다. 새 탭/claude -p를 만들거나 기존 탭을 닫지 않는다. 명시된 수신 탭만 사용한다.
 - 제품 저장소는 `Two-Weeks-Team/musely`, 로컬 `~/musely`다. 문서 전용 작업트리는 `~/orca/workspaces/musely/docs-four-stage-execution`, 브랜치 `docs/four-stage-execution`이다.

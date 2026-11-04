@@ -20,4 +20,4 @@ Not included (regenerable or local-only): `out/.tools/` (Python env with an ffmp
 `out/ember-frames/` (72 PNG frames; the MP4 and `out/ember-check/` remain), `*.blend1` backups,
 and browser-tool caches. The `norcal.osm.pbf` extract read by `map/extract_osm.py` was not in the original folder either.
 
-> Note: scripts in this record keep the absolute paths of the machine they were run on, written here as `/Users/you/…`. Point them at your own checkout before running.
+> Note: this folder is an archived run record, not a ready-to-run tool. Scripts keep the absolute paths of the machine they were run on, written here as the placeholder `/Users/you/…`, so they will not run as-is; point them at your own checkout first. `out/scripts/official_client.py` reads the `BLENDER_MCP` environment variable. Path cleanup covers the current text files only — earlier Git history and paths embedded in binary files (`.blend`, `.png`) are not rewritten.
