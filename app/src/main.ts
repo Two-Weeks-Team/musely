@@ -44,7 +44,7 @@ const kitLibrary=useKit?new MaterialLibrary('/character-kit/runtime/'):undefined
 let clock=makeClock(),lifeTime=0,last=performance.now(),selected=0,follow=false,tour=false,tourCamera=false,ownerDecision='pending',ready=false,lastUI=0;
 let mode:'story'|'world'=autoplay?'story':'world',storyResume=0,liveSelected='00-jolly';
 let liveViewAt:number|null=null,recordedFrame:RecordedFrame|null=null;
-let liveScene:ReturnType<typeof makeLiveScene>|null=null,pendingLive:{world:LiveWorld;events:readonly LiveEvent[]}|null=null;
+let liveScene:ReturnType<typeof makeLiveScene>|null=null,pendingLive:{world:LiveWorld;events:readonly LiveEvent[];observedAt:number}|null=null;
 const showingLive=()=>mode==='world'&&!cues.length&&!isolation.replay;
 const showingRecorded=()=>isolation.replay&&recordedFrame!==null;
 const showingScene=()=>showingLive()||showingRecorded();
@@ -143,12 +143,12 @@ map.on('mousemove',e=>{if(!ready)return;if(showingScene()){map.getCanvas().style
 bubbles=makeBubbles(map,i=>world?projected(world.muses[i].position.clone().add(new T.Vector3(0,.93,0))):{x:-100,y:-100});
 map.on('render',()=>{if(!ready)bubbles.update(0);if(!onlineMapReadyAtMs&&map.getSource('openmaptiles')&&map.isSourceLoaded('openmaptiles')&&map.queryRenderedFeatures().some(f=>f.source==='openmaptiles')){onlineMapReadyAtMs=performance.now();}});
 map.once('style.load',()=>{void Promise.race([kitLight,new Promise(r=>setTimeout(r,4000))]).then(addOnlineMap);});
-map.once('style.load',async()=>{try{world=await makeWorld(assetData.glb,assetData.sigils,useKit?'/character-kit/runtime/':null,kitLibrary,assetData.sourceHeight);liveScene=makeLiveScene(world,projected);if(pendingLive)liveScene.accept(pendingLive.world,pendingLive.events);if(recordedFrame)liveScene.setRecordedFrame(recordedFrame);map.addLayer(layer);statuses.push('assets parsed');void world.upgradeCharacters().then(()=>statuses.push('characters full detail'));}catch(e){console.error(e);errors.push(String(e));$('loading').textContent='The commons could not load. Please reopen this preview.';}});
+map.once('style.load',async()=>{try{world=await makeWorld(assetData.glb,assetData.sigils,useKit?'/character-kit/runtime/':null,kitLibrary,assetData.sourceHeight);liveScene=makeLiveScene(world,projected);if(pendingLive)liveScene.accept(pendingLive.world,pendingLive.events,pendingLive.observedAt);if(recordedFrame)liveScene.setRecordedFrame(recordedFrame);map.addLayer(layer);statuses.push('assets parsed');void world.upgradeCharacters().then(()=>statuses.push('characters full detail'));}catch(e){console.error(e);errors.push(String(e));$('loading').textContent='The commons could not load. Please reopen this preview.';}});
 setTimeout(()=>{if(!ready){$('loading').innerHTML='Your Muse is taking a little longer…<small>Please reopen this preview if the scene does not appear.</small>'; }},12000);
 // ?perf=1: on-device frame rate and render cost; ?dpr= compares pixel-ratio caps on one phone.
 const perf=mountPerf(()=>({drawCalls,triangles,canvas:map.getCanvas()}),ratio);
 // Live world surface (task 6): map pins, spotlight chip, feed, highlights, evidence, P1, autonomy, identity, location.
-const worldPanel=mountWorldPanel(map,{onWorld:(w,events)=>{pendingLive={world:w,events};liveWants=Object.fromEntries(w.muses.filter(m=>m.wants?.goal).map(m=>[m.id,{goal:m.wants!.goal,source:String(m.wants!.source)}]));liveScene?.accept(w,events);},onReturnLive:()=>setMode('world'),onSelect:selectLive,isLive:()=>mode==='world',paused:()=>mode==='world'&&clock.paused&&!cues.length});
+const worldPanel=mountWorldPanel(map,{onWorld:(w,events,observedAt)=>{pendingLive={world:w,events,observedAt};liveWants=Object.fromEntries(w.muses.filter(m=>m.wants?.goal).map(m=>[m.id,{goal:m.wants!.goal,source:String(m.wants!.source)}]));liveScene?.accept(w,events,observedAt);},onReturnLive:()=>setMode('world'),onSelect:selectLive,isLive:()=>mode==='world',paused:()=>mode==='world'&&clock.paused&&!cues.length});
 worldPanel.onReplayFrame(frame=>{recordedFrame=frame;liveScene?.setRecordedFrame(frame);updateUI();});
 // P-05: one continuous scene. Story (scripted) and live world are explicit modes you can switch between and back;
 // the selected Muse, its state and its source stay visible at every zoom; preview-flow item changes play on the

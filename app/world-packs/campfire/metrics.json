@@ -1,0 +1,15 @@
+{
+  "asset": "campfire-prototype",
+  "unit": "meter",
+  "blender_up": "Z",
+  "gltf_up": "Y",
+  "origin": "ground center",
+  "triangles": 972,
+  "objects": 44,
+  "materials": 5,
+  "integration": "not integrated",
+  "mobile_performance": "not measured",
+  "creative_source": "original procedural geometry; no third-party textures",
+  "animation": "five flame scale tracks; sparks animated by runtime binding",
+  "material_count_scope": "unique exported asset materials, excluding unused Blender defaults"
+}
