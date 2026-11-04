@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "id": "hq-belle-haven-authoring-v1",
+  "status": "draft-webgl-validation-blocked",
+  "runtimeEnabled": false,
+  "sourceCommit": "a31c9c9fb0d364f8e7ab8ec0fff2cfb647647620",
+  "originWgs84": [
+    -122.14991969950646,
+    37.48313116566372
+  ],
+  "unit": "metre",
+  "axes": {
+    "x": "east",
+    "y": "up",
+    "z": "south"
+  },
+  "geographicMeshRotationDeg": 0,
+  "authoredCommonsGridBearingDeg": 30,
+  "roads": {
+    "asset": "roads-preview.gltf",
+    "source": "overview.geojson",
+    "widthM": 3,
+    "widthStatus": "stylistic-estimate",
+    "navigable": false
+  },
+  "buildings": {
+    "status": "mapped-footprints-estimated-heights",
+    "assets": [
+      "region-lod0.glb",
+      "region-lod1.glb"
+    ],
+    "source": "detail.geojson.gz",
+    "surveyed": false,
+    "heightSource": "OpenMapTiles render_height; may be derived from levels or defaults, not surveyed",
+    "terrainElevation": "flat baseline; unknown"
+  },
+  "runtimePlaces": [],
+  "validation": {
+    "focusedTests": 20,
+    "gltfValidator": "0 errors / 0 warnings for both LODs",
+    "visualQA": "Blender wide/550m-near/70m-entry views; not browser FOV proof",
+    "mobilePerformance": "not-run",
+    "productCheck": "not-run",
+    "nodeIntegrationTests": 14,
+    "browserBundle": "built",
+    "webgl": "not-executed: Chromium socket() Operation not permitted"
+  },
+  "lodPolicy": {
+    "lod0": "under 500m suggested camera range, unmeasured",
+    "lod1": "over 500m suggested camera range, unmeasured",
+    "runtimeSwitching": "integration issue #134"
+  },
+  "integration": {
+    "entry": "integration/adapter.mjs",
+    "enabledByDefault": false,
+    "frame": "must reproject to actual Musely Mercator+commons grid; do not scene.add raw mesh",
+    "productionImported": false,
+    "entryCamera": {
+      "zoom": 21.2,
+      "pitch": 54,
+      "bearing": 12,
+      "autoplay": false
+    }
+  },
+  "stylizedDetails": {
+    "roofColors": "fictional art direction",
+    "windows": 690,
+    "treeMarkers": 78,
+    "treePositions": "fictional markers in mapped green polygons",
+    "roadWidths": "class-dependent estimates 1.8m\u201316m",
+    "commonsTreeClearanceM": 30
+  },
+  "verifiedCompatibleMain": "bd6d9d5bab9a6c3e5653ed1b195e76f16b67d21b"
+}

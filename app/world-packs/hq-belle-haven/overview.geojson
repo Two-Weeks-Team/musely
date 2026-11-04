@@ -1,0 +1,728 @@
+{
+  "type": "FeatureCollection",
+  "metadata": {
+    "source": "OpenFreeMap / OpenMapTiles / OpenStreetMap",
+    "purpose": "Embedded geographic overview while online map tiles arrive",
+    "captured": "2026-10-31",
+    "bounds": [
+      [
+        -122.75865904224176,
+        37.20056747308861
+      ],
+      [
+        -121.5413409577578,
+        37.93760915169915
+      ]
+    ],
+    "simplification": "Geographic overview, 5 decimal coordinates, 0.00012 degree line tolerance; online detail replaces this layer.",
+    "attribution": "OpenFreeMap / OpenMapTiles / \u00a9 OpenStreetMap contributors (ODbL)",
+    "selection": "Only transportation segments with both endpoints within 1500m; incomplete coarse preview, not navigable",
+    "upstreamCommit": "a31c9c9fb0d364f8e7ab8ec0fff2cfb647647620",
+    "upstreamPath": "app/assets/arrival-map.json"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14256,
+            37.48644
+          ],
+          [
+            -122.14239,
+            37.48644
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14256,
+            37.48657
+          ],
+          [
+            -122.14273,
+            37.48644
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.1369,
+            37.49175
+          ],
+          [
+            -122.14256,
+            37.48657
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14256,
+            37.4863
+          ],
+          [
+            -122.14256,
+            37.48644
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14273,
+            37.48644
+          ],
+          [
+            -122.14565,
+            37.48385
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14565,
+            37.48385
+          ],
+          [
+            -122.14806,
+            37.48262
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14806,
+            37.48262
+          ],
+          [
+            -122.1508,
+            37.48208
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.1508,
+            37.48208
+          ],
+          [
+            -122.15836,
+            37.48208
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.15836,
+            37.48208
+          ],
+          [
+            -122.16368,
+            37.48276
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.15921,
+            37.48194
+          ],
+          [
+            -122.14994,
+            37.48194
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14994,
+            37.48194
+          ],
+          [
+            -122.14668,
+            37.4829
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14668,
+            37.4829
+          ],
+          [
+            -122.14256,
+            37.4863
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.13964,
+            37.47949
+          ],
+          [
+            -122.13982,
+            37.48167
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.13982,
+            37.48167
+          ],
+          [
+            -122.14239,
+            37.4863
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14256,
+            37.4863
+          ],
+          [
+            -122.14153,
+            37.48535
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14153,
+            37.48535
+          ],
+          [
+            -122.13982,
+            37.48126
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.13982,
+            37.48126
+          ],
+          [
+            -122.13982,
+            37.47949
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.15321,
+            37.47513
+          ],
+          [
+            -122.15183,
+            37.47772
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.15321,
+            37.47554
+          ],
+          [
+            -122.15372,
+            37.47459
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.13947,
+            37.47595
+          ],
+          [
+            -122.13964,
+            37.47949
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.13982,
+            37.47949
+          ],
+          [
+            -122.13964,
+            37.47595
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14239,
+            37.4863
+          ],
+          [
+            -122.14256,
+            37.4863
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.15046,
+            37.48221
+          ],
+          [
+            -122.15029,
+            37.48194
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.15029,
+            37.48194
+          ],
+          [
+            -122.15097,
+            37.47963
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.15097,
+            37.47963
+          ],
+          [
+            -122.15321,
+            37.47554
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.15183,
+            37.47772
+          ],
+          [
+            -122.15046,
+            37.48044
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.15046,
+            37.48044
+          ],
+          [
+            -122.15029,
+            37.48194
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.15029,
+            37.48194
+          ],
+          [
+            -122.15029,
+            37.48221
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.15492,
+            37.47172
+          ],
+          [
+            -122.15321,
+            37.47513
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.15372,
+            37.47459
+          ],
+          [
+            -122.15509,
+            37.47118
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14256,
+            37.48616
+          ],
+          [
+            -122.14239,
+            37.48616
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14565,
+            37.48426
+          ],
+          [
+            -122.14548,
+            37.48399
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14514,
+            37.48426
+          ],
+          [
+            -122.14565,
+            37.48426
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14565,
+            37.48426
+          ],
+          [
+            -122.14582,
+            37.48426
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.14308,
+            37.48589
+          ],
+          [
+            -122.14256,
+            37.48616
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.15115,
+            37.48194
+          ],
+          [
+            -122.15029,
+            37.48167
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "kind": "transportation"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.15029,
+            37.48153
+          ],
+          [
+            -122.14994,
+            37.48194
+          ]
+        ]
+      }
+    }
+  ]
+}

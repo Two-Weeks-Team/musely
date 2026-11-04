@@ -1,0 +1,34 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> test
+> node --test integration.test.mjs
+
+(node:25) ExperimentalWarning: stripTypeScriptTypes is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ exact Three and MapLibre application versions; actual fixture provenance (3.335263ms)
+✔ disabled feature flag never parses bytes or mutates real scene (1.069146ms)
+✔ application geography and origin changes fail closed (0.967802ms)
+✔ all actual neighborhood places align with the live scene reference (10.897331ms)
+✔ app custom-layer matrix exactly matches candidate, no extra grid rotation (9.340153ms)
+✔ actual GLB LOD0 loads with exact Three, scene scale and coordinate agreement (779.230584ms)
+✔ actual GLB LOD1 loads with exact Three, scene scale and coordinate agreement (202.31479ms)
+✔ commons places retain authored scene positions, not geographic pack positions (1.177361ms)
+✔ concurrent enabled mounts permit exactly one owner (351.88796ms)
+✔ external buffer/image and data URI reject before loader can fetch (87.194934ms)
+✔ header and coordinate contract reject before parsing; failure releases mount guard (416.374333ms)
+✔ conversion failure disposes all parsed resources once and leaves no mount (504.88545ms)
+✔ partial parse rejection disposes late geometry and material dependencies (141.539349ms)
+✔ latest ordinary live entry camera matches main without implicitly starting autoplay (2.583308ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4552.58283
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.1
+npm notice To update run: npm install -g npm@12.2.1
+npm notice

@@ -1,0 +1,80 @@
+[
+  {
+    "lod": 0,
+    "uri": "region-lod0.glb",
+    "mimeType": "model/gltf-binary",
+    "validatorVersion": "2.0.0-dev.3.10",
+    "validatedAt": "2026-11-03T08:25:16.355Z",
+    "issues": {
+      "numErrors": 0,
+      "numWarnings": 0,
+      "numInfos": 0,
+      "numHints": 0,
+      "messages": [],
+      "truncated": false
+    },
+    "info": {
+      "version": "2.0",
+      "generator": "Musely World-01 deterministic region authoring",
+      "resources": [
+        {
+          "pointer": "/buffers/0",
+          "mimeType": "application/gltf-buffer",
+          "storage": "glb",
+          "byteLength": 2483616
+        }
+      ],
+      "animationCount": 0,
+      "materialCount": 12,
+      "hasMorphTargets": false,
+      "hasSkins": false,
+      "hasTextures": false,
+      "hasDefaultScene": true,
+      "drawCallCount": 12,
+      "totalVertexCount": 109104,
+      "totalTriangleCount": 97864,
+      "maxUVs": 0,
+      "maxInfluences": 0,
+      "maxAttributes": 1
+    }
+  },
+  {
+    "lod": 1,
+    "uri": "region-lod1.glb",
+    "mimeType": "model/gltf-binary",
+    "validatorVersion": "2.0.0-dev.3.10",
+    "validatedAt": "2026-11-03T08:25:16.388Z",
+    "issues": {
+      "numErrors": 0,
+      "numWarnings": 0,
+      "numInfos": 0,
+      "numHints": 0,
+      "messages": [],
+      "truncated": false
+    },
+    "info": {
+      "version": "2.0",
+      "generator": "Musely World-01 deterministic region authoring",
+      "resources": [
+        {
+          "pointer": "/buffers/0",
+          "mimeType": "application/gltf-buffer",
+          "storage": "glb",
+          "byteLength": 931500
+        }
+      ],
+      "animationCount": 0,
+      "materialCount": 8,
+      "hasMorphTargets": false,
+      "hasSkins": false,
+      "hasTextures": false,
+      "hasDefaultScene": true,
+      "drawCallCount": 8,
+      "totalVertexCount": 42995,
+      "totalTriangleCount": 34630,
+      "maxUVs": 0,
+      "maxInfluences": 0,
+      "maxAttributes": 1
+    }
+  }
+]

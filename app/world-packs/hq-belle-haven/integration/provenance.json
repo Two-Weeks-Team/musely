@@ -1,0 +1,40 @@
+{
+  "repository": "Two-Weeks-Team/musely",
+  "commit": "bd6d9d5bab9a6c3e5653ed1b195e76f16b67d21b",
+  "files": [
+    {
+      "path": "app/package.json",
+      "gitBlobSha": "e9b46a72d5e88b4bd2871299be47a41237983d87",
+      "url": "https://github.com/Two-Weeks-Team/musely/blob/bd6d9d5bab9a6c3e5653ed1b195e76f16b67d21b/app/package.json"
+    },
+    {
+      "path": "app/src/engine/places.ts",
+      "gitBlobSha": "9181d3f4800c8d3100d96c200a94fd6f8d77618d",
+      "url": "https://github.com/Two-Weeks-Team/musely/blob/bd6d9d5bab9a6c3e5653ed1b195e76f16b67d21b/app/src/engine/places.ts"
+    },
+    {
+      "path": "app/assets/geography.json",
+      "gitBlobSha": "97a2c2c19002bfb3a7e591c13d53283eeff3a02f",
+      "url": "https://github.com/Two-Weeks-Team/musely/blob/bd6d9d5bab9a6c3e5653ed1b195e76f16b67d21b/app/assets/geography.json"
+    },
+    {
+      "path": "app/assets/poi-commons.json",
+      "gitBlobSha": "5d72ebee6b68ac4ef58e0e147b8e6e178f1c7b9a",
+      "url": "https://github.com/Two-Weeks-Team/musely/blob/bd6d9d5bab9a6c3e5653ed1b195e76f16b67d21b/app/assets/poi-commons.json"
+    },
+    {
+      "path": "app/src/main.ts",
+      "gitBlobSha": "317ebfe74233b9f325e0c51e77acedb0e1850e67",
+      "url": "https://github.com/Two-Weeks-Team/musely/blob/bd6d9d5bab9a6c3e5653ed1b195e76f16b67d21b/app/src/main.ts"
+    },
+    {
+      "path": "app/src/ui/live-scene-core.ts",
+      "gitBlobSha": "e81b2082c451ae33b93717c0ed2054e7d95512df",
+      "url": "https://github.com/Two-Weeks-Team/musely/blob/bd6d9d5bab9a6c3e5653ed1b195e76f16b67d21b/app/src/ui/live-scene-core.ts"
+    }
+  ],
+  "note": "Exact upstream files, imports used locally only; source SHA checks guard drift.",
+  "verifiedCompatibleMain": "bd6d9d5bab9a6c3e5653ed1b195e76f16b67d21b",
+  "compatibilityCheckedAt": "2026-11-03T08:21:00Z",
+  "previousCommit": "a31c9c9fb0d364f8e7ab8ec0fff2cfb647647620"
+}
