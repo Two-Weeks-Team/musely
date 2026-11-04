@@ -1,3 +1,5 @@
+import {judgeAliasPage,judgeEntryFailure,wwwSessionOrigin,sessionPreflight,sessionCors,CANONICAL_JUDGE_ORIGIN,WWW_JUDGE_ORIGIN} from './core/judge-canonical.ts';
+import {judgeRoutes} from './core/judge-api.ts';
 import {isInstalledResidentId} from './core/world-life-controller.ts';
 import {serveCriticalAsset} from './asset-encoding.ts';
 // Musely main product Worker (musely.net): static assets plus the /api surface (direction v2, 15 and 20.2).
@@ -27,6 +29,7 @@ async function readJson(request: Request, limit: number) {
 }
 
 async function api(request: Request, env: Env, url: URL): Promise<Response> {
+  if(url.pathname.startsWith('/api/judge/'))return judgeRoutes(request,url,{secret:env.SESSION_SECRET??'',mode:env.JUDGE_MUSE_MODE,origins:ownerOrigins(env.PUBLIC_ORIGIN,env.ALLOWED_HOSTS),rateLimit:env.BURST?async key=>(await env.BURST!.limit({key})).success:undefined},world(env));
   const ip = request.headers.get('cf-connecting-ip') ?? '';
   // Separate namespace, cookie, proof and durable auth store. Never inferred from owner/judge/visitor cookies.
   if (url.pathname.startsWith('/api/personal/') || isPersonalCallback(url)) return personalRoutes(request, url, {
@@ -61,6 +64,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     if (!env.SESSION_SECRET) return json({error: 'not_configured'}, 503);
     let body: {turnstile?: string; judge?: string};
     try { body = await readJson(request, 4096); } catch { return json({error: 'bad_request'}, 400); }
+    if(wwwSessionOrigin(request,env.PUBLIC_ORIGIN)&&(!body||typeof body.judge!=='string'||!body.judge||body.judge.length>512))return json({error:'judge_link_invalid'},403);
     let tier: 'visitor' | 'judge';
     if (body.judge) {
       if (!env.JUDGE_TOKEN || !timingSafeEqual(body.judge, env.JUDGE_TOKEN)) return json({error: 'judge_link_invalid'}, 403);
@@ -158,6 +162,8 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     const events = demo[1] === 'impostor' ? await world(env).impostor(pick) : await world(env).injection(muses[(muses.indexOf(pick) + 3) % muses.length], pick, Math.floor(Math.random() * 3));
     return json({events});
   }
+
+  if(url.pathname==='/api/owner/notifications'&&request.method==='GET'&&session?.tier==='judge'&&!owner){const target=new URL(url);target.pathname='/api/judge/notifications';return judgeRoutes(request,target,{secret:env.SESSION_SECRET??'',mode:env.JUDGE_MUSE_MODE,origins:ownerOrigins(env.PUBLIC_ORIGIN,env.ALLOWED_HOSTS),rateLimit:env.BURST?async key=>(await env.BURST!.limit({key})).success:undefined},world(env));}
 
   // Connected Muse (direction v2, 7.2, 12.3, 13.1): owner location, agent keys, owner notifications.
   const connected = await connectedRoutes(request, url, {owner}, world(env), ownerCfg);
@@ -336,6 +342,7 @@ const redirectHome = (query: string) => new Response(null, {status: 302, headers
 export function canonicalRedirect(url: URL, publicOrigin: string): Response | null {
   const canonical = new URL(publicOrigin);
   if (url.host === canonical.host) return null;
+  if(url.searchParams.has('judge'))return canonical.origin===CANONICAL_JUDGE_ORIGIN&&url.origin===WWW_JUDGE_ORIGIN?judgeAliasPage():judgeEntryFailure(400);
   return new Response(null, {status: 308, headers: {location: canonical.origin + url.pathname + url.search, 'cache-control': 'public, max-age=3600'}});
 }
 
@@ -344,6 +351,7 @@ export default {
     const url = new URL(request.url);
     const moved = canonicalRedirect(url, env.PUBLIC_ORIGIN);
     if (moved) return moved;
+    if(url.pathname==='/judge-entry-failed')return judgeEntryFailure();
     const jwks = /^\/\.well-known\/jwks\/([A-Za-z0-9_-]{20,64})\.json$/.exec(url.pathname);
     if (jwks) { const set = await world(env).jwks(jwks[1]); return set ? json(set, 200, {'cache-control': 'public, max-age=300'}) : json({error: 'unknown_key'}, 404); }
     // Musely MCP server (Streamable HTTP: 2026-07-28, and 2025-11-25/2025-06-18/2025-03-26 with initialize) for custom connectors; auth is a Musely agent key.
@@ -356,11 +364,16 @@ export default {
       }
     }
     if (url.pathname.startsWith('/api/')) {
+      const sessionPath=url.pathname==='/api/session',www=sessionPath&&wwwSessionOrigin(request,env.PUBLIC_ORIGIN);
+      if(sessionPath&&request.method==='OPTIONS')return sessionPreflight(request,env.PUBLIC_ORIGIN);
+      const origin=request.headers.get('origin');
+      if(sessionPath&&request.method==='POST'&&origin&&origin!==new URL(env.PUBLIC_ORIGIN).origin&&!www)return json({error:'origin_not_allowed'},403);
       try {
-        return await api(request, env, url);
+        const response=await api(request,env,url);
+        return www&&request.method==='POST'?sessionCors(response):response;
       } catch (e) {
         console.error('api error', e);
-        return json({error: 'internal'}, 500);
+        const response=json({error:'internal'},500);return www&&request.method==='POST'?sessionCors(response):response;
       }
     }
     return serveCriticalAsset(request, env.ASSETS);

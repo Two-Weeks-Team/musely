@@ -70,7 +70,7 @@ export async function prepareResidentTrade(c:WantsModelContext,goalId:string,tas
  const no=(reason:string)=>({ok:false as const,reason});if(c.enabled!==true)return no('disabled');
  const before=structuredClone(c.world()),row=c.goals.load(before.worldId,goalId),now=c.now();
  const eligible=(s:WorldState,r:GoalRow|null)=>{if(!r||r.goal.status!=='active'||r.goal.createdAt>c.now()||r.goal.expiresAt<=c.now())return false;const id=r.goal.muse;
- return hasResidentHarness(id)&&!Object.values(PRINCIPALS).some(p=>p.muses.includes(id))&&c.ownership(id)==='resident'&&!s.paused?.[id]&&!isRuntimeControlled(s,id,c.now());};
+ return hasResidentHarness(id)&&!Object.values(PRINCIPALS).some(p=>p.id!=='shared-judge'&&p.muses.includes(id))&&c.ownership(id)==='resident'&&!s.paused?.[id]&&!isRuntimeControlled(s,id,c.now());};
  if(!eligible(before,row))return no('owner_authority_required');
  const actor=before.muses.find(m=>m.id===row!.goal.muse),task=before.inbox?.tasks.find(t=>t.id===taskId);
  if(!actor||actor.travel||actor.beat||!task||task.kind!=='trade'||task.status!=='pending'||task.awaiting!==actor.id||task.deadline<=now||!task.offer)return no('no_actionable_trade');

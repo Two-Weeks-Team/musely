@@ -1,7 +1,12 @@
+import {JUDGE_MUSE,judgeMuseEnabled} from '../src/engine/judge-muse.ts';
+import {JudgeMuseError} from './core/judge-api.ts';
+import {judgeInbox,judgeNotifications} from './core/judge-projection.ts';
+import type {Session} from './core/session.ts';
+import {ownsMuse} from './core/owner-session.ts';
 import {publicCatalogItems} from '../src/engine/items.ts';
 import {losePersonalClaim} from './core/personal-claim-loss.ts';
 import {PersonalClaims,type ClaimFlowBinding} from './core/personal-claims.ts';
-import {LegacyProfile,type LegacyOwnerProof} from './core/legacy-profile.ts';
+import {LegacyProfile,LegacyProfileError,type LegacyOwnerProof} from './core/legacy-profile.ts';
 import {PersonalAdoption} from './core/personal-adoption.ts';
 import {PersonalLegacy} from './core/personal-legacy.ts';
 import {ReceiptSnapshots} from './core/receipt-snapshots.ts';
@@ -36,7 +41,7 @@ import {resolveSocialStatus} from '../src/engine/social-status.ts';
 import type {WorldState} from '../src/engine/world.ts';
 import {PRINCIPALS} from './core/owner-session.ts';
 import type {PersonalOwnerIdentity} from './core/personal-owner-api.ts';
-type SocialBinding={kind:'legacy';proof:LegacyOwnerProof}|{kind:'personal';binding:PersonalBinding};
+type SocialBinding={kind:'judge';session:Session}|{kind:'legacy';proof:LegacyOwnerProof}|{kind:'personal';binding:PersonalBinding};
 import {CONNECTED_MS} from '../src/engine/inbox.ts';
 
 export class WorldDO extends DurableObject<Env> {
@@ -81,6 +86,8 @@ export class WorldDO extends DurableObject<Env> {
     });
     // The runtime commits inside the storage transaction; every other store shares the same SQL handle.
     const txSql = {exec: (q: string, ...b: unknown[]) => ctx.storage.sql.exec(q, ...b), transactionSync: <T>(fn: () => T) => ctx.storage.transactionSync(fn)};
+    const judgeEnabled=()=>judgeMuseEnabled(env.JUDGE_MUSE_MODE);
+    judgeEnabled();
     const active=()=>worldLifeEnabled(env.WORLD_LIFE_MODE);
     const perceptionMode=env.LOCAL_PERCEPTION_MODE;
     if(perceptionMode!==undefined&&perceptionMode!==''&&perceptionMode!=='off'&&perceptionMode!=='local-v1')throw Error('unsupported_LOCAL_PERCEPTION_MODE');
@@ -96,7 +103,7 @@ export class WorldDO extends DurableObject<Env> {
       try{return resolveSocialStatus(state,actorId,now,this.socialStatus?.override(actorId)??'do_not_disturb',valuesEnabled);}
       catch{return 'do_not_disturb' as const;}
     };
-    if(socialEnabled)hooks.socialStatus=currentSocialStatus;
+    if(socialEnabled||judgeEnabled())hooks.socialStatus=currentSocialStatus;
     const actionMode=env.RESIDENT_ACTIONS_MODE;
     if(actionMode!==undefined&&actionMode!==''&&actionMode!=='off'&&actionMode!=='action-v1')throw Error('unsupported_RESIDENT_ACTIONS_MODE');
     const actionsEnabled=actionMode==='action-v1',actionConcurrency=Number(env.RESIDENT_ACTION_MAX_CONCURRENT??'4');
@@ -110,13 +117,14 @@ export class WorldDO extends DurableObject<Env> {
     if(reflectionMode!==undefined&&reflectionMode!==''&&reflectionMode!=='off'&&reflectionMode!=='private-v1')throw Error('unsupported_RESIDENT_REFLECTION_MODE');
     const reflectionEnabled=reflectionMode==='private-v1';
     if(reflectionEnabled&&(!valuesEnabled||!active()||!residentBudget))throw Error('reflection_requires_confirmed_values_world_life_and_split_budget');
-    if(active())this.worldLife=new WorldLifeController(txSql,this.personalAuth.owners,this.trust,this.ledger,env.MODEL_API_KEY?{base:env.MODEL_BASE,key:env.MODEL_API_KEY,model:env.MODEL_ID,timeoutMs:8000}:null,muse=>this.personalWorld.ownerOf(muse),active);
+    if(active())this.worldLife=new WorldLifeController(txSql,this.personalAuth.owners,this.trust,this.ledger,env.MODEL_API_KEY?{base:env.MODEL_BASE,key:env.MODEL_API_KEY,model:env.MODEL_ID,timeoutMs:8000}:null,muse=>this.personalWorld.ownerOf(muse),active,judgeEnabled);
     this.runtime = new WorldRuntime(txSql, {
       ...this.worldLife?.runtimeOptions(),
+      judgeMuseEnabled:judgeEnabled,
       ...(perceptionEnabled?{perception:{enabled:true,publicCatalogItems,publicGatherings:(worldId:string,now:number)=>this.worldLife?.publicGatherings(worldId,now)??[]}}:{}),
       ...(valuesEnabled?{residentValuesEnabled:true}:{}),
       ...(reflectionEnabled?{residentReflection:{enabled:true,persona:residentPersona}}:{}),
-      ...(socialEnabled?{socialStatus:currentSocialStatus}:{}),
+      ...((socialEnabled||judgeEnabled())?{socialStatus:currentSocialStatus}:{}),
       ...(actionsEnabled?{residentActions:{enabled:true,maxConcurrent:actionConcurrency,jitterMs,fallbackRecovery:fallbackMode==='short-v1'},operatingResidentControl:(id:string,now:number)=>this.operatingResidentControl(id,now)}:{}),
       // Live decisions for a Muse whose delegation was revoked (and not re-issued) are discarded.
       delegationValid: museId => !this.trust.suspended(museId),
@@ -140,7 +148,7 @@ export class WorldDO extends DurableObject<Env> {
       commitProfile:(owner,input)=>{const profile=this.legacyProfile.patch(owner,input),commit=this.runtime.runLog.lastInput();if(!commit)throw new PersonalRegistryError('adoption_unavailable');const event=ctx.storage.sql.exec("SELECT seq,id FROM events WHERE run_id=? AND input_seq=? AND kind='legacy_profile_updated' AND muse=? ORDER BY seq DESC LIMIT 1",commit.runId,commit.seq,OWNER_SLOT).toArray()[0];if(!event)throw new PersonalRegistryError('adoption_unavailable');if(!commit.afterSnapshot&&commit.afterSnapshotError==='replay_storage_limit')this.receiptSnapshots.put({kind:'legacy_adoption',actorId:OWNER_SLOT,worldId:this.runtime.worldId,runId:commit.runId,inputSeq:commit.seq,eventId:String(event.id),afterHash:commit.afterHash},this.runtime.state());return{profile,commit:{worldId:this.runtime.worldId,runId:commit.runId,inputSeq:commit.seq,eventSeq:Number(event.seq),eventId:String(event.id),afterHash:commit.afterHash}};},
     });
     this.personalLegacy=new PersonalLegacy({storage:ctx.storage,auth:this.personalAuth,adoption:this.personalAdoption,runtime:this.runtime,trust:this.trust,connected:this.connected,legacyProfile:this.legacyProfile});
-    if(socialEnabled)this.socialStatus=new SocialStatusStore(ctx.storage,{residentValuesEnabled:valuesEnabled,world:()=>this.runtime.state(),authorize:(binding,muse,now)=>this.authorizeSocialStatus(binding,muse,now)});
+    if(socialEnabled||judgeEnabled())this.socialStatus=new SocialStatusStore(ctx.storage,{residentValuesEnabled:valuesEnabled,world:()=>this.runtime.state(),authorize:(binding,muse,now)=>this.authorizeSocialStatus(binding,muse,now)});
     ctx.blockConcurrencyWhile(async () => {
       this.ledger.init();
       this.personalAuth.init();
@@ -163,6 +171,7 @@ export class WorldDO extends DurableObject<Env> {
       this.connected.init();
       this.ritual.init();
       if(this.worldLife)await this.worldLife.ensureAgents(this.ownerRoot);else await this.trust.ensureAgents(this.ownerRoot);
+      if(judgeEnabled())await this.trust.ensureJudgeAgent();
       // The world's paused Muses always match the registry's revoked ones (C06).
       reconcilePaused({trust: this.trust, runtime: this.runtime});
       // The owner's Muse arrives with a small welcome gift so it has something to trade (logged as a rule).
@@ -188,6 +197,7 @@ export class WorldDO extends DurableObject<Env> {
   private socialStore(){if(!this.socialStatus)throw new SocialStatusError('social_status_unavailable');return this.socialStatus;}
   private authorizeSocialStatus(binding:SocialBinding,muse:string,now:number):boolean {
     try{
+      if(binding.kind==='judge'){this.guardJudge(binding.session,now);return muse===JUDGE_MUSE.id;}
       if(binding.kind==='legacy'){
         const p=binding.proof,principal=p&&PRINCIPALS[p.principal];
         return !!principal&&p.ownerId===principal.ownerId&&Number.isSafeInteger(p.exp)&&p.exp>now&&principal.muses.includes(muse);
@@ -195,6 +205,22 @@ export class WorldDO extends DurableObject<Env> {
       if(binding.kind!=='personal')return false;
       return this.personalProfileRead(binding.binding)?.actorId===muse;
     }catch{return false;}
+  }
+  private guardJudge(session:Session,now=Date.now()):void {
+    if(!judgeMuseEnabled(this.env.JUDGE_MUSE_MODE)||!this.runtime.state().muses.some(m=>m.id===JUDGE_MUSE.id))throw new JudgeMuseError('judge_muse_unavailable');
+    const p=PRINCIPALS['shared-judge'];
+    if(!session||session.tier!=='judge'||typeof session.sid!=='string'||!Number.isSafeInteger(session.exp)||session.exp<=now||!ownsMuse({sid:session.sid,principal:p.id,ownerId:p.ownerId,exp:session.exp,tk:''},JUDGE_MUSE.id))throw new JudgeMuseError('judge_session_required');
+  }
+  judgeCall(session:Session,operation:string,input?:unknown):unknown {
+    this.guardJudge(session);
+    switch(operation){
+      case 'muse':return{account:{kind:'judge',muse:JUDGE_MUSE.id,displayName:JUDGE_MUSE.name,appearanceId:JUDGE_MUSE.appearanceId,label:JUDGE_MUSE.label,expiresAt:session.exp}};
+      case 'social-status-get':return this.socialStore().get({kind:'judge',session},JUDGE_MUSE.id);
+      case 'social-status-set':return this.socialStore().set({kind:'judge',session},JUDGE_MUSE.id,input);
+      case 'inbox':return judgeInbox(this.ctx.storage.sql,this.runtime.state());
+      case 'notifications':return judgeNotifications(this.runtime.state());
+      default:throw new JudgeMuseError('judge_muse_unavailable');
+    }
   }
   ownerSocialStatusGet(owner:LegacyOwnerProof,muse:string){return this.socialStore().get({kind:'legacy',proof:owner},muse);}
   ownerSocialStatusSet(owner:LegacyOwnerProof,muse:string,input:unknown){return this.socialStore().set({kind:'legacy',proof:owner},muse,input);}
@@ -358,7 +384,13 @@ export class WorldDO extends DurableObject<Env> {
   revokeAgentKey(id: string) { return this.connected.revokeKey(id); }
   purgeAgentKey(id: string, by: string) { return this.connected.purgeKey(id, by); }
   // Reviewer Muse reset (G-08); the Worker route checks the reviewer session.
-  resetMuse(muse: string, by: string) { return resetMuse({trust: this.trust, runtime: this.runtime}, muse, by); }
+  resetMuse(muse: string, by: string,team?:LegacyOwnerProof) {
+    const authorize=muse===JUDGE_MUSE.id?()=>{
+      if(!team||!Number.isSafeInteger(team.exp)||team.exp<=Date.now())throw new LegacyProfileError('owner_session_required');
+      if(!['owner','reviewer'].includes(team.principal)||team.ownerId!==PRINCIPALS[team.principal]?.ownerId||by!==team.ownerId)throw new LegacyProfileError('not_your_muse');
+    }:undefined;
+    return resetMuse({trust:this.trust,runtime:this.runtime},muse,by,authorize);
+  }
   // Owner control (C06, I-02): revocation and the separate re-delegation; the Worker route checks the owner session.
   ownerRevoke(muse: string, by: string) { return revokeMuse({trust: this.trust, runtime: this.runtime}, muse, by); }
   ownerRedelegate(muse: string, by: string) { return redelegateMuse({trust: this.trust, runtime: this.runtime}, muse, by); }

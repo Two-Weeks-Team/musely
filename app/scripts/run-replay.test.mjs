@@ -40,8 +40,8 @@ test('exact historical goal/resident/combined and engine5/4/3/2 tuples play snap
  }
 });
 
-test('persona-English engine16 keeps the existing resident catalog version', () => {
- assert.deepEqual(currentVersions(), {schemaVersion:'run-log-2',engineVersion:'engine-16',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-ffb109917767'});
+test('shared Judge engine17 versions its separate actor catalog', () => {
+ assert.deepEqual(currentVersions(), {schemaVersion:'run-log-2',engineVersion:'engine-17',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-d42ba8247057'});
  const r=record();r.engineVersion='engine-6';rejects(r,'incompatible_record');
 });
 

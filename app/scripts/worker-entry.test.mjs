@@ -77,8 +77,9 @@ test('Worker entry: /api/agent-keys → /mcp handshake and tools → owner locat
   }
   const publicN = (await go('GET', '/api/owner/notifications')).body.notifications.find(n => n.kind === 'meetup_candidate');
   assert.ok(publicN && !JSON.stringify(publicN).includes(cand.time));
-  const judgeN = (await go('GET', '/api/owner/notifications', null, {cookie: judgeCookie})).body.notifications.find(n => n.kind === 'meetup_candidate');
-  assert.equal(judgeN.detail, undefined, 'the judge session no longer sees owner details');
+  const judgeN = await go('GET', '/api/owner/notifications', null, {cookie: judgeCookie});
+  assert.equal(judgeN.status,404,'with shared Judge OFF, a judge session cannot read another Muse notification summary');
+  assert.equal(judgeN.body.error,'judge_muse_unavailable');
   const ownerN = (await go('GET', '/api/owner/notifications', null, {cookie})).body.notifications.find(n => n.kind === 'meetup_candidate');
   assert.equal(ownerN.detail.candidates[0].time, cand.time, 'the owner session sees the details');
 

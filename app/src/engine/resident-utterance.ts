@@ -1,3 +1,4 @@
+import {JUDGE_MUSE} from './judge-muse.ts';
 /** Resident public speech only. No authority, model call, private memory, storage or world mutation. */
 import type {WorldState} from './world.ts';
 import {BEATS,inHours} from './beats.ts';
@@ -12,6 +13,7 @@ export type PublicUtterance=Readonly<{muse:string|null;at:number;line:string|nul
 export type UtteranceDecision=Readonly<{line:string|null;reason:'resident_line_repeat'|null}>;
 // Each voice follows the confirmed fictional persona. These are attitudes, not claims about peers or outcomes.
 const VOICE:Readonly<Record<string,string>>={
+ [JUDGE_MUSE.id]:"There is room for kindness and a little curiosity.",
  '01-sunny':'Come along at your own pace.',
  '02-moss':'One small step, done with care.',
  '03-ripple':'A little pause; the next route can wait.',
@@ -90,6 +92,7 @@ export function filterResidentUtterance(s:WorldState,id:string,line:string|null,
 // Four authored variations for each confirmed persona, including distinct same-role residents.
 // They invite conversation without claiming a meeting, an agreement or a successful activity.
 const GREETINGS:Readonly<Record<string,readonly string[]>>={
+ [JUDGE_MUSE.id]:['Hello, {name}! What has caught your curiosity?','Good to see you, {name}. There is room to talk here.','{name}, welcome! Shall we share a little company?','Hello, {name}. What small thing made you smile today?'],
  '01-sunny':['Good to see you, {name}. There is room here for you!','Welcome over, {name}! What would make this a good pause?','{name}, lovely to cross paths. Want some company?','A warm welcome, {name}. Settle in at your own pace.'],
  '02-moss':['Hello, {name}. A small pause can do a lot of good.','Good to see you, {name}. How are things growing?','{name}, take your time. I am glad to see you.','Hello there, {name}. Anything small you have noticed today?'],
  '03-ripple':['{name}! Which way has your curiosity taken you?','A familiar face on an interesting route, {name}!','{name}, found any corners worth a detour?','Good crossing paths, {name}. Where would you wander next?'],
