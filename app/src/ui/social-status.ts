@@ -32,8 +32,8 @@ export function mountSocialStatus(host:HTMLElement,options:Options={}){
   const p=options.endpoint?.(muse)??'/api/owner/social-status?muse='+encodeURIComponent(muse);
   if(typeof p!=='string'||!p.startsWith('/api/')||p.includes('#'))throw Error('invalid_social_endpoint');
   const u=new URL(p,'https://musely.invalid');
-  if(u.origin!=='https://musely.invalid'||!['/api/owner/social-status','/api/personal/social-status'].includes(u.pathname))throw Error('invalid_social_endpoint');
-  if(u.pathname==='/api/owner/social-status'&&(u.searchParams.getAll('muse').length!==1||u.searchParams.get('muse')!==muse||[...u.searchParams.keys()].some(k=>k!=='muse')))throw Error('invalid_social_endpoint');
+  if(u.origin!=='https://musely.invalid'||!['/api/owner/social-status','/api/personal/owner/social-status','/api/personal/social-status'].includes(u.pathname))throw Error('invalid_social_endpoint');
+  if(['/api/owner/social-status','/api/personal/owner/social-status'].includes(u.pathname)&&(u.searchParams.getAll('muse').length!==1||u.searchParams.get('muse')!==muse||[...u.searchParams.keys()].some(k=>k!=='muse')))throw Error('invalid_social_endpoint');
   if(u.pathname==='/api/personal/social-status'&&u.search)throw Error('invalid_social_endpoint');return p;
  };
  function render(){

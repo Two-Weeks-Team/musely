@@ -21,7 +21,7 @@ import {itemName as rawItemName, ITEMS, effectRule} from '../engine/items';
 import {MUSE_VARIANTS} from '../character-kit/catalog';
 import {createWorld, tick, TICK_MS, localClock} from '../engine/world';
 import {makeHooks} from '../engine/rules';
-import {ensureSession, sparkStatus} from '../live';
+import {ensureSession, sparkStatus,visitorFetch} from '../live';
 import {ritualCard} from './ritual';
 import {ownerControlCard, p0Text} from './identity';
 import {mountSocialStatus} from './social-status.ts';
@@ -35,6 +35,7 @@ import {EMPTY_FILTER, matchFilter, dayBound, type Filter} from './replay-core';
 import {sourceLabel, modelNote} from './source-label';
 import {taskCancelledText, envelopeFacts} from './evidence-text';
 import {mountLocationChip, deviceLocationCard} from './location-bar';
+import {personalOwnerAccess} from './personal-owner.ts';
 import {museLine, snapshotOf, publicLocationName, type OwnerLocationView} from './location-state';
 import {mountOwnerArea} from './area-map';
 import {liveFrames, scheduleCues, sceneToLngLat, inventorySummary, ownerOf, type LiveWorld, type LiveEvent} from './live-scene-core';
@@ -254,6 +255,14 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   let world: WorldView | null = null, events: Ev[] = [], tab = 'feed', hf: Filter = {...EMPTY_FILTER};
   let ownerInboxView: ReturnType<typeof ownerInboxCard> | null = null;
   let ownerSocialView:ReturnType<typeof mountSocialStatus>|null=null;
+  let ownerControlView:ReturnType<typeof ownerControlCard>|null=null,ownerPrivateView:HTMLElement|null=null;
+  personalOwnerAccess.subscribe(reason=>{
+    if(reason==='available'){if(panel.matches(':popover-open')&&tab==='location')void render();return;}
+    ownerInboxView?.setOwnerSession(null);ownerSocialView?.setVisible(false);void ownerSocialView?.syncOwner({authenticated:false,muse:null});
+    const social=panel.querySelector<HTMLElement>('#owner-social-status');if(social)social.hidden=true;
+    if(ownerPrivateView){ownerPrivateView.hidden=true;ownerPrivateView.replaceChildren();}
+    panel.querySelector('.location-owner-controls')?.remove();
+  });
   const pins = museMarkers(map, live.onSelect ?? (() => {}), live.isLive ?? (() => true));
 
   const stateCard = (heading: string, detail: string, retry: () => void) => {
@@ -449,7 +458,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     tabs.querySelectorAll('button').forEach(b => { const on = (b as HTMLElement).dataset.tab === tab; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
     if (tab !== 'replay') leaveReplay();
     else if (replayView && body.querySelector('.replay-view')) return; // already on screen: keep playing
-    ownerInboxView?.dispose(); ownerInboxView = null;ownerSocialView?.dispose();ownerSocialView=null;
+    ownerInboxView?.dispose(); ownerInboxView = null;ownerSocialView?.dispose();ownerSocialView=null;ownerControlView?.dispose();ownerControlView=null;ownerPrivateView=null;
     body.replaceChildren();
     if (tab === 'feed') {
       const evH = health.get('events'), s = resState(evH, events.length > 0);
@@ -536,23 +545,26 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
       f(uiText('Verified at'), claim?.record?.verifiedAt ? new Date(claim.record.verifiedAt).toISOString() : null); f(uiText('Note'), claim?.record?.note); }
     card.append(dl);
     if (claim?.record?.permalink) { const a = el('a', '', uiText('Open the claim post on Threads ↗')); a.href = claim.record.permalink; a.target = '_blank'; a.rel = 'noopener'; card.append(a); }
-    card.append(el('p', 'muted', uiText('This record proves Kim Sejun\'s Muse only. A new visitor\'s session is not claimed by it. While the Threads app is in development mode, only accounts added as testers can connect: message @combba82 on Threads with your Threads handle to be added. Not a tester? You can still try the owner-direct path: post the claim text from your own Threads account and share the link (a visual check, not machine-verified).')));
+    card.append(el('p', 'muted', uiText('이 기록은 ComBba의 기존 확인 기록이에요. 주인 기능은 ComBba에 연결한 개인 Threads 계정으로 로그인한 뒤 사용할 수 있어요. 새 방문자는 문에서 자기 Muse를 준비할 수 있어요. / This is ComBba’s existing verification record. Owner controls use the personal Threads account connected to ComBba. New visitors can prepare their own Muse at the door.')));
     if (!r.ok) { const b = el('button', 'secondary', uiText('Retry')); b.type = 'button'; b.onclick = () => void render(); card.append(b); }
     const actions = el('div', 'id-actions');
     const result = el('p', 'muted'); result.setAttribute('role', 'status');
-    const run = (label: string, path: string, text?: (j: any) => string) => { const b = el('button', 'secondary', label); b.type = 'button'; b.onclick = async () => {
+    const run = (label: string, path: string, text?: (j: any) => string, fetcher:typeof fetch=visitorFetch) => { const b = el('button', 'secondary', label); b.type = 'button'; b.onclick = async () => {
       b.disabled = true; result.textContent = uiText('Running a real check…');
-      try { const st = await sparkStatus(); if (st) await ensureSession(st); const r = await fetch(path, {method: 'POST'}); const j = await r.json(); result.textContent = r.ok ? (text ? text(j) : uiText('Done. The result is in the Feed and Highlights.')) : uiText`Not allowed: ${j.error ?? r.status}`; await refresh(); }
+      try { const st = await sparkStatus(); if (st) await ensureSession(st); const r = await fetcher(path, {method: 'POST'}); const j = await r.json(); result.textContent = r.ok ? (text ? text(j) : uiText('Done. The result is in the Feed and Highlights.')) : uiText`Not allowed: ${j.error ?? r.status}`; await refresh(); }
       catch (err) { result.textContent = uiText('Could not run: ') + (err as Error).message; }
       b.disabled = false; }; return b; };
-    actions.append(run(uiText('Try an impostor'), '/api/demo/impostor'), run(uiText('Try an instruction injection'), '/api/demo/injection'), run(uiText('Run P0 step (judge link or owner)'), '/api/p0/run', p0Text));
-    const inbox = ownerInboxCard(() => void refresh(), (u, i) => fetch(u, i), () => !stale() && !isolation.replay && panel.matches(':popover-open'), shortName);
+    actions.append(run(uiText('Run P0 step (judge link or owner)'),'/api/p0/run',p0Text),run(uiText('Try an impostor'), '/api/demo/impostor'), run(uiText('Try an instruction injection'), '/api/demo/injection'));
+    const ownerChecks=el('div','id-actions');ownerChecks.append(run(uiText('Run P0 step (judge link or owner)'),'/api/p0/run',p0Text,personalOwnerAccess.fetch));
+    const inbox = ownerInboxCard(() => void refresh(), (u, i) => personalOwnerAccess.fetch(u, i), () => !stale() && !isolation.replay && panel.matches(':popover-open'), shortName);
     ownerInboxView = inbox;
     const socialDetails=el('details'),socialHost=el('div');socialDetails.id='owner-social-status';socialDetails.hidden=true;socialDetails.append(el('summary','',uiText('내 Muse 상태 / My Muse status')),socialHost);
-    const social=mountSocialStatus(socialHost,{onSessionLost:()=>{inbox.setOwnerSession(null);socialDetails.hidden=true;}});ownerSocialView=social;social.setVisible(false);
+    const social=mountSocialStatus(socialHost,{fetcher:personalOwnerAccess.fetch,endpoint:muse=>'/api/personal/owner/social-status?muse='+encodeURIComponent(muse),onSessionLost:()=>{inbox.setOwnerSession(null);socialDetails.hidden=true;}});ownerSocialView=social;social.setVisible(false);
     socialDetails.addEventListener('toggle',()=>social.setVisible(socialDetails.open&&!stale()&&!isolation.replay&&panel.matches(':popover-open')));
-    const control=ownerControlCard(()=>void refresh(),shortName,owner=>{inbox.setOwnerSession(owner);if(stale())return;socialDetails.hidden=!owner;social.setVisible(!!owner&&socialDetails.open&&!isolation.replay&&panel.matches(':popover-open'));void social.syncOwner({authenticated:!!owner,muse:owner?.muses[0]??null});});
-    body.append(card, control, socialDetails, inbox, ritualCard(() => void refresh()), el('h4', '', uiText('Real checks you can trigger')), el('p', 'muted', uiText('These run the same verification code as the world. The event records that a button triggered it. P0 is two runs: the first commits a signed trade, then the owner revokes (owner control above), then the second run re-sends the same job and is refused. P0 itself never revokes or delegates again.')), actions, result);
+    let ownerActive=false;const publicRitual=ritualCard(()=>void refresh(),{active:()=>!ownerActive&&!stale()&&!isolation.replay});
+    const ownerOnly=el('div','personal-owner-only');ownerOnly.hidden=true;ownerPrivateView=ownerOnly;
+    const control=ownerControlCard(()=>void refresh(),id=>id==='00-jolly'?publicLocationName(id,world):shortName(id),owner=>{inbox.setOwnerSession(owner);if(stale())return;ownerActive=!!owner;publicRitual.hidden=!!owner;socialDetails.hidden=!owner;social.setVisible(!!owner&&socialDetails.open&&!isolation.replay&&panel.matches(':popover-open'));void social.syncOwner({authenticated:!!owner,muse:owner?.muses[0]??null});ownerOnly.hidden=!owner;if(!owner){ownerOnly.replaceChildren();return;}if(!ownerOnly.childNodes.length)ownerOnly.append(ritualCard(()=>void refresh(),{fetcher:personalOwnerAccess.fetch,active:()=>ownerActive&&!stale()&&!isolation.replay}),el('h4','',uiText('Real checks you can trigger')),el('p','muted',uiText('These run the same verification code as the world. The event records that a button triggered it. P0 is two runs: the first commits a signed trade, then the owner revokes (owner control above), then the second run re-sends the same job and is refused. P0 itself never revokes or delegates again.')),ownerChecks);});ownerControlView=control;
+    body.append(card,publicRitual,control,socialDetails,inbox,ownerOnly,el('h4','',uiText('Real checks you can trigger')),actions,result);
   }
 
   // The Location tab is drawn again after a move and on every poll while it is open: an unsent preset/verify choice and the last
@@ -582,6 +594,8 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     f(uiText('Muse의 이동 / Muse’s trip'), museLine(snapshotOf(loc, r.at), Date.now(), locationName));
     f(uiText('순간이동 / Teleport'), `${uiText('가상 동네 인증과 Taxi Token 1개가 필요해요. / Requires virtual-world verification and one Taxi Token')}${held === null ? '' : uiText` (${held} available)`}.`);
     box.append(dl, el('p', 'muted', uiText('Muse는 자기 동네 안을 자유롭게 걸어요. 다른 동네로 갈 때는 버스나 조건에 맞는 택시를 이용해요. / Your Muse walks freely within its neighborhood and uses the bus or an eligible taxi for other neighborhoods.')));
+    const ownerCheck=await personalOwnerAccess.fetch('/api/owner/session',{method:'GET'});if(stale())return;
+    if(!ownerCheck.ok){box.append(el('p','muted',uiText('ComBba에 연결한 Threads 계정으로 로그인하면 주인 기능을 사용할 수 있어요. / Sign in with the Threads account connected to ComBba to use its owner controls.')));return;}
     const presets = (loc.presets ?? []) as {id: string; label: string}[];
     if (presets.length) {
       const lab = el('label', 'fld'); lab.append(el('span', '', uiText('가상 동네 / Virtual neighborhood')));
@@ -594,13 +608,13 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
       const msg = el('p', 'muted', locMsg); msg.setAttribute('role', 'status');
       sel.onchange = verify.onchange = () => { locDraft = {preset: sel.value, verify: verify.checked}; };
       go.onclick = async () => {
-        const res = await fetchJson<{follow?: {mode?: string; etaMs?: number} | null}>('/api/owner/location', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({source: 'virtual', preset: sel.value, verify: verify.checked})});
+        const res = await fetchJson<{follow?: {mode?: string; etaMs?: number} | null}>('/api/personal/owner/location', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({source: 'virtual', preset: sel.value, verify: verify.checked})}, personalOwnerAccess.fetch);
         const mode = res.ok ? res.data.follow?.mode : null, mins = res.ok && res.data.follow?.etaMs ? uiText`, about ${Math.max(1, Math.round(res.data.follow.etaMs / 60_000))} min` : '';
         msg.textContent = locMsg = res.ok ? (mode === 'paused' ? uiText('동네를 바꿨어요. 활동이 일시정지된 Muse는 다시 허용할 때까지 머물러요. / Neighborhood updated. Your paused Muse stays put until you allow activity again.') : mode === 'teleport' ? uiText('동네로 순간이동했어요. Taxi Token 1개를 썼어요. / Teleported using one Taxi Token.') : mode === 'roaming' ? uiText('동네를 바꿨어요. Muse는 이 안을 자유롭게 걸을 수 있어요. / Neighborhood updated. Your Muse can roam here.') : mode === 'bus' ? uiText`Your Muse is taking the bus${mins}.` : uiText`Your Muse is walking${mins}. Watch the map.`) : /HTTP 40[13]/.test(res.error) ? uiText('동네 설정을 바꾸려면 Identity에서 주인으로 로그인하세요. / Sign in as the owner in Identity to change this setting.') : uiText('동네를 바꾸지 못했어요. 가상 동네 둘러보기는 계속할 수 있어요. / Could not update the neighborhood. You can still explore a virtual neighborhood.');
         if (res.ok) locDraft = null;
         await refresh();
       };
-      box.append(lab, vlab, go, msg);
+      const controls=el('div','location-owner-controls');controls.append(lab,vlab,go,msg);box.append(controls);
     }
   }
 

@@ -5,7 +5,12 @@ import type {ActorProfile} from '../identity/participant.ts';
 
 export type PersonalEntryPhase = 'observer' | 'authenticated' | 'pending' | 'registered' | 'error';
 export type PersonalEntryState = {phase: PersonalEntryPhase; authenticated: boolean | null; profile: ActorProfile | null; busy: boolean; joined: false};
-export type PersonalEntryOptions = {authResult?: string;connectionManaged?: boolean; onState?: (state: PersonalEntryState) => void; fetcher?: typeof fetch; navigate?: (url: string) => void | Promise<void>; newOperationId?: () => string; now?: () => number};
+export type PersonalEntryOptions = {authResult?: string;onWatch?:()=>void;connectionManaged?: boolean; onState?: (state: PersonalEntryState) => void; fetcher?: typeof fetch; navigate?: (url: string) => void | Promise<void>; newOperationId?: () => string; now?: () => number};
+// Only classify presence: provider query values never become UI text or diagnostics.
+export function personalAuthResult(query?:URLSearchParams):string|undefined {
+ if(query?.has('error')||query?.has('error_reason'))return 'failed';
+ const result=query?.get('personal');return ['authenticated','failed','declined'].includes(result??'')?result!:undefined;
+}
 class Failure extends Error { readonly status: number; readonly invalid: boolean; constructor(status = 0, invalid = false) { super('personal_entry_unavailable'); this.status = status; this.invalid = invalid; } }
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const exact = (v: unknown, keys: string[]): v is Record<string, unknown> => object(v) && Object.keys(v).length === keys.length && keys.every(k => Object.hasOwn(v, k));
@@ -137,17 +142,19 @@ export function mountPersonalEntry(host: HTMLElement, options: PersonalEntryOpti
   if (disposed) return;
   root.replaceChildren(); root.dataset.state = phase; root.dataset.joined = 'false';
   const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; return n; };
-  root.append(element('h2', uiText('1 · 내 Muse의 이름과 모습 / Your Muse’s name and appearance')));
+  root.append(element('h2', authenticated === true ? uiText('1 · 내 Muse의 이름과 모습 / Your Muse’s name and appearance') : uiText('1 · Threads로 로그인 / 1 · Sign in with Threads')));
+  if (authenticated !== true) root.append(element('p', uiText('로그인 → 이름과 모습 선택 → 내 Muse가 세계에 입장 / Sign in → pick a name and look → your Muse joins the world')));
   if (options.authResult === 'failed' || options.authResult === 'declined') {
    const notice = element('p', uiText(options.authResult === 'failed' ? 'Threads 연결을 마치지 못했어요. 잠시 뒤 다시 시도하거나 계속 관람해 주세요. / We could not finish connecting Threads. Try again later, or keep watching.' : 'Threads 연결이 취소됐어요. 계속 관람하거나 준비되면 로그인해 주세요. / Threads sign-in was cancelled. Keep watching, or sign in when you are ready.'));
    notice.setAttribute('role', 'alert'); root.append(notice);
+   const watch=element('button',uiText('계속 둘러보기 / Keep watching'));watch.type='button';watch.className='link-button';watch.dataset.action='watch';watch.onclick=()=>options.onWatch?.();root.append(watch);
   }
   const detail=element('details');detail.className='entry-advanced';detail.append(element('summary',uiText('이름·모습·로그인 관리 / Manage name, appearance and sign-in')));
   const normal=profile?(options.connectionManaged?uiText('이름과 모습이 준비됐어요. 연결과 입장은 아래에서 확인해 주세요. / Your name and appearance are ready. Check connection and entry below.'):uiText('이름과 모습이 준비됐어요. 아직 세계 입장 완료는 아니에요. / Your name and appearance are ready. Your Muse has not entered the world yet.')):uiText('내 Muse의 공개 이름과 모습을 골라 주세요. 관람은 로그인 없이도 할 수 있어요. / Choose your Muse’s name and appearance. You can keep watching without signing in.');
   const status = element('p', message||normal); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); root.append(status);
   const button = (action: string, text: string, fn: () => Promise<void>) => { const b = element('button', text); b.type = 'button'; b.className = 'secondary'; b.dataset.action = action; b.disabled = busy || externalBusy; b.onclick = fn; return b; };
   if (profile && authenticated) root.append(element('p', profile.displayName));
-  if (authenticated === false) {const b=button('login',uiText('Threads로 로그인 / Sign in with Threads'),login);b.className='primary';root.append(b);}
+  if (authenticated === false) {const beta=element('p',uiText('베타: 초대받은 분만 로그인할 수 있어요. 관람은 누구나 바로 할 수 있어요. / Beta: sign-in is open to invited testers. Watching is open to everyone.'));beta.className='muted personal-beta-notice';root.append(beta);const b=button('login',uiText('Threads로 로그인 / Sign in with Threads'),login);b.className='primary';root.append(b);}
   if (authenticated === true && !needsRefresh) {
    const f = element('form'), label = element('label', uiText('공개할 Muse 이름 / Public Muse name')), input = element('input'); input.type = 'text'; input.name = 'displayName'; input.value = draft.displayName; input.maxLength = 80; input.disabled = busy || externalBusy; input.setAttribute('aria-label', uiText('공개할 Muse 이름 / Public Muse name')); label.append(input);
    const appearanceLabel = element('label', uiText('모습 / Appearance')), select = element('select'); select.name = 'appearanceId'; select.setAttribute('aria-label', uiText('모습 / Appearance')); select.disabled = busy || externalBusy;

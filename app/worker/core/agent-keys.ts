@@ -24,10 +24,12 @@ export class AgentKeys {
   }
 
   /** Issues a new key. The returned `key` is the only copy; it is never stored or logged. */
-  async issue(muse: string, now: number): Promise<{key: string; row: AgentKeyRow}> {
+  async issue(muse: string, now: number, commit?:(insert:()=>void,row:AgentKeyRow)=>void): Promise<{key: string; row: AgentKeyRow}> {
     const key = KEY_PREFIX + b64url(crypto.getRandomValues(new Uint8Array(32)));
     const id = 'ak_' + b64url(crypto.getRandomValues(new Uint8Array(9)));
-    this.sql.exec('INSERT INTO agent_keys (id, hash, muse, signer_kind, created_at) VALUES (?, ?, ?, ?, ?)', id, await hashAgentKey(key), muse, 'server_custodial', now);
+    const hash=await hashAgentKey(key),row:AgentKeyRow={id,muse,signerKind:'server_custodial',createdAt:now,lastUsedAt:null,revokedAt:null};
+    const insert=()=>{this.sql.exec('INSERT INTO agent_keys (id, hash, muse, signer_kind, created_at) VALUES (?, ?, ?, ?, ?)', id, hash, muse, 'server_custodial', now);};
+    if(commit)commit(insert,row);else insert();
     return {key, row: this.byId(id)!};
   }
 

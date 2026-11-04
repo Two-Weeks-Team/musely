@@ -66,7 +66,7 @@ test('session refusal is final for that invocation and does not expose provider 
  const f=await fixture(t);globalThis.fetch=async()=>({ok:false,status:403});const p=f.start();await f.loaded();f.renders[0].opts.callback('synthetic-not-a-real-token');await assert.rejects(p,/Could not confirm/);assert.equal(f.card(),undefined);assert.equal(f.removed.length,1);
 });
 test('judge path remains separate and sends one existing judge POST without an SDK card',async t=>{
- const f=await fixture(t);globalThis.location.search='?judge=synthetic-judge';const answer=await f.ensureSession(f.status);assert.equal(answer.tier,'visitor');assert.equal(f.doc.head.children.length,0);assert.equal(f.card(),undefined);assert.equal(f.calls.length,1);assert.deepEqual(JSON.parse(f.calls[0].init.body),{judge:'synthetic-judge'});
+ const f=await fixture(t);globalThis.location.search='?judge=synthetic-judge';globalThis.fetch=async(path,init)=>{f.calls.push({path,init});return{ok:true,json:async()=>({tier:'judge',expiresAt:Date.now()+60000,quota:{perHour:120,usedThisHour:0}})};};const answer=await f.ensureSession(f.status);assert.equal(answer.tier,'judge');assert.equal(f.doc.head.children.length,0);assert.equal(f.card(),undefined);assert.equal(f.calls.length,1);assert.deepEqual(JSON.parse(f.calls[0].init.body),{judge:'synthetic-judge'});
 });
 test('a stalled SDK script times out and its late load cannot render a widget',async t=>{
  const f=await fixture(t),p=f.start(),lateLoad=f.doc.head.children.at(-1).onload;await f.timeout();await assert.rejects(p,/timed out/);lateLoad();await flush();assert.equal(f.renders.length,0);assert.equal(f.calls.length,0);assert.equal(f.card(),undefined);

@@ -10,6 +10,16 @@ A read-only authenticated form capture at **2026-11-02T12:45:16.657614+00:00** c
 
 Capture SHA-256: `ba508566504af4f492bff7ebd06ce2377e98fa1715c01c9be6c252597e75263d`. Raw authenticated material stays outside this public-facing package; account names, private values, internal workspace paths and source preparation records are not copied here. [Sanitized 101-control coverage](submission/form-coverage.json) records every control's handling without field values. The [field draft](SUBMISSION_DRAFT.md) provides product text and leaves personal answers unset. This later capture resolves the older anonymous unknowns about repository/video requirements; the older dated verification record is preserved.
 
+## Entry routes to provide
+
+| Route | Entry and audience | Verification boundary |
+|---|---|---|
+| Public observation | https://musely.net — no login needed to watch | Verify in a new signed-out profile on the final release |
+| Judge experience | `https://musely.net/?judge=<JUDGE_LINK_TOKEN>` → shared dedicated Judge Muse connected as Your Muse (judge account); private submission-form field only | Real token must never enter public docs, README, video, screenshots, events or logs. Verify immediate exchange/scrub, `Judge session · 120 live actions/hour`, camera welcome and P0 guidance, dedicated-Muse card and public-status change in fresh en-US/ko-KR desktop/mobile profiles before updating the Judge entry gate. Judge reads must exclude ComBba and other Muses’ private data; token/key issuance, delegation revocation, reset and speech-by-proxy are unavailable |
+| Own Muse connection | Share a Threads handle with the team → receive tester invitation → accept in Threads Settings → Account → Website permissions → Invites → Sign in with Threads | Beta sign-in requires invitation acceptance. Watching stays open to everyone. Meta app review for unrestricted login is GTM work, not part of this release |
+
+The judge URL above deliberately contains a placeholder. Preparing these routes neither publishes a real link nor marks any gate complete.
+
 ## Completion gates
 
 | Gate | Current state | Evidence required before marking complete |
@@ -17,7 +27,7 @@ Capture SHA-256: `ba508566504af4f492bff7ebd06ce2377e98fa1715c01c9be6c252597e7526
 | Exact final release | **Identity recorded; whole S3 acceptance pending** | Retain source/deploy/config and scoped acceptance records; D01/D03 and dependent outputs are not inferred from a fixed build |
 | Public repository | **Public access not established: anonymous draft check HTTP 404; final visibility UNVERIFIED** | Exact repository URL, explicit publication authorization, observed public visibility and logged-out source access |
 | Three-minute video | **Private180.000s media reviewed; public delivery team-owned/UNVERIFIED** | Retain5400frames/content hash and original footage/run/event links. Public URL/upload/anonymous access require the team's separate action; no platform duration tolerance is inferred |
-| Judge entry and fallback | **UNVERIFIED on final release** | Logged-out judge URL, source labels and behavior when a model/budget/record is unavailable; no staged scene relabelled live |
+| Judge entry and fallback | **UNVERIFIED on final release** | Fresh profile: immediate judge-session exchange and address-bar token removal on success/failure; judge tier/quota badge and Watch → Camera → P0 guidance; invalid-link notice with continued watching; source labels and model/budget/record fallback. Keep the token out of evidence. Local fixtures alone do not close this gate |
 | P0/P1/P2 and six measures | **Recorded scoped proofs available; D02 prerequisite acceptance pending** | Revocation cause isolated with fresh IDs/nonces; controlled item-only comparison; scene→event→run/input→request or verdict; raw recount with scope/sample/missing notes |
 | Recorded replay | **I11 technical evidence retained; actual C01 reclosure23:41:10Z recorded** | Actual supported record versions, public-only state, backward seek/end/return live, zero new model/MCP/write/reward effects |
 | Device and operational evidence | **D04 numeric/physical scope evidenced; D01/D03 acceptance pending** | Preserve approved Pro/S23 references, local physical-client pair vs production cold entry,8vs10 budgets and source identities;4h/fallback/quota and whole prerequisites remain separate |

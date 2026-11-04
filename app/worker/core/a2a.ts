@@ -15,6 +15,7 @@ import type {WorldState, Hooks} from '../../src/engine/world.ts';
 import {executeCommand, signCommand, quietRefusal, type PeerCheck} from './commands.ts';
 
 export type Ctx = {trust: Trust; runtime: WorldRuntime; ownerRoot: JsonWebKey | null; ownerClaimed: boolean; baseUrl: string; now?: () => number;
+  authorize?:()=>string|null;
   /** Who asked for a P0 run: a judge link session (C03 actorOrigin trial) or the owner (no C03 value; `data.actor` only). */
   requestedBy?: 'judge' | 'owner'};
 /** The actor fields of a request a session asked for (P0, demo checks); a resident's rule answer carries none (system). */
@@ -37,10 +38,12 @@ export function findOwnerTrade(s: WorldState, revoked: (museId: string) => boole
 
 /** Sends a signed trade proposal from the owner's Muse; it commits only through executeCommand. */
 export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; plan?: {partner: string; give: string; want: string}}) {
+  c.authorize?.();
   const s = c.runtime.state();
   const plan = opts.plan ?? findOwnerTrade(s, id => c.trust.suspended(id), nowOf(c));
   if (!plan) return {ok: false as const, reason: 'no_valid_trade_now'};
-  const exec = opts.stale ? await c.trust.storedExecutor(OWNER_SLOT, 'server_custodial') : await c.trust.executor(OWNER_SLOT, 'server_custodial', c.ownerRoot);
+  const exec = opts.stale ? await c.trust.storedExecutor(OWNER_SLOT, 'server_custodial') : await c.trust.executor(OWNER_SLOT, 'server_custodial', c.ownerRoot,()=>{c.authorize?.();});
+  c.authorize?.();
   const content = {kind: 'propose_trade', give: plan.give, want: plan.want, to: plan.partner};
   if (!exec) {
     // Revoked before any executor was issued: nothing can be signed, so the request is refused at the delegation step.
@@ -69,7 +72,7 @@ export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; 
       emit({at, source: 'rule', kind: 'trade_completed', muse: OWNER_SLOT, other: plan.partner, place: a.place, line: `Traded ${itemName(plan.give)} ↔ ${itemName(plan.want)}`, data: {give: plan.give, want: plan.want, receipt: true, envelope: evidence, accepted_by: plan.partner, accepted_via: 'rule'}, tags: ['ability_change', 'p0_trade']});
       return {ok: true};
     },
-    refused: (_st, emit, r, at) => emit({at, source: 'live', kind: quietRefusal(r.code) ? 'command_refused' : 'a2a_refused', muse: OWNER_SLOT, other: plan.partner, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, envelope: evidence, content, label: opts.label, ...requester(c.requestedBy)}, tags: quietRefusal(r.code) ? [] : ['p0_refused']}),
+    refused: (_st, emit, r, at) => {c.authorize?.();emit({at, source: 'live', kind: quietRefusal(r.code) ? 'command_refused' : 'a2a_refused', muse: OWNER_SLOT, other: plan.partner, line: `Refused: ${r.code.replace(/_/g, ' ')}`, data: {step: r.step, reason: r.code, envelope: evidence, content, label: opts.label, ...requester(c.requestedBy)}, tags: quietRefusal(r.code) ? [] : ['p0_refused']});},
   }, nowOf(c));
   // ok means the trade really committed; a verified request the rules turned down is `rejected:<rule>`.
   const committed = out.result.ok && !out.refused;
@@ -108,23 +111,27 @@ function lastP0Job(c: Ctx): {partner: string; give: string; want: string} | null
 }
 
 // ---------- credentials before side effects (C04) ----------
-type CredCtx = Pick<Ctx, 'trust' | 'ownerRoot' | 'ownerClaimed' | 'baseUrl'>;
+type CredCtx = Pick<Ctx, 'trust' | 'ownerRoot' | 'ownerClaimed' | 'baseUrl' | 'authorize'>;
 export type Credential = {museId: string; agentId: string; claim?: CurrentPersonalClaim; claimBound?: boolean; card: CardCheck; delegation: {ok: true; ref: string; version: number; exp: number; signer_kind: string} | {ok: false; reason: string}};
 /** Scopes a meeting can exercise: the greeting and the trade that may follow. */
 const MEETING_SCOPES = ['walk_and_greet', 'world_item_trade'];
 
 /** One Muse's Agent Card against its trusted root and its server_heartbeat delegation, both checked for real. */
 export async function museCredential(c: CredCtx, museId: string, now: number,requiredScopes:readonly string[]=MEETING_SCOPES, requireClaim = true): Promise<Credential | null> {
+  const authorize=()=>{if(c.authorize?.())throw Error('credential_authorization_failed');};
+  authorize();
   const agent = c.trust.agentByMuse(museId);
   if (!agent) return null;
   // Bind proof before asynchronous Card/delegation crypto; a later grant cannot upgrade this check.
   const claim = agent.kind === 'personal' && requireClaim ? c.trust.personalClaim(museId,now) : undefined;
   let card: CardCheck, claimBound = false;
   try { const signed = await c.trust.card(museId, c.ownerRoot, {claimed: c.ownerClaimed, fingerprint: null}, c.baseUrl); card = await verifyCard(signed, agent.rootJwk); claimBound = !!claim?.claimed && signed['x-musely'].owner_claimed && signed['x-musely'].claim_fingerprint === claim.fingerprint; } catch { card = {ok: false, reason: 'unsigned'}; }
+  authorize();
   const base = {museId, agentId: agent.agentId, card, ...(claim ? {claim,claimBound} : {})};
   // While revoked, no new delegation is issued: the stored one is checked and fails.
   let exec: Executor | null = null;
-  try { exec = c.trust.suspended(museId) ? await c.trust.storedExecutor(museId, 'server_heartbeat') : await c.trust.executor(museId,agent.kind==='personal'?'server_custodial':'server_heartbeat', c.ownerRoot); } catch { exec = null; }
+  try { exec = c.trust.suspended(museId) ? await c.trust.storedExecutor(museId, 'server_heartbeat') : await c.trust.executor(museId,agent.kind==='personal'?'server_custodial':'server_heartbeat', c.ownerRoot,authorize); } catch { exec = null; }
+  authorize();
   if (!exec) return {...base, delegation: {ok: false, reason: c.trust.suspended(museId) ? 'delegation_revoked' : 'no_delegation'}};
   const d = await verifyDelegation(exec.delegation, agent.rootJwk), ref = await delegationRef(exec.delegation);
   const reason = !d || d.agent_id !== agent.agentId ? 'bad_delegation_signature'

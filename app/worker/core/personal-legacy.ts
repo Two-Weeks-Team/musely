@@ -33,6 +33,8 @@ export class PersonalLegacy{
  private guard(b:PersonalBinding){if(!b||!this.d.auth.active(b.sidDigest,b.proof,b.appId,this.now()))return fail('personal_session_required');}
  private owner(owner:LegacyOwnerProof|null){return !!owner&&owner.principal==='owner'&&owner.ownerId===PRINCIPALS.owner.ownerId&&time(owner.exp)&&owner.exp>this.now();}
  private own(b:PersonalBinding):LegacyAdoptionResult{this.guard(b);if(!this.d.adoption.hasPrincipal(b.proof.principalId))return fail('adoption_required');const result=this.d.adoption.get(b);if(!result)return fail('adoption_required');return result;}
+ /** Current dual-proof alias, independent of paused/joined status so its owner can recover delegation. */
+ authorizeOwner(binding:PersonalBinding){return this.own(binding);}
  private actor(p:ActorProfile){return{id:ACTOR,displayName:p.displayName,appearanceId:p.appearanceId,profileRevision:p.revision};}
  private unavailable(profile:ActorProfile):PersonalLegacyView{return{available:false,adopted:true,profile,connection:{connected:false,lastSeenAt:null},entry:{state:'viewing',actor:this.actor(profile),attempt:null,receipt:null,reason:'unavailable'}};}
  /** Actual source refs and snapshot, not the alias's assertion alone. No browser/provider/MCP action. */

@@ -35,6 +35,7 @@ import {SocialStatusStore,SocialStatusError} from './core/social-status.ts';
 import {resolveSocialStatus} from '../src/engine/social-status.ts';
 import type {WorldState} from '../src/engine/world.ts';
 import {PRINCIPALS} from './core/owner-session.ts';
+import type {PersonalOwnerIdentity} from './core/personal-owner-api.ts';
 type SocialBinding={kind:'legacy';proof:LegacyOwnerProof}|{kind:'personal';binding:PersonalBinding};
 import {CONNECTED_MS} from '../src/engine/inbox.ts';
 
@@ -224,6 +225,49 @@ export class WorldDO extends DurableObject<Env> {
   async personalLegacyAdopt(binding:PersonalBinding,ownerCookie:string|null,input:unknown){this.guardAdoptionBinding(binding);const owner=await this.adoptionOwner(ownerCookie);this.guardAdoptionBinding(binding);if(!owner)throw new PersonalRegistryError('owner_session_required');return this.personalLegacy.adopt(binding,owner,input);}
   personalLegacyInbox(binding:PersonalBinding){this.guardAdoptionBinding(binding);return this.personalLegacy.inbox(binding);}
   personalLegacyApprove(binding:PersonalBinding,input:unknown){this.guardAdoptionBinding(binding);return this.personalLegacy.approve(binding,input);}
+  personalOwnerSession(binding:PersonalBinding):PersonalOwnerIdentity|null {
+    this.guardAdoptionBinding(binding);
+    try{const adopted=this.personalLegacy.authorizeOwner(binding);return{session:{sid:binding.sidDigest,principal:'owner',ownerId:PRINCIPALS.owner.ownerId,exp:binding.proof.expiresAt,tk:''},displayName:adopted.profile.displayName};}
+    catch(e){if(e&&typeof e==='object'&&'code'in e&&e.code==='adoption_required')return null;throw e;}
+  }
+  async personalOwnerCall(binding:PersonalBinding,operation:string,args:unknown[]):Promise<unknown> {
+    const b={...binding,proof:{...binding.proof}};
+    const guard=()=>{const identity=this.personalOwnerSession(b);if(!identity)throw new PersonalRegistryError('adoption_required');return identity;};
+    const identity=guard(),proof={principal:'owner' as const,ownerId:PRINCIPALS.owner.ownerId,exp:identity.session.exp};
+    const muse=(value:unknown)=>{if(value!==OWNER_SLOT)throw new PersonalRegistryError('not_your_muse');};
+    const key=(id:unknown)=>{if(typeof id!=='string'||this.connected.keyMuse(id)!==OWNER_SLOT)throw new PersonalRegistryError('not_your_muse');return id;};
+    const sync=(fn:()=>unknown)=>this.ctx.storage.transactionSync(()=>{guard();const out=fn();guard();return out;});
+    switch(operation){
+      case 'delegationStatus':return this.delegationStatus([OWNER_SLOT]);
+      case 'ownerLocation':return this.ownerLocation();
+      case 'setOwnerLocation':return sync(()=>this.setOwnerLocation(args[0]));
+      case 'legacyProfileGet':return this.legacyProfileGet(proof);
+      case 'legacyProfilePatch':return sync(()=>this.legacyProfilePatch(proof,args[1]));
+      case 'ownerSocialStatusGet':muse(args[1]);return this.personalSocialStatusGet(b);
+      case 'ownerSocialStatusSet':muse(args[1]);return sync(()=>this.personalSocialStatusSet(b,args[2]));
+      case 'ownerInbox':return this.ownerInbox([OWNER_SLOT]);
+      case 'ownerNotifications':return this.ownerNotifications([OWNER_SLOT]);
+      case 'taskParticipants':{const task=this.taskParticipants(String(args[0]));return task&&(task.from===OWNER_SLOT||task.to===OWNER_SLOT)?task:null;}
+      case 'ownerApprove':{const input=args[0] as DecisionInput;muse(input?.muse);return sync(()=>this.ownerApprove({...input,ownerId:proof.ownerId}));}
+      case 'agentKeyMuse':{const id=String(args[0]);return this.connected.keyMuse(id)===OWNER_SLOT?OWNER_SLOT:null;}
+      case 'listAgentKeys':muse(args[0]);return this.listAgentKeys(OWNER_SLOT);
+      case 'issueAgentKey':muse(args[0]);return this.connected.issueKey(OWNER_SLOT,()=>{guard();});
+      case 'revokeAgentKey':return sync(()=>this.revokeAgentKey(key(args[0])));
+      case 'purgeAgentKey':return sync(()=>this.purgeAgentKey(key(args[0]),proof.ownerId));
+      case 'ownerRevoke':muse(args[0]);return revokeMuse({trust:this.trust,runtime:this.runtime,authorize:()=>{guard();}},OWNER_SLOT,proof.ownerId);
+      case 'ownerRedelegate':muse(args[0]);return sync(()=>this.ownerRedelegate(OWNER_SLOT,proof.ownerId));
+      case 'resetMuse':throw new PersonalRegistryError('not_your_muse');
+      case 'p0':return runP0({...this.ctx_(),requestedBy:'owner',authorize:()=>{guard();return null;}});
+      case 'setClaim':return sync(()=>this.setClaim('owner-muse',args[0] as ClaimRecord));
+      case 'status':return{budget:this.status(),owner:{principal:'owner',expiresAt:identity.session.exp}};
+      case 'ritualStart':return sync(()=>this.ritualStart(String(args[0])));
+      case 'ritualTake':return sync(()=>this.ritualTake(String(args[0]),String(args[1])));
+      case 'ritualOwnerRecord':return this.ritualOwnerRecord();
+      case 'ritualRecord':return sync(()=>this.ritualRecord(args[0] as RitualRecord,String(args[1]),true));
+      case 'ritualReserve':{const r=args[0] as ReserveRequest;if(r.action!=='challenge'||r.tier!=='visitor')throw new PersonalRegistryError('not_your_muse');return sync(()=>this.reserve(r));}
+      default:throw new PersonalRegistryError('owner_unavailable');
+    }
+  }
   personalAuthBegin(flow: PersonalFlow) { return this.personalAuth.begin(flow); }
   personalAuthConsume(binding: Pick<PersonalFlow, 'stateDigest' | 'browserDigest' | 'appId' | 'redirectUri'>, now: number) { return this.personalAuth.consume(binding, now); }
   personalAuthFailure(binding: Parameters<PersonalAuthStore['fail']>[0], detail: Parameters<PersonalAuthStore['fail']>[1], now: number) { return this.personalAuth.fail(binding, detail, now); }

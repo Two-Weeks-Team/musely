@@ -53,7 +53,7 @@ test('the sentences say what is happening and never claim a connection that is n
 test('this module makes no request of its own besides the one fetch in fetchJson', async () => {
   const {readFileSync} = await import('node:fs');
   const src = readFileSync(new URL('../src/ui/resource-state.ts', import.meta.url), 'utf8');
-  assert.equal((src.match(/\bfetch\(/g) ?? []).length, 1);
+  const original=globalThis.fetch;let calls=0;globalThis.fetch=()=>{throw Error('must use the supplied personal transport');};try{const r=await fetchJson('/api/personal/owner/location',{method:'POST'},async(path,init)=>{calls++;assert.equal(path,'/api/personal/owner/location');assert.equal(init.method,'POST');return{ok:true,json:async()=>({follow:null})};});assert.equal(calls,1);assert.equal(r.ok,true);}finally{globalThis.fetch=original;}
   assert.ok(!/document\.|window\./.test(src), 'pure module: no DOM');
 });
 
@@ -84,5 +84,5 @@ test('judge link: the replay refuses a session request before the token is taken
   const {readFileSync} = await import('node:fs');
   const src = readFileSync(new URL('../src/live.ts', import.meta.url), 'utf8');
   assert.ok(src.indexOf('if (isolation.replay) throw new Error(BLOCKED)') > 0);
-  assert.ok(src.indexOf('if (isolation.replay) throw new Error(BLOCKED)') < src.indexOf("params.delete('judge')"), 'the refusal comes first');
+  const ensure=src.slice(src.indexOf('export async function ensureSession'));assert.ok(ensure.indexOf('if (isolation.replay) throw new Error(BLOCKED)') < ensure.indexOf('beginJudgeSession()'), 'replay refuses before consuming or awaiting a judge bootstrap');
 });
