@@ -1,3 +1,5 @@
+import {compactResidentContext} from './resident-recovery-context.ts';
+import {residentCallJitterMs} from './resident-call-jitter.ts';
 import {finalizeResidentSpeech} from '../../src/engine/world.ts';
 import type {PublicUtterance} from '../../src/engine/resident-utterance.ts';
 import {setResidentFrozen} from '../../src/engine/world.ts';
@@ -67,7 +69,9 @@ export type SpotlightRequestResult = {ok: true; muse: string; position: number; 
 export type RuntimeOptions = {
   residentValuesEnabled?:boolean;
   residentReflection?:{enabled:boolean;persona:(id:string)=>string};
-  residentActions?:{enabled:boolean;maxConcurrent?:number};
+  residentActions?:{enabled:boolean;maxConcurrent?:number;jitterMs?:number;fallbackRecovery?:boolean};
+  /** Trusted test seam; production uses a bounded timer, never a new scheduler. */
+  waitForResidentCall?:(ms:number)=>Promise<void>;
   operatingResidentControl?:OperatingResidentControl;
   socialStatus?:(world:WorldState,actorId:string,now:number)=>SocialStatus;
   /** Split budget controls priorities; the old shared-pool floor applies only in legacy mode. */
@@ -122,6 +126,8 @@ export class WorldRuntime {
   readonly pending = new Set<string>();
   private slotsInUse = 0;
   /** Model calls running now (never above MAX_MODEL_CALLS). */
+  private callHealth={since:Date.now(),waiting:0,active:0,peak:0,attempts:0,timeouts:0,latencies:[] as number[]};
+  modelExecutionStatus(){const h=this.callHealth,sorted=[...h.latencies].sort((a,b)=>a-b),q=(p:number)=>sorted.length?sorted[Math.ceil(sorted.length*p)-1]:null;return{scope:'spotlight and encounter modelCall path since this instance started',excludedKinds:['reflection','resident_trade'],since:h.since,occupiedModelSlots:this.modelCallsInFlight,inFlight:h.active,jitterWaiting:h.waiting,peakConcurrent:h.peak,slotLimit:this.opts.residentActions?.enabled?this.opts.residentActions.maxConcurrent??4:MAX_MODEL_CALLS,attempts:h.attempts,timeouts:h.timeouts,timeoutRatio:h.attempts?h.timeouts/h.attempts:0,recentLatencyMs:{samples:sorted.length,p50:q(.5),p95:q(.95)}};}
   get modelCallsInFlight() { return this.slotsInUse; }
   /**
    * Takes one model-call slot, or null when MAX_MODEL_CALLS are already running (the caller falls back at once).
@@ -149,7 +155,7 @@ export class WorldRuntime {
   private engineHooks(now?:number):Hooks {
     const h=this.opts.hooks??{},p=this.opts.residentGoals;
     if(p?.enabled===true&&!this.ownsResidentGoalStore(p.goals))throw Error('resident goal storage mismatch');
-    return {...h,...(this.residentSpeechEnabled()?{residentValuesEnabled:true,...(now!==undefined?{residentSpeechHistory:this.residentSpeechHistory(now)}:{})}:{}),canProposeTrade:(s,a,b,g,w,at)=>{
+    return {...h,...(this.opts.residentActions?.fallbackRecovery?{residentFallbackRecovery:true}:{}),...(this.residentSpeechEnabled()?{residentValuesEnabled:true,...(now!==undefined?{residentSpeechHistory:this.residentSpeechHistory(now)}:{})}:{}),canProposeTrade:(s,a,b,g,w,at)=>{
       // This main pending-claim constraint applies even with Life mode disabled.
       // A trusted current-claim hook must explicitly authorize personal participation.
       // Prefix alone neither grants authority nor permanently rejects a verified claim.
@@ -663,16 +669,27 @@ export class WorldRuntime {
     const release = this.modelSlot();
     if (!release) return {ok: false, reason: 'concurrency_limit'};
     try {
+      const jitter=this.opts.residentActions?.enabled?residentCallJitterMs(id,this.opts.residentActions.jitterMs??0):0;
+      if(jitter){this.callHealth.waiting++;try{await(this.opts.waitForResidentCall?.(jitter)??new Promise<void>(resolve=>setTimeout(resolve,jitter)));}finally{this.callHealth.waiting--;}
+        const current=this.state(),at=(this.opts.publicationNow??Date.now)();
+        if(this.opts.residentActions?.enabled!==true||this.modelPriorityBlock(current,String(input.muse),at)||current.paused?.[String(input.muse)]||this.opts.delegationValid?.(String(input.muse))===false)return{ok:false,reason:'authority_changed_during_jitter'};
+      }
       const signalWorld=activity&&this.opts.socialStatus?this.state():null,signalAt=signalWorld?(this.opts.publicationNow??Date.now)():0;
       const signalledInput=signalWorld?{...input,public_availability:signalWorld.muses.map(m=>({actor_id:m.id,status:this.statusOf(signalWorld,m.id,signalAt)}))}:input;
       const modelInput=this.opts.residentValuesEnabled===true?{...signalledInput,residentValuesEnabled:true}:signalledInput;
-      const messages = activity?activityMessages(modelInput,residentContext):withResidentContext(buildMessages(action, modelInput),residentContext);
+      const selectedContext=this.opts.residentActions?.fallbackRecovery?compactResidentContext(residentContext):residentContext;
+      const messages = activity?activityMessages(modelInput,selectedContext):withResidentContext(buildMessages(action, modelInput),selectedContext);
       const personalPeer=action==='encounter'&&(input.other==='00-jolly'||typeof input.other==='string'&&this.opts.residentLife?.ownershipKind(input.other)==='personal');
       const res = this.opts.ledger.reserve({id, tier: 'world', session: 'world', ip: '', action, maxCostUsd: maxCostUsd(action, messages),...(this.opts.residentBudgetEnabled?{residentKind:residentKindFor(action,personalPeer)}:{})});
       if (!res.ok) return {ok: false, reason: res.reason};
       // Reserved before (a retried tick after a crash): that call was already made or paid for; never call twice.
       if (res.existing) return {ok: false, reason: 'already_reserved'};
-      const result = await callModel({...model, key: model.key}, action, messages,activity?RESIDENT_ACTIVITY_SCHEMA:undefined);
+      const health=this.callHealth;health.attempts++;health.active++;health.peak=Math.max(health.peak,health.active);
+      let result:Awaited<ReturnType<typeof callModel>>;
+      try{result=await callModel({...model,key:model.key},action,messages,activity?RESIDENT_ACTIVITY_SCHEMA:undefined);}
+      finally{health.active--;}
+      if(!result.ok&&result.kind==='timeout')health.timeouts++;
+      if(Number.isFinite(result.latencyMs)){health.latencies.push(result.latencyMs);if(health.latencies.length>128)health.latencies.shift();}
       if (!result.ok) { this.opts.ledger.settle(id, failureCostUsd(result), result.kind === 'timeout' ? 'timeout' : 'error'); return {ok: false, reason: result.kind}; }
       const problem = activity?checkActivityOutput(input,result.output):checkOutput(action, input, result.output);
       this.opts.ledger.settle(id, actualCostUsd(result.usage), problem ? 'rejected' : 'live');

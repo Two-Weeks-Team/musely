@@ -66,3 +66,11 @@ test('generic rest accepts no destination but a selected activity cannot disguis
  const x=boot(t,{activityOutput:{decision:'rest',target_place:'',duration_minutes:60}});await x.runtime.heartbeat(NOW);assert.equal(muse(x).beat?.id,'resident_stay');assert.equal(muse(x).beat.endsAt,NOW+60*60000);
  for(const target_place of ['Unknown Place']){const y=boot(t,{actor:'06-ink',activityOutput:{decision:'recommend_book',target_place}});await y.runtime.heartbeat(NOW);assert.equal(muse(y).beat,null);assert.equal(muse(y).travel,null);assert.equal(y.runtime.runLog.lastInput().input.residentActions.turns[0].used,false);assert.ok(y.runtime.events().some(e=>e.kind==='decision_rejected'));}
 });
+
+test('opt-in bulk timeout recovery commits short RULE actions for every eligible resident',async t=>{
+ const x=boot(t,{roster:true,control:()=> 'resident',onCall:()=>new Promise(()=>{})});
+ x.runtime.commitExternal(NOW,'bulk-ready',s=>{for(const m of s.muses){if(m.id==='00-jolly'){m.controlMode='personal';(s.paused??={})[m.id]={at:NOW,version:1,by:'fixture'};continue;}delete s.paused?.[m.id];m.place='commons:cafe';m.beat=null;m.travel=null;m.intent=null;}});
+ const runtime=new WorldRuntime(x.sql,{...x.options,hooks:{residentValuesEnabled:true,residentFallbackRecovery:true}});runtime.init(NOW);await runtime.heartbeat(NOW);const residents=runtime.state().muses.filter(m=>m.id!=='00-jolly');assert.equal(residents.length,26);
+ for(const m of residents){assert.ok(m.travel||m.beat,'timeout must have a real action for '+m.id);const e=x.runtime.events().find(e=>e.muse===m.id&&['beat','depart'].includes(e.kind)&&e.at===NOW);assert.equal(e?.source,'rule');if(m.beat)assert.ok(m.beat.endsAt>=NOW+5*60000&&m.beat.endsAt<=NOW+10*60000);}
+ const fallback=x.runtime.recentOfKind('resident_activity_fallback',40);assert.ok(fallback.some(e=>e.data.reason==='timeout'));assert.equal(fallback.length,26);t.diagnostic(JSON.stringify({eligible:residents.length,depart:residents.filter(m=>m.travel).length,beat:residents.filter(m=>m.beat).length,timeout:fallback.filter(e=>e.data.reason==='timeout').length,concurrency:fallback.filter(e=>e.data.reason==='concurrency_limit').length}));assert.equal(x.runtime.state().muses[0].controlMode,'personal');
+});
