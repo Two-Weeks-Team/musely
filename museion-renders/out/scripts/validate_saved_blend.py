@@ -1,7 +1,7 @@
 import bpy,json
 from pathlib import Path
 from mathutils import Vector
-OUT=Path('/Users/kimsejun/museion-renders/out')
+OUT=Path('/Users/you/museion-renders/out')
 expected={'01 • Campfire':233,'02 • Ember split':279,'03 • Cold open':249}
 assert len(bpy.data.scenes)==7,list(bpy.data.scenes.keys())
 for name,count in expected.items():assert len(bpy.data.scenes[name].objects)==count

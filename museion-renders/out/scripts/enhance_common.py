@@ -1,7 +1,7 @@
 import bpy, math, random, json, traceback, time
 from pathlib import Path
 from mathutils import Vector, Matrix
-OUT=Path('/Users/kimsejun/museion-renders/out')
+OUT=Path('/Users/you/museion-renders/out')
 R=Vector((9,-8,0)).normalized()
 B=Vector((-8,-9,0)).normalized()
 U=-R
@@ -72,7 +72,7 @@ def clone_scene(source,name):
         s.compositing_node_group=s.compositing_node_group.copy()
         for n in s.compositing_node_group.nodes:
             if n.bl_idname=='CompositorNodeRLayers':n.scene=s
-    s['Canonical source']='/Users/kimsejun/museion-renders/museion-cafe.blend :: '+source.name
+    s['Canonical source']='/Users/you/museion-renders/museion-cafe.blend :: '+source.name
     s['Method']='Blender Lab official MCP 1.0.3 / 127.0.0.1:9877'
     return s
 

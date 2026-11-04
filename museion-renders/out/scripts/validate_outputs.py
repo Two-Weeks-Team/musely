@@ -1,7 +1,7 @@
 from pathlib import Path
 import hashlib,json
 from PIL import Image,ImageStat
-root=Path('/Users/kimsejun/museion-renders');out=root/'out';report={'originals_preserved':True,'stills':[]}
+root=Path('/Users/you/museion-renders');out=root/'out';report={'originals_preserved':True,'stills':[]}
 hashes=json.loads((out/'original-hashes.json').read_text())
 for name,sha in hashes.items():assert hashlib.sha256((root/name).read_bytes()).hexdigest()==sha,('Original changed',name)
 for name in ['flame-hero.png','avatar-variants.png','diorama-hero-v2.png']:

@@ -2,7 +2,7 @@
   "originals_preserved": true,
   "stills": [
     {
-      "path": "/Users/kimsejun/museion-renders/out/flame-hero.png",
+      "path": "/Users/you/museion-renders/out/flame-hero.png",
       "size": [
         1920,
         1080
@@ -11,7 +11,7 @@
       "sha256": "e01a99f875c330d7ec37189faa7c02595169e8c9f421cea0a37f8c40e5a398ef"
     },
     {
-      "path": "/Users/kimsejun/museion-renders/out/avatar-variants.png",
+      "path": "/Users/you/museion-renders/out/avatar-variants.png",
       "size": [
         1920,
         1080
@@ -20,7 +20,7 @@
       "sha256": "0326cf03f398c8ff013ba3e4dc088146eea14862f46f5cf3d0f0f524ba05c28f"
     },
     {
-      "path": "/Users/kimsejun/museion-renders/out/diorama-hero-v2.png",
+      "path": "/Users/you/museion-renders/out/diorama-hero-v2.png",
       "size": [
         1920,
         1080
@@ -30,7 +30,7 @@
     }
   ],
   "saved_blend_readback": {
-    "path": "/Users/kimsejun/museion-renders/out/museion-enhanced.blend",
+    "path": "/Users/you/museion-renders/out/museion-enhanced.blend",
     "status": "PASS",
     "scenes": [
       "01 • Campfire",

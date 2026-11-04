@@ -1,5 +1,5 @@
 {
-  "filepath": "/Users/kimsejun/museion-renders/museion-cafe.blend",
+  "filepath": "/Users/you/museion-renders/museion-cafe.blend",
   "dirty": false,
   "scenes": [
     {
@@ -25,7 +25,7 @@
         "Phone targets": "[[-0.8894170522689819, 0.7905929684638977, 1.0799999237060547], [0.8894170522689819, -0.7905929684638977, 1.0799999237060547]]",
         "Method": "MCP: uvx blender-mcp → local addon at 127.0.0.1:9876",
         "Review": "Hero preview inspected for full framing, three-color palette and specified object counts.",
-        "Output": "/Users/kimsejun/museion-renders/diorama-hero.png"
+        "Output": "/Users/you/museion-renders/diorama-hero.png"
       },
       "selected_objects": [
         {
@@ -3220,7 +3220,7 @@
         "Method": "MCP: uvx blender-mcp → local addon at 127.0.0.1:9876",
         "Review": "Hero preview inspected for full framing, three-color palette and specified object counts.",
         "Moment": "A single ember separates into two warm trails and reaches both unlit phones.",
-        "Output": "/Users/kimsejun/museion-renders/ember-split.png"
+        "Output": "/Users/you/museion-renders/ember-split.png"
       },
       "selected_objects": [
         {
@@ -7208,7 +7208,7 @@
         "Review": "Hero preview inspected for full framing, three-color palette and specified object counts.",
         "Title safe area": "Left 55% reserved for title / grain motif; diorama anchored at right.",
         "Pattern": "Procedural concentric irregular woodgrain contours. Camera-only graphic; zero scene illumination.",
-        "Output": "/Users/kimsejun/museion-renders/cold-open.png"
+        "Output": "/Users/you/museion-renders/cold-open.png"
       },
       "selected_objects": [
         {

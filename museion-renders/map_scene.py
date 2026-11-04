@@ -7,7 +7,7 @@ from mathutils import Vector
 random.seed(11)
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 CHECK = len(argv) > 0 and argv[0] == "check"
-OUT = "/Users/kimsejun/museion-renders/out"
+OUT = "/Users/you/museion-renders/out"
 
 def mat(name, color, rough=0.9, emit=None, emit_strength=0.0):
     m = bpy.data.materials.get(name) or bpy.data.materials.new(name)

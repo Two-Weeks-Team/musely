@@ -1,6 +1,6 @@
 import bpy,json,time,traceback
 from pathlib import Path
-OUT=Path('/Users/kimsejun/museion-renders')
+OUT=Path('/Users/you/museion-renders')
 def render_all():
     results=[]
     try:
