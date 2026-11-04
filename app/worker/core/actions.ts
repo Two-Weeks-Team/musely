@@ -13,7 +13,7 @@ export const CHALLENGE_STEPS = {
   raise_right_hand: 'raise your right hand',
   turn_head_left: 'turn your head to your left',
   turn_head_right: 'turn your head to your right',
-  show_date_paper: "hold up a paper with today's date written on it",
+  show_two_fingers: 'show exactly two raised fingers on one hand',
   thumbs_up: 'show a thumbs-up',
   touch_nose: 'touch your nose with one finger',
   show_open_palm: 'show an open palm to the camera',
@@ -134,7 +134,7 @@ export function buildMessages(action: Action, input: ActionInput): unknown[] {
       ];
     case 'challenge':
       return [
-        {role: 'system', content: 'You judge a three-step liveness challenge from webcam frames. Frame N should show the person doing step N. Frames are not mirrored: the person\'s left hand appears on the right side of the image. Judge each step independently and conservatively; if unclear, passed=false. Reply only with JSON matching the schema, one result per step in order.'},
+        {role: 'system', content: 'You judge a three-step liveness challenge from webcam frames. Frame N should show the person doing step N. Frames are not mirrored: the person\'s left hand appears on the right side of the image. Judge each step independently from its corresponding frame only. The requested body action must be clearly visible; if it is not visible, passed=false. Do not infer success from the requested step, another frame, a phone display or written words. If unclear, passed=false. Keep each result step ID in the exact requested order. Reply only with JSON matching the schema, one result per step in order.'},
         {role: 'user', content: [
           {type: 'text', text: 'Steps: ' + i.steps.map((s: ChallengeStep, n: number) => `${n + 1}. ${s}: ${CHALLENGE_STEPS[s]}`).join(' ')},
           ...i.frames.map((url: string) => ({type: 'image_url', image_url: {url}})),
@@ -212,6 +212,7 @@ export function checkOutput(action: Action, input: ActionInput, out: any): strin
   if (action === 'challenge') {
     if (out.results.length !== 3) return 'need three results';
     if (out.results.some((r: any) => r.confidence < 0 || r.confidence > 1)) return 'confidence out of range';
+    if (out.results.some((r: any, n: number) => r.step !== i.steps[n])) return 'challenge step order mismatch';
   }
   for (const v of Object.values(out)) if (typeof v === 'string' && v.length > 400) return 'field too long';
   return null;

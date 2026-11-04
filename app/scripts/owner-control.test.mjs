@@ -320,7 +320,9 @@ test('a new visitor gains nothing by replaying the owner\'s claim or ritual reco
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
     if (!String(url).startsWith('https://api.meta.ai/')) return realFetch(url, init);
-    return new Response(JSON.stringify({id: 'r1', usage: {prompt_tokens: 10, completion_tokens: 10}, choices: [{message: {content: JSON.stringify({results: [1, 2, 3].map(i => ({step: 's' + i, passed: true, confidence: .9, observation: 'ok'}))})}}]}), {headers: {'x-request-id': 'req-' + Math.random().toString(36).slice(2, 8)}});
+    const prompt = JSON.parse(init.body).messages.find(m => m.role === 'user').content.find(x => x.type === 'text').text;
+    const steps = [...prompt.matchAll(/\b[123]\. ([a-z_]+):/g)].map(m => m[1]); assert.equal(steps.length, 3);
+    return new Response(JSON.stringify({id: 'r1', usage: {prompt_tokens: 10, completion_tokens: 10}, choices: [{message: {content: JSON.stringify({results: steps.map(step => ({step, passed: true, confidence: .9, observation: 'ok'}))})}}]}), {headers: {'x-request-id': 'req-' + Math.random().toString(36).slice(2, 8)}});
   };
   const frames = [1, 2, 3].map(() => 'data:image/jpeg;base64,AAAA');
   const ritual = async (cookie, id) => {
