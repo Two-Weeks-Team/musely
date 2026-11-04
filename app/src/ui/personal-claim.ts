@@ -8,7 +8,7 @@ import type {ActorProfile} from '../identity/participant.ts';
 type ClaimStatus = 'pending_claim' | 'claimed' | 'claim_revoked' | 'mismatch' | 'reauth_required' | 'unavailable';
 export type PersonalClaim = {actorId:string;status:ClaimStatus;claimed:boolean;version:number;fingerprint:string;display:string;text:string;permalink:string|null;verifiedAt:number|null;checkedAt:number|null};
 type ProfileState = {authenticated:boolean|null;profile:ActorProfile|null;busy:boolean};
-export type PersonalClaimOptions = {fetcher?:typeof fetch;clipboard?:{writeText:(text:string)=>Promise<void>};navigate?:(url:string)=>void|Promise<void>;onExpanded?:(value:boolean)=>void;onWriteBusy?:(value:boolean)=>void;onSessionLost?:()=>void};
+export type PersonalClaimOptions = {autoExpand?:boolean;fetcher?:typeof fetch;clipboard?:{writeText:(text:string)=>Promise<void>};navigate?:(url:string)=>void|Promise<void>;onExpanded?:(value:boolean)=>void;onWriteBusy?:(value:boolean)=>void;onSessionLost?:()=>void};
 class Failure extends Error {readonly status:number;constructor(status=0){super('personal_claim_unavailable');this.status=status;}}
 const exact=(v:unknown,keys:string[]):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 const timestamp=(v:unknown)=>v===null||Number.isSafeInteger(v)&&Number(v)>0;
@@ -55,9 +55,9 @@ export function mountPersonalClaim(host:HTMLElement,options:PersonalClaimOptions
  function failure(error:unknown,c:Context){
   if(disposed||generation!==c.generation)return;busy=false;writeBusy(false);data=null;phase='error';message=uiText('다시 확인해 주세요. 관람과 연결 설정은 계속할 수 있어요. / Check again. You can keep watching or setting up your connection.');
   if(error instanceof Failure&&error.status===401){phase='observer';context={authenticated:false,profile:null,busy:false};message=uiText('다시 로그인해 주세요. / Sign in again.');notify(options.onSessionLost);}
-  if(expanded===null)setExpanded(true,false);render();
+  if(expanded===null)setExpanded(options.autoExpand!==false,false);render();
  }
- function accept(value:unknown,c:Context){data=parsePersonalClaim(value,c.actorId);phase='ready';busy=false;if(expanded===null)setExpanded(!data.claimed,false);render();}
+ function accept(value:unknown,c:Context){data=parsePersonalClaim(value,c.actorId);phase='ready';busy=false;if(expanded===null)setExpanded(options.autoExpand!==false&&!data.claimed,false);render();}
  async function refresh(){const c=begin();if(!c)return;try{const value=await request('GET',c);if(!current(c))return;accept(value,c);}catch(e){failure(e,c);}}
  async function verify(){
   if(!data)return;const version=data.version,c=begin(true);if(!c)return;

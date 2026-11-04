@@ -20,8 +20,8 @@ import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-18: independent wave cooldown and world-local speech clock; exact engines5–17 stay checkpoint-only. */
-export const ENGINE_VERSION = 'engine-18';
+/** engine-19: allowlisted cosmetic specifications; exact engines5–18 stay checkpoint-only. */
+export const ENGINE_VERSION = 'engine-19';
 export const TICK_MS = 60_000;
 export {TIME_ZONE,localClock} from './world-clock.ts';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';

@@ -69,9 +69,9 @@ test('RULE greeting templates reject wrong phases before public proper-name subs
  const at=Date.parse('2026-11-05T05:00:00Z'),line=ruleResidentGreeting(s,A,B,at,[]);assert.ok(line.includes('Morning Star'),'a public proper name is preserved at night');const again=ruleResidentGreeting(s,A,B,at+1,[{muse:A,at,line}]);assert.notEqual(again,line);
 });
 
-test('engine18 keeps original17/16 exact tuples and new wave receipts in read-only snapshots',async t=>{
+test('engine19 keeps original18/17/16 exact tuples and new wave receipts in read-only snapshots',async t=>{
  const x=await boot(t);await x.runtime.heartbeat(NOW);const run=x.runtime.runLog.current,record={...run,inputs:x.runtime.runLog.inputs(run.runId,0,100),events:x.runtime.events(0,10000,{runId:run.runId}),readThrough:x.runtime.runLog.boundary(run.runId)},original=JSON.stringify(record),player=loadRun(record);player.seek(Number.MAX_SAFE_INTEGER);assert.equal(player.getFrame().publicState.muses.find(m=>m.id===A).lastWave[B],NOW);assert.equal(JSON.stringify(record),original);
- assert.equal(currentVersions().engineVersion,'engine-18');for(const [version,catalog]of[['engine-17','catalog-d42ba8247057'],['engine-16','catalog-ffb109917767']]){const old={schemaVersion:'run-log-2',engineVersion:version,harnessVersion:'harness-c0c69e98b5e8',catalogVersion:catalog};assert.doesNotThrow(()=>assertCompatible(old));assert.throws(()=>assertCompatible(old,currentVersions()));}
+ assert.equal(currentVersions().engineVersion,'engine-19');for(const [version,catalog]of[['engine-18','catalog-d42ba8247057'],['engine-17','catalog-d42ba8247057'],['engine-16','catalog-ffb109917767']]){const old={schemaVersion:'run-log-2',engineVersion:version,harnessVersion:'harness-c0c69e98b5e8',catalogVersion:catalog};assert.doesNotThrow(()=>assertCompatible(old));assert.throws(()=>assertCompatible(old,currentVersions()));}
 });
 
 test('actual prepared runtime spotlight and encounter provider requests include the same current world clock',async t=>{
