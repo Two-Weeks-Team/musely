@@ -17,6 +17,8 @@ export interface Env {
   SOCIAL_STATUS_MODE?: string;
   /** Confirmed resident persona tendencies only; absent/off retains legacy behavior. */
   RESIDENT_VALUES_MODE?: string;
+  /** Private resident continuity; requires confirmed values, actions and split budgets. */
+  RESIDENT_REFLECTION_MODE?: string;
   /** Action-completion scheduling is opt-in and requires the protected model ledger. */
   RESIDENT_ACTIONS_MODE?: string;
   RESIDENT_ACTION_MAX_CONCURRENT?: string;
