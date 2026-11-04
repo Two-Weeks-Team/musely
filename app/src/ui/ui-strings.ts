@@ -548,6 +548,7 @@ export const KO_UI:Readonly<Record<string,string>>={
  "Verified steps": "확인된 단계",
  "View recorded scene": "기록된 장면 보기",
  "Virtual location (demo)": "가상 위치 (데모)",
+ "Virtual neighborhood": "가상 동네",
  "Virtual neighborhood saved for your draft. Entry itself does not start this journey.": "입장 전 프로필에 가상 동네를 저장했어요. 입장만으로 이동을 시작하지는 않습니다.",
  "Virtual neighborhood saved. The existing travel rule used an eligible TaxiToken.": "가상 동네를 저장했어요. 기존 이동 규칙이 사용 가능한 Taxi Token을 사용했습니다.",
  "Virtual neighborhood saved. Travel: {0}.": "가상 동네를 저장했어요. 이동: {0}.",

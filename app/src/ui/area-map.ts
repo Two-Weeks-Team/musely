@@ -28,7 +28,8 @@ export function mountOwnerArea(map: LibreMap) {
       map.addSource('owner-neighborhood', {type: 'geojson', data});
       map.addLayer({id: 'owner-neighborhood-fill', type: 'fill', source: 'owner-neighborhood', filter: ['==', ['get', 'kind'], 'area'], paint: {'fill-color': '#ffd98a', 'fill-opacity': .075}});
       map.addLayer({id: 'owner-neighborhood-line', type: 'line', source: 'owner-neighborhood', filter: ['==', ['get', 'kind'], 'area'], paint: {'line-color': '#ffd98a', 'line-width': 2, 'line-dasharray': [3, 2]}});
-      map.addLayer({id: 'owner-neighborhood-label', type: 'symbol', source: 'owner-neighborhood', filter: ['==', ['get', 'kind'], 'label'], layout: {'text-field': ['get', 'label'], 'text-size': 12, 'text-offset': [0, 2]}, paint: {'text-color': '#ffd98a', 'text-halo-color': '#101623', 'text-halo-width': 2}});
+      // The header already names this area. A ground-level symbol can be partially overpainted by later 3D buildings.
+      map.addLayer({id: 'owner-neighborhood-label', type: 'symbol', source: 'owner-neighborhood', filter: ['==', ['get', 'kind'], 'label'], layout: {'visibility': 'none', 'text-field': ['get', 'label'], 'text-size': 12, 'text-offset': [0, 2]}, paint: {'text-color': '#ffd98a', 'text-halo-color': '#101623', 'text-halo-width': 2}});
     }
   };
   map.on('style.load', paint);
