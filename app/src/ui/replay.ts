@@ -1,3 +1,4 @@
+import {uiText,catalogText} from './i18n.ts';
 import {mountRecordedReplay, recordedReplayState, type ReplayClock} from './recorded-replay.ts';
 import type {RecordedEvent, RecordedFrame} from '../replay/player.ts';
 import data from '../../fixtures/replay-run.json';
@@ -43,58 +44,58 @@ export function mountReplay(body: HTMLElement, ctx: ReplayCtx): {destroy(): void
   const root = el('section', 'replay-view'), fixture = el('section', 'fixture-replay');
   const recorded = mountRecordedReplay(root, ctx, active => { fixture.hidden = active; if (active) replayPlayer.pause(); });
   const badges = el('div', 'legend');
-  badges.append(el('span', 'src src-scripted', RUN.label), el('span', 'src src-planned', 'PLANNED · real run player (I-11)'));
-  fixture.append(badges, el('p', 'muted', RUN.note));
+  badges.append(el('span', 'src src-scripted', catalogText(RUN.label)), el('span', 'src src-planned', uiText('PLANNED · real run player (I-11)')));
+  fixture.append(badges, el('p', 'muted', catalogText(RUN.note)));
 
-  const controls = el('div', 'replay-controls'); controls.setAttribute('role', 'group'); controls.setAttribute('aria-label', 'Replay controls');
-  const toggle = button('Play'), restart = button('Restart');
+  const controls = el('div', 'replay-controls'); controls.setAttribute('role', 'group'); controls.setAttribute('aria-label', uiText('Replay controls'));
+  const toggle = button(uiText('Play')), restart = button(uiText('Restart'));
   const speedButtons = new Map<Speed, HTMLButtonElement>();
   controls.append(toggle, restart);
   for (const speed of SPEEDS) {
     const b = button(`${speed}×`); b.onclick = () => replayPlayer.setSpeed(speed); speedButtons.set(speed, b); controls.append(b);
   }
-  const range = el('input', 'replay-position'); range.type = 'range'; range.min = '0'; range.max = String(RUN.durationSec); range.step = '0.1'; range.setAttribute('aria-label', 'Replay position');
+  const range = el('input', 'replay-position'); range.type = 'range'; range.min = '0'; range.max = String(RUN.durationSec); range.step = '0.1'; range.setAttribute('aria-label', uiText('Replay position'));
   const time = el('p', 'replay-time');
   controls.append(range, time);
   const status = el('p', 'muted replay-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
   fixture.append(controls, status);
 
   let filter: Filter = {...EMPTY_FILTER};
-  const filters = el('div', 'replay-filters'); filters.setAttribute('role', 'group'); filters.setAttribute('aria-label', 'Find moments');
+  const filters = el('div', 'replay-filters'); filters.setAttribute('role', 'group'); filters.setAttribute('aria-label', uiText('Find moments'));
   const tags = el('div', 'filter');
   const tagButtons = new Map<string, HTMLButtonElement>();
   const chooseTag = (tag: string) => { filter.tag = tag; drawMoments(); };
   for (const tag of ['', ...new Set(RUN.events.flatMap(e => e.tags))]) {
-    const b = button(tag ? tag.replace(/_/g, ' ') : 'all', 'tag'); b.onclick = () => chooseTag(tag); tagButtons.set(tag, b); tags.append(b);
+    const b = button(catalogText(tag ? tag.replace(/_/g, ' ') : 'all'), 'tag'); b.onclick = () => chooseTag(tag); tagButtons.set(tag, b); tags.append(b);
   }
   filters.append(tags);
   const select = (title: string, choices: [string, string][], choose: (value: string) => void) => {
     const label = el('label', 'replay-select', title);
     const node = el('select');
-    for (const [value, text] of [['', `All ${title.toLowerCase()}`], ...choices]) { const option = el('option', '', text); option.value = value; node.append(option); }
+    for (const [value, text] of [['', uiText`All ${title.toLowerCase()}`], ...choices]) { const option = el('option', '', text); option.value = value; node.append(option); }
     node.onchange = () => { choose(node.value); drawMoments(); };
     label.append(node); filters.append(label); return node;
   };
   const muses = [...new Set(RUN.events.flatMap(e => [e.muse, e.other]).filter((id): id is string => !!id))];
   const places = [...new Set(RUN.events.map(e => e.place).filter((id): id is string => !!id))];
-  const museSelect = select('Muse', muses.map(id => [id, ctx.museName(id)]), v => { filter.muse = v; });
-  const placeSelect = select('Place', places.map(id => [id, ctx.placeName(id)]), v => { filter.place = v; });
-  const partSelect = select('Time of day (your time)', [['night', 'Night (00–06)'], ['morning', 'Morning (06–12)'], ['afternoon', 'Afternoon (12–18)'], ['evening', 'Evening (18–24)']], v => { filter.part = v as Filter['part']; });
+  const museSelect = select(uiText('Muse'), muses.map(id => [id, ctx.museName(id)]), v => { filter.muse = v; });
+  const placeSelect = select(uiText('Place'), places.map(id => [id, ctx.placeName(id)]), v => { filter.place = v; });
+  const partSelect = select(uiText('Time of day (your time)'), [['night', uiText('Night (00–06)')], ['morning', uiText('Morning (06–12)')], ['afternoon', uiText('Afternoon (12–18)')], ['evening', uiText('Evening (18–24)')]], v => { filter.part = v as Filter['part']; });
   const count = el('p', 'muted'); count.setAttribute('role', 'status');
-  const empty = el('div'); empty.append(el('p', 'muted', 'No moment matches. Clear the filters.'));
-  const clear = button('Clear filters'); clear.onclick = () => {
+  const empty = el('div'); empty.append(el('p', 'muted', uiText('No moment matches. Clear the filters.')));
+  const clear = button(uiText('Clear filters')); clear.onclick = () => {
     filter = {...EMPTY_FILTER}; museSelect.value = ''; placeSelect.value = ''; partSelect.value = ''; drawMoments();
     // Clearing removes the empty-state control; return focus to the persistent filters.
     tagButtons.get('')!.focus({preventScroll: true});
   };
   empty.append(clear);
   const list = el('ul', 'ev-list');
-  fixture.append(filters, count, empty, list, el('h4', '', 'Autonomy · visible fixture sample'));
+  fixture.append(filters, count, empty, list, el('h4', '', uiText('Autonomy · visible fixture sample')));
   const period = el('p', 'muted');
   const wrap = el('div', 'replay-table-wrap'), table = el('table', 'data');
-  const caption = el('caption', 'muted', 'Autonomy measurements for the visible scripted fixture events');
+  const caption = el('caption', 'muted', uiText('Autonomy measurements for the visible scripted fixture events'));
   const head = el('thead'), headRow = el('tr');
-  for (const text of ['Measure', 'Value', 'Sample', 'Note']) { const th = el('th', '', text); th.scope = 'col'; headRow.append(th); }
+  for (const text of [uiText('Measure'), uiText('Value'), uiText('Sample'), uiText('Note')]) { const th = el('th', '', text); th.scope = 'col'; headRow.append(th); }
   head.append(headRow);
   const tableBody = el('tbody'); table.append(caption, head, tableBody); wrap.append(table);
   fixture.append(period, wrap); root.append(fixture); body.append(root);
@@ -115,21 +116,21 @@ export function mountReplay(body: HTMLElement, ctx: ReplayCtx): {destroy(): void
         li = el('li', 'ev'); const b = button('', 'ev-btn'); b.dataset.eventId = e.id;
         const source = ctx.sourceLabel(e);
         b.append(el('span', 'ev-time', ctx.at(e.at)), el('span', 'src ' + source.cls, source.text), el('span', 'ev-text', ctx.describe(e)));
-        for (const tag of e.tags) b.append(el('span', 'tag', tag.replace(/_/g, ' ')));
+        for (const tag of e.tags) b.append(el('span', 'tag', catalogText(tag.replace(/_/g, ' '))));
         b.onclick = () => ctx.showEvidence(e, b); li.append(b); rows.set(e.id, li);
       }
       const stamp = li.querySelector('.ev-time'), now = ctx.at(e.at); if (stamp && stamp.textContent !== now) stamp.textContent = now; // a device can change zone while the page stays open
       return li;
     });
     list.replaceChildren(...children);
-    const resultText = `${matches.length} moments`; if (count.textContent !== resultText) count.textContent = resultText;
+    const resultText = uiText`${matches.length} moments`; if (count.textContent !== resultText) count.textContent = resultText;
     empty.hidden = matches.length !== 0;
     if (focus?.isConnected) focus.focus({preventScroll: true});
     scroller.scrollTop = scroll;
     const signature = visible.map(e => e.id).join(',');
     if (signature !== previousVisible || !tableBody.childNodes.length) {
       previousVisible = signature;
-      const summary = computeAutonomy(visible, {label: 'Scripted fixture', day: RUN.day, worldId: RUN.worldId, runId: RUN.runId, complete: true});
+      const summary = computeAutonomy(visible, {label: uiText('Scripted fixture'), day: RUN.day, worldId: RUN.worldId, runId: RUN.runId, complete: true});
       period.textContent = summary.period;
       tableBody.replaceChildren(...summary.rows.map(r => {
         const tr = el('tr'), label = el('th', '', r.label); label.scope = 'row';
@@ -139,10 +140,10 @@ export function mountReplay(body: HTMLElement, ctx: ReplayCtx): {destroy(): void
   }
   function syncControls() {
     const state = replayPlayer.getState();
-    toggle.textContent = state.playing ? 'Pause' : 'Play'; toggle.setAttribute('aria-pressed', String(state.playing));
+    toggle.textContent = state.playing ? uiText('Pause') : uiText('Play'); toggle.setAttribute('aria-pressed', String(state.playing));
     for (const [speed, b] of speedButtons) b.setAttribute('aria-pressed', String(state.speed === speed));
     range.value = String(state.cursor); range.setAttribute('aria-valuetext', `${formatT(state.cursor)} of ${formatT(state.durationSec)}`);
-    time.textContent = `${formatT(state.cursor)} / ${formatT(state.durationSec)} · ${state.speed}× · ${ctx.at(RUN.startAt + state.cursor * 1000)} your time`;
+    time.textContent = uiText`${formatT(state.cursor)} / ${formatT(state.durationSec)} · ${state.speed}× · ${ctx.at(RUN.startAt + state.cursor * 1000)} your time`;
   }
   function stopTimer() { if (timer !== null) { clearInterval(timer); timer = null; } }
   function syncTimer() {
@@ -156,13 +157,13 @@ export function mountReplay(body: HTMLElement, ctx: ReplayCtx): {destroy(): void
       syncControls();
       const signature = visibleEvents(RUN.events, replayPlayer.getState().cursor).map(e => e.id).join(',');
       if (signature !== previousVisible) drawMoments();
-      if (wasPlaying && replayPlayer.getState().ended) { status.textContent = 'Reached the end'; stopTimer(); }
+      if (wasPlaying && replayPlayer.getState().ended) { status.textContent = uiText('Reached the end'); stopTimer(); }
     }, 100);
   }
   function onAction(action: Action) {
     if (destroyed) return;
     const state = replayPlayer.getState();
-    status.textContent = state.ended ? 'Reached the end' : action === 'restart' ? 'Restarted and paused at 0:00' : action === 'play' || action === 'speed' && state.playing ? `Playing at ${state.speed}×` : `${state.playing ? 'Playing' : 'Paused'} at ${formatT(state.cursor)}${action === 'speed' ? ` · ${state.speed}×` : ''}`;
+    status.textContent = state.ended ? uiText('Reached the end') : action === 'restart' ? uiText('Restarted and paused at 0:00') : action === 'play' || action === 'speed' && state.playing ? uiText`Playing at ${state.speed}×` : uiText`${state.playing ? uiText('Playing') : uiText('Paused')} at ${formatT(state.cursor)}${action === 'speed' ? ` · ${state.speed}×` : ''}`;
     syncControls();
     // Pause/speed changes leave the current event buttons in place, including an evidence trigger.
     if (action === 'seek' || action === 'restart' || action === 'play') {

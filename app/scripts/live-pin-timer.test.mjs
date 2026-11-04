@@ -1,3 +1,4 @@
+import {uiText,catalogText,inventoryText,activityStatus} from '../src/ui/i18n.ts';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -13,8 +14,8 @@ const js=(await transform(functionText,{loader:'ts'})).code;
 const nodes=new Map();
 class Marker {constructor({element}){this.element=element;nodes.set(element.dataset.museId,this);}setLngLat(pos){this.pos=pos;return this;}addTo(){return this;}getElement(){return this.element;}remove(){}}
 const el=(_tag,_cls,text='')=>({textContent:text,style:{setProperty(){}},dataset:{},setAttribute(){},append(){}});
-const make=Function('HARNESSES','Marker','el','color','museName','PLACES','liveFrames','scheduleCues','sceneToLngLat','ownerOf','inventorySummary','presentationIn','resolveMuse','publicMuseName','placeName',js+';return museMarkers;')
- (HARNESSES,Marker,el,()=>'',live.museName,PLACES,live.liveFrames,live.scheduleCues,live.sceneToLngLat,live.ownerOf,live.inventorySummary,presentationIn,resolveMuse,live.museName,id=>id);
+const make=Function('uiText','catalogText','inventoryText','activityStatus','HARNESSES','Marker','el','color','museName','PLACES','liveFrames','scheduleCues','sceneToLngLat','ownerOf','inventorySummary','presentationIn','resolveMuse','publicMuseName','placeName',js+';return museMarkers;')
+ (uiText,catalogText,inventoryText,activityStatus,HARNESSES,Marker,el,()=>'',live.museName,PLACES,live.liveFrames,live.scheduleCues,live.sceneToLngLat,live.ownerOf,live.inventorySummary,presentationIn,resolveMuse,live.museName,id=>id);
 const timerLine=text.split('\n').find(x=>x.includes('setInterval(() =>') && x.includes('pins.update('));
 assert.ok(timerLine,'exercise the actual panel timer');
 const NOW=1800000000000;

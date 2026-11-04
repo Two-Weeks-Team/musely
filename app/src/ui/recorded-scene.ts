@@ -46,6 +46,6 @@ export function sceneModeLabel(recorded:boolean,language='en'){
 }
 export function actionSourceLabel(source:string,recorded:boolean,language='en'){
   const known=['live','rule','scripted','replay'].includes(source);
-  if(language.startsWith('ko'))return known?`${recorded?'기록된 행동':'행동'} 출처 · ${source.toUpperCase()}`:'행동 출처 정보 없음';
-  return known?`${recorded?'Recorded action':'Action'} source · ${source.toUpperCase()}`:'Action source unavailable';
+  if(language.startsWith('ko'))return known?`${recorded?'기록된 행동':'행동'} 출처 · ${source.toUpperCase()}`:'';
+  return known?`${recorded?'Recorded action':'Action'} source · ${source.toUpperCase()}`:'';
 }
