@@ -18,8 +18,8 @@ import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-15: local public perception and fifty-metre social actions with conversation-only cooldown. */
-export const ENGINE_VERSION = 'engine-15';
+/** engine-16: persona English greetings and explicit English-policy RULE fallback; engine15 stays checkpoint-only. */
+export const ENGINE_VERSION = 'engine-16';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
@@ -382,7 +382,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     if(hooks.socialStatus&&m.intent&&contactPolicy(s,m.id,m.intent.target,now,hooks)!=='approach'){
       m.intent=null;continue; // No replacement trip in this tick; pending agreements are unchanged.
     }
-    const recovering=hooks.residentFallbackRecovery===true&&managed(m)&&input.residentFallback?.includes(m.id)===true&&!m.intent;
+    const recovering=hooks.residentFallbackRecovery===true&&managed(m)&&input.residentFallback?.includes(m.id)===true&&!m.intent&&!englishFallback(m);
     // Life03 choices use the existing movement/intent validation after real arrival/beat completion.
     // A reaction is independent; it never restarts this activity or changes its ETA.
     if(managed(m)){
@@ -424,7 +424,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
         }
         continue;
       }
-      if(!m.intent&&!input.residentFallback?.includes(m.id))continue;
+      if(!m.intent&&!input.residentFallback?.includes(m.id)&&!englishFallback(m))continue;
     }
     // Trusted goal scheduler owns idle boundaries, never personal commands or live decisions.
     if(input.residentGoalIdle?.includes(m.id)&&!m.intent&&input.decision?.muse!==m.id)continue;
