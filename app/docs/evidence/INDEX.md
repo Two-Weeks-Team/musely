@@ -50,3 +50,19 @@ Every receipt must name issueId, owner, commitSha, PR, environment, deployId, UR
 | s2-final-closeout-1103 / original6588006084 and later6591330425 I11 C10 | I11 technical data reused after actual root #57→#56→#59 full C01 handoff/reclosure; earlier premature closure/reopening retained. Does not replace D01's prerequisite. |
 
 Original8b13 operating receipts and current494 replay identities stay distinct, with unchanged backend/config and separately checked changed read-only loader/UI. Their exact hashes/times are in the handoff. No actual Muse/webcam/visitor/four-hour/physical/movie/whole-S3 acceptance is granted by this index, and no extra D02 operating test is invented. Final D02 C10/checklist/closure remains unexecuted until D01's full original acceptance. Hackathon Submit/terms/competition-publication remains a team handoff decision outside our execution scope; product494/collector3105/export235 and existing evidence stay frozen.
+
+
+## Current candidate evidence checkpoint (2026-11-04)
+
+See the [a858 S3 candidate and remaining acceptance](../RELEASE_ACCEPTANCE.md#current-s3-candidate-and-remaining-acceptance-2026-11-04), [D01 checkpoint](../D01_ACCEPTANCE.md#current-candidate-path-checkpoint-2026-11-04) and [current client evidence](../DEVICE_ACCEPTANCE.md#current-candidate-client-evidence-2026-11-04). Earlier pending/completed rows above keep their historical builds; this index does not retag their raw evidence.
+
+| Existing external custody under tasks/s3-execution-20261102/ | Current scope/status |
+|---|---|
+| `final-d01-anonymous-observer/a858-final-1104-1-results.json` | Actual current anonymous watch/select/reconnect25/25, original callback; whole D01 still open. |
+| `personal-muse-runtime-plan-1103/post-context-three-slots-1104.jsonl` | Actual connected ComBba choices/receipt links. Copper acceptance retained, own proposal/explicit rejection unobserved. Silence is not rejection. |
+| `human-ritual-living-final-actual-v7-ready-1/progress.jsonl` | Location allow/deny complete; camera LIVE3false, not identity PASS; temporary direct MCP revocation and later scoped layout/desktop acceptance annotations. |
+| `d03-cloud-1103/`, `d03-delayed-response-1103-v2/actual-fixed-delay-1/`, original operating boundaries | Historical isolated33/33/controlled reset15/15/5500ms revoke-await, local clock/alarm/tile and actual operating denial receipts with current component-impact supplements. Whole-backend identity is not claimed. |
+| `final-four-hour-area-a31/a858-final-1104-0905-*` | Separate actual fixed-a8584h started09:04:41.591KST; incomplete at this checkpoint, final sample needed at/after13:04:41.591. Old directory name does not change the new pin or turn old failures into PASS. |
+| `c11-first-arrival-personal-d452-actual-1/a858-final-c11-1104-1-*` and current preparation topic | Readable3948.5ms controlled client; desktop120FPS/p959.9ms accepted with separate34asset after-audit. Original desktop sourceAfter timeout/FAIL remains unchanged. Final S23 comparison awaits a new coordinated resource window. |
+
+No merge/deploy before13:04; required fixes remain on branches/PRs during observation. A later product deployment requires its own new full4h, latest start11-05 06:00KST. C3 actual account alias binding is explicitly on hold, main Chrome untouched, and not a D01 gate. D01/D02/D03/D04 remain open; D05/video and D06/competition submission remain team-owned and outside this engineering execution scope. No new human confirmation is requested by this index.
