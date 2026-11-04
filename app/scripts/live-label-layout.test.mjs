@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {layoutLiveLabels} from '../src/ui/live-label-layout.ts';
+import {layoutLiveLabels,layoutCompactLabels} from '../src/ui/live-label-layout.ts';
 const bounds={left:12,right:378,top:90,bottom:650};
 const label=(id,extra={})=>({id,group:'commons:cafe',x:190,y:380,width:190,height:32,selected:false,speaking:false,...extra});
 const overlaps=(a,b)=>a.left<b.left+b.width+3&&a.left+a.width+3>b.left&&a.top<b.top+b.height+3&&a.top+a.height+3>b.top;
@@ -27,3 +27,6 @@ test('a place count includes offscreen same-place labels without borrowing anoth
  const out=layoutLiveLabels([label('selected',{selected:true,groupSize:10}),label('neighbor',{groupSize:10})],bounds);
  assert.equal(out.find(x=>x.id==='selected').count,8);
 });
+
+
+test('compact count layout returns blank count space without depending on the previous rendered badge',()=>{const input=[label('selected',{selected:true,width:92,height:32,groupSize:6}),label('nearby',{width:40,height:18,groupSize:6}),label('traveller',{group:'travel',groupSize:1,width:55,height:18})],before=structuredClone(input),out=layoutCompactLabels(input,bounds);assert.deepEqual(input,before);assert.deepEqual(out,layoutCompactLabels([...input].reverse(),bounds));const selected=out.find(x=>x.id==='selected'),nearby=out.find(x=>x.id==='nearby'),traveller=out.find(x=>x.id==='traveller');assert.equal(selected.hidden,false);assert.equal(selected.count,4);assert.equal(selected.width,120);assert.equal(nearby.width,40);assert.equal(traveller.width,55);for(const a of out.filter(x=>!x.hidden))for(const b of out.filter(x=>!x.hidden))if(a!==b)assert.equal(overlaps(a,b),false);});

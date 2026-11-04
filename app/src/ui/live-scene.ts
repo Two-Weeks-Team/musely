@@ -6,7 +6,7 @@ import type {CampfireScenePort} from '../../world-packs/campfire/scene-port.mjs'
 import * as T from 'three';
 import type {RecordedFrame} from '../replay/player.ts';
 import {SceneProjection, frameSource} from './recorded-scene.ts';
-import {layoutLiveLabels,type LabelCandidate,type LabelBox} from './live-label-layout.ts';
+import {layoutLiveLabels,layoutCompactLabels,type LabelCandidate,type LabelBox} from './live-label-layout.ts';
 import {liveActivity,recentLiveSpeech,speechDisplay} from './live-display.ts';
 import {placeLiveBubble,type ScreenBox} from './bubble-layout.ts';
 import {frameSpeech} from './speech-recipient.ts';
@@ -186,7 +186,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
     if(root){
     // Measure only when text/viewport/priority changes, then place all boxes together.
     for(const c of labelCandidates){const node=labelNodes.get(c.id)!,key=`${innerWidth}:${node.textContent}:${node.dataset.clustered}:${node.dataset.selected}`;
-      let size=labelSizes.get(node);if(size?.key!==key){const rect=node.getBoundingClientRect?.();size={key,width:rect?.width||Math.min(240,innerWidth-24),height:rect?.height||36};labelSizes.set(node,size);}c.width=size.width;c.height=size.height;
+      let size=labelSizes.get(node);if(size?.key!==key){if(innerWidth<700)node.style.setProperty('--label-badge-space','0px');const rect=node.getBoundingClientRect?.();size={key,width:rect?.width||Math.min(240,innerWidth-24),height:rect?.height||36};labelSizes.set(node,size);}c.width=size.width;c.height=size.height;
     }
     const obstacles:LabelBox[]=[];
     for(const selector of ['header','footer','#muse-card','.map-tools','#loading','#network-note','#judge-entry','#first-visit-hint']){const node=document.querySelector?.<HTMLElement>(selector);if(!node||node.hidden)continue;const r=node.getBoundingClientRect();if(r.width&&r.height)obstacles.push({left:r.left,top:r.top,width:r.width,height:r.height});}
@@ -195,8 +195,9 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
     for(const [i,s]of speechCards.entries()){if(!s)continue;const event=cards[i],anchor=event?heads.get(event.muse!):null;s.card.hidden=true;s.svg.style.display='none';if(!event||!anchor)continue;const value=speechDisplay(event,projection.world),key=event.id+'|'+value.name+'|'+value.recipient+'|'+innerWidth;if(s.card.dataset.contentKey!==key){const speaker=document.createElement('span'),line=document.createElement('p'),source=document.createElement('small');speaker.className='bubble-speaker';speaker.style.color=resolveMuse(projection.world!.muses.find(m=>m.id===event.muse)!).color;speaker.textContent=value.name+(value.recipient?' → '+value.recipient:'');line.textContent=value.line;source.textContent=value.source;s.card.replaceChildren(speaker,line,source);s.card.dataset.contentKey=key;delete s.card.dataset.width;}s.card.hidden=false;s.card.style.visibility='hidden';const rect=s.card.getBoundingClientRect?.()??{width:230,height:96},box=placeLiveBubble(anchor,{width:rect.width||230,height:rect.height||96},{width:innerWidth,height:innerHeight},obstacles);if(!box){s.card.hidden=true;continue;}s.card.dataset.museId=event.muse!;s.card.dataset.source=event.source!;s.card.style.left=box.left+'px';s.card.style.top=box.top+'px';s.card.style.visibility='visible';s.svg.style.display='block';s.svg.setAttribute('viewBox',`0 0 ${innerWidth} ${innerHeight}`);s.leader.setAttribute('d',`M ${box.left+box.width/2} ${box.top+box.height} L ${anchor.x} ${anchor.y}`);obstacles.push(box);}
     const ranked=[...labelCandidates].sort((a,b)=>Number(b.id===selectedId)-Number(a.id===selectedId)||Number(b.id===ownId)-Number(a.id===ownId)||Math.hypot(a.x-innerWidth/2,a.y-innerHeight/2)-Math.hypot(b.x-innerWidth/2,b.y-innerHeight/2));
     const detailed=new Set(ranked.slice(0,8).map(c=>c.id));for(const c of ranked)if(!detailed.has(c.id)){const node=labelNodes.get(c.id)!;node.className='live-muse-dot';node.textContent='';delete node.dataset.displayKey;node.hidden=false;node.style.transform=`translate(${Math.round(c.x)}px,${Math.round(c.y)}px)`;}
-    for(const p of layoutLiveLabels(labelCandidates.filter(c=>detailed.has(c.id)),{left:12,right:innerWidth-12,top:70,bottom:innerHeight-32},obstacles)){
-      const node=labelNodes.get(p.id)!;node.hidden=p.hidden;node.dataset.clusterCount=p.count?`+${p.count}`:'';
+    const layout=innerWidth<700?layoutCompactLabels:layoutLiveLabels;
+    for(const p of layout(labelCandidates.filter(c=>detailed.has(c.id)),{left:12,right:innerWidth-12,top:70,bottom:innerHeight-32},obstacles)){
+      const node=labelNodes.get(p.id)!;node.hidden=p.hidden;node.dataset.clusterCount=p.count?`+${p.count}`:'';if(innerWidth<700)node.style.setProperty('--label-badge-space',p.count?'28px':'0px');
       node.style.transform=`translate(${Math.round(p.left)}px,${Math.round(p.top)}px)`;
     }
     }

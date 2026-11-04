@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {build} from 'esbuild';
 const implementation=await import('../src/ui/personal-claim.ts').catch(e=>{if(e.code!=='ERR_MODULE_NOT_FOUND')throw e;return {};});
 class Element {
- constructor(tag){this.tagName=tag.toUpperCase();this.childNodes=[];this.dataset={};this.attrs={};this.disabled=false;this._text='';this.hidden=false;}
+ constructor(tag){this.tagName=tag.toUpperCase();this.childNodes=[];this.dataset={};this.attrs={};this.style={};this.disabled=false;this._text='';this.hidden=false;}
  append(...xs){for(const x of xs){x.parentNode=this;this.childNodes.push(x);}}
  replaceChildren(...xs){for(const x of this.childNodes)x.parentNode=null;this.childNodes=[];this._text='';this.append(...xs);}
  remove(){if(this.parentNode)this.parentNode.childNodes=this.parentNode.childNodes.filter(x=>x!==this);}

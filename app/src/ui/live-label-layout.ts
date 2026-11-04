@@ -30,3 +30,11 @@ export function layoutLiveLabels(input:readonly LabelCandidate[],bounds:{left:nu
  }
  return [...out.values()].sort((a,b)=>a.id.localeCompare(b.id));
 }
+
+/** Reserve count room while placing, then return it to every name without an actual count.
+ * Both stages use only this frame's immutable candidates, never the previous DOM badge. */
+export function layoutCompactLabels(input:readonly LabelCandidate[],bounds:{left:number;right:number;top:number;bottom:number},obstacles:readonly LabelBox[]=[]):LabelPlacement[]{
+ const badge=28,byId=new Map(input.map(c=>[c.id,c]));
+ const placed=layoutLiveLabels(input.map(c=>({...c,width:c.width+badge})),bounds,obstacles);
+ return placed.map(p=>{const base=byId.get(p.id)!,width=p.count?p.width:Math.min(base.width,p.width);return{...p,left:p.left+(p.width-width)/2,width};});
+}
