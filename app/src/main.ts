@@ -19,6 +19,7 @@ import {sparkStatus,statusLabel,type SparkStatus} from './live';
 import type {RecordedFrame} from './replay/player';
 import {mountWorldPanel} from './ui/world-panel';
 import {isolation} from './ui/isolation';
+import {mountJudgeEntry} from './ui/judge-entry.ts';
 import {mountOnboarding} from './ui/onboarding';
 import {paintAvailabilityLabel} from './ui/social-status';
 import {setFlowCue} from './ui/preview-flows';
@@ -33,6 +34,7 @@ import style from '../assets/map-style.json';
 import geography from '../assets/geography.json';
 import {mountArrivalOverview} from './arrival-overview';
 localizeStaticUI();
+const judgeEntry=mountJudgeEntry({watch:()=>window.__world?.setMode('world'),camera:()=>window.__world?.worldPanel.openTab('identity'),demo:()=>window.__world?.worldPanel.openTab('identity')});document.body.append(judgeEntry.box);
 declare global {interface Window {__world:any}}
 // Production uses a hash-pinned same-origin classic worker; .cjs selects its supported worker mode.
 // The inline local proof keeps its data/Blob worker behavior.
@@ -122,7 +124,7 @@ $('story-title').textContent=catalogText(chapter.title);$('story-speaker').textC
 updateContinuity();syncCardScroll();
 }
 let spark:SparkStatus|null=null;
-void sparkStatus().then(s=>{spark=s;const l=statusLabel(s),el=$('spark-status');el.textContent=catalogText(l.text);el.title=activityStatus(l.title);el.dataset.state=l.state;});
+void sparkStatus().then(s=>{spark=s;judgeEntry.sync(s?.session??null);const l=statusLabel(s),el=$('spark-status');el.textContent=catalogText(l.text);el.title=activityStatus(l.title);el.dataset.state=l.state;});
 let bubbles:ReturnType<typeof makeBubbles>;
 let world:Awaited<ReturnType<typeof makeWorld>>,renderer:T.WebGLRenderer,camera:T.Camera,projection=new T.Matrix4();
 const localMatrix=new T.Matrix4().makeTranslation(origin.x,origin.y,origin.z).multiply(new T.Matrix4().makeScale(unit,-unit,unit)).multiply(new T.Matrix4().makeRotationX(Math.PI/2)).multiply(new T.Matrix4().makeRotationY(-gridYaw));

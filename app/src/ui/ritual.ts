@@ -2,7 +2,7 @@ import {uiText} from './i18n.ts';
 // Welcome ritual UI (direction v2, 6.4). The server picks three actions; the browser shows a mirrored preview
 // (like a mirror) but sends raw, non-mirrored frames, and says so in the judging prompt. Frames go to the
 // Muse Spark judge through the Worker and are not stored by Musely; only per-step verdicts are logged.
-import {ensureSession, sparkStatus} from '../live';
+import {ensureSession, sparkStatus,visitorFetch} from '../live';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 type Verdict = {step: string; passed: boolean; confidence: number; observation?: string};
@@ -30,27 +30,32 @@ const poses: Record<string, string> = {
 };
 
 /** Recorded result card (default) plus the "try it yourself" flow. Returns the container to insert. */
-export function ritualCard(onDone: () => void) {
+export function ritualCard(onDone: () => void, options: {fetcher?: typeof fetch; active?: () => boolean; readOnly?: boolean} = {}) {
+  const fetcher = options.fetcher ?? visitorFetch;
   const box = el('div', 'id-card ritual');
-  box.append(el('span', 'eyebrow', uiText('본인 확인 · Welcome')), el('h4', '', uiText('세 동작으로 시작해요 · Start with three moves')));
+  if (!options.readOnly) box.append(el('span', 'eyebrow', uiText('본인 확인 · Welcome')), el('h4', '', uiText('세 동작으로 시작해요 · Start with three moves')));
   const history = el('details', 'ritual-recorded'); history.append(el('summary', '', uiText('진행 예시 보기 · See an example')));
   const recorded = el('div'); history.append(recorded);
-  box.append(el('p', 'muted', uiText('실제 사람이 있는지 확인해요. 사진 3장은 서버를 거쳐 Meta로 전송되며 Musely는 보관하지 않아요. 결과만 보관하며 Meta의 보관 정책이 적용돼요. · Three photos check that a person is present. They go through our server to Meta; Musely keeps only results. Meta’s retention policy applies.')), history);
+  if (!options.readOnly) box.append(el('p', 'muted', uiText('실제 사람이 있는지 확인해요. 사진 3장은 서버를 거쳐 Meta로 전송되며 Musely는 보관하지 않아요. 결과만 보관하며 Meta의 보관 정책이 적용돼요. · Three photos check that a person is present. They go through our server to Meta; Musely keeps only results. Meta’s retention policy applies.')), history);
+  else box.append(history);
   const start = el('button', 'primary', uiText('카메라로 시작 · Try the ritual')); start.type = 'button';
   const stage = el('div', 'ritual-stage'); stage.hidden = true;
-  box.append(start, stage);
+  if (!options.readOnly) box.append(start, stage);
 
-  void fetch('/api/ritual/record', {cache: 'no-store'}).then(r => r.ok ? r.json() : null).then((j: any) => {
+  void fetcher('/api/ritual/record', {cache: 'no-store'}).then(r => r.ok ? r.json() : null).then((j: any) => {
+    if (options.active && !options.active()) return;
     const rec = j?.record;
     recorded.replaceChildren(el('span', 'src src-replay', uiText('REPLAY · recorded')), el('p', 'muted', rec ? uiText`Kim Sejun's recorded ritual, ${new Date(rec.at).toISOString().slice(0, 16).replace('T', ' ')} UTC: ${rec.passed ? uiText('passed') : uiText('not passed')} (request ${rec.requestId ?? '—'}). This record proves nothing about a new visitor.` : uiText('The owner’s recorded ritual has not been made yet.')));
     if (rec) recorded.append(results(rec.results));
   }).catch(() => {});
 
+  if (options.readOnly) return box;
+
   // A permission prompt can outlive the card. Cancel immediately; stop any stream that arrives later.
-  const onScreen = () => box.isConnected && !!box.closest(':popover-open') && document.visibilityState !== 'hidden';
+  const onScreen = () => (options.active?.() ?? true) && box.isConnected && !!box.closest(':popover-open') && document.visibilityState !== 'hidden';
   class Dismissed extends Error {}
   start.onclick = async () => {
-    if (start.disabled) return;
+    if (start.disabled || options.active && !options.active()) return;
     start.disabled = true; start.hidden = true; stage.hidden = false; stage.tabIndex = -1;
     stage.setAttribute('role', 'region'); stage.setAttribute('aria-label', uiText('Camera ritual'));
     const cancel = el('button', 'secondary ritual-cancel', uiText('취소 · Cancel')); cancel.type = 'button';
@@ -131,7 +136,7 @@ export function ritualCard(onDone: () => void) {
       const st = await wait(sparkStatus()); if (st) await wait(ensureSession(st));
       guard();
       const requestedAt = performance.now();
-      const ch = await wait(fetch('/api/ritual/start', {method: 'POST', signal: abort.signal}));
+      const ch = await wait(fetcher('/api/ritual/start', {method: 'POST', signal: abort.signal}));
       if (!ch.ok) throw new Error(ch.status === 401 ? uiText('a session is required') : uiText('could not start (') + ch.status + ')');
       const {id, steps, expiresAt} = await wait(ch.json()) as {id: string; steps: {id: string; text: string}[]; expiresAt: number};
       if (steps.length !== 3 || !Number.isFinite(expiresAt)) throw new Error(uiText('could not read the three moves'));
@@ -154,7 +159,7 @@ export function ritualCard(onDone: () => void) {
       clearTimeout(expiry); expiry = undefined;
       stopCamera(); prompt.textContent = uiText('결과를 확인하고 있어요 · Checking your moves…'); count.textContent = ''; controls.replaceChildren(cancel);
       sent = true;
-      const r = await wait(fetch('/api/muse', {method: 'POST', headers: {'content-type': 'application/json'}, signal: abort.signal, body: JSON.stringify({action: 'challenge', input: {challengeId: id, frames}})}));
+      const r = await wait(fetcher('/api/muse', {method: 'POST', headers: {'content-type': 'application/json'}, signal: abort.signal, body: JSON.stringify({action: 'challenge', input: {challengeId: id, frames}})}));
       frames.length = 0;
       const j = await wait(r.json());
       stage.replaceChildren();

@@ -14,6 +14,18 @@ export type SparkStatus = {
 export type MuseAction = 'spotlight' | 'encounter' | 'trade' | 'negotiate' | 'challenge';
 export type MuseResult = {source: 'live' | 'replay' | 'scripted'; action: MuseAction; output: any; reason?: string; evidence?: {model: string; responseId: string | null; requestId: string | null; latencyMs: number; costUsd: number}; recorded?: {recordedAt: string; requestId: string | null} | null};
 
+/** Public visitor/judge demos must never inherit the emergency owner's cookie authority. */
+export const visitorFetch:typeof fetch=(input,init)=>{const headers=new Headers(init?.headers);headers.set('x-musely-audience','visitor');return fetch(input,{...init,headers});};
+declare global {interface Window {__muselyJudgeEntry?:{attempted:boolean;result:Promise<SparkStatus['session']>}}}
+let judgeBootstrap:Promise<SparkStatus['session']>|null=null;
+/** Synchronously removes every token occurrence before starting the one exchange; never emits its value. */
+export function beginJudgeSession():{attempted:boolean;result:Promise<SparkStatus['session']>} {
+ const early=typeof window==='undefined'?undefined:window.__muselyJudgeEntry;if(early){if(early.attempted){judgeBootstrap=early.result;void early.result.catch(()=>{judgeBootstrap=null;delete window.__muselyJudgeEntry;});}return early;}
+ const params=new URLSearchParams(location.search);if(!params.has('judge'))return {attempted:false,result:Promise.resolve(null)};
+ const judge=params.getAll('judge');params.delete('judge');history.replaceState(null,'',location.pathname+(params.size?'?'+params:'')+location.hash);
+ judgeBootstrap=(async()=>{if(judge.length!==1||!judge[0])throw new Error('judge_link_invalid');const r=await fetch('/api/session',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({judge:judge[0]})});if(!r.ok)throw new Error('judge_link_invalid');const v=await r.json();if(v?.tier!=='judge'||!Number.isSafeInteger(v.expiresAt)||v.expiresAt<=Date.now()||v.quota?.perHour!==120)throw new Error('judge_link_invalid');return {tier:'judge' as const,expiresAt:v.expiresAt,quota:v.quota};})().catch(()=>{judgeBootstrap=null;throw new Error('judge_link_invalid');});
+ void judgeBootstrap.catch(()=>{});return {attempted:true,result:judgeBootstrap};
+}
 export async function sparkStatus(): Promise<SparkStatus | null> {
   try {
     const res = await fetch('/api/status', {cache: 'no-store'});
@@ -71,25 +83,15 @@ function loadTurnstile(signal: AbortSignal): Promise<void> {
 export async function ensureSession(status: SparkStatus): Promise<SparkStatus['session']> {
   // The fixture replay makes no requests. Refuse before the judge token is taken out of the address bar, so a refused call never uses it up.
   if (isolation.replay) throw new Error(BLOCKED);
+  const startup=beginJudgeSession();
+  if(startup.attempted||judgeBootstrap)return (await (judgeBootstrap??startup.result));
   if (status.session) return status.session;
-  const params = new URLSearchParams(location.search), judge = params.get('judge');
-  let body: Record<string, string>;
-  if (judge) {
-    params.delete('judge');
-    history.replaceState(null, '', location.pathname + (params.size ? '?' + params : '') + location.hash);
-    body = {judge};
-  } else {
-    return verifyVisitor(status.turnstile.sitekey, loadTurnstile, async (token, signal) => {
-      const res = await fetch('/api/session', {method: 'POST', signal, headers: {'content-type': 'application/json'}, body: JSON.stringify({turnstile: token})});
-      if (!res.ok) throw new Error('Session refused');
-      const s = await res.json();
-      return {tier: s.tier, expiresAt: s.expiresAt, quota: s.quota};
-    });
-  }
-  const res = await fetch('/api/session', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)});
-  if (!res.ok) throw new Error('Session refused: ' + res.status);
-  const s = await res.json();
-  return {tier: s.tier, expiresAt: s.expiresAt, quota: s.quota};
+  return verifyVisitor(status.turnstile.sitekey, loadTurnstile, async (token, signal) => {
+    const res = await fetch('/api/session', {method: 'POST', signal, headers: {'content-type': 'application/json'}, body: JSON.stringify({turnstile: token})});
+    if (!res.ok) throw new Error('Session refused');
+    const s = await res.json();
+    return {tier: s.tier, expiresAt: s.expiresAt, quota: s.quota};
+  });
 }
 
 export async function callMuse(action: MuseAction, input: unknown): Promise<MuseResult> {

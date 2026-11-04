@@ -1,7 +1,7 @@
 // Real component handlers in an offline DOM stand-in. Not a browser/Muse/account acceptance test.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mountPersonalEntry} from '../src/ui/personal-entry.ts';
+import {mountPersonalEntry,personalAuthResult} from '../src/ui/personal-entry.ts';
 class Element {
  constructor(tag){this.tagName=tag.toUpperCase();this.childNodes=[];this.parentNode=null;this.dataset={};this.attrs={};this.value='';this.disabled=false;this._text='';}
  append(...nodes){for(const n of nodes){n.parentNode=this;this.childNodes.push(n);}}
@@ -166,4 +166,16 @@ test('failed login return stays visible after profile reads, gives a next step a
  const t=setup(()=>me(false),{authResult:'failed'});await t.c.ready;
  assert.match(t.host.textContent,/연결을 마치지 못|could not finish/i);assert.match(t.host.textContent,/잠시 뒤|later/i);
  assert.deepEqual(t.calls.map(x=>x.method),['GET']);assert.equal(t.navigation.length,0);assert.ok(action(t.host,'login'));t.c.dispose();
+});
+
+test('signed-out door names the immediate Threads step and the next steps in both browser languages',async()=>{
+ const old=Object.getOwnPropertyDescriptor(globalThis,'navigator');try{for(const language of['en-US','ko-KR']){Object.defineProperty(globalThis,'navigator',{configurable:true,value:{language}});const f=setup(()=>me(false));await f.c.ready;const heading=tree(f.host,n=>n.tagName==='H2')[0].textContent;assert.equal(heading,language.startsWith('ko')?'1 · Threads로 로그인':'1 · Sign in with Threads');assert.match(f.host.textContent,language.startsWith('ko')?/로그인 → 이름과 모습 선택 → 내 Muse가 세계에 입장/:/Sign in → pick a name and look → your Muse joins the world/);assert.equal(form(f.host),undefined);f.c.dispose();}}finally{if(old)Object.defineProperty(globalThis,'navigator',old);else delete globalThis.navigator;}
+});
+
+for(const language of ['en-US','ko-KR'])test(language+' invited beta notice precedes sign-in and error return uses fixed text plus watch',async()=>{
+ const previous=Object.getOwnPropertyDescriptor(globalThis,'navigator');try{Object.defineProperty(globalThis,'navigator',{configurable:true,value:{language}});
+ const raw='PRIVATE_PROVIDER_ERROR_SENTINEL';for(const query of ['error='+raw,'error_reason='+raw,'personal=declined','personal=failed']){let watched=0;const f=setup(()=>me(false),{authResult:personalAuthResult(new URLSearchParams(query)),onWatch:()=>watched++});await f.c.ready;
+ assert.match(f.host.textContent,language.startsWith('ko')?/베타: 초대받은 분만 로그인할 수 있어요. 관람은 누구나 바로 할 수 있어요./:/Beta: sign-in is open to invited testers. Watching is open to everyone./);assert.ok(f.host.textContent.indexOf(language.startsWith('ko')?'베타:':'Beta:')<f.host.textContent.lastIndexOf(language.startsWith('ko')?'Threads로 로그인':'Sign in with Threads'));assert.equal(f.host.textContent.includes(raw),false);assert.ok(tree(f.host,n=>n.attrs.role==='alert').length);await click(f.host,'watch');assert.equal(watched,1);assert.equal(f.navigation.length,0);assert.ok(f.calls.every(x=>x.method==='GET'));f.c.dispose();}
+ assert.equal(personalAuthResult(new URLSearchParams('personal=authenticated')),'authenticated');assert.equal(personalAuthResult(new URLSearchParams('personal='+raw)),undefined);
+ }finally{if(previous)Object.defineProperty(globalThis,'navigator',previous);else delete globalThis.navigator;}
 });
