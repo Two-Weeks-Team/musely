@@ -11,7 +11,7 @@ export class SocialStatusError extends Error {
 const fail=(code:Code):never=>{throw new SocialStatusError(code);};
 export class SocialStatusStore<Binding> {
  private storage:PersonalStorage;
- private options:{world:()=>WorldState;authorize:(binding:Binding,muse:string,now:number)=>boolean;now?:()=>number};
+ private options:{world:()=>WorldState;authorize:(binding:Binding,muse:string,now:number)=>boolean;now?:()=>number;residentValuesEnabled?:boolean};
  constructor(storage:PersonalStorage,options:SocialStatusStore<Binding>['options']){this.storage=storage;this.options=options;}
  init(){this.storage.sql.exec("CREATE TABLE IF NOT EXISTS social_status_overrides (world_id TEXT NOT NULL,actor_id TEXT NOT NULL,mode TEXT NOT NULL CHECK(mode IN ('auto','welcoming','busy','do_not_disturb')),revision INTEGER NOT NULL CHECK(revision>=1),PRIMARY KEY(world_id,actor_id))");}
  private now(){return(this.options.now??Date.now)();}
@@ -26,8 +26,8 @@ export class SocialStatusStore<Binding> {
  override(muse:string):SocialMode {const world=this.options.world();if(!world.muses.some(m=>m.id===muse))return 'do_not_disturb';return this.read(world.worldId,muse).mode;}
  /** Trusted deletion adapter only, called inside the caller's actor-deletion transaction. No HTTP endpoint. */
  purgeInTransaction(muse:string):void {this.storage.sql.exec('DELETE FROM social_status_overrides WHERE world_id=? AND actor_id=?',this.options.world().worldId,muse);}
- public(muse:string):{status:SocialStatus}{try{const world=this.options.world();return publicAvailability(world,muse,this.now(),this.read(world.worldId,muse).mode);}catch{return{status:'do_not_disturb'};}}
- get(binding:Binding,muse:string):OwnSocialStatus {const world=this.guard(binding,muse),row=this.read(world.worldId,muse);return{muse,...row,...publicAvailability(world,muse,this.now(),row.mode)};}
+ public(muse:string):{status:SocialStatus}{try{const world=this.options.world();return publicAvailability(world,muse,this.now(),this.read(world.worldId,muse).mode,this.options.residentValuesEnabled===true);}catch{return{status:'do_not_disturb'};}}
+ get(binding:Binding,muse:string):OwnSocialStatus {const world=this.guard(binding,muse),row=this.read(world.worldId,muse);return{muse,...row,...publicAvailability(world,muse,this.now(),row.mode,this.options.residentValuesEnabled===true)};}
  set(binding:Binding,muse:string,input:unknown):OwnSocialStatus {
   this.guard(binding,muse);
   if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).sort().join(',')!=='expectedRevision,mode')return fail('invalid_social_status');
@@ -38,7 +38,7 @@ export class SocialStatusStore<Binding> {
    if(row.revision!==expected)return fail('social_status_conflict');
    const revision=row.revision+1;
    this.storage.sql.exec('INSERT INTO social_status_overrides (world_id,actor_id,mode,revision) VALUES (?,?,?,?) ON CONFLICT(world_id,actor_id) DO UPDATE SET mode=excluded.mode,revision=excluded.revision',world.worldId,muse,mode,revision);
-   return{muse,mode,revision,...publicAvailability(world,muse,this.now(),mode)};
+   return{muse,mode,revision,...publicAvailability(world,muse,this.now(),mode,this.options.residentValuesEnabled===true)};
   });
  }
 }
