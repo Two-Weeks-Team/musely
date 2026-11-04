@@ -9,7 +9,7 @@ test('actual WorldDO budget wiring classifies peer replies and preserves Persona
  t.mock.method(Date,'now',()=>at);let calls=0;
  const a=await bootWorldDo(t,{mode:'sandbox-v1',envOverrides:settings,modelFetcher:async()=>{calls++;return new Response(JSON.stringify({id:'offline-budget',usage:{prompt_tokens:100,completion_tokens:10},choices:[{message:{content:JSON.stringify(reply)}}]}),{headers:{'x-request-id':'offline-budget-call'}});}});
  assert.equal(a.runtime.opts.residentBudgetEnabled,true);assert.equal(a.world.status().capUsd,30);
- assert.equal(a.world.reserve({id:'used-hour',tier:'world',session:'world',ip:'',action:'encounter',residentKind:'personal',maxCostUsd:.9}).ok,true);a.world.settle('used-hour',.9,'live');
+ assert.equal(a.world.reserve({id:'used-hour',tier:'world',session:'world',ip:'',action:'encounter',residentKind:'personal',maxCostUsd:.95}).ok,true);a.world.settle('used-hour',.95,'live');
  const chat=await a.runtime.modelCall('encounter',input('02-moss'),'ordinary-chat');assert.equal(chat.ok,false);assert.equal(chat.reason,'resident_priority_budget');assert.equal(calls,0);
  const personal=await a.runtime.modelCall('encounter',input('00-jolly'),'personal-response');assert.equal(personal.ok,true);assert.equal(calls,1);
  const usage=a.world.status().residentBudget.resident.byKind;assert.equal(usage.personal.knownModelCalls,2);assert.equal(usage.chat.calls,0);

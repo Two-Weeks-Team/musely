@@ -1,3 +1,9 @@
+/** Projected cost includes settled actuals plus pending maxima and this request's full maximum.
+ * Shed only near the resident cap: on a $1 hour, action/reflection stop above $.90,
+ * chat above $.95, trade above $.98; Personal retains the last headroom to $1.
+ * The same ratios apply near the $24 resident day. These are headroom choices,
+ * not raised caps, a call-count limit, or permission to underestimate a reservation. */
+export const RESIDENT_PRIORITY_CUTOFFS=Object.freeze({action:.90,reflection:.90,chat:.95,trade:.98,personal:1});
 /** Trusted deployment settings only. A browser never chooses a tier or enables this policy. */
 export type ResidentBudgetPolicy={enabled:boolean;residentDailyCapUsd:number;interactiveDailyCapUsd:number;residentHourlyCapUsd:number;periodStartAt:number;periodEndAt:number;periodCapUsd:number;residentEnabled:boolean};
 type Settings=Partial<Record<'RESIDENT_BUDGET_MODE'|'DAILY_BUDGET_USD'|'RESIDENT_DAILY_BUDGET_USD'|'INTERACTIVE_DAILY_BUDGET_USD'|'RESIDENT_HOURLY_BUDGET_USD'|'MODEL_PERIOD_BUDGET_USD'|'MODEL_BUDGET_START_AT'|'MODEL_BUDGET_END_AT'|'RESIDENT_MODEL_ENABLED',string>>;
