@@ -10,6 +10,9 @@ function cameraFailure(error: unknown): string | null {
   const name = error instanceof Error ? error.name : null;
   if (name === 'NotAllowedError') return 'Chrome 사이트 정보 → 사이트 설정 → 카메라와 macOS 시스템 설정 → 개인정보 보호 및 보안 → 카메라에서 허용해 주세요. 둘 다 허용했다면 페이지를 새로 여세요. · Allow Chrome Site information → Site settings → Camera and macOS Privacy & Security → Camera. If both are allowed, reopen this page; its camera policy may be blocking access.';
   if (name === 'NotFoundError') return '카메라를 연결하면 다시 할 수 있어요. 지금은 동네를 관전하거나 방문할 수 있어요. · No camera was found. Connect or enable a camera to retry; you can watch or visit now.';
+  if (name === 'TimeoutError') return '권한 창이 안 보이면 주소창 왼쪽 아이콘 → 카메라 허용 → 새로고침을 해 주세요. macOS 시스템 설정 → 개인정보 보호 및 보안 → 카메라 → Chrome도 확인해 주세요. · If no prompt appears: Site information → Camera → Allow, then reload. Also check macOS System Settings → Privacy & Security → Camera → Chrome.';
+  if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError') return '카메라 해상도나 모드를 사용할 수 없어요. 다른 카메라 설정을 선택하고 다시 해 주세요. · This camera mode or resolution is unavailable. Change the camera settings and retry.';
+  if (name === 'SecurityError' || name === 'TypeError') return '보안 연결과 카메라 접근을 확인해 주세요. https://musely.net을 직접 열고 Chrome 카메라 설정을 확인해 주세요. · Open https://musely.net directly in a secure window and check the Camera permission and page security policy.';
   if (name === 'NotReadableError') return '카메라를 쓰는 다른 앱을 닫고 장치 연결을 확인해 주세요. · Another app may be using it, or the device may be unavailable. Close other camera apps and check the device.';
   return null;
 }
@@ -19,7 +22,7 @@ const poses: Record<string, string> = {
   raise_right_hand: '오른손을 들어 주세요 · Raise your right hand',
   turn_head_left: '고개를 자신의 왼쪽으로 돌려 주세요 · Turn your head to your left',
   turn_head_right: '고개를 자신의 오른쪽으로 돌려 주세요 · Turn your head to your right',
-  show_date_paper: '오늘 날짜를 쓴 종이를 보여 주세요 · Show a paper with today’s date',
+  show_two_fingers: '한 손의 손가락 두 개를 펼쳐 보여 주세요 · Show exactly two raised fingers on one hand',
   thumbs_up: '엄지손가락을 들어 주세요 · Show a thumbs-up',
   touch_nose: '손가락으로 코를 만져 주세요 · Touch your nose with one finger',
   show_open_palm: '손바닥을 펼쳐 보여 주세요 · Show an open palm',
@@ -51,13 +54,17 @@ export function ritualCard(onDone: () => void) {
     stage.setAttribute('role', 'region'); stage.setAttribute('aria-label', 'Camera ritual');
     const cancel = el('button', 'secondary ritual-cancel', '취소 · Cancel'); cancel.type = 'button';
     const prompt = el('p', 'ritual-prompt', '카메라를 허용하면 미리보기가 나와요. 아직 촬영하지 않아요. · Allow the camera to see your preview. No photo yet.');
+    const permission = el('p', 'muted ritual-permission'); permission.setAttribute('role', 'status'); permission.setAttribute('aria-live', 'polite');
     const count = el('p', 'ritual-count'); count.setAttribute('aria-live', 'polite'); count.setAttribute('aria-atomic', 'true');
     const controls = el('div', 'ritual-controls'); controls.append(cancel);
-    stage.replaceChildren(prompt, count, controls);
+    stage.replaceChildren(prompt, permission, count, controls);
     const focusStage = () => { stage.scrollIntoView({block: 'nearest', behavior: 'instant'}); stage.focus({preventScroll: true}); };
     focusStage();
     let stream: MediaStream | null = null, video: HTMLVideoElement | null = null;
-    let cancelled: Error | null = null, sent = false;
+    let cancelled: Error | null = null, sent = false, finished = false;
+    let removePermissionWatch = () => {};
+    let permissionStatus: PermissionStatus | null = null, cameraDeadline: ReturnType<typeof setTimeout> | undefined;
+    const permissionChange = () => { if (finished || cancelled || !permissionStatus) return; const state=permissionStatus.state; permission.textContent = state === 'granted' ? '카메라 권한: 허용됨 (granted) · Camera permission: granted' : state === 'denied' ? '카메라 권한: 차단됨 (denied). Chrome 사이트 설정과 macOS 카메라 허용을 확인해 주세요. · Camera permission: denied. Check Chrome Site settings and macOS Camera access.' : '카메라 권한: 선택 대기 (prompt). 주소창 왼쪽의 카메라 아이콘도 확인해 주세요. · Camera permission: prompt. Check the camera icon beside the address bar.'; };
     let expiry: ReturnType<typeof setTimeout> | undefined;
     const timers = new Set<ReturnType<typeof setTimeout>>(), frames: string[] = [];
     const abort = new AbortController();
@@ -89,14 +96,32 @@ export function ritualCard(onDone: () => void) {
     cancel.onclick = () => cancelRun();
     try {
       guard();
-      const pendingStream = navigator.mediaDevices.getUserMedia({video: {facingMode: 'user', width: {ideal: 640}, height: {ideal: 480}}, audio: false}).then(s => {
-        if (cancelled || !onScreen()) { s.getTracks().forEach(t => t.stop()); throw new Dismissed(); }
+      if (!navigator.mediaDevices?.getUserMedia) throw new DOMException('Camera access unavailable', 'SecurityError');
+      cameraDeadline = setTimeout(() => cancelRun(new DOMException('Camera request did not settle', 'TimeoutError')), 8000);
+      // Diagnostics run in parallel: awaiting either here would lose the click's activation.
+      // Keep only status/kind; device identifiers, labels and frames are never logged.
+      try { void navigator.permissions?.query({name: 'camera' as PermissionName}).then(status => {
+        if (finished || cancelled) return;
+        permissionStatus = status; permissionChange(); status.addEventListener('change', permissionChange); removePermissionWatch = () => status.removeEventListener('change', permissionChange);
+      }).catch(() => {}); } catch { /* Permissions API is optional. */ }
+      try { void navigator.mediaDevices.enumerateDevices?.().then(devices => {
+        if (!finished && !cancelled && !stream && !devices.some(d => d.kind === 'videoinput')) cancelRun(new DOMException('No camera available', 'NotFoundError'));
+      }).catch(() => {}); } catch { /* Device listing is advisory; it must not block capture. */ }
+      const acquire = (constraints: MediaStreamConstraints) => navigator.mediaDevices.getUserMedia(constraints).then(s => {
+        if (cancelled || finished || !onScreen()) { s.getTracks().forEach(t => t.stop()); throw new Dismissed(); }
         stream = s; return s;
+      });
+      // The first call happens in this click stack, before any await or network request.
+      const pendingStream = acquire({video: {facingMode: 'user', width: {ideal: 640}, height: {ideal: 480}}, audio: false}).catch(error => {
+        if (cancelled || finished) throw cancelled ?? error;
+        if (error instanceof Error && ['OverconstrainedError', 'ConstraintNotSatisfiedError', 'NotFoundError'].includes(error.name)) return acquire({video: true, audio: false});
+        throw error;
       });
       await wait(pendingStream);
       video = el('video', 'ritual-video'); video.muted = true; video.playsInline = true; video.srcObject = stream;
-      stage.replaceChildren(video, prompt, count, controls); await wait(video.play());
-      prompt.textContent = '미리보기 안에 얼굴과 손이 보이나요? 오늘 날짜를 쓴 종이도 준비해 주세요. 준비 버튼을 누르기 전에는 촬영하지 않아요. · Check your face and hands in the preview and prepare paper with today’s date. Each move waits until you are ready.';
+      stage.replaceChildren(video, prompt, permission, count, controls); await wait(video.play());
+      clearTimeout(cameraDeadline); cameraDeadline = undefined;
+      prompt.textContent = '미리보기 안에 얼굴과 손이 보이나요? 준비물 없이 몸 동작만 하면 돼요. 준비 버튼을 누르기 전에는 촬영하지 않아요. · Keep your face and hands in the preview. No props are needed, only body movements. Each move waits until you are ready.';
       focusStage();
       await ready('준비됐어요 · Ready', false);
       await countdown();
@@ -136,18 +161,20 @@ export function ritualCard(onDone: () => void) {
       const live = j.source === 'live';
       stage.append(el('span', 'src ' + (live ? 'src-live' : 'src-replay'), live ? 'LIVE · Muse Spark vision' : '아직 확인하지 못했어요. 잠시 후 다시 해 주세요. · Not checked yet. Please retry shortly.'));
       const res = (j.output?.results ?? []) as Verdict[];
-      if (res.length) { stage.append(el('p', '', res.every(x => x.passed) ? '확인됐어요 · All three moves passed.' : '얼굴과 손이 미리보기에 잘 보이도록 맞추고 다시 해 주세요. · Not passed. Keep your face and hands visible, then retry.'), results(res.map((x, k) => ({...x, step: poses[steps[k]?.id] ?? steps[k]?.text ?? x.step})))); }
+      const passed = live && typeof j.evidence?.requestId === 'string' && !!j.evidence.requestId && res.length === 3 && res.every((x, k) => x.passed === true && x.step === steps[k]?.id);
+      if (res.length) { stage.append(el('p', '', passed ? '확인됐어요 · All three moves passed.' : '얼굴과 손이 미리보기에 잘 보이도록 맞추고 다시 해 주세요. · Not passed. Keep your face and hands visible, then retry.'), results(res.map((x, k) => ({...x, step: poses[steps[k]?.id] ?? steps[k]?.text ?? x.step})))); }
       if (j.evidence?.requestId) stage.append(el('p', 'muted', `Request ${j.evidence.requestId} · ${j.evidence.latencyMs} ms`));
       onDone();
     } catch (err) {
       if (err instanceof Dismissed) { stage.replaceChildren(el('p', 'muted', sent ? 'Ritual closed. Judging may already have received the three frames.' : 'Ritual cancelled: nothing was sent.')); return; }
-      stage.replaceChildren(el('p', 'muted', cameraFailure(err) ?? '연결과 조명을 확인하고 다시 해 주세요. 시간이 지났다면 처음부터 시작해 주세요. · Check your connection and lighting, then retry. If the time expired, start again.'));
+      stage.replaceChildren(permission, el('p', 'muted', cameraFailure(err) ?? '연결과 조명을 확인하고 다시 해 주세요. 시간이 지났다면 처음부터 시작해 주세요. · Check your connection and lighting, then retry. If the time expired, start again.'));
       if (err instanceof Error && err.name === 'NotFoundError') {
         const visit = el('button', 'primary', '동네 둘러보기 · Watch the neighborhood'); visit.type = 'button';
         visit.onclick = () => { box.closest<HTMLElement>(':popover-open')?.hidePopover(); };
         stage.append(visit);
       }
     } finally {
+      finished = true; clearTimeout(cameraDeadline); removePermissionWatch();
       observer.disconnect(); document.removeEventListener('visibilitychange', visibility); document.removeEventListener('toggle', visibility, true);
       clearTimeout(expiry); for (const timer of timers) clearTimeout(timer);
       frames.length = 0; stopCamera(); start.disabled = false; start.hidden = false; start.textContent = '다시 하기 · Retry';
