@@ -1,7 +1,8 @@
 // Allowed Muse Spark actions (direction v2, 15): spotlight, encounter, trade, negotiate, challenge.
 // The server validates a small structured input and assembles the prompt from the character harness.
 // Free text is never forwarded as instructions; another agent's words enter only as wrapped data.
-import {harnessById, HARNESS_IDS, SCOPES} from '../../src/engine/harness.ts';
+import {harnessById, ACTOR_IDS, SCOPES} from '../../src/engine/harness.ts';
+import {actorLabel} from '../../src/engine/actor-display.ts';
 
 export const ACTIONS = ['spotlight', 'encounter', 'trade', 'negotiate', 'challenge'] as const;
 export type Action = (typeof ACTIONS)[number];
@@ -25,7 +26,7 @@ const ITEM = /^[a-z0-9_]{1,40}$/;
 const obj = (v: unknown, at: string) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : fail(at + ' must be an object'));
 const name = (v: unknown, at: string) => (typeof v === 'string' && NAME.test(v) ? v : fail(at + ' must be a short name'));
 const item = (v: unknown, at: string) => (typeof v === 'string' && ITEM.test(v) ? v : fail(at + ' must be an item id'));
-const muse = (v: unknown, at: string) => (typeof v === 'string' && HARNESS_IDS.includes(v) ? v : fail(at + ' must be a Muse id'));
+const muse = (v: unknown, at: string) => (typeof v === 'string' && ACTOR_IDS.includes(v) ? v : fail(at + ' must be a Muse id'));
 const oneOf = <T extends string>(v: unknown, values: readonly T[], at: string) => (values.includes(v as T) ? (v as T) : fail(at + ' must be one of ' + values.join('|')));
 const list = <T>(v: unknown, max: number, at: string, each: (x: unknown, at: string) => T) => (Array.isArray(v) && v.length <= max ? v.map((x, i) => each(x, `${at}[${i}]`)) : fail(`${at} must be a list of at most ${max}`));
 const meters = (v: unknown, at: string) => (typeof v === 'number' && v >= 0 && v <= 100_000 ? Math.round(v) : fail(at + ' must be meters'));
@@ -34,19 +35,22 @@ const shortText = (v: unknown, max: number, at: string) => (typeof v === 'string
 
 export type ActionInput = Record<string, unknown>;
 
-export function validate(action: Action, raw: unknown): ActionInput {
+export function validate(action: Action, raw: unknown, trustedPeerIds:readonly string[] = []): ActionInput {
   const i = obj(raw, 'input');
+  // Only a trusted server caller supplies this allowlist, never fields from the request body.
+  // Personal peers may be observed/addressed; the model actor still requires an NPC harness.
+  const peer=(v:unknown,at:string)=>typeof v==='string'&&(ACTOR_IDS.includes(v)||trustedPeerIds.includes(v))?v:fail(at+' must be a verified world peer');
   switch (action) {
     case 'spotlight':
       return {
         muse: muse(i.muse, 'muse'), freedom: oneOf(i.freedom, FREEDOMS, 'freedom'), localTime: clock(i.localTime, 'localTime'), place: name(i.place, 'place'),
         places: list(i.places ?? [], 8, 'places', (p, at) => { const o = obj(p, at); return {name: name(o.name, at + '.name'), kind: name(o.kind, at + '.kind'), distanceM: meters(o.distanceM, at + '.distanceM')}; }),
-        muses: list(i.muses ?? [], 6, 'muses', (p, at) => { const o = obj(p, at); return {muse: muse(o.muse, at + '.muse'), place: name(o.place, at + '.place'), distanceM: meters(o.distanceM, at + '.distanceM')}; }),
+        muses: list(i.muses ?? [], 6, 'muses', (p, at) => { const o = obj(p, at); return {muse: peer(o.muse, at + '.muse'), place: name(o.place, at + '.place'), distanceM: meters(o.distanceM, at + '.distanceM')}; }),
         items: list(i.items ?? [], 12, 'items', item),
         memory: list(i.memory ?? [], 5, 'memory', (m, at) => shortText(m, 100, at)),
       };
     case 'encounter':
-      return {muse: muse(i.muse, 'muse'), other: muse(i.other, 'other'), place: name(i.place, 'place'), localTime: clock(i.localTime, 'localTime'), items: list(i.items ?? [], 12, 'items', item), otherItems: list(i.otherItems ?? [], 12, 'otherItems', item), memory: list(i.memory ?? [], 5, 'memory', (m, at) => shortText(m, 100, at)), incoming: i.incoming === undefined ? null : shortText(i.incoming, 280, 'incoming')};
+      return {muse: muse(i.muse, 'muse'), other: peer(i.other, 'other'), place: name(i.place, 'place'), localTime: clock(i.localTime, 'localTime'), items: list(i.items ?? [], 12, 'items', item), otherItems: list(i.otherItems ?? [], 12, 'otherItems', item), memory: list(i.memory ?? [], 5, 'memory', (m, at) => shortText(m, 100, at)), incoming: i.incoming === undefined ? null : shortText(i.incoming, 280, 'incoming')};
     case 'trade':
       return {muse: muse(i.muse, 'muse'), other: muse(i.other, 'other'), give: item(i.give, 'give'), want: item(i.want, 'want'), items: list(i.items ?? [], 12, 'items', item), otherItems: list(i.otherItems ?? [], 12, 'otherItems', item), round: typeof i.round === 'number' && i.round >= 1 && i.round <= 3 ? i.round : fail('round must be 1..3')};
     case 'negotiate':
@@ -96,7 +100,7 @@ function persona(id: string) {
   return `You are ${h.name}, the ${h.role} Muse: ${h.persona.traits}. Voice: ${h.persona.voice}. You like ${h.persona.likes.join(', ')}. Skills: ${h.skills.join(', ')}. Tools you may use: ${h.tools.join(', ')}.`;
 }
 const wrap = (text: string) => `<untrusted_data source="other_agent">${text.replace(/[<>]/g, ' ')}</untrusted_data>`;
-const named = (id: string) => harnessById(id).name;
+const named = (id: string) => actorLabel(id);
 
 export function buildMessages(action: Action, input: ActionInput): unknown[] {
   const i = input as any;
