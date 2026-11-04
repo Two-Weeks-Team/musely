@@ -154,7 +154,7 @@ export class ConnectedHost {
     const now = this.now();
     this.keys.touch(key.id, now);
     // A revoked Muse may still read, but its calls do not change the world (not even the connected flag).
-    if (!this.d.trust.suspended(key.muse)) this.markConnected(key.muse, now);
+    if (!this.d.trust.suspended(key.muse)&&!this.d.runtime.ownerPause(key.muse).paused) this.markConnected(key.muse, now);
     if (!method) return {status: 'ok', result: {}};
     // The Threads claim proves the real owner's Muse. The reviewer's Muse is a team-controlled resident whose Agent Card
     // already says owner_claimed (like every resident), so its own actions do not wait on the owner's claim. The real

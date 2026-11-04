@@ -37,6 +37,7 @@ import {migrateTaskStore, type DecisionInput} from './core/tasks.ts';
 import {PersonalAuthStore, type PersonalFlow, type PersonalSessionRow} from './core/personal-session.ts';
 import {PersonalRegistration, type PersonalBinding} from './core/personal-registration.ts';
 import {SocialStatusStore,SocialStatusError} from './core/social-status.ts';
+import {setOwnerPause,type PauseOwner} from './core/owner-pause.ts';
 import {resolveSocialStatus} from '../src/engine/social-status.ts';
 import type {WorldState} from '../src/engine/world.ts';
 import {PRINCIPALS} from './core/owner-session.ts';
@@ -246,6 +247,23 @@ export class WorldDO extends DurableObject<Env> {
   personalProfileRead(binding: PersonalBinding) { this.guardAdoptionBinding(binding);return this.personalLegacy.profile(binding)??this.personalRegistration.profile(binding); }
   personalProfilePatch(binding: PersonalBinding, input: unknown) { this.guardAdoptionBinding(binding);return this.personalAdoption.hasPrincipal(binding.proof.principalId)?this.personalLegacy.patchProfile(binding,input):this.personalWorld.patchProfile(binding,input); }
   private guardAdoptionBinding(binding:PersonalBinding){if(!binding||binding.appId!==this.env.THREADS_APP_ID||!this.personalAuth.active(binding.sidDigest,binding.proof,binding.appId,Date.now()))throw new PersonalRegistryError('personal_session_required');}
+  private personalPauseOwner(binding:PersonalBinding):PauseOwner {
+    this.guardAdoptionBinding(binding);
+    if(this.personalAdoption.hasPrincipal(binding.proof.principalId)){
+      const adopted=this.personalLegacy.authorizeOwner(binding);
+      if(!this.runtime.state().muses.some(m=>m.id===OWNER_SLOT))throw new PersonalRegistryError('pause_muse_unavailable');
+      return{muse:OWNER_SLOT,binding:canonicalize({actor:OWNER_SLOT,agent:adopted.receipt.agentId,world:adopted.receipt.worldId})};
+    }
+    const actor=this.personalAuth.owners.actorForPrincipal(binding.proof.principalId);
+    if(!actor)throw new PersonalRegistryError('pause_muse_unavailable');
+    const agent=this.trust.agentByMuse(actor.actorId),root=this.ctx.storage.sql.exec('SELECT actor_id,agent_id,public_jwk FROM personal_actor_roots WHERE root_ref=?',actor.rootRef).toArray()[0];
+    if(!root||root.actor_id!==actor.actorId||root.agent_id!==actor.agentId||(agent&&(agent.kind!=='personal'||agent.agentId!==actor.agentId||canonicalize(JSON.parse(String(root.public_jwk)))!==canonicalize(agent.rootJwk))))throw new PersonalRegistryError('pause_forbidden');
+    const member=this.runtime.state().muses.find(m=>m.id===actor.actorId);
+    if(member&&(member.controlMode!=='personal'||member.profile?.actorId!==actor.actorId))throw new PersonalRegistryError('pause_forbidden');
+    return{muse:actor.actorId,binding:canonicalize({actor:actor.actorId,agent:actor.agentId,root:actor.rootRef,principal:actor.principalId,world:this.runtime.worldId})};
+  }
+  personalPauseGet(binding:PersonalBinding){const owner=this.personalPauseOwner(binding),out=this.runtime.ownerPause(owner.muse);this.personalPauseOwner(binding);return out;}
+  personalPauseSet(binding:PersonalBinding,input:unknown){return setOwnerPause(this.ctx.storage,this.runtime,this.trust,b=>this.personalPauseOwner(b),binding,input);}
   private async adoptionOwner(cookie:string|null):Promise<LegacyOwnerProof|null>{const tokens:OwnerTokens={owner:this.env.OWNER_CONTROL_TOKEN,peer:this.env.DEMO_PEER_CONTROL_TOKEN,reviewer:this.env.REVIEWER_CONTROL_TOKEN,judge:this.env.JUDGE_TOKEN};const owner=await readOwnerSession(this.env.SESSION_SECRET??'',cookie,tokens);return owner?.principal==='owner'?{principal:owner.principal,ownerId:owner.ownerId,exp:owner.exp}:null;}
   async personalLegacyView(binding:PersonalBinding,ownerCookie:string|null){this.guardAdoptionBinding(binding);const owner=this.personalAdoption.hasPrincipal(binding.proof.principalId)?null:await this.adoptionOwner(ownerCookie);this.guardAdoptionBinding(binding);return this.personalLegacy.view(binding,owner);}
   async personalLegacyAdopt(binding:PersonalBinding,ownerCookie:string|null,input:unknown){this.guardAdoptionBinding(binding);const owner=await this.adoptionOwner(ownerCookie);this.guardAdoptionBinding(binding);if(!owner)throw new PersonalRegistryError('owner_session_required');return this.personalLegacy.adopt(binding,owner,input);}

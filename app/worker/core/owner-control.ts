@@ -106,7 +106,7 @@ export function redelegateMuse(c: ControlCtx, museId: string, by: string): Redel
   if (!c.trust.suspended(museId)) {
     // Delegated in the registry already. If an earlier attempt failed before the world resumed the Muse, resume it now.
     const version = c.trust.delegationVersion(agent.agentId);
-    if (!c.runtime.state().paused?.[museId]) return {ok: true, muse: museId, already: true, repaired: false, version};
+    if (!c.runtime.state().paused?.[museId]||c.runtime.ownerPause(museId).paused) return {ok: true, muse: museId, already: true, repaired: false, version};
     const now = nowOf(c);
     c.runtime.commitExternal(now, `owner-redelegate-repair-${museId}-${uniq()}`, (st, put) => {
       const emit = byOwner(put);
@@ -119,7 +119,7 @@ export function redelegateMuse(c: ControlCtx, museId: string, by: string): Redel
   const now = nowOf(c);
   c.runtime.commitExternal(now, `owner-redelegate-${museId}-${uniq()}`, (st, put) => {
     const emit = byOwner(put);
-    resumeMuse(st, museId);
+    if(!c.runtime.ownerPause(museId).paused)resumeMuse(st, museId);
     emit({at: now, source: 'live', kind: 'delegation_issued', muse: museId, line: 'Owner delegated again', data: {version, by}, tags: []});
   });
   return {ok: true, muse: museId, already: false, repaired: false, version};
@@ -133,7 +133,7 @@ export function redelegateMuse(c: ControlCtx, museId: string, by: string): Redel
 export function reconcilePaused(c: ControlCtx) {
   const s = c.runtime.state(), now = nowOf(c);
   const pause = s.muses.filter(m => c.trust.suspended(m.id) && needsStop(s, m.id)).map(m => m.id);
-  const resume = s.muses.filter(m => !c.trust.suspended(m.id) && s.paused?.[m.id]).map(m => m.id);
+  const resume = s.muses.filter(m => !c.trust.suspended(m.id) && s.paused?.[m.id]&&!c.runtime.ownerPause(m.id).paused).map(m => m.id);
   if (!pause.length && !resume.length) return {pause, resume};
   c.runtime.commitExternal(now, 'reconcile-paused', (st, emit) => {
     for (const id of pause) stopInWorld(st, emit, id, c.trust.delegationVersion(c.trust.agentByMuse(id)!.agentId), 'musely', now, true);

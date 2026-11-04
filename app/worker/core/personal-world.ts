@@ -45,7 +45,7 @@ export class PersonalWorld{
  this.hooks=hooks;
  this.legacy=legacy;
   this.authority=new PersonalAuthority(privateStorage,auth);
-  this.entry=new PersonalEntry(privateStorage,auth,{authority:this.authority,currentWorld:actorId=>({worldId:runtime.worldId,paused:!!runtime.state().paused?.[actorId]||trust.suspended(actorId)}),readReceipt:id=>this.receipt(id)});
+  this.entry=new PersonalEntry(privateStorage,auth,{authority:this.authority,currentWorld:actorId=>({worldId:runtime.worldId,paused:runtime.ownerPause(actorId).paused||!!runtime.state().paused?.[actorId]||trust.suspended(actorId)}),readReceipt:id=>this.receipt(id)});
  }
  private legacy:{root:()=>JsonWebKey|null;
  claimed:()=>boolean};
@@ -73,7 +73,7 @@ export class PersonalWorld{
  }
  async authorityOwn(b:PersonalBinding){return this.safeAuthority(await this.authority.own(b));
  }
- async grant(b:PersonalBinding,input:unknown){return this.safeAuthority(await this.authority.grant(b,input,v=>{if(this.runtime.state().paused?.[v.actorId])this.runtime.commitExternal(Date.now(),'personal-resume-'+v.version,(s,emit)=>{resumeMuse(s,v.actorId);
+ async grant(b:PersonalBinding,input:unknown){return this.safeAuthority(await this.authority.grant(b,input,v=>{if(this.runtime.state().paused?.[v.actorId]&&!this.runtime.ownerPause(v.actorId).paused)this.runtime.commitExternal(Date.now(),'personal-resume-'+v.version,(s,emit)=>{resumeMuse(s,v.actorId);
  emit({at:Date.now(),source:'live',kind:'muse_resumed',muse:v.actorId,data:{actor:'owner',reason:'personal_delegation',version:v.version},tags:[]});
  });
  }));
@@ -192,12 +192,13 @@ export class PersonalWorld{
  private async enter(hash:string,b:Bearer,args:unknown):Promise<ToolResult>{
   if(!args||typeof args!=='object'||Array.isArray(args)||Object.keys(args).some(k=>!['attempt_id','command_id','expected_version'].includes(k)))throw new InvalidParams();
   const a=args as {attempt_id:string;command_id:string;expected_version?:number};if(typeof a.attempt_id!=='string'||typeof a.command_id!=='string'||!/^pea_[a-f0-9-]{36}$/.test(a.attempt_id)||!/^[A-Za-z0-9_-]{8,64}$/.test(a.command_id)||/^(msly_|pak_|pea_)/.test(a.command_id)||(a.expected_version!==undefined&&(!Number.isSafeInteger(a.expected_version)||a.expected_version<0)))throw new InvalidParams();
+  const pauseRevision=this.runtime.ownerPause(b.actor.actorId).revision;
   if(!b.scopes.includes('world_entry'))return denied('scope_not_delegated');
   try{this.attempt(b,a.attempt_id,a.command_id,Date.now());}catch(e){return denied(e instanceof PersonalRegistryError?e.code:'entry_unavailable');}
   const exec=await this.trust.custodialExecutor(b.actor.actorId,null);if(!exec)return denied('delegation_revoked');
   const cmd=await signCommand(exec,{worldId:this.runtime.worldId,expectedVersion:a.expected_version??null,action:'enter_world',payload:{attempt_id:a.attempt_id},recipient:worldHandler(this.runtime.worldId),scope:'world_entry',ownerClaimed:false,now:Date.now(),commandId:a.command_id});
   let currentAttempt:Record<string,unknown>|null=null;
-  const authorize=()=>{const current=this.lookup(hash);if(!current||current.id!==b.id||current.actor.actorId!==b.actor.actorId||current.actor.rootRef!==b.actor.rootRef||current.version!==b.version)return'agent_key_revoked';try{currentAttempt=this.attempt(current,a.attempt_id,a.command_id,Date.now());return null;}catch(e){return e instanceof PersonalRegistryError?e.code:'entry_unavailable';}};
+  const authorize=()=>{const current=this.lookup(hash);if(!current||current.id!==b.id||current.actor.actorId!==b.actor.actorId||current.actor.rootRef!==b.actor.rootRef||current.version!==b.version)return'agent_key_revoked';const pause=this.runtime.ownerPause(b.actor.actorId);if(pause.paused||pause.revision!==pauseRevision)return'paused_by_owner';try{currentAttempt=this.attempt(current,a.attempt_id,a.command_id,Date.now());return null;}catch(e){return e instanceof PersonalRegistryError?e.code:'entry_unavailable';}};
   try{const out=await executeCommand({runtime:this.runtime,trust:this.trust,authorize,now:Date.now},cmd,{recipient:worldHandler(this.runtime.worldId),apply:(s,emit,at)=>{const p=this.auth.owners.profile(b.actor.actorId);if(!p||p.revision!==Number(currentAttempt?.profile_revision))return{ok:false,code:'entry_profile_conflict'};const added=admitPersonal(s,p,at);s.muses.find(m=>m.id===p.actorId)!.profile=actorProfile(p,p.actorId);emit({at,source:'live',kind:'personal_entered',muse:p.actorId,place:s.muses.find(m=>m.id===p.actorId)!.place,data:{actorOrigin:'connected',tool:'enter_world',command_id:cmd.commandId,new_actor:added,profile:p,envelope:envelopeEvidence(cmd.signed)},tags:['personal_entry']});return{ok:true,output:{actorId:p.actorId}};},afterLog:(done,at)=>this.record(b,currentAttempt!,cmd.commandId,done,at)});
    return out.result.ok?tool({ok:true,duplicate:out.duplicate,command:out.result,entry_receipt:this.receipt(a.attempt_id)?{id:this.receipt(a.attempt_id)!.id,actorId:b.actor.actorId,worldId:this.runtime.worldId}:null}):denied(out.result.error?.code??'entry_refused');
   }catch{return denied('entry_unavailable');}
@@ -207,10 +208,19 @@ export class PersonalWorld{
   if(notification&&method&&!method.startsWith('notifications/'))return{status:'ok',error:{code:-32600,message:'Invalid Request: only notifications may omit the id'}};
   const call=async(name:string,args:unknown):Promise<ToolResult>=>{
    if(name==='register_agent'){if(!args||typeof args!=='object'||Array.isArray(args)||Object.keys(args).length)throw new InvalidParams();const claim=this.trust.personalClaim(b.actor.actorId);return tool({agent_id:b.actor.agentId,muse:b.actor.actorId,name:this.auth.owners.profile(b.actor.actorId)?.displayName,signer_kind:'server_custodial',claim:{status:claim.status,owner_claimed:claim.claimed},tools:toolList(this.runtime.state().muses.map(m=>m.id),true).map(t=>t.name),entry_required:!this.admitted(b)});}
-   if(name==='enter_world')return this.enter(hash,b,args);
-   if(!this.admitted(b))return denied('entry_required');
+   if(name==='enter_world')return this.runtime.ownerPause(b.actor.actorId).paused?denied('paused_by_owner'):this.enter(hash,b,args);
+   if(!this.admitted(b)){
+    if(this.runtime.ownerPause(b.actor.actorId).paused){
+     if(name==='get_world_state'||name==='heartbeat_check'){
+      if(name==='heartbeat_check'&&!b.scopes.includes('walk_and_greet'))return denied('scope_not_delegated');
+      return tool({muse:{id:b.actor.actorId,paused_by_owner:true},paused_by_owner:true,read_only:true,entry_required:true,note:'Paused by owner. Your registered Muse has not entered the world.'});
+     }
+     return denied('paused_by_owner');
+    }
+    return denied('entry_required');
+   }
    if(name==='heartbeat_check'&&!b.scopes.includes('walk_and_greet'))return denied('scope_not_delegated');
-   const last=this.runtime.state().inbox?.connected[b.actor.actorId];if(last===undefined||Date.now()-last>=CONNECTED_REFRESH_MS)this.runtime.commitExternal(Date.now(),'personal-connected-'+crypto.randomUUID(),(s,emit)=>{(s.inbox??=emptyInbox()).connected[b.actor.actorId]=Date.now();emit({at:Date.now(),source:'live',kind:'agent_connected',muse:b.actor.actorId,data:{via:'mcp'},tags:[]});});
+   const last=this.runtime.state().inbox?.connected[b.actor.actorId];if(!this.runtime.ownerPause(b.actor.actorId).paused&&(last===undefined||Date.now()-last>=CONNECTED_REFRESH_MS))this.runtime.commitExternal(Date.now(),'personal-connected-'+crypto.randomUUID(),(s,emit)=>{(s.inbox??=emptyInbox()).connected[b.actor.actorId]=Date.now();emit({at:Date.now(),source:'live',kind:'agent_connected',muse:b.actor.actorId,data:{via:'mcp'},tags:[]});});
    const authorize=()=>this.lookup(hash)?.version===b.version?null:'agent_key_revoked';
    return runTool({trust:this.trust,runtime:this.runtime,hooks:this.hooks,ownerRoot:this.legacy.root(),ownerClaimed:this.legacy.claimed(),ownerClaimedNow:this.legacy.claimed,personal:true,ownerLocation:()=>this.locationFor(b.actor.actorId),baseUrl:this.baseUrl,key:{id:b.id,muse:b.actor.actorId,signerKind:'server_custodial',createdAt:b.createdAt,lastUsedAt:null,revokedAt:null},now:Date.now,authorize,ownerOf:id=>this.ownerOf(id)},name,args);
   };

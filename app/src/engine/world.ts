@@ -67,8 +67,8 @@ export type WorldState = {worldId: string; day: string; seed: string; tick: numb
   /** Agent inbox, mail in transit and owner notifications (7.2, 12.3). */
   inbox?: Inbox;
   /**
-   * Muses whose owner revoked the delegation (C06, I-02). A paused Muse takes no spotlight turn, starts no beat or
-   * trip and meets nobody, until its owner delegates again. Set and cleared only by pauseMuse / resumeMuse.
+   * Owner revocation (C06, I-02) or an explicit reversible Pause. A paused Muse takes no spotlight turn, starts no beat
+   * or trip and meets nobody. Set and cleared only by pauseMuse / resumeMuse; manual controls have no owner identity.
    */
   paused?: Record<string, Paused>};
 /** Public virtual-route proximity; never a browser/device location. */
@@ -78,7 +78,7 @@ export function socialDistance(s:WorldState,a:string,b:string,now:number):number
   if(!to||!Number.isFinite(span)||span<=0)return null;const p=Math.max(0,Math.min(1,(now-m.travel.departAt)/span));return{x:from.x+(to.x-from.x)*p,z:from.z+(to.z-from.z)*p};};
  const x=position(a),y=position(b);return x&&y?Math.hypot(x.x-y.x,x.z-y.z):Infinity;
 }
-export type Paused = {at: number; version: number; by: string};
+export type Paused = {at: number; version: number; by: string}|{status:'paused'};
 export type Decision = {muse: string; freedom: Freedom; source: 'live' | 'replay'; output: {decision: string; target_place: string; target_agent: string; offer_item: string; want_item: string; public_reason: string; line: string}; evidence?: Record<string, unknown>};
 /**
  * The other Muse's answer when two Muses meet (8.3, C05: one answer per encounter). It is a recorded input like
