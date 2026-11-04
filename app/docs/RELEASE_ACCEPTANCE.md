@@ -1,6 +1,6 @@
 # Release acceptance evidence
 
-> Latest status: [M4 handoff, 2026-11-05](#m4-evidence-and-closeout-handoff-2026-11-05). D01 and dependent D02/D04 closeout remain pending; old fixed observation/freeze times are superseded.
+> Latest status: [PR210 M4 partial handoff, 2026-11-05](#pr210-m4-partial-handoff-2026-11-05). M4/M5 and whole acceptance remain incomplete; historical evidence keeps its source.
 
 Both scopes retain their original evidence environment and pending acceptance boundaries. Preparation and local checks do not establish operational acceptance.
 
@@ -269,3 +269,15 @@ This is a documentation handoff for D01 → D02/D04. It supersedes the earlier f
 The inspected progress records PR193 entry release at source `a15ede0eb32b389dc4acafad33e9652fa8053f5c`, Worker `32a4867f-1fa5-4131-9813-caee559c1131`, ROW `4e4fe999-4f71-4d8b-9235-9bfe12ffcd6f` (2026-11-04 23:37:27 KST). It records fresh EN/KO desktop/mobile entry checks and separate successful error-return supplements while retaining original desktop navigation timeouts. These are scoped entry results, not final dedicated-Judge-Muse proof or C11. Merging later product source into this documentation branch does not establish that source's deployment.
 
 The intended entry routes are [public watching, shared judge Muse and invited Threads tester login](SUBMISSION_DRAFT.md#three-entry-routes). Judge entry stays unverified until the operating verifier confirms the final release, without recording a real token. Documentation preparation does not authorize publishing a judge link, changing an account, submitting competition fields, uploading video or agreeing to terms. #170/#176 closure text is prepared separately for review; neither issue is closed by this documentation change. D05/D06 execution stays team-owned.
+
+## PR210 M4 partial handoff (2026-11-05)
+
+The operating snapshot for this supplement is PR210 `56b82c86f0cc02fa013bb93d3702a81bfe2f2e92`, Worker `ec8e32ab-2613-4f1c-ade3-664f2338b96f`, deployed exit0 with Judge ON/actions OFF. The recorded three product CI checks succeeded; this is PR210 product evidence, not CI run by this documentation change. PR203's supervisor 02:12 KST Judge confirmation supersedes the earlier dated pending-Judge statements only within its measured entry/follow/status/isolation scope; received-proposal/notification positive samples remain absent.
+
+[D01's posted partial C10](https://github.com/Two-Weeks-Team/musely/issues/61#issuecomment-6638815031) now includes [scoped PR210 gestures and separate PR200/209 human use](D01_ACCEPTANCE.md#pr209210-scoped-path-follow-up-2026-11-05). [D04's posted partial C10](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6638821976) adds [one PR210 readable first arrival at 4.7905s](DEVICE_ACCEPTANCE.md#pr209210-scoped-first-arrival-2026-11-05), preserving PR209's 5.3143s and original failed gestures/diagnostics. These are limited supplements, not whole-path or whole-C11 acceptance.
+
+**D01/#61, D02/#62 and D04/#64 remain open; M4 and M5 remain incomplete.** #51 own proposal/explicit rejection remain unobserved. #170 private production persistence and daily eligible/attempt/success denominators remain unmeasured. #176's [arrival/conversation partial C10](https://github.com/Two-Weeks-Team/musely/issues/176#issuecomment-6638364776) uses different ON/OFF sources; same-source OFF tokens and causal effect remain unmeasured. Full C11, final-source 210-second FPS and physical phone/PSS remain unaccepted. Original receipt units and prerequisites are unchanged; no new gate is added.
+
+The subsequently authorized seven-step onboarding/Manage, permission-revocation recovery guidance and ten-minute screen-retention changes are being implemented separately and remain unmeasured here. PR210 first-arrival/interaction results do not cover that future source.
+
+M5 has not started and still awaits the supervisor's signal. This documentation-only handoff adds no operating deployment, account/provider/browser action, issue closure or competition submission. Historical source-specific failures and evidence stay intact; see the [evidence supplement](evidence/INDEX.md#pr209210-evidence-supplement-2026-11-05).

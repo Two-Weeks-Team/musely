@@ -1,6 +1,6 @@
 # D-04 device acceptance — approved reference and observed scoped results
 
-> Latest status: [M4 device handoff, 2026-11-05](#m4-device-handoff-2026-11-05). Historical numeric/physical evidence is retained; final-build and D01 judgments remain separate.
+> Latest status: [PR209/210 scoped first arrival, 2026-11-05](#pr209210-scoped-first-arrival-2026-11-05). Whole D04, full C11 and final-source FPS/phone PSS remain unaccepted.
 
 The dated preparation protocol below is preserved. Later physical and client measurements satisfy the scoped C11 numeric gates recorded in the closeout below; whole D04 still awaits the original D01 acceptance output; the actual later I09 full handoff is recorded below. A physical client comparison, an emulated layout, an operating cold-entry measurement and a live ten-actor observation remain separate evidence layers. The original MacBook Air M1 requirement is historical; the approved MacBookPro18,2 amendment is explicit below.
 
@@ -142,3 +142,18 @@ For the later166 product, the [unchanged controlled C11 runner passed](https://g
 [D04 #64](https://github.com/Two-Weeks-Team/musely/issues/64) is still OPEN. Preserve the earlier accepted Pro18,2/S23 physical/PSS scope and the explicit distinction between the original a858 desktop collector failure and its separate completed after-source proof. The [supplement](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6619008504) accepts only the scoped desktop numeric gate; it does not turn the original complete=false/measuredChecksPass=false into a successful rerun. The [390×844 supplement](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6619023526) establishes emulated geometry, not physical S23 FPS/PSS or completed clicks.
 
 The later controlled PR166 scene3964.7ms/readable3978.3ms belongs to that recorded source and GET-fixture client; preserve its 4Mbps/150ms/no-cache/DPR1.5 contract. Subsequent local-perception, entry and screen changes are not covered by relabelling that number. Recent non-controlled ready times, screenshots, test totals and HTML200 are not final C11 results. Final-build device/C11 impact judgment and the original D01 predecessor remain pending; this documentation runs no new benchmark or device check and requests no new human action. See [M4 handoff](RELEASE_ACCEPTANCE.md#m4-evidence-and-closeout-handoff-2026-11-05).
+
+## PR209/210 scoped first arrival (2026-11-05)
+
+The [PR209 partial C10](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6638436562) and [PR210 follow-up C10](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6638821976) record **one cold arrival per source**, without replacing earlier failures or physical-device records.
+
+| Source / reported Worker | Scene / readable arrival | Observed scope |
+|---|---|---|
+| PR209 `cc3f506e953755002d20818d94e869a0d96fd8fd` / `97ffe0c2-d5c3-46b7-b299-42dd2780594a` | 5.2977s / **5.3143s** | Four readable Muses; projected/rendered 28/28; page/app errors 0 |
+| PR210 `56b82c86f0cc02fa013bb93d3702a81bfe2f2e92` / `ec8e32ab-2613-4f1c-ade3-664f2338b96f` | 4.7764s / **4.7905s** | Four readable Muses; projected/rendered 28/28; page/app errors 0 |
+
+Both used MacBookPro18,2/macOS27.0.1/headless Chrome156.0.8078.80, desktop 1440×1000, native DPR 2/cap and applied 1.5, a fresh browser/context, cache disabled and service workers bypassed/blocked. CDP download 4Mbps(500,000B/s), latency 150ms and upload 500,000B/s were configured without separate wire-speed calibration. Actual production public GETs used no response fixtures. The existing navigation-relative ≤8,000ms criterion required ready legacy kit 8, zoom≥20.35 and at least one on-screen Muse ≥20 CSS px with its center hitting the canvas; scene-ready alone was insufficient. These two observations do not establish a causal performance improvement.
+
+Browser HTML matched independent before/after HTML GETs; app bytes matched their content address and the independent after GET. PR209 HTML 9,914B SHA256 `047edb67a060d78b6f920b1b33aed911e84ad77ccfb1db15e7918b1bb05cf09a`, app JS 2,514,430B `9586ee0b5df38274503569d53505594c219eb10f8288623655b14e86e0e03db9`; PR210 HTML 9,914B `1a85cea01ba8a3c260991ae80fa49ed7ead1b4c446c966e07d0f9483be0c2dc2`, app JS 2,514,955B `60037ebd5744e962224e5d43f9af411df82cd3765d5019faffe1ef6845815f47`. The external Cloudflare Insights beacon is a separate script, not the app bundle. PR209's Python after-GET403 remains recorded alongside the subsequent Node GET200 byte match. This is source association through reported deployment and matching metadata/bytes, not independently rebuilt executable identity.
+
+Online detailed-map ready was 0 at both first-arrival checkpoints; optional later assets are not claimed complete then. Each RUM POST attempt was blocked telemetry, with no other writes. These results fill only the scoped first-arrival measurement: **full C11, 210-second FPS, final-source physical phone/PSS, account/Native and whole D04 remain unaccepted**. PR210 interaction evidence is [separate](D01_ACCEPTANCE.md#pr209210-scoped-path-follow-up-2026-11-05); emulated mobile profiles do not supply physical-phone performance. No measurement was repeated for this documentation update.

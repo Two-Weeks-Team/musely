@@ -1,6 +1,6 @@
 # D-01 product path acceptance
 
-> Latest status: [M4 path evidence update, 2026-11-05](#m4-path-evidence-update-2026-11-05). D01 remains open; earlier dated pending-camera/C3 statements are historical.
+> Latest status: [PR209/210 scoped path follow-up, 2026-11-05](#pr209210-scoped-path-follow-up-2026-11-05). D01 remains open; earlier dated results and failures retain their original source.
 
 Status: **PREPARED — actual end-to-end acceptance remains PENDING**.
 
@@ -120,3 +120,13 @@ This dated update supersedes the earlier pending-camera/C3-hold descriptions, no
 - **Two-principal outcomes and revocation:** retain `production-owner-flows/REPORT_MEETUPS.md` and its original runs/receipts for agreement, reward, decline, change, expiry and reconnect. These are operator-controlled independent principals on the original release. `candidate_mismatch` is not private-condition empty-intersection proof. The retained temporary-key direct MCP 200 → revoke that key → same request 401/public unchanged is not a second Muse-app connector or a new revocation test on the final build.
 
 The final source/deployment/config must still be matched to the whole path and failure branches, including the dedicated judge-Muse entry. Fresh final-profile checking belongs to the designated operating verifier. No issue is closed, no extra human gate is created, and a documentation PR is not a deployment or whole-S3 acceptance. See the [M4 handoff](RELEASE_ACCEPTANCE.md#m4-evidence-and-closeout-handoff-2026-11-05).
+
+## PR209/210 scoped path follow-up (2026-11-05)
+
+The [posted D01 partial C10](https://github.com/Two-Weeks-Team/musely/issues/61#issuecomment-6638815031) supplements, rather than closes, D01. PR210 source `56b82c86f0cc02fa013bb93d3702a81bfe2f2e92` is associated with reported Worker `ec8e32ab-2613-4f1c-ade3-664f2338b96f`; start/end service metadata matched. Judge remains ON/actions OFF. This is existing operating evidence, not a new execution.
+
+- **Human use, separate sources:** the supervisor's PR200 01:50 KST tester run reached login → automatic Studio → Sage/Orbit 3D → Save → 3 · Connect, with key issuance0/Native admission0. On PR209 (`cc3f506e953755002d20818d94e869a0d96fd8fd`, Worker `97ffe0c2-d5c3-46b7-b299-42dd2780594a`), the supervisor confirmed the optional four-step guidance and actual owner Pause → Resume with the same key. This does not establish a new Native entry, scheduler completion or the whole final-source path.
+- **PR209 public/judge scope:** EN/KO desktop/mobile public-name and status-label checks passed; 24 retained 5-second interaction-state observations are not personal-connection poll responses. Foreign reads were denied 48/48, owner reads returned owner:null 8/8 and Judge personal-Pause reads were denied 4/4. No real-account Pause was performed by the browser verifier.
+- **PR210 original gesture:** EN/KO × desktop/mobile passed 4/4 profiles, with 8/8 trusted grant/read clicks delivered through select focusout to the same original button, without the blur-first control. Each profile recorded grant POST1/location GET1, with one pending poll aborted by each operation. Held-pointer revocation/logout/expiry cleared the old input 4/4 in 19–34ms after the synthetic response; pageerror0. These personal responses were browser-internal synthetic responses against the deployed UI: real private backend calls, real key/account/Native/schedule/resident changes0. The native select popup itself remains unmeasured. Chrome was cleaned up after verification.
+
+PR209's original four failed gestures, three diagnostic rows and intentional interruption remain preserved. Blur-first POST/read success established that the #205 abort path worked; focusout-triggered DOM replacement lost the original click, superseding the earlier self-busy hypothesis. PR210's scoped pass does not rewrite those failures. See [first-arrival evidence](DEVICE_ACCEPTANCE.md#pr209210-scoped-first-arrival-2026-11-05) and the [remaining M4 limits](RELEASE_ACCEPTANCE.md#pr210-m4-partial-handoff-2026-11-05). Earlier camera, C3 and operator-principal receipts are not promoted to one final-build run.
