@@ -20,7 +20,7 @@ import geography from '../../assets/geography.json' with {type: 'json'};
 // ---------- Server shapes (GET /api/world, GET /api/world/events) ----------
 export type LiveTravel = {to: string; departAt: number; arriveAt: number; speed: string; chosen?: boolean};
 export type LiveBeat = {id: string; clip?: string | null; startedAt: number; endsAt: number; line?: string | null};
-export type LiveMuse = {id: string; profile?: ActorProfile; place: string; travel: LiveTravel | null; beat: LiveBeat | null; inventory: string[]; reflection?: string; wants?: {goal: string; items?: string[]; source?: string}; paused?: unknown;residentFrozenAt?:number};
+export type LiveMuse = {id: string; profile?: ActorProfile; place: string; travel: LiveTravel | null; beat: LiveBeat | null; inventory: string[]; reflection?: string; wants?: {goal: string; items?: string[]; source?: string}; paused?: unknown;activityStatus?:'paused';residentFrozenAt?:number};
 export type LiveWorld = {worldId: string; day: string; tick: number; version?: number; lastTickAt: number; muses: LiveMuse[]};
 export type LiveEvent = {id: string; seq?: number; tick?: number; at: number; source?: string; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data?: any};
 
@@ -270,7 +270,7 @@ export function musePose(v: LiveMuse, now: number, participants: readonly LiveMu
   if(resolveMuse(v).kind==='unknown')return null;
   if(['resident','judge'].includes(resolveMuse(v).kind)&&typeof v.residentFrozenAt==='number')now=v.residentFrozenAt;
   const a = slotAt(v.place, v.id, participants); if (!a) return null;
-  if (!v.travel) return {...a, moving: false, progress: 0, travelled: 0, speed: null};
+  if (!v.travel||v.activityStatus==='paused') return {...a, moving: false, progress: 0, travelled: 0, speed: null};
   const b = slotAt(v.travel.to, v.id, participants) ?? a;
   const span = Math.max(1, v.travel.arriveAt - v.travel.departAt), f = Math.min(1, Math.max(0, (now - v.travel.departAt) / span));
   const taxi = v.travel.speed === 'taxi';
@@ -293,7 +293,7 @@ export type ActorFrame = {
   cue: {eventId: string; kind: string; phase: number; partner: string | null} | null;
   line: string | null; effects: FrameFx[];
   visual: 'complete' | 'fallback'; fallback: string | null;
-  status: string; place: string; travel: {to: string; etaMs: number; speed: string} | null; beat: string | null;
+  status: string;activityStatus?:'paused'; place: string; travel: {to: string; etaMs: number; speed: string} | null; beat: string | null;
 };
 const placeName = (id: string) => PLACE_BY_ID.get(id)?.name ?? id;
 const humanize = (s: string) => s.replace(/_/g, ' ');
@@ -304,6 +304,7 @@ function baseFrame(v: LiveMuse, now: number, participants: readonly LiveMuse[]):
   const p = musePose(v, now, participants); if (!p) return null;
   const f: ActorFrame = {id: v.id, x: p.x, z: p.z, yaw: p.yaw, clip: 'idle_breathe', actionTime: now / 1000, upper: null, upperTime: 0, carry: null, card: null, seated: false, moving: p.moving,
     cue: null, line: null, effects: [], visual: 'complete', fallback: null, status: `At ${placeName(v.place)}`, place: v.place, travel: null, beat: null};
+  if(v.activityStatus==='paused'){f.activityStatus='paused';f.status='Resting (paused)';f.moving=false;return f;}
   if(frozen){f.moving=false;f.status='Resident activity paused';return f;}
   if (v.travel) {
     const eta = Math.max(0, Math.round(v.travel.arriveAt - now));
@@ -330,7 +331,7 @@ export function liveFrames(world: LiveWorld, cues: readonly Cue[], now: number):
   const frames = new Map<string, ActorFrame>();
   for (const v of world.muses) { const f = baseFrame(v, now, world.muses); if (f) frames.set(v.id, f); }
   const homes = new Map([...frames].map(([id, f]) => [id, {x: f.x, z: f.z, yaw: f.yaw}]));
-  const frozenIds = new Set(world.muses.filter(v => ['resident','judge'].includes(resolveMuse(v).kind) && typeof v.residentFrozenAt === 'number').map(v => v.id));
+  const frozenIds = new Set(world.muses.filter(v => v.activityStatus==='paused'||['resident','judge'].includes(resolveMuse(v).kind) && typeof v.residentFrozenAt === 'number').map(v => v.id));
   const active = cues.filter(c => c.start <= now && now < c.end && !frozenIds.has(c.muse));
   for (const c of active) {
     const f = frames.get(c.muse); if (!f || f.travel) continue; // a travelling Muse plays no cue; the feed still shows the event

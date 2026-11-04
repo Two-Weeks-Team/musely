@@ -183,5 +183,5 @@ export function mountPersonalEntry(host: HTMLElement, options: PersonalEntryOpti
  }
 
  const ready = refresh();
- return {ready,refresh,save,state,markSessionLost() { if (disposed) return; generation++; controller?.abort(); signedOut(uiText('Your session ended. Sign in again when you are ready.')); render(); }, setExternalBusy(value: boolean) { if (disposed || externalBusy === value) return; externalBusy = value; render(); }, dispose() { if (disposed) return; disposed = true; generation++; controller?.abort(); resetProfile(); authenticated = false; busy = false; actorBinding = null; try { options.onState?.(state()); } catch {} root.remove(); }};
+ return {ready,refresh,save,state,sessionCurrent:()=>!disposed&&authenticated===true&&expiresAt>now(),sessionExpiresAt:()=>authenticated===true?expiresAt:0,markSessionLost() { if (disposed) return; generation++; controller?.abort(); signedOut(uiText('Your session ended. Sign in again when you are ready.')); render(); }, setExternalBusy(value: boolean) { if (disposed || externalBusy === value) return; externalBusy = value; render(); }, dispose() { if (disposed) return; disposed = true; generation++; controller?.abort(); resetProfile(); authenticated = false; busy = false; actorBinding = null; try { options.onState?.(state()); } catch {} root.remove(); }};
 }

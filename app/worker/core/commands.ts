@@ -66,7 +66,7 @@ const within = <T>(p: Promise<T>, ms: number): Promise<T> => {
 
 const RETRYABLE = new Set(['stale_world', 'in_progress']);
 /** Refusals that are about timing or retries, not about the actor's authority: no owner Blocked notice, no p0_refused tag. */
-export const quietRefusal = (code: string) => ['stale_world', 'command_conflict', 'replay', 'in_progress'].includes(code);
+export const quietRefusal = (code: string) => ['stale_world', 'command_conflict', 'replay', 'in_progress','paused_by_owner','counterparty_paused_by_owner'].includes(code);
 const LATE: Record<string, string> = {stale_world: 'world changed while the model was answering', delegation_revoked: 'delegation revoked before commit'};
 export const worldHandler = (worldId: string) => `musely:world:${worldId}`;
 export const commandContent = (c: Pick<WorldCommand, 'worldId' | 'expectedVersion' | 'action' | 'payload'>) => ({worldId: c.worldId, expectedVersion: c.expectedVersion, action: c.action, payload: c.payload});

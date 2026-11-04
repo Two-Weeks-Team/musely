@@ -200,8 +200,8 @@ export function museMarkers(map: LibreMap, onSelect: (id: string) => void, isLiv
         const node = k.m.getElement(); node.style.display = (!isLive() && !replay) || zoom > 20.2 ? 'none' : '';
         node.dataset.replay = String(replay); node.dataset.projectedAt = String(now); node.dataset.lnglat = JSON.stringify(pos); node.dataset.version = String(w.version ?? w.tick); node.dataset.owner = ownerOf(v.id,v).kind;node.style.setProperty('--muse',p.color);node.setAttribute('aria-label',uiText`Select ${p.name} · ${v.id}`);
         node.dataset.inventory = JSON.stringify(v.inventory);
-        node.title = `${replay ? uiText('REPLAY · ') : ''}${publicMuseName(v.id,w)} · ${catalogText(ownerOf(v.id,v).label)} · ${inventoryText(v.inventory)}`;
-        k.label.textContent = p.name + (v.travel ? ` → ${placeName(v.travel.to)}` : '');
+        node.title = `${replay ? uiText('REPLAY · ') : ''}${publicMuseName(v.id,w)} · ${catalogText(ownerOf(v.id,v).label)} · ${inventoryText(v.inventory)}${v.activityStatus==='paused'?' · '+uiText('쉬는 중 (일시 정지) / Resting (paused)'):''}`;
+        k.label.textContent = p.name + (v.activityStatus==='paused'?' · '+uiText('쉬는 중 (일시 정지) / Resting (paused)'):v.travel ? ` → ${placeName(v.travel.to)}` : '');
       }
     },
   };

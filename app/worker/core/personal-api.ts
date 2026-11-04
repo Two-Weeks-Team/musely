@@ -17,6 +17,8 @@ import {
 
 type MaybePromise<T> = T | Promise<T>;
 export interface PersonalAuthStub extends PersonalOwnerStub {
+  personalPauseGet?(binding:PersonalBinding):MaybePromise<unknown>;
+  personalPauseSet?(binding:PersonalBinding,input:unknown):MaybePromise<unknown>;
   personalSocialStatusGet?(binding:PersonalBinding):MaybePromise<unknown>;
   personalSocialStatusSet?(binding:PersonalBinding,input:unknown):MaybePromise<unknown>;
   personalLegacyView(binding:PersonalBinding,ownerCookie:string|null):MaybePromise<unknown>;
@@ -70,7 +72,7 @@ const nonceValid = (v: string | null): v is string => !!v && /^[A-Za-z0-9_-]{43}
 /** Cookie presence never selects the handler. Ambiguous mixed states are routed here and rejected. */
 export const isPersonalCallback = (url: URL) => url.pathname === PERSONAL_CALLBACK && url.searchParams.getAll('state').some(s => (s.startsWith(PERSONAL_STATE_PREFIX)||s.startsWith(PERSONAL_CLAIM_STATE_PREFIX)));
 /** Every exception is reduced to a fixed category here, before the legacy API's general logging handler. */
-const bootstrapMethods = (path:string):string[]|null => path===BASE+'/social-status'?['GET','PATCH']:path===BASE+'/claim'?['GET','DELETE']:path===BASE+'/claim/start'?['POST']:path===BASE+'/location'?['GET','POST']:path===BASE+'/status'?['GET']:path===BASE+'/authority'?['GET','POST','DELETE']:path===BASE+'/keys'?['GET','POST']:/^\/api\/personal\/keys\/pak_[a-f0-9-]{36}$/.test(path)?['DELETE']:path===BASE+'/entry-attempts'?['POST']:/^\/api\/personal\/entry-attempts\/pea_[a-f0-9-]{36}$/.test(path)?['GET','DELETE']:null;
+const bootstrapMethods = (path:string):string[]|null => path===BASE+'/pause'?['GET','PATCH']:path===BASE+'/social-status'?['GET','PATCH']:path===BASE+'/claim'?['GET','DELETE']:path===BASE+'/claim/start'?['POST']:path===BASE+'/location'?['GET','POST']:path===BASE+'/status'?['GET']:path===BASE+'/authority'?['GET','POST','DELETE']:path===BASE+'/keys'?['GET','POST']:/^\/api\/personal\/keys\/pak_[a-f0-9-]{36}$/.test(path)?['DELETE']:path===BASE+'/entry-attempts'?['POST']:/^\/api\/personal\/entry-attempts\/pea_[a-f0-9-]{36}$/.test(path)?['GET','DELETE']:null;
 async function bootstrapJSON(request:Request,limit=4096):Promise<unknown>{
  if(!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')||!request.body)throw Error('invalid_entry');
  const reader=request.body.getReader(),parts:number[]=[];let timer:ReturnType<typeof setTimeout>|undefined;
@@ -90,7 +92,7 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
     if (request.method !== method) { const r = startFailure('request_invalid','method_not_allowed',405); r.headers.set('allow', bootstrap?bootstrap.join(', '):url.pathname === BASE + '/profile' ? 'GET, PATCH' : method); return r; }
     if (method !== 'GET' && !originAllowed(request, [cfg.origin])) return startFailure('origin_not_allowed','origin_not_allowed',403);
     const profileWrite = url.pathname === BASE + '/draft' || (url.pathname === BASE + '/profile' && request.method === 'PATCH');
-    const bootstrapWrite=!!bootstrap&&(request.method==='POST'||url.pathname===BASE+'/social-status'&&request.method==='PATCH'||([BASE+'/authority',BASE+'/claim'].includes(url.pathname)&&request.method==='DELETE'));
+    const bootstrapWrite=!!bootstrap&&(request.method==='POST'||[BASE+'/social-status',BASE+'/pause'].includes(url.pathname)&&request.method==='PATCH'||([BASE+'/authority',BASE+'/claim'].includes(url.pathname)&&request.method==='DELETE'));
     if (method !== 'GET' && !profileWrite && !bootstrapWrite && !await emptyWriteBody(request)) return startFailure('request_invalid','body_not_allowed',400);
     if (url.pathname !== PERSONAL_CALLBACK && url.search) return startFailure('request_invalid','bad_query',400);
     const sessionReady = !!cfg.secret && typeof cfg.appId === 'string' && /^[0-9]{1,32}$/.test(cfg.appId);
@@ -106,8 +108,8 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
       const p=await current();
       if(!p){if(url.pathname===BASE+'/status')return json({profile:null,authority:null,keys:[],connection:{connected:false,lastSeenAt:null},entry:{state:'viewing',actor:null,attempt:null,receipt:null,reason:'signed_out'}});return failure('personal_session_required',401);}
       const binding:PersonalBinding={sidDigest:await personalDigest('sid',p.sid),appId:cfg.appId!,proof:{principalId:p.principalId,authVersion:p.authVersion,issuedAt:p.issuedAt,expiresAt:p.expiresAt}};
-      const social=url.pathname===BASE+'/social-status';
-      let input:unknown;if(bootstrapWrite){try{input=await bootstrapJSON(request,social?512:4096);}catch{return failure(social?'invalid_social_status':'invalid_entry',400);}}
+      const social=url.pathname===BASE+'/social-status',pause=url.pathname===BASE+'/pause';
+      let input:unknown;if(bootstrapWrite){try{input=await bootstrapJSON(request,social||pause?512:4096);}catch{return failure(pause?'invalid_pause':social?'invalid_social_status':'invalid_entry',400);}}
       if(social){
        if(request.method==='PATCH'){
         if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).sort().join(',')!=='expectedRevision,mode')return failure('invalid_social_status',400);
@@ -126,6 +128,12 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
        }
       }
       try{
+       if(pause){
+        if(!stub.personalPauseGet||!stub.personalPauseSet)return failure('pause_unavailable',503);
+        const value=request.method==='GET'?await stub.personalPauseGet(binding):await stub.personalPauseSet(binding,input);
+        if(!await current())return failure('personal_session_required',401);
+        return json(value);
+       }
        if(url.pathname===BASE+'/legacy-muse'){const ownerCookie=personalCookieValue(request,OWNER_COOKIE);return json(request.method==='GET'?await stub.personalLegacyView(binding,ownerCookie):await stub.personalLegacyAdopt(binding,ownerCookie,input));}
        if(url.pathname===BASE+'/inbox')return json(await stub.personalLegacyInbox(binding));
        if(url.pathname===BASE+'/approvals'){const r=await stub.personalLegacyApprove(binding,input);return r.ok?json({ok:true,decision:(input as {decision:string}).decision,duplicate:r.duplicate,confirmed:r.confirmed,task:r.task}):json({error:r.code,retryable:r.retryable,...(r.extra??{})},r.status);}
@@ -147,7 +155,10 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
        return json(result);
       }catch(e){const code=e&&typeof e==='object'&&'name'in e&&typeof e.name==='string'&&['PersonalRegistryError','PersonalAdoptionError','PersonalLegacyError','LegacyProfileError'].includes(e.name)&&'code'in e&&typeof e.code==='string'?e.code:null;
        if(code==='personal_session_required')return failure(code,401);
-       if(code==='owner_session_required'||code==='not_your_muse'||code==='adoption_required')return failure(code,403);
+       if(code==='owner_session_required'||code==='not_your_muse'||code==='adoption_required'||code==='pause_forbidden'||code==='pause_binding_changed')return failure(code,403);
+       if(code==='invalid_pause')return failure(code,400);
+       if(code==='pause_conflict')return failure(code,409);
+       if(code==='pause_muse_unavailable')return failure(code,404);
        if(code&&['invalid_adoption','invalid_approval','invalid_profile'].includes(code))return failure(code,400);
        if(code&&['adoption_conflict','adoption_changed','profile_conflict'].includes(code))return failure(code,409);
        if(code&&['invalid_authority','invalid_entry','invalid_registration','invalid_location','invalid_claim'].includes(code))return failure(code,400);

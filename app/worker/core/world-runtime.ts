@@ -46,6 +46,7 @@ import {enrollResidentRoster} from './resident-roster.ts';
 import {residentContextForWorld, withResidentContext, type ResidentContext} from './resident-life-context.ts';
 import {noteServed, restoreLife, saveLife, type LifeState} from '../../src/engine/resident-life.ts';
 import {recountAutonomy, values} from './autonomy-oracle.ts';
+import {initOwnerPause,ownerPauseState} from './owner-pause.ts';
 
 import {residentEligible,dueResidents,decisionWorld,handoffOperatingResidents,reactionCandidates,recordDialogue,settleDialogues,type OperatingResidentControl,type SocialStatus} from './resident-activity.ts';
 import {RESIDENT_ACTIVITY_SCHEMA,checkActivityOutput,activityMessages,type ResidentActivityOutput} from './resident-activity-schema.ts';
@@ -208,6 +209,7 @@ export class WorldRuntime {
   get worldId() { return this.opts.worldId; }
 
   init(now: number) {
+    initOwnerPause(this.sql);
     this.sql.exec('CREATE TABLE IF NOT EXISTS world (id INTEGER PRIMARY KEY CHECK (id = 1), state TEXT NOT NULL, version INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS ticks (day TEXT NOT NULL, tick INTEGER NOT NULL, committed_at INTEGER NOT NULL, spotlight TEXT, PRIMARY KEY (day, tick))');
     // Append-only run log (8.6): rows are never deleted. The only UPDATE is the key purge (data-retention.ts), which
@@ -987,6 +989,7 @@ export class WorldRuntime {
   publicAvailability(actorId:string,now:number):{status:SocialStatus}|undefined {
     return this.availabilityIn(this.state(),actorId,now);
   }
+  ownerPause(actorId:string){return ownerPauseState(this.sql,actorId);}
   private availabilityIn(s:WorldState,actorId:string,now:number):{status:SocialStatus}|undefined {
     if(!this.opts.socialStatus||!s.muses.some(m=>m.id===actorId))return undefined;
     const value=this.opts.socialStatus(s,actorId,now);
@@ -995,6 +998,6 @@ export class WorldRuntime {
   /** Compact public view for clients: positions, current beats, inventories, spotlight. */
   view(now: number) {
     const s = this.state();
-    return {worldId: s.worldId, day: s.day, tick: s.tick, version: s.version, lastTickAt: s.lastTickAt, nextSpotlight: spotlightFor(s, now), spotlightQueue: s.spotlight.visitorQueue.filter(id => !s.paused?.[id]), muses: s.muses.map(m => ({id: m.id,...(m.residentRole?{residentRole:m.residentRole}:{}),...(m.residentFrozenAt!==undefined?{residentFrozenAt:m.residentFrozenAt}:{}),...(m.profile?{profile:actorProfile(m.profile,m.id)}:{}), ...(this.opts.socialStatus?{availability:this.availabilityIn(s,m.id,now)}:{}),place: m.place, travel: m.travel, beat: m.beat, inventory: m.inventory, reflection: m.reflection, wants: m.wants, paused: s.paused?.[m.id] ?? null}))};
+    return {worldId: s.worldId, day: s.day, tick: s.tick, version: s.version, lastTickAt: s.lastTickAt, nextSpotlight: spotlightFor(s, now), spotlightQueue: s.spotlight.visitorQueue.filter(id => !s.paused?.[id]), muses: s.muses.map(m => ({id: m.id,...(m.residentRole?{residentRole:m.residentRole}:{}),...(m.residentFrozenAt!==undefined?{residentFrozenAt:m.residentFrozenAt}:{}),...(m.profile?{profile:actorProfile(m.profile,m.id)}:{}), ...(this.opts.socialStatus?{availability:this.availabilityIn(s,m.id,now)}:{}),place: m.place, travel: m.travel, beat: m.beat, inventory: m.inventory, reflection: m.reflection, wants: m.wants,...(this.ownerPause(m.id).paused?{activityStatus:'paused',paused:{status:'paused'}}:{paused:s.paused?.[m.id]??null})}))};
   }
 }
