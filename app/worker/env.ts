@@ -14,6 +14,8 @@ export interface Env {
   /** Default absent/off. Server-only experimental installation; never set by a browser. */
   WORLD_LIFE_MODE?: string;
   JUDGE_MUSE_MODE?: string;
+  /** Public judge entry schedule (UTC ISO timestamp); the judge flag must also be enabled. */
+  JUDGE_OPEN_UNTIL?: string;
   /** Public in-game AOI only; absent/off disables derived local notices. */
   LOCAL_PERCEPTION_MODE?: string;
   /** Public label only; absent/off retains the legacy world and private routes. */
@@ -40,6 +42,7 @@ export interface Env {
   MCP_ALLOWED_ORIGINS?: string;
   // Secrets (wrangler secret put); never in the repository or the client bundle.
   MODEL_API_KEY?: string;
+  MODEL_API_KEY_FALLBACK?: string;
   TURNSTILE_SECRET?: string;
   SESSION_SECRET?: string;
   JUDGE_TOKEN?: string;
