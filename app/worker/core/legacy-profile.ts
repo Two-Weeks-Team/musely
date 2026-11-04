@@ -1,4 +1,5 @@
 // An explicit current public name for the existing legacy owner actor. No principal adoption or authority writes.
+import {encodeAppearance,decodeAppearance} from '../../src/character-kit/appearance.ts';
 import type {ActorProfile} from '../../src/identity/participant.ts';
 import {normalizePersonalProfile, type PersonalStorage} from './personal-owners.ts';
 import {PRINCIPALS, type OwnerSession} from './owner-session.ts';
@@ -23,7 +24,7 @@ export class LegacyProfile {
     const r = this.storage.sql.exec('SELECT display_name,appearance_id,revision FROM legacy_public_profiles WHERE actor_id=?', ACTOR).toArray()[0];
     if (!r) return {actorId: ACTOR, displayName: 'Jolly', appearanceId: '00-jolly', revision: 0};
     if (!Number.isSafeInteger(r.revision) || Number(r.revision) < 1) return fail('profile_unavailable');
-    try { return {actorId: ACTOR, ...normalizePersonalProfile(r.display_name, r.appearance_id), revision: Number(r.revision)}; } catch { return fail('profile_unavailable'); }
+    try { return {actorId: ACTOR, ...normalizePersonalProfile(r.display_name,decodeAppearance(String(r.appearance_id))), revision: Number(r.revision)}; } catch { return fail('profile_unavailable'); }
   }
   get(owner: LegacyOwnerProof): ActorProfile { this.guard(owner); return this.current(); }
   /** Public profile data only. Trusted adapters enforce their own authenticated ownership before writes. */
@@ -40,7 +41,7 @@ export class LegacyProfile {
       const before = this.current();
       if (before.revision !== x.expectedRevision) return fail('profile_conflict');
       const profile: ActorProfile = {actorId: ACTOR, ...values, revision: before.revision + 1};
-      this.storage.sql.exec('INSERT INTO legacy_public_profiles (actor_id,display_name,appearance_id,revision) VALUES (?,?,?,?) ON CONFLICT(actor_id) DO UPDATE SET display_name=excluded.display_name,appearance_id=excluded.appearance_id,revision=excluded.revision', ACTOR, profile.displayName, profile.appearanceId, profile.revision);
+      this.storage.sql.exec('INSERT INTO legacy_public_profiles (actor_id,display_name,appearance_id,revision) VALUES (?,?,?,?) ON CONFLICT(actor_id) DO UPDATE SET display_name=excluded.display_name,appearance_id=excluded.appearance_id,revision=excluded.revision', ACTOR,profile.displayName,encodeAppearance(profile.appearanceId),profile.revision);
       const at = this.now();
       this.runtime.commitExternal(at, 'legacy-profile-' + profile.revision, (s, emit) => {
         const muse = s.muses.find(m => m.id === ACTOR);

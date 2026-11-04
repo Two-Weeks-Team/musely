@@ -1,12 +1,12 @@
 // Public actor identity is separate from reusable appearance and from every private owner/key reference.
 import type {WorldState} from './world.ts';
 import {hasActorHarness,harnessById} from './harness.ts';
-import {MUSE_VARIANTS} from '../character-kit/catalog.ts';
+import {isAppearance,normalizeAppearance} from '../character-kit/appearance.ts';
 import type {ActorProfile} from '../identity/participant.ts';
 export function actorProfile(value: unknown, actorId: string): ActorProfile {
  const p=value as ActorProfile;
- if(!p||typeof p!=='object'||Array.isArray(p)||p.actorId!==actorId||typeof p.displayName!=='string'||!p.displayName.trim()||[...p.displayName].length>40||/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u.test(p.displayName)||!MUSE_VARIANTS.some(v=>v.id===p.appearanceId)||!Number.isSafeInteger(p.revision)||p.revision<1)throw Error('invalid_actor_profile');
- return{actorId:p.actorId,displayName:p.displayName,appearanceId:p.appearanceId,revision:p.revision};
+ if(!p||typeof p!=='object'||Array.isArray(p)||p.actorId!==actorId||typeof p.displayName!=='string'||!p.displayName.trim()||[...p.displayName].length>40||/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u.test(p.displayName)||!isAppearance(p.appearanceId)||!Number.isSafeInteger(p.revision)||p.revision<1)throw Error('invalid_actor_profile');
+ return{actorId:p.actorId,displayName:p.displayName,appearanceId:normalizeAppearance(p.appearanceId),revision:p.revision};
 }
 export function admitPersonal(s:WorldState,profile:ActorProfile,at:number):boolean{
  const p=actorProfile(profile,profile.actorId);

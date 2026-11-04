@@ -8,7 +8,7 @@ import type {PersonalBinding} from './personal-registration.ts';
 import {LegacyProfileError,type LegacyOwnerProof} from './legacy-profile.ts';
 import {PRINCIPALS} from './owner-session.ts';
 
-export type LegacyAdoptionInput={operationId:string;displayName:string;appearanceId:string;expectedRevision:number};
+export type LegacyAdoptionInput={operationId:string;displayName:string;appearanceId:ActorProfile['appearanceId'];expectedRevision:number};
 export type LegacyAdoptionCurrent={actorId:'00-jolly';agentId:string;rootBinding:string;worldId:string;profile:ActorProfile};
 export type LegacyAdoptionCommit={worldId:string;runId:string;inputSeq:number;eventSeq:number;eventId:string;afterHash:string};
 export type LegacyAdoptionReceipt=LegacyAdoptionCommit&{kind:'legacy_adoption';id:string;actorId:'00-jolly';agentId:string;committedAt:number;profileRevision:number};
@@ -22,7 +22,7 @@ const time=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)
 const ACTOR='00-jolly';
 const reference=(v:unknown,max=256):v is string=>typeof v==='string'&&v.length<=max&&/^[A-Za-z0-9_.:/-]+$/.test(v);
 const receiptId=(v:unknown)=>typeof v==='string'&&/^lad_[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(v);
-type Options={currentLegacy:()=>LegacyAdoptionCurrent;commitProfile:(owner:LegacyOwnerProof,input:{expectedRevision:number;displayName:string;appearanceId:string})=>{profile:ActorProfile;commit:LegacyAdoptionCommit};now?:()=>number};
+type Options={currentLegacy:()=>LegacyAdoptionCurrent;commitProfile:(owner:LegacyOwnerProof,input:{expectedRevision:number;displayName:string;appearanceId:ActorProfile['appearanceId']})=>{profile:ActorProfile;commit:LegacyAdoptionCommit};now?:()=>number};
 
 export class PersonalAdoption{
  private storage:PersonalStorage;private auth:PersonalAuthStore;private options:Options;private now:()=>number;
@@ -69,13 +69,13 @@ export class PersonalAdoption{
   const b=binding?{...binding,proof:binding.proof?{...binding.proof}:binding.proof}:binding,owner=ownerProof?{...ownerProof}:ownerProof;
   this.guard(b);this.owner(owner);
   if(!exact(input,'appearanceId,displayName,expectedRevision,operationId')||typeof input.operationId!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(input.operationId)||input.operationId.startsWith('msly_')||!time(input.expectedRevision)||input.expectedRevision>=Number.MAX_SAFE_INTEGER)return fail('invalid_adoption');
-  let intent:{expectedRevision:number;displayName:string;appearanceId:string};try{intent={expectedRevision:input.expectedRevision,...normalizePersonalProfile(input.displayName,input.appearanceId)};}catch{return fail('invalid_adoption');}
+  let intent:{expectedRevision:number;displayName:string;appearanceId:ActorProfile['appearanceId']};try{intent={expectedRevision:input.expectedRevision,...normalizePersonalProfile(input.displayName,input.appearanceId)};}catch{return fail('invalid_adoption');}
   const operationId=input.operationId,payload=canonicalize(intent);
   return this.storage.transactionSync(()=>{
    const p=this.guard(b);this.owner(owner);const c=this.current(),r=this.storage.sql.exec('SELECT * FROM personal_legacy_adoptions WHERE principal_id=?',p.principalId).toArray()[0];
    if(r){this.matches(r,p,c);if(r.operation_id!==operationId||r.payload!==payload)return fail('adoption_conflict');const result=this.result(r,c);this.guard(b);this.owner(owner);return result;}
    if(this.storage.sql.exec('SELECT 1 FROM personal_legacy_adoptions WHERE actor_id=?',ACTOR).toArray().length)return fail('adoption_conflict');
-   const out=this.options.commitProfile(owner,intent);if(!exact(out,'commit,profile'))return fail('adoption_unavailable');const profile=this.profile(out.profile),commit=this.commit(out.commit,c.worldId);if(profile.revision!==intent.expectedRevision+1||profile.displayName!==intent.displayName||profile.appearanceId!==intent.appearanceId)return fail('adoption_unavailable');
+   const out=this.options.commitProfile(owner,intent);if(!exact(out,'commit,profile'))return fail('adoption_unavailable');const profile=this.profile(out.profile),commit=this.commit(out.commit,c.worldId);if(profile.revision!==intent.expectedRevision+1||profile.displayName!==intent.displayName||canonicalize(profile.appearanceId)!==canonicalize(intent.appearanceId))return fail('adoption_unavailable');
    const after=this.current();if(after.agentId!==c.agentId||after.rootBinding!==c.rootBinding||after.worldId!==c.worldId||canonicalize(after.profile)!==canonicalize(profile))return fail('adoption_changed');
    if(canonicalize(this.guard(b))!==canonicalize(p))return fail('adoption_changed');this.owner(owner);
    const at=this.now();if(!time(at))return fail('adoption_unavailable');const receipt:LegacyAdoptionReceipt={...commit,kind:'legacy_adoption',id:'lad_'+crypto.randomUUID(),actorId:ACTOR,agentId:c.agentId,committedAt:at,profileRevision:profile.revision};

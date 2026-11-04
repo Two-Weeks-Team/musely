@@ -1,11 +1,12 @@
 // Draft/profile persistence only. No live Trust agent, bearer, delegation, claim, world entry or signing route.
 import {generateKeyPair, type KeyPair} from '../../src/identity/jws.ts';
 import {jwkThumbprint} from '../../src/identity/fingerprint.ts';
+import {encodeAppearance,type AppearanceId} from '../../src/character-kit/appearance.ts';
 import type {ActorProfile} from '../../src/identity/participant.ts';
 import {PersonalRegistryError, normalizeDraftIntent, normalizePersonalProfile, type PersonalActor, type PersonalStorage} from './personal-owners.ts';
 import {PersonalAuthStore, type PersonalSessionRow} from './personal-session.ts';
 export type PersonalBinding = {sidDigest: string; proof: PersonalSessionRow; appId: string};
-export type ProfilePatch = {expectedRevision: number; displayName: string; appearanceId?: string};
+export type ProfilePatch = {expectedRevision: number; displayName: string; appearanceId?: AppearanceId};
 const fail = (code: string): never => { throw new PersonalRegistryError(code); };
 export class PersonalRegistration {
   private storage: PersonalStorage;
@@ -72,7 +73,7 @@ export class PersonalRegistration {
       const current = this.publicProfile(actor);
       const profile = normalizePersonalProfile(value.displayName, Object.hasOwn(value, 'appearanceId') ? value.appearanceId : current.appearanceId);
       if (current.revision !== value.expectedRevision || current.revision >= Number.MAX_SAFE_INTEGER) return fail('revision_conflict');
-      this.storage.sql.exec('UPDATE personal_profiles SET display_name = ?, appearance_id = ?, revision = ? WHERE actor_id = ? AND revision = ?', profile.displayName, profile.appearanceId, current.revision + 1, actor.actorId, current.revision);
+      this.storage.sql.exec('UPDATE personal_profiles SET display_name = ?, appearance_id = ?, revision = ? WHERE actor_id = ? AND revision = ?', profile.displayName,encodeAppearance(profile.appearanceId),current.revision + 1, actor.actorId, current.revision);
       return this.publicProfile(actor);
     });
   }

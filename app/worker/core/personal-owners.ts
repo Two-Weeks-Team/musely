@@ -5,14 +5,14 @@ import {JUDGE_MUSE} from '../../src/engine/judge-muse.ts';
 import type {Sql} from './ledger.ts';
 import {PRINCIPALS} from './owner-session.ts';
 import {HARNESS_IDS} from '../../src/engine/harness.ts';
-import {MUSE_VARIANTS, type MuseVariantId} from '../../src/character-kit/catalog.ts';
+import {normalizeAppearance,encodeAppearance,decodeAppearance,appearanceKey,type AppearanceId} from '../../src/character-kit/appearance.ts';
 import type {ActorProfile} from '../../src/identity/participant.ts';
 
 export type PersonalStorage = {sql: Sql; transactionSync<T>(fn: () => T): T};
 /** Private registry row, not a browser/public response. Provider subjects are deliberately not display names. */
 export type PersonalPrincipal = {id: string; provider: string; subject: string; authVersion: number; createdAt: number};
 export type PersonalActor = {actorId: string; principalId: string; agentId: string; rootRef: string; controlMode: 'personal'; status: 'draft'; createdAt: number};
-export type DraftRegistration = {operationId: string; displayName: string; appearanceId: string; agentId: string; rootRef: string};
+export type DraftRegistration = {operationId: string; displayName: string; appearanceId: AppearanceId; agentId: string; rootRef: string};
 export type Ownership =
   | {kind: 'personal'; actorId: string; principalId: string; ownerId: string}
   | {kind: 'legacy'; actorId: string; principalId: string; ownerId: string}
@@ -30,22 +30,21 @@ const principalColumns = 'id, provider, subject, auth_version, created_at';
 const actorColumns = 'actor_id, principal_id, agent_id, root_ref, created_at';
 const validReference = (s: unknown): s is string => typeof s === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(s) && !s.startsWith('msly_');
 
-function registration(input: DraftRegistration): DraftRegistration & {appearanceId: MuseVariantId} {
+function registration(input: DraftRegistration): DraftRegistration & {appearanceId: AppearanceId} {
   if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).sort().join(',') !== 'agentId,appearanceId,displayName,operationId,rootRef') return fail('invalid_registration');
   const {operationId, displayName, appearanceId, agentId, rootRef} = input;
   if (!validReference(operationId) || typeof displayName !== 'string' || !validReference(agentId) || typeof rootRef !== 'string' || !/^root_ref:[A-Za-z0-9_-]{1,96}$/.test(rootRef)) return fail('invalid_registration');
   return {operationId, ...normalizePersonalProfile(displayName, appearanceId), agentId, rootRef};
 }
 
-export type DraftIntent = {operationId: string; displayName: string; appearanceId: string};
+export type DraftIntent = {operationId: string; displayName: string; appearanceId: AppearanceId};
 /** Names stay literal public text; consumers must render with textContent, never HTML. */
-export function normalizePersonalProfile(displayName: unknown, appearanceId: unknown): {displayName: string; appearanceId: MuseVariantId} {
+export function normalizePersonalProfile(displayName: unknown, appearanceId: unknown): {displayName: string; appearanceId: AppearanceId} {
   if (typeof displayName !== 'string') return fail('invalid_registration');
   const name = displayName.trim();
   if (!name || [...name].length > 40 || /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u.test(displayName)) return fail('invalid_registration');
-  const variant = MUSE_VARIANTS.find(v => v.id === appearanceId);
-  if (!variant) return fail('invalid_registration');
-  return {displayName: name, appearanceId: variant.id};
+  let appearance:AppearanceId;try{appearance=normalizeAppearance(appearanceId);}catch{return fail('invalid_registration');}
+  return {displayName:name,appearanceId:appearance};
 }
 export function normalizeDraftIntent(input: unknown): DraftIntent {
   if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).sort().join(',') !== 'appearanceId,displayName,operationId') return fail('invalid_registration');
@@ -102,7 +101,7 @@ export class PersonalOwners {
   /** Explicit public projection: no spreading private principal/actor rows into a response. */
   profile(actorId: string): ActorProfile | null {
     const row = this.storage.sql.exec('SELECT actor_id, display_name, appearance_id, revision FROM personal_profiles WHERE actor_id = ?', actorId).toArray()[0];
-    return row ? {actorId: String(row.actor_id), displayName: String(row.display_name), appearanceId: String(row.appearance_id) as MuseVariantId, revision: Number(row.revision)} : null;
+    return row ? {actorId: String(row.actor_id), displayName: String(row.display_name), appearanceId:decodeAppearance(String(row.appearance_id)), revision: Number(row.revision)} : null;
   }
   /** API intent idempotence ignores fresh server-generated refs, but verifies the persisted result binding. */
   draftForIntent(principalId: string, input: DraftIntent): PersonalActor | null {
@@ -112,7 +111,8 @@ export class PersonalOwners {
     let payload: unknown;
     try { payload = JSON.parse(String(r.payload)); } catch { return fail('registration_incomplete'); }
     if (!Array.isArray(payload) || payload.length !== 4) return fail('registration_incomplete');
-    if (payload[0] !== value.displayName || payload[1] !== value.appearanceId) return fail('operation_conflict');
+    let sameAppearance=false;try{sameAppearance=appearanceKey(payload[1])===appearanceKey(value.appearanceId);}catch{return fail('registration_incomplete');}
+    if (payload[0] !== value.displayName || !sameAppearance) return fail('operation_conflict');
     const actor = this.actor(String(r.actor_id));
     if (!actor || actor.principalId !== principalId || actor.agentId !== payload[2] || actor.rootRef !== payload[3]) return fail('registration_incomplete');
     return actor;
@@ -133,7 +133,7 @@ export class PersonalOwners {
       if (this.storage.sql.exec('SELECT actor_id FROM personal_actors WHERE agent_id = ? OR root_ref = ?', value.agentId, value.rootRef).toArray().length) return fail('binding_conflict');
       const actorId = 'pm_' + crypto.randomUUID();
       this.storage.sql.exec('INSERT INTO personal_actors (actor_id, principal_id, agent_id, root_ref, created_at) VALUES (?, ?, ?, ?, ?)', actorId, principalId, value.agentId, value.rootRef, now);
-      this.storage.sql.exec('INSERT INTO personal_profiles (actor_id, display_name, appearance_id, revision) VALUES (?, ?, ?, 1)', actorId, value.displayName, value.appearanceId);
+      this.storage.sql.exec('INSERT INTO personal_profiles (actor_id, display_name, appearance_id, revision) VALUES (?, ?, ?, 1)', actorId,value.displayName,encodeAppearance(value.appearanceId));
       this.storage.sql.exec('INSERT INTO personal_registrations (principal_id, operation_id, payload, actor_id) VALUES (?, ?, ?, ?)', principalId, value.operationId, payload, actorId);
       return this.actor(actorId)!;
     });
