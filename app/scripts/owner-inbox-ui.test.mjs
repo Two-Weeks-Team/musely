@@ -2,6 +2,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
+import {createPersonalOwnerAccess} from '../src/ui/personal-owner.ts';
 const load = async file => {
   const r = await build({entryPoints: [new URL(file, import.meta.url).pathname], bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'silent'});
   return import('data:text/javascript;base64,' + Buffer.from(r.outputFiles[0].text).toString('base64'));
@@ -9,7 +10,7 @@ const load = async file => {
 const {ownerInboxCard} = await load('../src/ui/owner-inbox.ts');
 const {ownerControlCard} = await load('../src/ui/identity.ts');
 class Node {
-  constructor(tag = '#text', text = '') { this.tagName = tag.toUpperCase(); this._text = text; this.childNodes = []; this.parentNode = null; this.attrs = {}; this.value = ''; this.checked = false; this.disabled = false; }
+  constructor(tag = '#text', text = '') { this.tagName = tag.toUpperCase(); this._text = text; this.childNodes = []; this.parentNode = null; this.attrs = {}; this.dataset = {}; this.value = ''; this.checked = false; this.disabled = false; }
   get children() { return this.childNodes.filter(x => x.tagName !== '#TEXT'); }
   get textContent() { return this._text + this.childNodes.map(x => x.textContent).join(''); }
   set textContent(t) { this._text = String(t); this.replaceChildren(); }
@@ -110,45 +111,8 @@ test('the active gate makes no request while replay is open and ignores an answe
   assert.equal(late.querySelector('.owner-approval'), null);
 });
 
-test('successful session start and end notify the sibling owner inbox through onChange', async () => {
-  dom(); let signedIn = false, changes = 0;
-  globalThis.fetch = async (url, init) => {
-    if (init.method === 'POST') signedIn = true;
-    if (init.method === 'DELETE') signedIn = false;
-    return response(200, init.method === 'GET' ? {owner: signedIn ? {label: 'Owner', ownerId: 'owner', demo: false, expiresAt: Date.now() + 36e5} : null, delegation: []} : {ok: true});
-  };
-  const card = ownerControlCard(() => changes++); await flush();
-  card.querySelector('input[type=password]').value = 'local-test-token';
-  await named(card, 'Start owner session').onclick();
-  assert.equal(changes, 1, 'successful start refreshes dependent views');
-  await named(card, 'End owner session').onclick();
-  assert.equal(changes, 2, 'successful end clears dependent owner data');
-});
-
-for (const failure of ['503', 'network']) test(`an approval ${failure} failure restores both retry controls; a later successful decision removes them`, async () => {
-  dom(); let attempts = 0;
-  const data = inbox([task()]);
-  const f = async (url, init) => {
-    if (init.method === 'GET') return response(200, data);
-    attempts++;
-    if (attempts === 1) {
-      if (failure === 'network') throw new Error('offline');
-      return response(503, {error: 'temporary_failure'});
-    }
-    data.approvals[0].yours = {decision: 'approve', candidate: 'c1', source: 'owner', at: Date.now(), approval_ref: 'ap_retry'};
-    return response(200, {confirmed: false});
-  };
-  const card = ownerInboxCard(() => {}, f); await flush();
-  named(card, 'Approve the chosen candidate').onclick(); await flush(); await flush();
-  const approve = named(card, 'Approve the chosen candidate'), decline = named(card, 'Decline');
-  assert.equal(approve.disabled, false, `${failure}: approve can be retried`);
-  assert.equal(decline.disabled, false, `${failure}: decline can be retried`);
-  assert.match(card.textContent, failure === 'network' ? /network error/ : /HTTP 503/);
-  approve.onclick(); await flush(); await flush();
-  assert.equal(attempts, 2);
-  assert.equal(named(card, 'Approve the chosen candidate'), undefined, 'the successful decision is already recorded');
-  assert.equal(named(card, 'Decline'), undefined);
-  assert.match(card.textContent, /Your decisionapproved c1/);
+test('confirmed personal owner state and explicit logout notify sibling views without token exchange',async t=>{
+ dom();let signedIn=false,changes=0;const calls=[],access=createPersonalOwnerAccess({fetcher:async(url,init)=>{calls.push([url,init.method]);if(init.method==='DELETE'){signedIn=false;return response(200,{owner:null});}return response(200,{owner:signedIn?{...ownerSession(),label:'ComBba · owner',demo:false,note:'',muses:['00-jolly']}:null,delegation:[]});}});const card=ownerControlCard(()=>changes++,undefined,undefined,{access});t.after(()=>{card.dispose();access.dispose();});await flush();assert.ok(!card.querySelector('input[type=password]'));signedIn=true;access.syncPersonal({authenticated:true,profile:{actorId:'00-jolly'}});await flush();assert.ok(named(card,'Sign out'));await named(card,'Sign out').onclick();assert.equal(changes,1);assert.ok(!named(card,'Sign out'));assert.ok(calls.every(([u])=>u==='/api/personal/owner/session'));assert.ok(calls.every(([,method])=>method!=='POST'));card.dispose();access.dispose();
 });
 
 test('failed approval and failed inbox refresh remain retryable without bypassing inactive or expired owner state', async () => {
@@ -183,6 +147,15 @@ test('logout fences an old inbox answer and removes private controls immediately
 test('a late401 from the previous session cannot suppress a new logged-in session',async()=>{dom();let release,n=0;const card=ownerInboxCard(()=>{},async u=>u==='/api/owner/session'?response(200,{owner:ownerSession()}):++n===1?new Promise(r=>release=r):response(200,inbox([task()])));await flush();card.setOwnerSession(null);card.setOwnerSession({...ownerSession(),ownerId:'new-owner'});await flush();release(response(401,{error:'owner_session_required'}));await flush();assert.ok(named(card,'Approve the chosen candidate'));});
 test('replay invalidation and dispose suppress late answers and subsequent reads',async()=>{dom();let active=true,release,calls=0;const card=ownerInboxCard(()=>{},async u=>{calls++;return u==='/api/owner/session'?response(200,{owner:ownerSession()}):new Promise(r=>release=r);},()=>active);await flush();active=false;await card.refresh();active=true;release(response(200,inbox([task('task_late')])));await flush();assert.equal(named(card,'Approve the chosen candidate'),undefined);card.dispose();const before=calls;await card.refresh();assert.equal(calls,before);});
 test('owner session expiry stops refresh without issuing another inbox or session call',async()=>{dom();const original=Date.now;let clock=original(),calls=0;Date.now=()=>clock;try{const card=ownerInboxCard(()=>{},async u=>{calls++;return u==='/api/owner/session'?response(200,{owner:{...ownerSession(),expiresAt:clock+1000}}):response(200,inbox([task()]));});await flush();const before=calls;clock+=1001;await card.refresh();assert.equal(calls,before);assert.equal(named(card,'Approve the chosen candidate'),undefined);}finally{Date.now=original;}});
-test('real owner control callbacks resume after login and stop before pending logout settles',async()=>{dom();let signedIn=false,finishLogout;const calls=[];globalThis.fetch=async(u,i)=>{calls.push({u,method:i.method});if(u==='/api/owner/session'){if(i.method==='POST')signedIn=true;if(i.method==='DELETE')return new Promise(r=>finishLogout=()=>{signedIn=false;r(response(200,{ok:true}));});return response(200,{owner:signedIn?{...ownerSession(),muses:['00-jolly']}:null,delegation:[]});}return response(200,inbox([task()]));};const card=ownerInboxCard(()=>{},globalThis.fetch),control=ownerControlCard(()=>{},undefined,owner=>card.setOwnerSession(owner));await flush();assert.equal(calls.filter(r=>r.u==='/api/owner/inbox').length,0);control.querySelector('input[type=password]').value='synthetic-local-test';await named(control,'Start owner session').onclick();await flush();assert.equal(calls.filter(r=>r.u==='/api/owner/inbox').length,1);assert.ok(named(card,'Approve the chosen candidate'));const pending=named(control,'End owner session').onclick();assert.equal(named(card,'Approve the chosen candidate'),undefined);const before=calls.length;await card.refresh();assert.equal(calls.length,before);finishLogout();await pending;await card.refresh();assert.equal(calls.filter(r=>r.u==='/api/owner/inbox').length,1);});
+test('personal owner callbacks resume only after confirmed ComBba sign-in and stop before logout settles',async t=>{
+ dom();let signedIn=false,finishLogout;const calls=[],access=createPersonalOwnerAccess({fetcher:async(u,i)=>{calls.push({u,method:i.method});if(u==='/api/personal/owner/session'){if(i.method==='DELETE')return new Promise(r=>finishLogout=()=>{signedIn=false;r(response(200,{owner:null}));});return response(200,{owner:signedIn?{...ownerSession(),label:'ComBba · owner',demo:false,note:'',muses:['00-jolly']}:null,delegation:[]});}return response(200,inbox([task()]));}});const card=ownerInboxCard(()=>{},access.fetch),control=ownerControlCard(()=>{},undefined,owner=>card.setOwnerSession(owner),{access});t.after(()=>{control.dispose();card.dispose();access.dispose();});await flush();assert.equal(calls.filter(r=>r.u==='/api/personal/owner/inbox').length,0);signedIn=true;access.syncPersonal({authenticated:true,profile:{actorId:'00-jolly'}});await flush();assert.equal(calls.filter(r=>r.u==='/api/personal/owner/inbox').length,1);assert.ok(named(card,'Approve the chosen candidate'));const pending=named(control,'Sign out').onclick();assert.equal(named(card,'Approve the chosen candidate'),undefined);const before=calls.length;await card.refresh();assert.equal(calls.length,before);finishLogout();await pending;await card.refresh();assert.equal(calls.filter(r=>r.u==='/api/personal/owner/inbox').length,1);control.dispose();card.dispose();access.dispose();
+});
+
 test('simultaneous periodic refresh coalesces one pending inbox GET',async()=>{dom();let release,inboxes=0;const card=ownerInboxCard(()=>{},async u=>u==='/api/owner/session'?response(200,{owner:ownerSession()}):(inboxes++,new Promise(r=>release=r)));await flush();const a=card.refresh(),b=card.refresh();assert.equal(inboxes,1);release(response(200,inbox([task()])));await Promise.all([a,b]);assert.ok(named(card,'Approve the chosen candidate'));});
 test('failed or invalid session preflight never tries the protected inbox or polls automatically',async()=>{for(const mode of['network','503','malformed']){dom();const calls=[];const card=ownerInboxCard(()=>{},async u=>{calls.push(u);if(mode==='network')throw Error('synthetic network');return mode==='503'?response(503,{}):response(200,{owner:{label:'missing binding'}});});await flush();await card.refresh();await card.refresh();assert.deepEqual(calls,['/api/owner/session']);assert.equal(named(card,'Approve the chosen candidate'),undefined);}});
+
+test('ordinary owner controls expose Threads setup and never a token field or emergency-session request',async()=>{
+ dom();const calls=[];globalThis.fetch=async(url,init)=>{calls.push({url,method:init.method});return response(200,{owner:null});};const card=ownerControlCard(()=>{});await flush();assert.ok(!card.querySelector('input[type=password]'));assert.doesNotMatch(card.textContent,/Owner control token/);assert.ok(calls.every(x=>x.url==='/api/personal/owner/session'));assert.match(card.textContent,/Threads/);
+});
+
+test('a delayed control session body cannot restore authority after a personal logout fence',async t=>{dom();let release;const access=createPersonalOwnerAccess({fetcher:async()=>new Promise(r=>release=()=>r(response(200,{owner:{...ownerSession(),note:'',muses:['00-jolly']},delegation:[]})))});const card=ownerControlCard(()=>{},undefined,undefined,{access});t.after(()=>{card.dispose();access.dispose();});await flush();access.invalidate('logout');release();await flush();assert.ok(!named(card,'Sign out'));assert.ok(!card.querySelector('input[type=password]'));assert.match(card.textContent,/Threads/);});

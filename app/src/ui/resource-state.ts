@@ -11,9 +11,9 @@ export type Health = {lastOkAt: number | null; lastErrorAt: number | null; error
 /** loading: nothing answered yet · ready: the last request worked · stale: the last request failed but older data is on screen · error: it failed and there is nothing to show. */
 export type ResState = 'loading' | 'ready' | 'stale' | 'error';
 
-export async function fetchJson<T>(path: string, init?: RequestInit): Promise<Fetched<T>> {
+export async function fetchJson<T>(path: string, init?: RequestInit, fetcher: typeof fetch = fetch): Promise<Fetched<T>> {
   let r: Response;
-  try { r = await fetch(path, {cache: 'no-store', ...init}); } catch (e) { return {ok: false, error: (e as Error)?.message === BLOCKED ? BLOCKED : uiText('Network error'), at: Date.now()}; }
+  try { r = await fetcher(path, {cache: 'no-store', ...init}); } catch (e) { return {ok: false, error: (e as Error)?.message === BLOCKED ? BLOCKED : uiText('Network error'), at: Date.now()}; }
   if (!r.ok) return {ok: false, error: uiText`HTTP ${r.status}`, at: Date.now()};
   try { return {ok: true, data: (await r.json()) as T, at: Date.now()}; } catch { return {ok: false, error: uiText('Invalid response'), at: Date.now()}; }
 }

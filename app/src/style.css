@@ -186,6 +186,7 @@ body[data-mode="world"] #story-heading,body[data-mode="world"] #story-scrubber{d
 .entry-door[data-invitation="complete"]{animation:none;box-shadow:none;border-color:#789c89;color:#c4ebd4}
 .personal-entry,.personal-connection{min-width:0;padding:12px 0;border-top:1px solid #35415a}
 .personal-entry h2,.personal-connection h3{font:400 20px Georgia,serif;margin:8px 0}
+.entry-profile>.personal-entry{padding-bottom:0}.personal-entry>.entry-advanced{margin-bottom:0}.entry-profile~.entry-advanced{margin-top:0}
 .personal-entry form,.personal-connection fieldset{display:grid;gap:8px;margin:10px 0;min-width:0}
 .personal-entry label,.personal-connection label{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-height:44px}
 .personal-entry input,.personal-entry select,.personal-connection input:not([type="checkbox"]),.personal-connection select{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;min-height:44px;border:1px solid #53607b;border-radius:9px;padding:9px;background:#101623;color:#f5efe3;font:14px system-ui}
@@ -220,3 +221,5 @@ body[data-mode=world] .neighbors{min-width:0;max-width:100%}
 body[data-mode=world] #portraits{max-width:100%;overflow-x:auto;overflow-y:hidden;padding:4px;scrollbar-width:thin}
 body[data-mode=world] #portraits>.portrait{flex:0 0 38px;min-width:38px}
 @media(max-width:700px){body[data-mode=world] #portraits>.portrait{flex-basis:32px;min-width:32px}}
+
+.judge-entry{position:fixed;top:142px;right:20px;z-index:9;max-width:min(360px,calc(100vw - 24px));padding:8px 12px;border:1px solid #66798c;border-radius:12px;background:#101927;color:#eee;font-size:12px}.judge-entry[hidden]{display:none}.judge-entry summary{cursor:pointer}.judge-entry ol{list-style:none;margin:8px 0 0;padding:0}.judge-entry .link-button{font-size:12px;text-align:left;white-space:normal}.judge-entry p{margin:0}

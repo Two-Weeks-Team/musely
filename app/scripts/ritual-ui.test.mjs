@@ -2,7 +2,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
-const bundled = await build({entryPoints:[new URL('../src/ui/ritual.ts',import.meta.url).pathname], bundle:true,platform:'node',format:'esm',write:false,plugins:[{name:'offline-session',setup(b){b.onResolve({filter:/^\.\.\/live$/},()=>({path:'live',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:'export const sparkStatus=()=>globalThis.ritualFixture.status(); export const ensureSession=()=>globalThis.ritualFixture.session();'}));}}]});
+const bundled = await build({entryPoints:[new URL('../src/ui/ritual.ts',import.meta.url).pathname], bundle:true,platform:'node',format:'esm',write:false,plugins:[{name:'offline-session',setup(b){b.onResolve({filter:/^\.\.\/live$/},()=>({path:'live',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:'export const visitorFetch=(...args)=>globalThis.fetch(...args); export const sparkStatus=()=>globalThis.ritualFixture.status(); export const ensureSession=()=>globalThis.ritualFixture.session();'}));}}]});
 const {ritualCard}=await import('data:text/javascript;base64,'+Buffer.from(bundled.outputFiles[0].text).toString('base64'));
 const flush=async()=>{for(let i=0;i<20;i++)await Promise.resolve();};
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
@@ -17,7 +17,7 @@ class Node {
 const walk=n=>[n,...n.childNodes.flatMap(walk)];
 const button=(card,text)=>walk(card).find(n=>n.tagName==='button'&&n.textContent===text&&!n.removed);
 const response=(data,status=200,serverNow=Date.now())=>({ok:status<300,status,headers:{get:name=>name==='date'?new Date(serverNow).toUTCString():null},json:async()=>data});
-async function fixture(t,{pendingCamera=false,cameraError=null,permission=null,devices=null,cameraErrors=null,judgeResponse=null,ttl=180000,language='en-US',record=null,verdictPassed=null}={}){
+async function fixture(t,{pendingCamera=false,cameraError=null,permission=null,devices=null,cameraErrors=null,judgeResponse=null,ttl=180000,language='en-US',record=null,verdictPassed=null,readOnly=false}={}){
  const originals={document:globalThis.document,navigator:globalThis.navigator,fetch:globalThis.fetch,MutationObserver:globalThis.MutationObserver,setTimeout:globalThis.setTimeout,clearTimeout:globalThis.clearTimeout};
  const timers=new Map();let next=0;const observers=[];const listeners=new Map();
  const state={open:true,captures:0,stopped:0,cameraCalls:[],statusCalls:0,sessionCalls:0,starts:0,posts:[],done:0,now:Date.now(),status:async()=>{state.statusCalls++;return {};},session:async()=>{state.sessionCalls++;}};
@@ -28,8 +28,8 @@ async function fixture(t,{pendingCamera=false,cameraError=null,permission=null,d
  const camera=deferred(),stream={getTracks:()=>[{stop(){state.stopped++;}}]};
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{language,...(permission===null?{}:{permissions:{query:()=>permission}}),mediaDevices:{getUserMedia:constraints=>{state.cameraCalls.push(constraints);const error=cameraErrors?.[state.cameraCalls.length-1]??cameraError;return error?Promise.reject(Object.assign(new Error('camera fixture'),{name:error})):pendingCamera?camera.promise:Promise.resolve(stream);},...(devices===null?{}:{enumerateDevices:()=>devices}),}}});
  globalThis.fetch=async(url,init)=>{if(url==='/api/ritual/record')return response({record});if(url==='/api/ritual/start'){state.starts++;return response({id:'fixture',steps:[{id:'a',text:'raise one hand'},{id:'b',text:'turn your head'},{id:'c',text:'show three fingers'}],expiresAt:state.now+ttl},200,state.now);}if(url==='/api/muse'){state.posts.push(JSON.parse(init.body));return response(judgeResponse??{source:'live',evidence:{requestId:'offline-public-request'},output:{results:verdictPassed===null?[]:['a','b','c'].map(step=>({step,passed:verdictPassed,confidence:.9}))}});}throw Error('Unexpected offline request');};
- const card=ritualCard(()=>state.done++);await flush();
- const start=button(card,language.startsWith('ko')?'카메라로 시작':'Try the ritual');start.onclick();state.cameraCallsOnClickReturn=state.cameraCalls.length;await flush();
+ const card=ritualCard(()=>state.done++,{readOnly});await flush();
+ const start=button(card,language.startsWith('ko')?'카메라로 시작':'Try the ritual');if(!readOnly)start.onclick();state.cameraCallsOnClickReturn=state.cameraCalls.length;await flush();
  const tick=async()=>{const timer=[...timers].find(([,v])=>v.ms===1000);assert.ok(timer,'countdown timer');timers.delete(timer[0]);timer[1].f();await flush();};
  const countdown=async()=>{await tick();await tick();await tick();};
  const click=async(text)=>{const b=button(card,text);assert.ok(b,`button ${text}`);assert.equal(b.disabled,false);b.onclick();await flush();};
@@ -135,4 +135,9 @@ for(const language of['ko-KR','en-US'])test(`${language} each ritual move keeps 
   assert.match(prompt,new RegExp(`${i+1}/3`),'the visitor must know which move is current');assert.ok(prompt.includes(action),'the actual requested action must survive language selection');
   await f.click(ko?'동작 준비됐어요':'Ready for this move');await f.countdown();
  }
+});
+
+test('public recorded ritual stays readable without any camera or owner execution control',async t=>{
+ const f=await fixture(t,{readOnly:true,record:{at:1,passed:true,requestId:'existing-positive',results:[{step:'thumbs_up',passed:true,confidence:1}]}});
+ assert.match(f.card.textContent,/existing-positive/);assert.match(f.card.textContent,/REPLAY/);assert.equal(walk(f.card).filter(n=>n.tagName==='button').length,0);assert.equal(f.state.cameraCalls.length,0);assert.equal(f.state.sessionCalls,0);assert.equal(f.state.starts,0);assert.equal(f.state.posts.length,0);
 });

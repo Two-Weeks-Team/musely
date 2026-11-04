@@ -1,11 +1,12 @@
 import {uiText,catalogText,inventoryText,activityStatus} from './i18n.ts';
 // Ordinary watching is side-effect free. Personal setup writes require its explicit controls; only
 // current server entry can retire the door. Scripted walkthrough remains entryPreview-only.
-import {mountPersonalEntry,type PersonalEntryOptions} from './personal-entry.ts';
+import {mountPersonalEntry,personalAuthResult,type PersonalEntryOptions} from './personal-entry.ts';
 import {mountPersonalConnection,type EntryProjection} from './personal-connection.ts';
 import {mountPersonalClaim} from './personal-claim.ts';
 import {mountPersonalAdoption} from './personal-adoption.ts';
 import {mountSocialStatus} from './social-status.ts';
+import {personalOwnerAccess} from './personal-owner.ts';
 import {HARNESSES, SCOPES, SCOPE_LABELS, type Harness, type ScopeLevel} from '../engine/harness';
 
 export type EntryPath = 'watch' | 'trial' | 'connect';
@@ -50,6 +51,7 @@ export const firstSteps = (h: Harness): string[] => [
 
 export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchParams; getWorldId?:()=>string|null; onPersonalEntry?:(entry:EntryProjection)=>void; personal?:PersonalEntryOptions & {clipboard?:{writeText:(value:string)=>Promise<void>}}}) {
   const preview = opts.initial?.get('entryPreview') === '1';
+  const personalFetch = opts.personal?.fetcher ?? personalOwnerAccess.fetch;
   const state: EntryState = {path: null, view: 'choose', open: false, viewing: null, trial: null, lastTrial: null, connect: 'unconnected', connectStep: 0, entries: 0, ownerClaim: 'none', liveTradeAllowed: false, liveWrites: 0};
   const header = document.querySelector('header')!;
   const chip = el('button', 'quiet world-open entry-open'); chip.type = 'button'; chip.id = 'entry-open';
@@ -76,6 +78,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   panel.querySelector('.close')!.setAttribute('aria-label', uiText('Close'));
 
   let personal: {profile:ReturnType<typeof mountPersonalEntry>; connection:ReturnType<typeof mountPersonalConnection>; claim:ReturnType<typeof mountPersonalClaim>;adoption:ReturnType<typeof mountPersonalAdoption>;social:ReturnType<typeof mountSocialStatus>;apply:()=>void} | null = null;
+  const stopOwnerSession = personalOwnerAccess.subscribe(reason=>{if(['logout','http401','expired'].includes(reason))personal?.profile.markSessionLost();if(reason==='logout'||reason==='logout_settled')personal?.profile.setExternalBusy(personalOwnerAccess.isLoggingOut());});
   let personalEntry:EntryProjection|null=null,disposed=false;
   let timer = 0;
   const stopTimer = () => { if (timer) clearInterval(timer); timer = 0; };
@@ -123,7 +126,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
     const text=el('textarea','entry-setup-text');text.id='entry-setup-text';text.readOnly=true;text.rows=6;text.value=publicSetup;text.setAttribute('aria-label',uiText('Public setup overview without an API key'));
     const copyStatus=el('p','muted');copyStatus.id='entry-copy-status';copyStatus.setAttribute('role','status');
     const copy=button(uiText('공개 연결 안내 복사 / Copy public setup overview'),'secondary',()=>{},'entry-copy-setup');copy.onclick=async()=>{copy.disabled=true;try{await (opts.personal?.clipboard??navigator.clipboard).writeText(publicSetup);copyStatus.textContent=uiText('Public setup copied. No key was included and nothing was connected.');}catch{copyStatus.textContent=uiText('Could not copy. Select the public instructions above. Nothing was connected.');}finally{copy.disabled=false;}};
-    const help=el('details','entry-advanced');help.append(el('summary','',uiText('연결 도움말 / Connection help')),text,copy,copyStatus);
+    const help=el('details','entry-advanced');help.append(el('summary','',uiText('연결 도움말 / Connection help')),el('p','muted',uiText('초대받았다면 Threads 설정 → 계정 → 웹사이트 권한 → 초대에서 수락해 주세요. / If you were invited, accept in Threads Settings → Account → Website permissions → Invites.')),text,copy,copyStatus);
     body.append(help,button(uiText('계속 둘러보기 / Keep watching'),'link-button',()=>{state.path='watch';close();opts.onWatch();},'entry-watch'));
     const socialDetails=el('details','entry-social-status'),socialHost=el('div');socialDetails.id='entry-social-status';socialDetails.append(el('summary','',uiText('내 Muse 상태 / My Muse status')),socialHost);socialDetails.hidden=true;body.append(socialDetails);
     let connectionBusy=false,claimBusy=false,adoptionBusy=false,socialBusy=false,socialExpanded=false,applying=false;
@@ -148,15 +151,15 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
         social?.setVisible(available&&socialExpanded);
       }finally{applying=false;}
     }
-    const p=mountPersonalEntry(profileHost,{...opts.personal,connectionManaged:true,authResult:opts.initial?.get('personal')??undefined,onState:s=>{latest=s;void adoption?.syncProfile(s);applyFlow();}});
-    connection=mountPersonalConnection(connectionHost,{fetcher:opts.personal?.fetcher,newOperationId:opts.personal?.newOperationId,now:opts.personal?.now,clipboard:opts.personal?.clipboard,getWorldId:opts.getWorldId,
-      onWatch:()=>{state.path='watch';close();opts.onWatch();},onWriteBusy:value=>{connectionBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy);claim?.setExternalBusy(value||adoptionBusy);adoption?.setExternalBusy(value||claimBusy);},onSessionLost:()=>p.markSessionLost(),onEntry:entry=>{if(disposed||blocked()||socialExpanded)return;personalEntry=structuredClone(entry);updateChip();applyFlow();try{opts.onPersonalEntry?.(structuredClone(entry));}catch{}}});
-    claim=mountPersonalClaim(claimHost,{fetcher:opts.personal?.fetcher,navigate:opts.personal?.navigate,clipboard:opts.personal?.clipboard,
-      onExpanded:()=>applyFlow(),onWriteBusy:value=>{claimBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy);adoption?.setExternalBusy(value||connectionBusy);},onSessionLost:()=>p.markSessionLost()});
-    adoption=mountPersonalAdoption(adoptionHost,{fetcher:opts.personal?.fetcher,newOperationId:opts.personal?.newOperationId,getWorldId:opts.getWorldId,
+    const p=mountPersonalEntry(profileHost,{...opts.personal,fetcher:personalFetch,connectionManaged:true,authResult:personalAuthResult(opts.initial),onWatch:()=>{state.path='watch';close();opts.onWatch();},onState:s=>{latest=s;personalOwnerAccess.syncPersonal(s);void adoption?.syncProfile(s);applyFlow();}});
+    connection=mountPersonalConnection(connectionHost,{fetcher:personalFetch,newOperationId:opts.personal?.newOperationId,now:opts.personal?.now,clipboard:opts.personal?.clipboard,getWorldId:opts.getWorldId,
+      onWatch:()=>{state.path='watch';close();opts.onWatch();},onWriteBusy:value=>{connectionBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy||personalOwnerAccess.isLoggingOut());claim?.setExternalBusy(value||adoptionBusy);adoption?.setExternalBusy(value||claimBusy);},onSessionLost:()=>p.markSessionLost(),onEntry:entry=>{if(disposed||blocked()||socialExpanded)return;personalEntry=structuredClone(entry);updateChip();applyFlow();try{opts.onPersonalEntry?.(structuredClone(entry));}catch{}}});
+    claim=mountPersonalClaim(claimHost,{fetcher:personalFetch,navigate:opts.personal?.navigate,clipboard:opts.personal?.clipboard,
+      onExpanded:()=>applyFlow(),onWriteBusy:value=>{claimBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy||personalOwnerAccess.isLoggingOut());adoption?.setExternalBusy(value||connectionBusy);},onSessionLost:()=>p.markSessionLost()});
+    adoption=mountPersonalAdoption(adoptionHost,{fetcher:personalFetch,newOperationId:opts.personal?.newOperationId,getWorldId:opts.getWorldId,
       onState:a=>{if(disposed)return;if(a.blocksSetup){personalEntry=a.data?.adopted?a.data.entry:null;updateChip();}else if(latest?.authenticated===false){personalEntry=null;updateChip();}applyFlow();},
-      onWriteBusy:value=>{adoptionBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy);claim?.setExternalBusy(value||connectionBusy);},onSessionLost:()=>p.markSessionLost(),onAdopted:()=>p.refresh(),onWatch:()=>{state.path='watch';close();opts.onWatch();}});
-    social=mountSocialStatus(socialHost,{fetcher:opts.personal?.fetcher,endpoint:()=>'/api/personal/social-status',onSessionLost:()=>p.markSessionLost(),onWriteBusy:value=>{socialBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy);claim?.setExternalBusy(value||connectionBusy||adoptionBusy);adoption?.setExternalBusy(value||connectionBusy||claimBusy);}});social.setVisible(false);
+      onWriteBusy:value=>{adoptionBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy||personalOwnerAccess.isLoggingOut());claim?.setExternalBusy(value||connectionBusy);},onSessionLost:()=>p.markSessionLost(),onAdopted:()=>p.refresh(),onWatch:()=>{state.path='watch';close();opts.onWatch();}});
+    social=mountSocialStatus(socialHost,{fetcher:personalFetch,endpoint:()=>'/api/personal/social-status',onSessionLost:()=>p.markSessionLost(),onWriteBusy:value=>{socialBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy||personalOwnerAccess.isLoggingOut());claim?.setExternalBusy(value||connectionBusy||adoptionBusy);adoption?.setExternalBusy(value||connectionBusy||claimBusy);}});social.setVisible(false);
     socialDetails.addEventListener('toggle',()=>{socialExpanded=socialDetails.open;applyFlow();});
     personal={profile:p,connection,claim,adoption,social,apply:applyFlow};latest=p.state();void adoption.syncProfile(latest);applyFlow();
   }
@@ -287,12 +290,12 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
 
   // ?entry=choose|watch|trial|connect (&harness=09-copper) opens a path directly, for walkthrough recordings.
   const entry = preview ? opts.initial?.get('entry') : null;
-  if(!preview&&['failed','declined'].includes(opts.initial?.get('personal')??''))open('connect');
+  if(!preview&&['failed','declined'].includes(personalAuthResult(opts.initial)??''))open('connect');
   if(!preview&&['claimed','failed','declined','not_found'].includes(opts.initial?.get('personalClaim')??''))open('connect');
   if (entry === 'trial') { const h = harness(opts.initial!.get('harness')); state.viewing = h?.id ?? null; open(h ? 'trial-card' : 'trial-pick'); }
   else if (entry === 'connect') open('connect');
   else if (entry === 'choose') open('choose');
   else if (entry === 'watch') { state.path = 'watch'; updateChip(); opts.onWatch(); }
 
-  return {state,open,close,dispose(){if(disposed)return;disposed=true;stopTimer();personal?.social.dispose();personal?.adoption.dispose();personal?.claim.dispose();personal?.connection.dispose();personal?.profile.dispose();document.removeEventListener('keydown',onKey);panel.removeEventListener('toggle',onToggle);enter?.removeEventListener('click',onEnter);chip.remove();panel.remove();}};
+  return {state,open,close,dispose(){if(disposed)return;disposed=true;stopOwnerSession();stopTimer();personal?.social.dispose();personal?.adoption.dispose();personal?.claim.dispose();personal?.connection.dispose();personal?.profile.dispose();document.removeEventListener('keydown',onKey);panel.removeEventListener('toggle',onToggle);enter?.removeEventListener('click',onEnter);chip.remove();panel.remove();}};
 }
