@@ -509,3 +509,20 @@ test('a revoke or re-delegation that failed after the registry write is complete
     console.error = err; rt.commitExternal = real;
   }
 });
+
+test('visitor audience cannot restore a stale owner for camera records or the judge P0 path',async()=>{
+ const t=await boot({MODEL_API_KEY:'synthetic-audience-model-key'}),visitor=await t.session('visitor'),judge=await t.session('judge'),owner=await t.login(OWNER_TOKEN),audience={'x-musely-audience':'visitor',origin:ORIGIN};
+ assert.equal((await t.go('POST','/api/p0/run',undefined,{cookie:owner,...audience})).status,403);
+ assert.equal((await t.go('POST','/api/p0/run',undefined,{cookie:visitor+'; '+owner,...audience})).status,403);
+ assert.equal((await t.go('POST','/api/p0/run',undefined,{cookie:judge+'; '+owner,...audience})).status,200);
+ assert.equal((await t.go('POST','/api/p0/run',undefined,{cookie:owner,origin:ORIGIN})).status,200,'the untagged emergency path is preserved');
+});
+
+test('visitor audience camera keeps an old owner cookie out of the owner record',async()=>{
+ const t=await boot({MODEL_API_KEY:'synthetic-audience-model-key'}),visitor=await t.session('visitor'),judge=await t.session('judge'),owner=await t.login(OWNER_TOKEN),audience={'x-musely-audience':'visitor',origin:ORIGIN};
+ const old={at:Date.now()-1000,passed:true,results:[],requestId:'preserved-owner-positive',model:'synthetic',tier:'owner'};t.dobj.ritualRecord(old,'fixture',true);
+ const saved=globalThis.fetch;let calls=0;globalThis.fetch=async(url,init)=>{assert.equal(String(url),'https://api.meta.ai/v1/chat/completions');calls++;const content=JSON.parse(init.body).messages.find(m=>m.role==='user').content.find(x=>x.type==='text').text,steps=[...content.matchAll(/\b[123]\. ([a-z_]+):/g)].map(m=>m[1]);return new Response(JSON.stringify({id:'synthetic-audience',usage:{prompt_tokens:1,completion_tokens:1},choices:[{message:{content:JSON.stringify({results:steps.map(step=>({step,passed:true,confidence:.99,observation:'Synthetic frame'}))})}}]}),{headers:{'x-request-id':'synthetic-audience-'+calls}});};
+ try{
+  for(const session of [visitor,judge]){const cookies=session+'; '+owner,start=(await t.go('POST','/api/ritual/start',undefined,{cookie:cookies})).body;const r=await t.go('POST','/api/muse',{action:'challenge',input:{challengeId:start.id,frames:Array(3).fill('data:image/jpeg;base64,AAAA')}},{cookie:cookies,...audience});assert.equal(r.body.source,'live');assert.deepEqual(t.dobj.ritualOwnerRecord(),old);const e=t.events().filter(e=>e.kind==='ritual_judged').at(-1);assert.equal(e.data.actorOrigin,'trial');assert.equal(e.data.actor,undefined);assert.match(e.data.who,new RegExp('^'+(session===visitor?'visitor':'judge')));}
+ }finally{globalThis.fetch=saved;}
+});

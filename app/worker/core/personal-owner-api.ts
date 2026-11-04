@@ -1,3 +1,4 @@
+import {emptyWriteBody} from './empty-write-body.ts';
 // Personal browser authority for the one dual-proof legacy adoption. No owner cookie is issued.
 import {connectedRoutes,type ConnectedStub} from './owner-api.ts';
 import {originAllowed,type OwnerSession} from './owner-session.ts';
@@ -27,7 +28,7 @@ export async function personalOwnerRoutes(request:Request,url:URL,cfg:PersonalOw
   if(path==='/session'&&request.method==='DELETE'){
    if(url.search)return json({error:'bad_query'},400);
    if(!ready&&token)return json({error:'personal_auth_unavailable'},503);
-   if(request.body){const text=await request.text();if(text)return json({error:'body_not_allowed'},400);}
+   if(!await emptyWriteBody(request))return json({error:'body_not_allowed'},400);
    if(active)await stub.personalAuthRevoke(active.sidDigest,active.proof,active.appId,now());
    return json({owner:null},200,clearPersonalCookie);
   }

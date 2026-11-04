@@ -139,3 +139,18 @@ test('actual P0 peer-card crypto completion after logout stores no peer credenti
  crypto.subtle.sign=async(algorithm,...args)=>{if((typeof algorithm==='string'?algorithm:algorithm?.name)==='ECDSA'&&++ecdsa===2){gate.enter();await gate.wait;}return sign(algorithm,...args);};t.after(()=>crypto.subtle.sign=sign);
  const before=await ownerMutationSnapshot(x),pending=x.go('POST',BASE+'/p0/run',b.cookie);await entered(gate);assert.equal((await x.go('DELETE',BASE+'/session',b.cookie)).status,200);gate.release();const result=await pending;assert.equal(result.status,401);assert.deepEqual(result.body,{error:'personal_session_required'});assert.deepEqual(await ownerMutationSnapshot(x),before);
 });
+
+test('personal owner logout rejects the first nonempty chunk and cancels without reading a 16MiB body',async t=>{
+ const x=await boot(t);let pulls=0,cancelled=false;const stream=new ReadableStream({pull(c){if(pulls<16){pulls++;c.enqueue(new Uint8Array(1024*1024));}else c.close();},cancel(){cancelled=true;}},{highWaterMark:0});
+ const r=await x.go('DELETE',BASE+'/session','',stream);assert.equal(r.status,400);assert.deepEqual(r.body,{error:'body_not_allowed'});assert.equal(pulls,1);assert.equal(cancelled,true);
+});
+
+test('personal owner logout bounds a pending body reader and cancels it instead of waiting forever',async t=>{
+ const x=await boot(t);let controller,cancelled=false,timer;const stream=new ReadableStream({start(c){controller=c;},cancel(){cancelled=true;}},{highWaterMark:0});
+ const pending=x.go('DELETE',BASE+'/session','',stream),result=await Promise.race([pending,new Promise(r=>timer=setTimeout(()=>r('pending'),2500))]);clearTimeout(timer);
+ if(result==='pending'){controller.close();await pending;}assert.notEqual(result,'pending');assert.equal(result.status,400);assert.equal(cancelled,true);
+});
+
+test('a normally closed empty body still performs the same durable personal owner logout',async t=>{
+ const x=await boot(t),b=await x.bind();await x.adopt(b);const stream=new ReadableStream({start(c){c.close();}}),r=await x.go('DELETE',BASE+'/session',b.cookie,stream);assert.equal(r.status,200);assert.deepEqual(r.body,{owner:null});assert.deepEqual((await x.go('GET',BASE+'/session',b.cookie)).body,{owner:null});assert.ok(r.cookies.some(c=>c.includes('Path=/api/personal;')&&c.includes('Max-Age=0')));
+});

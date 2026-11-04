@@ -11,7 +11,7 @@ import {readOwnerSession, ownerOrigins, originAllowed, OWNER_COOKIE, type OwnerT
 import {handleMcpHttp} from './core/mcp-server.ts';
 import {OWNER_SLOT} from './core/trust.ts';
 import {HARNESS_IDS} from '../src/engine/harness.ts';
-import {personalRoutes, isPersonalCallback} from './core/personal-api.ts';
+import {personalRoutes, isPersonalCallback,signInFailurePage} from './core/personal-api.ts';
 import type {PersonalBinding} from './core/personal-registration.ts';
 export {WorldDO} from './world-do.ts';
 
@@ -43,6 +43,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   const realOwner = owner?.principal === 'owner';
   // Anything decided by the owner cookie is an owner write: it must come from one of our origins (CSRF). The judge path keeps its rules.
   const ownerWrite = realOwner && originAllowed(request, ownerCfg.origins);
+  const visitorAudience=request.headers.get('x-musely-audience')==='visitor';
 
   if (url.pathname === '/api/status' && request.method === 'GET') {
     const budget = await world(env).status();
@@ -101,7 +102,8 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     if (!isRitual || !session) return res;
     const out = await res.clone().json().catch(() => null) as any;
     const results = Array.isArray(out?.output?.results) ? out.output.results.map((r: any) => ({step: String(r.step).slice(0, 40), passed: r.passed === true, confidence: Number(r.confidence) || 0})) : [];
-    if (out && results.length === 3) await stub.ritualRecord({at: Date.now(), passed: out.source === 'live' && results.every((r: any) => r.passed), results, requestId: out.evidence?.requestId ?? null, model: out.evidence?.model ?? null, tier: ownerWrite ? 'owner' : session.tier}, session.sid.slice(0, 6), ownerWrite);
+    const byOwner=ownerWrite&&!visitorAudience;
+    if (out && results.length === 3) await stub.ritualRecord({at: Date.now(), passed: out.source === 'live' && results.every((r: any) => r.passed), results, requestId: out.evidence?.requestId ?? null, model: out.evidence?.model ?? null, tier: byOwner ? 'owner' : session.tier}, session.sid.slice(0, 6), byOwner);
     return res;
   }
 
@@ -140,6 +142,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   if (cardMatch && request.method === 'GET') { const card = await world(env).agentCard(cardMatch[1]); return card ? json(card) : json({error: 'unknown_agent'}, 404); }
   // P0 demonstration (judge link or the owner). It never revokes or delegates: those are the owner's own actions.
   if (url.pathname === '/api/p0/run' && request.method === 'POST') {
+    if(visitorAudience&&session?.tier!=='judge')return json({error:'judge_session_required'},403);
     if (session?.tier !== 'judge') {
       if (!realOwner) return json({error: 'judge_session_required'}, 403);
       if (!ownerWrite) return json({error: 'origin_not_allowed'}, 403);
@@ -186,7 +189,10 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     if (!cfg || !env.SESSION_SECRET) return json({error: 'threads_not_configured'}, 503);
     const [nonce, mac] = (url.searchParams.get('state') ?? '').split('.');
     const cookieNonce = cookieValue(request.headers.get('cookie'), 'musely_ts');
-    if (!nonce || !mac || nonce !== cookieNonce || !timingSafeEqual(mac, await hashIp(env.SESSION_SECRET, 'threads-state:' + nonce))) return json({error: 'state_mismatch'}, 400);
+    if (!nonce || !mac || nonce !== cookieNonce || !timingSafeEqual(mac, await hashIp(env.SESSION_SECRET, 'threads-state:' + nonce))) {
+      if(!url.searchParams.get('state')&&(url.searchParams.has('error')||url.searchParams.has('error_reason'))&&(request.headers.get('accept')??'').includes('text/html'))return signInFailurePage();
+      return json({error: 'state_mismatch'}, 400);
+    }
     const code = url.searchParams.get('code');
     if (!code) return redirectHome('claim=declined');
     const stub = world(env), expected = {agent: ownerClaim.agent, handle: ownerClaim.handle, display: ownerClaim.fingerprint_display, text: ownerClaim.claim_text};
