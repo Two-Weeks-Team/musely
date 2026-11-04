@@ -207,7 +207,8 @@ export function checkOutput(action: Action, input: ActionInput, out: any): strin
   if (residentValues(String(i.muse)) && ['spotlight','encounter','trade'].includes(action)) {
     const publicNames = [actorLabel(i.muse), ...(typeof i.other === 'string' ? [actorLabel(i.other)] : []),
       ...(typeof i.place === 'string' ? [i.place] : []), ...(Array.isArray(i.places) ? i.places.map((p: any) => p.name).filter((n: unknown): n is string => typeof n === 'string') : []),
-      ...(Array.isArray(i.muses) ? i.muses.map((m: any) => actorLabel(m.muse)) : [])];
+      ...(Array.isArray(i.muses) ? i.muses.map((m: any) => actorLabel(m.muse)) : []),
+      ...(perceptionPacket(input)?.current.conversation.map(m => m.name) ?? [])];
     if ([out.line, out.public_reason, ...(action === 'spotlight' ? [out.decision] : [])].some(text => typeof text === 'string' && nonEnglishResidentSpeech(text, publicNames))) return PUBLIC_SPEECH_NOT_ENGLISH;
   }
   if (action === 'spotlight' && out.freedom !== i.freedom) return 'freedom mismatch';
