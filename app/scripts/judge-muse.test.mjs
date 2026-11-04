@@ -172,3 +172,10 @@ test('judge-only legacy notification reads stay scoped to Judge and current flag
  const owner=await x.go('GET','/api/owner/notifications',x.judge+'; '+x.owner);assert.equal(owner.status,200);assert.deepEqual(owner.body.notifications.find(n=>n.id==='owner-private-notice').detail,{private:'owner-owned'});
  x.env.JUDGE_MUSE_MODE='off';assert.equal((await x.go('GET','/api/owner/notifications',x.judge)).status,404);
 });
+
+// Synthetic provider only: the same real WorldDO SQLite row survives object recreation.
+test('WorldDO model transport persists fallback, projects only safe status and resets after either key changes',async t=>{
+ const b=await boot(t);b.env.MODEL_API_KEY='synthetic-persistent-primary';b.env.MODEL_API_KEY_FALLBACK='synthetic-persistent-secondary';let world=await b.restart(),seen=[];
+ globalThis.fetch=async(_url,init)=>{seen.push(init.headers.authorization);return init.headers.authorization==='Bearer synthetic-persistent-primary'?new Response('payment required',{status:402}):new Response(JSON.stringify({id:'synthetic-response',choices:[{message:{content:'{"line":"Hello"}'}}]}));};
+ try{assert.equal((await world.modelCall('encounter',[],{})).ok,true);assert.equal(seen.length,2);assert.equal(world.status().modelKey,'fallback');assert.equal(world.status().modelKeyPrimaryRetries,0);world=await b.restart();assert.equal(world.status().modelKey,'fallback');await world.modelCall('encounter',[],{});assert.equal(seen.at(-1),'Bearer synthetic-persistent-secondary');const status=await b.go('GET','/api/status');assert.equal(status.body.modelKey,'fallback');assert.equal(status.body.modelKeyPinned,false);assert.ok(!JSON.stringify(status.body).includes('synthetic-persistent'));b.env.MODEL_API_KEY_FALLBACK='synthetic-rotated-secondary';world=await b.restart();assert.equal(world.status().modelKey,'primary');assert.equal(world.status().modelKeyPrimaryRetries,0);}finally{globalThis.fetch=()=>{throw Error('external networking prohibited');};}
+});
