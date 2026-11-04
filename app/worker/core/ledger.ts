@@ -177,7 +177,9 @@ export class Ledger {
         residentBudget: {timezone: 'Asia/Seoul', residentEnabled: policy.residentEnabled,
           period: {startAt: policy.periodStartAt, endAt: policy.periodEndAt, capUsd: policy.periodCapUsd, costUsd: round(a.period.cost), remainingUsd: round(Math.max(0, policy.periodCapUsd - a.period.cost))},
           resident: {dailyCapUsd: policy.residentDailyCapUsd, hourlyCapUsd: policy.residentHourlyCapUsd, dayCostUsd: round(a.resident.cost), hourCostUsd: round(a.hour.cost), byKind: kinds},
-          interactive: {dailyCapUsd: policy.interactiveDailyCapUsd, dayCostUsd: round(a.interactive.cost)}, priorityCutoffs: {...RESIDENT_PRIORITY_CUTOFFS}}};
+          interactive: {dailyCapUsd: policy.interactiveDailyCapUsd, dayCostUsd: round(a.interactive.cost),
+            // Shared money is not necessarily spendable by a visitor; the configured window and all caps apply.
+            availableUsd: now < policy.periodStartAt || now >= policy.periodEndAt ? 0 : round(Math.max(0,Math.min(policy.interactiveDailyCapUsd-a.interactive.cost,this.opts.dailyCapUsd-a.all.cost,policy.periodCapUsd-a.period.cost)))}, priorityCutoffs: {...RESIDENT_PRIORITY_CUTOFFS}}};
     }
     return {day, capUsd: this.opts.dailyCapUsd, spentUsd: round(b.spent), reservedUsd: round(b.reserved), liveCalls: b.calls, remainingUsd: round(Math.max(0, this.opts.dailyCapUsd - b.spent - b.reserved))};
   }

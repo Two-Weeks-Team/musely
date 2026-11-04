@@ -45,7 +45,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   if (url.pathname === '/api/status' && request.method === 'GET') {
     const budget = await world(env).status();
     return json({
-      model: {id: env.MODEL_ID, connected: !!env.MODEL_API_KEY, live: !!env.MODEL_API_KEY && budget.remainingUsd > 0},
+      model: {id: env.MODEL_ID, connected: !!env.MODEL_API_KEY, live: !!env.MODEL_API_KEY && (budget.residentBudget?.interactive.availableUsd ?? budget.remainingUsd) > 0},
       budget,
       turnstile: {sitekey: env.TURNSTILE_SITEKEY, configured: !!env.TURNSTILE_SECRET},
       session: session ? {tier: session.tier, expiresAt: session.exp, quota: await world(env).quota(session.sid, session.tier)} : null,

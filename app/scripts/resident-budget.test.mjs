@@ -25,3 +25,12 @@ test('ON rejects malformed policy and resident kind without reserving any row',t
 
 test('enabling on existing Ledger rows and reopening preserves cost across KST and config restart',t=>{const x=setup(t,{enabled:false,at:START+2*H});const r=x.req(.7,'personal');assert.equal(x.ledger.reserve(r).ok,true);x.ledger.settle(r.id,.65,'live');x.config.residentBudget.enabled=true;const reopened=new Ledger(x.sql,x.config);reopened.init();assert.equal(reopened.status().residentBudget.resident.hourCostUsd,.65);refused({...x,ledger:reopened},x.req(.4),'resident_hourly_budget');assert.equal(reopened.reserve(r).existing,true);assert.equal(reopened.status().residentBudget.period.costUsd,.65);});
 test('no undocumented 400-call gate is introduced within monetary and existing quota limits',t=>{const x=setup(t);for(let n=0;n<401;n++){const r=x.req(.0001,'personal');assert.equal(x.ledger.reserve(r).ok,true);x.ledger.settle(r.id,.0001,'live');}assert.equal(x.ledger.status().residentBudget.resident.byKind.personal.calls,401);});
+
+test('interactive availability reflects window, protected allocation, shared day and period headroom',t=>{
+ for(const at of [START-1,END]){const x=setup(t,{at});assert.equal(x.ledger.status().residentBudget.interactive.availableUsd,0);assert.equal(x.ledger.status().remainingUsd,30);}
+ const full=setup(t);assert.equal(full.ledger.status().residentBudget.interactive.availableUsd,6);
+ historical(full,{tier:'visitor',amount:6});assert.equal(full.ledger.status().residentBudget.interactive.availableUsd,0);assert.equal(full.ledger.status().remainingUsd,24);
+ const period=setup(t,{at:START+4*D+H});historical(period,{at:START+H,amount:149.99});assert.equal(period.ledger.status().residentBudget.interactive.availableUsd,.01);
+ const day=setup(t);historical(day,{at:day.now()-2*H,amount:29.99});assert.equal(day.ledger.status().residentBudget.interactive.availableUsd,.01);
+ const stopped=setup(t,{options:{residentEnabled:false}});assert.equal(stopped.ledger.status().residentBudget.interactive.availableUsd,6);
+});

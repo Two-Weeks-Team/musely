@@ -23,3 +23,12 @@ test('actual configured resident stop retains the separate camera and visitor al
  assert.equal(a.world.status().residentBudget.interactive.dayCostUsd,6);
  assert.equal(a.world.status().residentBudget.resident.dayCostUsd,0);
 });
+
+test('public live status uses effective visitor budget rather than unspendable resident funds',async t=>{
+ let now=at;t.mock.method(Date,'now',()=>now);
+ const a=await bootWorldDo(t,{mode:'sandbox-v1',envOverrides:settings,modelFetcher:async()=>{throw Error('no provider call expected');}});
+ let status=await(await a.request('/api/status')).json();assert.equal(status.model.live,true);
+ a.world.reserve({id:'interactive-full',tier:'judge',session:'fixture',ip:'',action:'challenge',maxCostUsd:6});
+ status=await(await a.request('/api/status')).json();assert.equal(status.budget.remainingUsd,24);assert.equal(status.model.live,false);
+ now=Date.parse('2026-11-09T00:00:00+09:00');status=await(await a.request('/api/status')).json();assert.equal(status.budget.remainingUsd,30);assert.equal(status.model.live,false);
+});
