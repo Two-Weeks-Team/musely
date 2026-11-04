@@ -161,11 +161,11 @@ test('I-01 #2: a repeated command_id returns the stored result with no second re
   assert.equal(worldOf(t.runtime), after);
   assert.ok(t.events('command_refused').some(e => e.data.reason === 'command_conflict'));
 
-  // A plan against an older world → stale_world (retryable), nothing changes.
+  // A plan against an impossible future world stays stale (retryable), nothing changes.
   const v = (await m.call('get_world_state', {})).structuredContent.world_version;
   assert.equal(v, t.runtime.state().version);
   const greets = t.events('greet').length;
-  const stale = await m.call('greet', {text: 'Hello again', command_id: 'cmd-greet-0001', expected_version: v - 1});
+  const stale = await m.call('greet', {text: 'Hello again', command_id: 'cmd-greet-0001', expected_version: v + 1});
   assert.equal(stale.structuredContent.refused, 'stale_world');
   assert.equal(stale.structuredContent.retryable, true);
   assert.equal(stale.structuredContent.step, 'version', 'refused before any work, not discarded at the commit');

@@ -28,7 +28,7 @@ test('stale precommit spends no nonce/row; same ID fresh succeeds once; duplicat
  effects(value(await t.tool(JOLLY,'move',{to:t.muse(JOLLY).place,command_id:'freshness-rule-refusal'})),false,false);
 });
 
-test('due heartbeat after world read makes it stale; heartbeat then fresh read permits chosen write',async tc=>{
+test('due heartbeat changes the global version; a safe greeting still commits without a chosen retry',async tc=>{
  const t=await httpsWorld(tc);
  // A real peer message is unread upkeep, not an artificial version override.
  await t.tool(COPPER,'greet',{to:JOLLY,text:'Good morning'});
@@ -36,9 +36,9 @@ test('due heartbeat after world read makes it stale; heartbeat then fresh read p
  const hb=value(await t.tool(JOLLY,'heartbeat_check'));assert.ok(hb.messages.length>0);assert.ok(t.state().version>world.world_version);
  assert.equal(hb.world_version,t.state().version,'heartbeat reports the post-upkeep version, not the read it invalidated');
  assert.ok(Number.isSafeInteger(hb.observed_at));assert.ok(hb.observed_at>=world.observed_at);
- const stale=value(await t.tool(JOLLY,'greet',{text:'Good morning',command_id:'freshness-hb-order',expected_version:world.world_version}));assert.equal(stale.refused,'stale_world');effects(stale,false,false);
+ const accepted=value(await t.tool(JOLLY,'greet',{text:'Good morning',command_id:'freshness-hb-order',expected_version:world.world_version}));assert.equal(accepted.ok,true);effects(accepted,true,true);
  const fresh=value(await t.tool(JOLLY,'get_world_state'));
- effects(value(await t.tool(JOLLY,'greet',{text:'Good morning',command_id:'freshness-hb-order',expected_version:fresh.world_version})),true,true);
+ const duplicate=value(await t.tool(JOLLY,'greet',{text:'Good morning',command_id:'freshness-hb-order',expected_version:fresh.world_version}));assert.equal(duplicate.command.duplicate,true);effects(duplicate,false,false);
 });
 
 test('heartbeat returns a usable post-upkeep version and a no-op recheck cannot invalidate it',async tc=>{
