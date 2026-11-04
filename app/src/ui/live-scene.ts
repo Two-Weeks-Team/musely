@@ -1,3 +1,4 @@
+import {uiText,catalogText,inventoryText,activityStatus} from './i18n.ts';
 import type {CampfireScenePort} from '../../world-packs/campfire/scene-port.mjs';
 // I-09: read-only server snapshot/event → existing rig, props, labels and four small effects.
 // The scripted eight-character scene stays intact; live mode reuses its matching IDs and adds Ember/Copper.
@@ -47,7 +48,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
     mesh.name = 'LiveEffect_' + kind; mesh.frustumCulled = false; mesh.visible = false; mesh.count = 0; host.scene.add(mesh); effects.set(kind, mesh);
   }
   const legacyReady = Promise.all(MUSE_VARIANTS.filter(v => !entries.has(v.id)).map(async v => {
-    if (!host.library) {errors.push(`${v.id}: character kit unavailable`); return;}
+    if (!host.library) {errors.push(uiText`${v.id}: character kit unavailable`); return;}
     try {
       const loaded = await loadMuseLight(v.id, host.library);
       if (disposed) {loaded.actor.dispose(); return;}
@@ -57,7 +58,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
     } catch (e) {errors.push(`${v.id}: ${String(e)}`);}
   }));
   // Carried props are needed for live events, so request their shared 145 KB file without waiting for all full LODs.
-  if (host.library) void host.library.load(propsUrl(host.library.base)).then(g => {if (!disposed) for (const {actor} of entries.values()) actor.addProps(g);}).catch(e => errors.push('props: ' + String(e)));
+  if (host.library) void host.library.load(propsUrl(host.library.base)).then(g => {if (!disposed) for (const {actor} of entries.values()) actor.addProps(g);}).catch(e => errors.push(uiText('props: ') + String(e)));
   void legacyReady.then(() => {if (!disposed && host.library) void host.library.load(propsUrl(host.library.base)).then(g => {if (!disposed) for (const {actor} of entries.values()) actor.addProps(g);}).catch(() => {});});
 
   const allEntries = () => [...entries.values(), ...personal.values()];
@@ -99,7 +100,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
           const shadow = new T.Mesh(new T.PlaneGeometry(1,.8), new T.MeshBasicMaterial({map:host.shadowTexture,transparent:true,depthWrite:false}));
           shadow.rotation.x = -Math.PI/2; add(loaded.actor,shadow,true,id,true);
           const e=personal.get(id)!;await upgradeEntry(e,variant,()=>wanted(id,variant)&&personal.get(id)===e);
-        } catch {if (loading.get(id)?.token === token && wanted(id,variant)) errors.push(id + ': character kit unavailable');}
+        } catch {if (loading.get(id)?.token === token && wanted(id,variant)) errors.push(id + uiText(': character kit unavailable'));}
         finally {if (loading.get(id)?.token === token) loading.delete(id);}
       })();
       loading.set(id,{variant,token,promise});
@@ -152,7 +153,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
       actor.setExpression(f.line ? 'Listening' : f.clip === 'celebrate' ? 'Delight' : f.clip === 'think' ? 'Thinking' : 'Neutral');
       const y = surfaceHeightAt(f.x, f.z) + .006;
       actor.update(at / 1000, {x: f.x, y, z: f.z, yaw: f.yaw}, f.actionTime, f.upperTime);
-      if (f.carry && !actor.carryShown()) {f.visual = 'fallback'; f.fallback = 'The shared 3D item prop is loading; shown as an item card.'; f.card ??= 'item (3D prop loading)';}
+      if (f.carry && !actor.carryShown()) {f.visual = 'fallback'; f.fallback = uiText('The shared 3D item prop is loading; shown as an item card.'); f.card ??= uiText('item (3D prop loading)');}
       e.shadow.position.set(f.x, surfaceHeightAt(f.x, f.z) + .002, f.z);
       if (e.label) {
         const p = project(new T.Vector3(f.x, y + 1.12, f.z));
@@ -162,7 +163,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
         e.label.dataset.clustered=String(!f.travel&&(groupSizes.get(f.place)??0)>1);
         e.label.dataset.clusterCount='';
         const speech=frameSpeech(f,projection.world,projection.events);
-        const text=`${museName(f.id,projection.world)}${speech ? (speech.recipient?' ':': ')+speech.text : f.card ? ' · ' + f.card : ''}`;
+        const text=`${museName(f.id,projection.world)}${speech ? (speech.recipient?' ':': ')+speech.text : f.card ? ' · ' + activityStatus(f.card) : ''}`;
         if(e.label.textContent!==text)e.label.textContent=text;
         if(!e.label.hidden){
           labelNodes.set(e.id,e.label);
@@ -172,7 +173,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
         e.label.dataset.source = sourceOf(f.id);
         e.label.dataset.replay = String(store.replay);
         e.label.dataset.visual = f.visual;
-        e.label.title = `${store.replay ? 'REPLAY · ' : ''}${f.status}${f.fallback ? ' · ' + f.fallback : ''}`;
+        e.label.title = `${store.replay ? uiText('REPLAY · ') : ''}${activityStatus(f.status)}${f.fallback ? ' · ' + activityStatus(f.fallback) : ''}`;
       }
     }
     if(root){

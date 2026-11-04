@@ -17,7 +17,7 @@ class Node {
 const walk=n=>[n,...n.childNodes.flatMap(walk)];
 const button=(card,text)=>walk(card).find(n=>n.tagName==='button'&&n.textContent===text&&!n.removed);
 const response=(data,status=200,serverNow=Date.now())=>({ok:status<300,status,headers:{get:name=>name==='date'?new Date(serverNow).toUTCString():null},json:async()=>data});
-async function fixture(t,{pendingCamera=false,cameraError=null,permission=null,devices=null,cameraErrors=null,judgeResponse=null,ttl=180000}={}){
+async function fixture(t,{pendingCamera=false,cameraError=null,permission=null,devices=null,cameraErrors=null,judgeResponse=null,ttl=180000,language='en-US',record=null,verdictPassed=null}={}){
  const originals={document:globalThis.document,navigator:globalThis.navigator,fetch:globalThis.fetch,MutationObserver:globalThis.MutationObserver,setTimeout:globalThis.setTimeout,clearTimeout:globalThis.clearTimeout};
  const timers=new Map();let next=0;const observers=[];const listeners=new Map();
  const state={open:true,captures:0,stopped:0,cameraCalls:[],statusCalls:0,sessionCalls:0,starts:0,posts:[],done:0,now:Date.now(),status:async()=>{state.statusCalls++;return {};},session:async()=>{state.sessionCalls++;}};
@@ -26,10 +26,10 @@ async function fixture(t,{pendingCamera=false,cameraError=null,permission=null,d
  globalThis.MutationObserver=class {constructor(f){this.f=f;observers.push(this);} observe(){} disconnect(){this.off=true;}};
  globalThis.setTimeout=(f,ms)=>{timers.set(++next,{f,ms});return next;};globalThis.clearTimeout=id=>timers.delete(id);
  const camera=deferred(),stream={getTracks:()=>[{stop(){state.stopped++;}}]};
- Object.defineProperty(globalThis,'navigator',{configurable:true,value:{...(permission===null?{}:{permissions:{query:()=>permission}}),mediaDevices:{getUserMedia:constraints=>{state.cameraCalls.push(constraints);const error=cameraErrors?.[state.cameraCalls.length-1]??cameraError;return error?Promise.reject(Object.assign(new Error('camera fixture'),{name:error})):pendingCamera?camera.promise:Promise.resolve(stream);},...(devices===null?{}:{enumerateDevices:()=>devices}),}}});
- globalThis.fetch=async(url,init)=>{if(url==='/api/ritual/record')return response({record:null});if(url==='/api/ritual/start'){state.starts++;return response({id:'fixture',steps:[{id:'a',text:'raise one hand'},{id:'b',text:'turn your head'},{id:'c',text:'show three fingers'}],expiresAt:state.now+ttl},200,state.now);}if(url==='/api/muse'){state.posts.push(JSON.parse(init.body));return response(judgeResponse??{source:'live',output:{results:[]}});}throw Error('Unexpected offline request');};
+ Object.defineProperty(globalThis,'navigator',{configurable:true,value:{language,...(permission===null?{}:{permissions:{query:()=>permission}}),mediaDevices:{getUserMedia:constraints=>{state.cameraCalls.push(constraints);const error=cameraErrors?.[state.cameraCalls.length-1]??cameraError;return error?Promise.reject(Object.assign(new Error('camera fixture'),{name:error})):pendingCamera?camera.promise:Promise.resolve(stream);},...(devices===null?{}:{enumerateDevices:()=>devices}),}}});
+ globalThis.fetch=async(url,init)=>{if(url==='/api/ritual/record')return response({record});if(url==='/api/ritual/start'){state.starts++;return response({id:'fixture',steps:[{id:'a',text:'raise one hand'},{id:'b',text:'turn your head'},{id:'c',text:'show three fingers'}],expiresAt:state.now+ttl},200,state.now);}if(url==='/api/muse'){state.posts.push(JSON.parse(init.body));return response(judgeResponse??{source:'live',evidence:{requestId:'offline-public-request'},output:{results:verdictPassed===null?[]:['a','b','c'].map(step=>({step,passed:verdictPassed,confidence:.9}))}});}throw Error('Unexpected offline request');};
  const card=ritualCard(()=>state.done++);await flush();
- const start=button(card,'카메라로 시작 · Try the ritual');start.onclick();state.cameraCallsOnClickReturn=state.cameraCalls.length;await flush();
+ const start=button(card,language.startsWith('ko')?'카메라로 시작':'Try the ritual');start.onclick();state.cameraCallsOnClickReturn=state.cameraCalls.length;await flush();
  const tick=async()=>{const timer=[...timers].find(([,v])=>v.ms===1000);assert.ok(timer,'countdown timer');timers.delete(timer[0]);timer[1].f();await flush();};
  const countdown=async()=>{await tick();await tick();await tick();};
  const click=async(text)=>{const b=button(card,text);assert.ok(b,`button ${text}`);assert.equal(b.disabled,false);b.onclick();await flush();};
@@ -41,12 +41,12 @@ test('preview is focused and waits without session or challenge use, then each m
  const f=await fixture(t);const stage=walk(f.card).find(n=>n.className==='ritual-stage');
  assert.equal(f.state.starts,0,'preview must not consume challenge');assert.equal(f.state.statusCalls,0);assert.equal(f.state.sessionCalls,0);
  assert.equal(document.activeElement,stage);assert.equal(stage.scrolled,true);assert.equal(stage.tabIndex,-1);
- await f.click('준비됐어요 · Ready');assert.equal(f.state.starts,0);await f.countdown();assert.equal(f.state.starts,1);assert.equal(f.state.captures,0);
- for(let i=0;i<3;i++){assert.equal(f.state.captures,i);assert.equal(f.state.posts.length,0);await f.click('동작 준비됐어요 · Ready for this move');await f.countdown();}
+ await f.click('Ready');assert.equal(f.state.starts,0);await f.countdown();assert.equal(f.state.starts,1);assert.equal(f.state.captures,0);
+ for(let i=0;i<3;i++){assert.equal(f.state.captures,i);assert.equal(f.state.posts.length,0);await f.click('Ready for this move');await f.countdown();}
  assert.equal(f.state.captures,3);assert.equal(f.state.posts.length,1);assert.equal(f.state.posts[0].input.frames.length,3);assert.equal(f.state.stopped,1);assert.equal(f.state.done,1);
 });
 test('cancel during pending permission stops a late stream and never starts a challenge',async t=>{
- const f=await fixture(t,{pendingCamera:true});await f.click('취소 · Cancel');f.camera.resolve(f.stream);await flush();
+ const f=await fixture(t,{pendingCamera:true});await f.click('Cancel');f.camera.resolve(f.stream);await flush();
  assert.equal(f.state.stopped,1);assert.equal(f.state.starts,0);assert.equal(f.state.posts.length,0);assert.equal(f.start.disabled,false);
 });
 for(const [name,expected] of [
@@ -62,32 +62,32 @@ for(const kind of ['hidden','removed','closed'])test(`${kind} releases preview a
  const f=await fixture(t);await f.dismiss(kind);assert.equal(f.state.stopped,1);assert.equal(f.state.posts.length,0);assert.equal(f.state.starts,0);assert.equal(f.start.disabled,false);
 });
 test('dismissal between prepared moves discards captured frames and prevents upload',async t=>{
- const f=await fixture(t);await f.click('준비됐어요 · Ready');await f.countdown();await f.click('동작 준비됐어요 · Ready for this move');await f.countdown();assert.equal(f.state.captures,1);
+ const f=await fixture(t);await f.click('Ready');await f.countdown();await f.click('Ready for this move');await f.countdown();assert.equal(f.state.captures,1);
  await f.dismiss('hidden');assert.equal(f.state.stopped,1);assert.equal(f.state.posts.length,0);
 });
 test('expired challenge while waiting for a move stops without upload or replacement challenge',async t=>{
- const f=await fixture(t,{ttl:60000});await f.click('준비됐어요 · Ready');await f.countdown();const expiry=[...f.timers].find(([,v])=>v.ms>30000);assert.ok(expiry);f.timers.delete(expiry[0]);expiry[1].f();await flush();
+ const f=await fixture(t,{ttl:60000});await f.click('Ready');await f.countdown();const expiry=[...f.timers].find(([,v])=>v.ms>30000);assert.ok(expiry);f.timers.delete(expiry[0]);expiry[1].f();await flush();
  assert.equal(f.state.stopped,1);assert.equal(f.state.starts,1);assert.equal(f.state.posts.length,0);assert.match(f.card.textContent,/expired/i);
 });
 for(const kind of ['hidden','removed','closed'])test(`${kind} during permission wait stops a late camera stream`,async t=>{
  const f=await fixture(t,{pendingCamera:true});await f.dismiss(kind);f.camera.resolve(f.stream);await flush();assert.equal(f.state.stopped,1);assert.equal(f.state.starts,0);assert.equal(f.state.posts.length,0);
 });
 test('repeated start and readiness clicks do not duplicate a challenge or capture',async t=>{
- const f=await fixture(t);f.start.onclick();await flush();const initial=button(f.card,'준비됐어요 · Ready');initial.onclick();initial.onclick();await flush();await f.countdown();assert.equal(f.state.starts,1);
- const move=button(f.card,'동작 준비됐어요 · Ready for this move');move.onclick();move.onclick();await flush();await f.countdown();assert.equal(f.state.captures,1);assert.equal(f.state.posts.length,0);await f.dismiss('closed');
+ const f=await fixture(t);f.start.onclick();await flush();const initial=button(f.card,'Ready');initial.onclick();initial.onclick();await flush();await f.countdown();assert.equal(f.state.starts,1);
+ const move=button(f.card,'Ready for this move');move.onclick();move.onclick();await flush();await f.countdown();assert.equal(f.state.captures,1);assert.equal(f.state.posts.length,0);await f.dismiss('closed');
 });
 
 for(const offset of [600000,-600000])test(`device clock offset ${offset} does not consume a fresh server challenge`,async t=>{
  const f=await fixture(t);const now=Date.now;Date.now=()=>f.state.now+offset;t.after(()=>{Date.now=now;});
- await f.click('준비됐어요 · Ready');await f.countdown();
+ await f.click('Ready');await f.countdown();
  assert.equal(f.state.starts,1);const expiry=[...f.timers.values()].find(v=>v.ms>30000);assert.ok(expiry,'a fresh challenge must keep time to prepare');assert.ok(expiry.ms<=180000);
- await f.click('동작 준비됐어요 · Ready for this move');await f.countdown();assert.equal(f.state.captures,1);await f.dismiss('closed');
+ await f.click('Ready for this move');await f.countdown();assert.equal(f.state.captures,1);await f.dismiss('closed');
 });
 
 test('pending camera ends after eight seconds with recovery guidance and releases a late stream',async t=>{
  const f=await fixture(t,{pendingCamera:true});const deadline=[...f.timers].find(([,v])=>v.ms===8000);assert.ok(deadline,'camera deadline');f.timers.delete(deadline[0]);deadline[1].f();await flush();
  assert.equal(f.start.disabled,false);assert.match(f.card.textContent,/Site information.*Camera/);assert.match(f.card.textContent,/macOS/);assert.match(f.card.textContent,/reload|reopen/i);assert.equal(f.state.starts,0);assert.equal(f.state.posts.length,0);assert.equal(f.state.captures,0);
- f.camera.resolve(f.stream);await flush();assert.equal(f.state.stopped,1);assert.equal(button(f.card,'준비됐어요 · Ready'),undefined);
+ f.camera.resolve(f.stream);await flush();assert.equal(f.state.stopped,1);assert.equal(button(f.card,'Ready'),undefined);
 });
 for(const mode of ['pending','rejected','unsupported'])test(`camera diagnostics ${mode} do not block immediate acquisition or timeout`,async t=>{
  const never=deferred().promise;const permission=mode==='pending'?never:mode==='rejected'?Promise.reject(new Error('unsupported')):null,devices=mode==='pending'?never:mode==='rejected'?Promise.reject(new Error('unavailable')):null;
@@ -100,7 +100,7 @@ test('confirmed camera absence gives immediate help and stops a late stream',asy
  const f=await fixture(t,{pendingCamera:true,devices:Promise.resolve([{kind:'audioinput'}])});assert.equal(f.start.disabled,false);assert.match(f.card.textContent,/No camera was found/);assert.equal(f.state.starts,0);f.camera.resolve(f.stream);await flush();assert.equal(f.state.stopped,1);
 });
 test('unsupported constraints retry exactly once with plain video and no audio',async t=>{
- const f=await fixture(t,{cameraErrors:['OverconstrainedError']});assert.equal(f.state.cameraCalls.length,2);assert.deepEqual(f.state.cameraCalls[1],{video:true,audio:false});assert.ok(button(f.card,'준비됐어요 · Ready'));await f.dismiss('closed');
+ const f=await fixture(t,{cameraErrors:['OverconstrainedError']});assert.equal(f.state.cameraCalls.length,2);assert.deepEqual(f.state.cameraCalls[1],{video:true,audio:false});assert.ok(button(f.card,'Ready'));await f.dismiss('closed');
 });
 for(const name of ['SecurityError','OverconstrainedError'])test(`${name} ends with an actionable camera explanation`,async t=>{
  const f=await fixture(t,{cameraError:name});assert.equal(f.start.disabled,false);assert.match(f.card.textContent,name==='SecurityError'?/secure|policy|Camera/i:/resolution|camera settings|camera mode/i);assert.equal(f.state.starts,0);assert.equal(f.state.posts.length,0);
@@ -108,13 +108,31 @@ for(const name of ['SecurityError','OverconstrainedError'])test(`${name} ends wi
 
 for(const source of ['live','replay'])test(`ritual completion requires live evidence and all three exact boolean verdicts (${source})`,async t=>{
  const f=await fixture(t,{judgeResponse:{source,evidence:{requestId:'offline-request'},output:{results:[{step:'a',passed:true,confidence:.9},{step:'b',passed:false,confidence:.95},{step:'c',passed:true,confidence:.85}]}}});
- await f.click('준비됐어요 · Ready');await f.countdown();for(let i=0;i<3;i++){await f.click('동작 준비됐어요 · Ready for this move');await f.countdown();}
+ await f.click('Ready');await f.countdown();for(let i=0;i<3;i++){await f.click('Ready for this move');await f.countdown();}
  assert.doesNotMatch(f.card.textContent,/All three moves passed/);assert.match(f.card.textContent,/Not passed|Not checked/);assert.doesNotMatch(f.card.textContent,/prepare paper/);
 });
 test('recorded all-true verdicts cannot claim that this visitor passed',async t=>{
- const f=await fixture(t,{judgeResponse:{source:'replay',output:{results:['a','b','c'].map(step=>({step,passed:true,confidence:.9}))}}});await f.click('준비됐어요 · Ready');await f.countdown();for(let i=0;i<3;i++){await f.click('동작 준비됐어요 · Ready for this move');await f.countdown();}assert.doesNotMatch(f.card.textContent,/All three moves passed/);
+ const f=await fixture(t,{judgeResponse:{source:'replay',output:{results:['a','b','c'].map(step=>({step,passed:true,confidence:.9}))}}});await f.click('Ready');await f.countdown();for(let i=0;i<3;i++){await f.click('Ready for this move');await f.countdown();}assert.doesNotMatch(f.card.textContent,/All three moves passed/);
 });
 
 test('three matching live body verdicts with current evidence show success',async t=>{
- const f=await fixture(t,{judgeResponse:{source:'live',evidence:{requestId:'offline-request'},output:{results:['a','b','c'].map(step=>({step,passed:true,confidence:.9}))}}});await f.click('준비됐어요 · Ready');await f.countdown();for(let i=0;i<3;i++){await f.click('동작 준비됐어요 · Ready for this move');await f.countdown();}assert.match(f.card.textContent,/All three moves passed/);
+ const f=await fixture(t,{judgeResponse:{source:'live',evidence:{requestId:'offline-request'},output:{results:['a','b','c'].map(step=>({step,passed:true,confidence:.9}))}}});await f.click('Ready');await f.countdown();for(let i=0;i<3;i++){await f.click('Ready for this move');await f.countdown();}assert.match(f.card.textContent,/All three moves passed/);
+});
+
+for(const language of['ko-KR','en-US'])for(const passed of[true,false])test(`${language} recorded history and actual verdict table localize ${passed?'passed':'not passed'}`,async t=>{
+ const record={at:1800000000000,passed,requestId:'offline-public-request',results:['a','b','c'].map(step=>({step,passed,confidence:.9}))};
+ const f=await fixture(t,{language,record,verdictPassed:passed}),ko=language.startsWith('ko'),expected=ko?(passed?'통과':'통과하지 못함'):(passed?'passed':'not passed');
+ const assertVerdicts=()=>{const rows=walk(f.card).filter(n=>n.tagName==='tr');assert.ok(rows.length>=3);for(const r of rows)assert.equal(r.childNodes[1].textContent,expected);};
+ assertVerdicts();assert.match(f.card.textContent,new RegExp(expected));if(ko)assert.doesNotMatch(f.card.textContent,/\bpassed\b/);
+ await f.click(ko?'준비됐어요':'Ready');await f.countdown();for(let i=0;i<3;i++){await f.click(ko?'동작 준비됐어요':'Ready for this move');await f.countdown();}
+ assert.equal(f.state.posts.length,1);assert.equal(f.state.posts[0].input.frames.length,3);assertVerdicts();if(ko)assert.doesNotMatch(f.card.textContent,/\bpassed\b/);
+});
+
+for(const language of['ko-KR','en-US'])test(`${language} each ritual move keeps its progress and requested body action`,async t=>{
+ const f=await fixture(t,{language}),ko=language.startsWith('ko');await f.click(ko?'준비됐어요':'Ready');await f.countdown();
+ for(const [i,action]of['raise one hand','turn your head','show three fingers'].entries()){
+  const prompt=walk(f.card).find(n=>n.className==='ritual-prompt').textContent;
+  assert.match(prompt,new RegExp(`${i+1}/3`),'the visitor must know which move is current');assert.ok(prompt.includes(action),'the actual requested action must survive language selection');
+  await f.click(ko?'동작 준비됐어요':'Ready for this move');await f.countdown();
+ }
 });

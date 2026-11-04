@@ -27,7 +27,7 @@ test('selected card keeps the exact line, gives the arrow a bilingual spoken lab
  const element=()=>({children:[],attrs:{},set textContent(text){this.text=text;this.children=[];},get textContent(){return this.children.length?this.children.map(c=>c.textContent).join(''):this.text;},set innerHTML(_){throw Error('must never parse public names or speech');},setAttribute(k,v){this.attrs[k]=v;},replaceChildren(...children){this.children=children;}}),node=element();node.ownerDocument={createElement:element};
  const frame={id:'01-sunny',line:event.line,cue:{eventId:event.id,partner:'02-moss'}};
  paintFrameSpeech(node,frame,world,[event],'Inventory');
- assert.equal(node.children[0].textContent,'→ <이웃 & Neighbor>: Hello, Moss.');assert.equal(node.children[0].attrs['aria-hidden'],'true');assert.equal(node.children[1].textContent,'To <이웃 & Neighbor> / <이웃 & Neighbor>에게: Hello, Moss.');
+ assert.equal(node.children[0].textContent,'→ <이웃 & Neighbor>: Hello, Moss.');assert.equal(node.children[0].attrs['aria-hidden'],'true');assert.equal(node.children[1].textContent,'To <이웃 & Neighbor>: Hello, Moss.');
  node.textContent='A scripted Story line';assert.equal(node.textContent,'A scripted Story line');assert.equal(node.children.length,0);
  paintFrameSpeech(node,{...frame,line:null},world,[event],'Inventory');assert.equal(node.text,'Inventory');assert.equal(node.children.length,0);
 });
