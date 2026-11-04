@@ -13,7 +13,7 @@ import type {Ledger} from './ledger.ts';
 import type {ModelConfig} from './model.ts';
 import type {OwnerOf} from './tasks.ts';
 import {WorldLifeEventReader,projectStoredRuntimeInvite} from './world-life-server.ts';
-import {createProjection,restoreProjection,saveProjection,type Projection} from './world-life-contract.ts';
+import {createProjection,restoreProjection,saveProjection,attendees,type Projection} from './world-life-contract.ts';
 export const WORLD_LIFE_PLACES=Object.freeze(['commons:campfire','commons:garden','commons:benches']);
 type RosterCapability={ACTOR_IDS?:readonly string[];harnessRoleId?:(id:string)=>string;isResidentInstance?:(id:string)=>boolean};
 const roster=harness as typeof harness & RosterCapability;
@@ -114,6 +114,17 @@ export class WorldLifeController {
    const receipt=state.receipts.at(-1)!;
    this.sql.exec('INSERT INTO world_life_invites (world_id,invite_id,revision,spent_receipt,state) VALUES (?,?,?,?,?) ON CONFLICT(world_id,invite_id) DO UPDATE SET revision=excluded.revision,state=excluded.state',after.worldId,inv.id,(row?.revision??-1)+1,receipt.spentTokenReceiptId,saveProjection(state));
   }
+ }
+ /** Read-only public terminal receipts; pending invitations and participant details stay outside the AOI packet. */
+ publicGatherings(worldId:string,now:number){
+  if(!this.active()||!Number.isSafeInteger(now)||now<0||this.requireRuntime().worldId!==worldId)return [];
+  const current=this.requireRuntime().state();
+  const rows=this.sql.exec('SELECT state FROM world_life_invites WHERE world_id=? ORDER BY rowid',worldId).toArray();
+  return rows.flatMap(row=>{const r=restoreProjection(String(row.state)).receipts.at(-1);
+   if(!r||r.worldId!==worldId||r.status!=='gathered'||r.at>now||r.expiresAt<=now)return [];
+   // Original receipt proves consent; current public presence only determines whether that gathering still exists.
+   const count=new Set(attendees(r).filter(id=>current.muses.some(m=>m.id===id&&m.place===r.placeId&&!m.travel&&!current.paused?.[id]))).size;return count>=3?[{id:r.inviteId,placeId:r.placeId,status:'gathered' as const,count}]:[];
+  });
  }
  view(){
   const runtime=this.requireRuntime(),s=runtime.state();

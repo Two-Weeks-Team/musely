@@ -1,0 +1,18 @@
+import {PLACE_BY_ID} from '../engine/places.ts';
+import {BEATS} from '../engine/beats.ts';
+import {uiText,catalogText,activityLabel} from './i18n.ts';
+import {museName,type ActorFrame,type LiveEvent,type LiveWorld} from './live-scene-core.ts';
+import {speechRecipient} from './speech-recipient.ts';
+const CUE_DISPLAY:Record<string,string>={greet:'인사하는 중… / Greeting a neighbor…',encounter:'이웃 만나는 중… / Meeting a neighbor…',encounter_reply:'대화하는 중… / Talking…',wave:'손 흔드는 중… / Waving…',resident_wave:'손 흔드는 중… / Waving…',offer:'물건 제안 중… / Offering an item…',trade:'거래하는 중… / Trading…'};
+const BEAT_DISPLAY:Record<string,string>={garden_water:'정원에 물 주는 중… / Gardening…',garden_plant:'씨앗 심는 중… / Planting…',cafe_order:'주문하는 중… / Ordering coffee…',cafe_drink:'커피 마시는 중… / Sipping coffee…',cafe_people_watch:'이웃 구경 중… / Watching the neighborhood…',cafe_save_seat:'자리 맡는 중… / Saving a seat…',cafe_fix_gadget:'기기 고치는 중… / Fixing a gadget…',park_bench_rest:'쉬는 중… / Resting…',campfire_sit:'모닥불 곁에서 쉬는 중… / Resting by the fire…',read:'책 읽는 중… / Reading…',write_note:'메모 쓰는 중… / Writing a note…',dance:'춤추는 중… / Dancing…',tell_story:'이야기하는 중… / Telling a story…',music_bounce:'박자 타는 중… / Moving to the music…',listen_music:'음악 듣는 중… / Listening to music…',repair:'수리하는 중… / Repairing…',craft:'만드는 중… / Crafting…',observe_sky:'밤하늘 보는 중… / Watching the sky…',night_pass_stargaze:'별 보는 중… / Stargazing…',welcome:'이웃 맞이하는 중… / Welcoming neighbors…',reassure:'마음 나누는 중… / Offering reassurance…',bus_wait:'버스 기다리는 중… / Waiting for the bus…'};
+export function liveActivity(frame:ActorFrame):string {
+ const place=catalogText(PLACE_BY_ID.get(frame.place)?.name??frame.place);
+ if(frame.status.includes('paused'))return uiText('활동이 일시 정지됨 / Activity paused');
+ if(frame.travel){const to=catalogText(PLACE_BY_ID.get(frame.travel.to)?.name??frame.travel.to);return frame.travel.speed==='bus'?uiText`버스로 ${to} 이동 중… / Riding to ${to}…`:frame.travel.speed==='taxi'?uiText`${to}(으)로 순간이동 중… / Teleporting to ${to}…`:uiText`${to}(으)로 걷는 중… / Walking to ${to}…`;}
+ if(frame.cue){if(CUE_DISPLAY[frame.cue.kind])return uiText(CUE_DISPLAY[frame.cue.kind]);}
+ if(frame.beat){const key=frame.beat;if(key==='resident_stay')return uiText`${place}에서 머무는 중… / Spending time at ${place}…`;return BEAT_DISPLAY[key]?uiText(BEAT_DISPLAY[key]):(BEATS.some(b=>b.id===key)?activityLabel(key)+'…':uiText`${place}에서 활동 중… / Active at ${place}…`);}
+ return frame.place==='commons:campfire'?uiText('모닥불 곁에서 쉬는 중… / Resting by the fire…'):uiText`${place}에서 머무는 중… / Spending time at ${place}…`;
+}
+export function destinationLine(frame:ActorFrame|undefined):string|null {if(!frame?.travel)return null;const to=catalogText(PLACE_BY_ID.get(frame.travel.to)?.name??frame.travel.to),eta=frame.travel.etaMs;return '→ '+to+(Number.isFinite(eta)&&eta>=0?' · '+uiText`약 ${Math.max(1,Math.ceil(eta/60000))}분 / about ${Math.max(1,Math.ceil(eta/60000))} min`:'');}
+export function recentLiveSpeech(events:readonly LiveEvent[],world:LiveWorld|null,now:number,selected:string,own:string|null,limit=2):LiveEvent[] {return events.filter(e=>['greet','encounter_reply','beat'].includes(e.kind)&&typeof e.line==='string'&&!!e.line.trim()&&['live','rule'].includes(e.source??'')&&e.at<=now&&now-e.at<=30000&&!!world?.muses.some(m=>m.id===e.muse)).sort((a,b)=>Number(b.muse===selected)-Number(a.muse===selected)||Number(b.muse===own)-Number(a.muse===own)||b.at-a.at).filter((e,i,a)=>a.findIndex(x=>x.muse===e.muse)===i).slice(0,limit);}
+export function speechDisplay(event:LiveEvent,world:LiveWorld|null):{name:string;recipient:string|null;line:string;source:string} {return {name:museName(event.muse!,world),recipient:speechRecipient(event,world)?.name??null,line:event.line!,source:event.source!.toUpperCase()};}

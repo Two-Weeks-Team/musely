@@ -1,9 +1,14 @@
+import {uiText,catalogText,inventoryText,activityStatus} from './i18n.ts';
 import type {CampfireScenePort} from '../../world-packs/campfire/scene-port.mjs';
 // I-09: read-only server snapshot/event → existing rig, props, labels and four small effects.
 // The scripted eight-character scene stays intact; live mode reuses its matching IDs and adds Ember/Copper.
 import * as T from 'three';
 import type {RecordedFrame} from '../replay/player.ts';
 import {SceneProjection, frameSource} from './recorded-scene.ts';
+import {layoutLiveLabels,type LabelCandidate,type LabelBox} from './live-label-layout.ts';
+import {liveActivity,recentLiveSpeech,speechDisplay} from './live-display.ts';
+import {placeLiveBubble,type ScreenBox} from './bubble-layout.ts';
+import {frameSpeech} from './speech-recipient.ts';
 import {loadMuseLight, type MaterialLibrary} from '../character-kit/MaterialLibrary.ts';
 import type {MuseActor} from '../character-kit/MuseActor.ts';
 import {MUSE_VARIANTS, propsUrl, attachmentUrl, lodUrl, type MuseVariantId} from '../character-kit/catalog.ts';
@@ -29,6 +34,9 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
   let lods = MUSE_VARIANTS.map(() => 2 as 0 | 1 | 2);
   const root = typeof document === 'undefined' ? null : document.createElement('div');
   if (root) {root.id = 'live-muse-labels'; root.setAttribute('aria-hidden', 'true'); document.body.append(root);}
+  const speechRoot=typeof document==='undefined'?null:document.createElement('div');if(speechRoot){speechRoot.id='live-speech-cards';document.body.append(speechRoot);}
+  const speechCards=Array.from({length:2},()=>{if(!speechRoot)return null;const card=document.createElement('div');card.className='speech-bubble live-speech-card';card.hidden=true;const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),leader=document.createElementNS(svg.namespaceURI,'path');svg.classList.add('live-speech-leader');svg.append(leader);speechRoot.append(svg,card);return {card,svg,leader};});
+  const labelSizes=new WeakMap<HTMLElement,{key:string;width:number;height:number}>();
   function add(actor: MuseActor, shadow: T.Mesh, extra: boolean, id: string = actor.variant, isPersonal = false) {
     let label: HTMLElement | null = null;
     if (root) {label = document.createElement('div'); label.className = 'live-muse-label'; label.dataset.museId = id; label.hidden = true; root.append(label);}
@@ -44,7 +52,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
     mesh.name = 'LiveEffect_' + kind; mesh.frustumCulled = false; mesh.visible = false; mesh.count = 0; host.scene.add(mesh); effects.set(kind, mesh);
   }
   const legacyReady = Promise.all(MUSE_VARIANTS.filter(v => !entries.has(v.id)).map(async v => {
-    if (!host.library) {errors.push(`${v.id}: character kit unavailable`); return;}
+    if (!host.library) {errors.push(uiText`${v.id}: character kit unavailable`); return;}
     try {
       const loaded = await loadMuseLight(v.id, host.library);
       if (disposed) {loaded.actor.dispose(); return;}
@@ -54,7 +62,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
     } catch (e) {errors.push(`${v.id}: ${String(e)}`);}
   }));
   // Carried props are needed for live events, so request their shared 145 KB file without waiting for all full LODs.
-  if (host.library) void host.library.load(propsUrl(host.library.base)).then(g => {if (!disposed) for (const {actor} of entries.values()) actor.addProps(g);}).catch(e => errors.push('props: ' + String(e)));
+  if (host.library) void host.library.load(propsUrl(host.library.base)).then(g => {if (!disposed) for (const {actor} of entries.values()) actor.addProps(g);}).catch(e => errors.push(uiText('props: ') + String(e)));
   void legacyReady.then(() => {if (!disposed && host.library) void host.library.load(propsUrl(host.library.base)).then(g => {if (!disposed) for (const {actor} of entries.values()) actor.addProps(g);}).catch(() => {});});
 
   const allEntries = () => [...entries.values(), ...personal.values()];
@@ -96,7 +104,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
           const shadow = new T.Mesh(new T.PlaneGeometry(1,.8), new T.MeshBasicMaterial({map:host.shadowTexture,transparent:true,depthWrite:false}));
           shadow.rotation.x = -Math.PI/2; add(loaded.actor,shadow,true,id,true);
           const e=personal.get(id)!;await upgradeEntry(e,variant,()=>wanted(id,variant)&&personal.get(id)===e);
-        } catch {if (loading.get(id)?.token === token && wanted(id,variant)) errors.push(id + ': character kit unavailable');}
+        } catch {if (loading.get(id)?.token === token && wanted(id,variant)) errors.push(id + uiText(': character kit unavailable'));}
         finally {if (loading.get(id)?.token === token) loading.delete(id);}
       })();
       loading.set(id,{variant,token,promise});
@@ -109,7 +117,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
     active = value;
     if(!value) host.campfireVisual?.setWorld(null);
     if (!host.actors?.length) {for (const node of host.muses) node.visible = !value;for (const shadow of host.shadows) {shadow.userData.instanceHidden = value;if (!shadow.userData.instanced) shadow.visible = !value;}}
-    if (root) root.hidden = !value;
+    if (root) root.hidden = !value;if(speechRoot)speechRoot.hidden=!value;
     for (const e of allEntries()) {
       const overridden = entries.get(e.id) === e && personal.has(e.id);
       const visible = value ? !overridden && !!projection.world?.muses.some(m => m.id === e.id) : !e.extra; e.actor.root.visible = visible; shadowVisible(e, visible);
@@ -124,7 +132,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
   }
   function setRecordedFrame(frame: RecordedFrame | null) {if (disposed) return; store.setRecordedFrame(frame); projection = store.projection; if(frame&&projection.world)projection.world=withSnapshotProfiles(projection.world,frame.publicState);reconcile(); if (root) root.dataset.replay = String(store.replay);}
   const sourceOf = (id: string) => frameSource(projection, frames.get(id), id);
-  function update(at: number, selectedId = selected) {
+  function update(at: number, selectedId = selected, ownId:string|null=null) {
     now = at; selected = selectedId;
     if (disposed || !active) return;
     if (!projection.world) {
@@ -132,10 +140,13 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
       frames.clear();host.campfireVisual?.setWorld(null);host.selection.visible=false;
       for(const e of allEntries()){e.actor.root.visible=false;shadowVisible(e,false);if(e.label)e.label.hidden=true;}
       for(const mesh of effects.values()){mesh.visible=false;mesh.count=0;}
-      host.ambient(at / 1000);return;
+      for(const speech of speechCards)if(speech){speech.card.hidden=true;speech.svg.style.display='none';}host.ambient(at / 1000);return;
     }
     host.campfireVisual?.setWorld(projection.world, store.replay ? store.recordedAt ?? at : liveObservedAt);
     frames = projection.frames(at);
+    const labelCandidates:LabelCandidate[]=[],labelNodes=new Map<string,HTMLElement>(),heads=new Map<string,Point>();
+    const groupSizes=new Map<string,number>();
+    for(const f of frames.values())if(!f.travel)groupSizes.set(f.place,(groupSizes.get(f.place)??0)+1);
     for (const e of allEntries()) {
       const f = entries.get(e.id) === e && personal.has(e.id) ? undefined : frames.get(e.id), actor = e.actor;
       actor.root.visible = !!f; shadowVisible(e, !!f);
@@ -146,20 +157,46 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
       actor.setExpression(f.line ? 'Listening' : f.clip === 'celebrate' ? 'Delight' : f.clip === 'think' ? 'Thinking' : 'Neutral');
       const y = surfaceHeightAt(f.x, f.z) + .006;
       actor.update(at / 1000, {x: f.x, y, z: f.z, yaw: f.yaw}, f.actionTime, f.upperTime);
-      if (f.carry && !actor.carryShown()) {f.visual = 'fallback'; f.fallback = 'The shared 3D item prop is loading; shown as an item card.'; f.card ??= 'item (3D prop loading)';}
+      if (f.carry && !actor.carryShown()) {f.visual = 'fallback'; f.fallback = uiText('The shared 3D item prop is loading; shown as an item card.'); f.card ??= uiText('item (3D prop loading)');}
       e.shadow.position.set(f.x, surfaceHeightAt(f.x, f.z) + .002, f.z);
       if (e.label) {
         const p = project(new T.Vector3(f.x, y + 1.12, f.z));
         const foot = project(new T.Vector3(f.x, y, f.z));
-        e.label.hidden = Math.abs(foot.y - p.y) < 20 || p.x < 12 || p.y < 70 || p.x > innerWidth - 12 || p.y > innerHeight - 110;
-        e.label.style.transform = `translate(${Math.round(p.x)}px,${Math.round(p.y)}px) translate(-50%,-100%)`;
-        e.label.textContent = `${museName(f.id,projection.world)}${f.line ? ': ' + f.line : f.card ? ' · ' + f.card : ''}`;
+        heads.set(e.id,p);e.label.hidden = Math.abs(foot.y-p.y)<20||p.x<0||p.y<0||p.x>innerWidth||p.y>innerHeight;
+        e.label.dataset.selected=String(e.id===selectedId);
+        e.label.dataset.clustered=String(!f.travel&&(groupSizes.get(f.place)??0)>1);
+        e.label.dataset.clusterCount='';
+        const speech=frameSpeech(f,projection.world,projection.events);
+        const text=museName(f.id,projection.world)+'\n'+liveActivity(f);
+        e.label.className='live-muse-label live-status-bubble';
+        if(e.label.dataset.displayKey!==text){e.label.dataset.displayKey=text;const name=document.createElement('strong'),status=document.createElement('small');name.textContent=museName(f.id,projection.world);status.textContent=liveActivity(f);e.label.replaceChildren(name,status);}
+        if(!e.label.hidden){
+          labelNodes.set(e.id,e.label);
+          labelCandidates.push({id:e.id,group:f.travel?'travel:'+e.id:f.place,groupSize:f.travel?1:groupSizes.get(f.place),x:p.x,y:p.y,width:0,height:0,selected:e.id===selectedId,speaking:!!speech});
+        }
         e.label.dataset.version = String(projection.world.version ?? projection.world.tick);
         e.label.dataset.source = sourceOf(f.id);
         e.label.dataset.replay = String(store.replay);
         e.label.dataset.visual = f.visual;
-        e.label.title = `${store.replay ? 'REPLAY · ' : ''}${f.status}${f.fallback ? ' · ' + f.fallback : ''}`;
+        e.label.title = `${store.replay ? uiText('REPLAY · ') : ''}${activityStatus(f.status)}${f.fallback ? ' · ' + activityStatus(f.fallback) : ''}`;
       }
+    }
+    if(root){
+    // Measure only when text/viewport/priority changes, then place all boxes together.
+    for(const c of labelCandidates){const node=labelNodes.get(c.id)!,key=`${innerWidth}:${node.textContent}:${node.dataset.clustered}:${node.dataset.selected}`;
+      let size=labelSizes.get(node);if(size?.key!==key){const rect=node.getBoundingClientRect?.();size={key,width:rect?.width||Math.min(240,innerWidth-24),height:rect?.height||36};labelSizes.set(node,size);}c.width=size.width;c.height=size.height;
+    }
+    const obstacles:LabelBox[]=[];
+    for(const selector of ['header','footer','#muse-card','.map-tools','#loading','#network-note','#judge-entry']){const node=document.querySelector?.<HTMLElement>(selector);if(!node||node.hidden)continue;const r=node.getBoundingClientRect();if(r.width&&r.height)obstacles.push({left:r.left,top:r.top,width:r.width,height:r.height});}
+    // Live speech uses the preview's candidate offsets and stays literal, including its public recipient.
+    const cards=store.replay?[]:recentLiveSpeech(projection.events,projection.world,at,selectedId,ownId,50).filter(e=>labelCandidates.some(c=>c.id===e.muse)).slice(0,innerWidth<700?1:2);
+    for(const [i,s]of speechCards.entries()){if(!s)continue;const event=cards[i],anchor=event?heads.get(event.muse!):null;s.card.hidden=true;s.svg.style.display='none';if(!event||!anchor)continue;const value=speechDisplay(event,projection.world),key=event.id+'|'+value.name+'|'+value.recipient+'|'+innerWidth;if(s.card.dataset.contentKey!==key){const speaker=document.createElement('span'),line=document.createElement('p'),source=document.createElement('small');speaker.className='bubble-speaker';speaker.style.color=resolveMuse(projection.world!.muses.find(m=>m.id===event.muse)!).color;speaker.textContent=value.name+(value.recipient?' → '+value.recipient:'');line.textContent=value.line;source.textContent=value.source;s.card.replaceChildren(speaker,line,source);s.card.dataset.contentKey=key;delete s.card.dataset.width;}s.card.hidden=false;s.card.style.visibility='hidden';const rect=s.card.getBoundingClientRect?.()??{width:230,height:96},box=placeLiveBubble(anchor,{width:rect.width||230,height:rect.height||96},{width:innerWidth,height:innerHeight},obstacles);if(!box){s.card.hidden=true;continue;}s.card.dataset.museId=event.muse!;s.card.dataset.source=event.source!;s.card.style.left=box.left+'px';s.card.style.top=box.top+'px';s.card.style.visibility='visible';s.svg.style.display='block';s.svg.setAttribute('viewBox',`0 0 ${innerWidth} ${innerHeight}`);s.leader.setAttribute('d',`M ${box.left+box.width/2} ${box.top+box.height} L ${anchor.x} ${anchor.y}`);obstacles.push(box);}
+    const ranked=[...labelCandidates].sort((a,b)=>Number(b.id===selectedId)-Number(a.id===selectedId)||Number(b.id===ownId)-Number(a.id===ownId)||Math.hypot(a.x-innerWidth/2,a.y-innerHeight/2)-Math.hypot(b.x-innerWidth/2,b.y-innerHeight/2));
+    const detailed=new Set(ranked.slice(0,8).map(c=>c.id));for(const c of ranked)if(!detailed.has(c.id)){const node=labelNodes.get(c.id)!;node.className='live-muse-dot';node.textContent='';delete node.dataset.displayKey;node.hidden=false;node.style.transform=`translate(${Math.round(c.x)}px,${Math.round(c.y)}px)`;}
+    for(const p of layoutLiveLabels(labelCandidates.filter(c=>detailed.has(c.id)),{left:12,right:innerWidth-12,top:70,bottom:innerHeight-32},obstacles)){
+      const node=labelNodes.get(p.id)!;node.hidden=p.hidden;node.dataset.clusterCount=p.count?`+${p.count}`:'';
+      node.style.transform=`translate(${Math.round(p.left)}px,${Math.round(p.top)}px)`;
+    }
     }
     const ordered = [...MUSE_VARIANTS.map(v => personal.get(v.id) ?? entries.get(v.id)), ...[...personal.values()].filter(e=>!MUSE_VARIANTS.some(v=>v.id===e.id)).sort((a,b)=>a.id.localeCompare(b.id))];
     const heights = ordered.map(e => {if (!e?.actor.root.visible) return 0; const p = e.actor.root.position; return Math.abs(project(p.clone()).y - project(p.clone().add(new T.Vector3(0, .95, 0))).y);});
@@ -186,7 +223,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
         source: sourceOf(m.id), frame: f ?? null, rendered: !!e?.actor.root.visible, lod: e?.actor.lod ?? null, loadedLods: e ? [...e.actor.loaded].sort() : [], propsLoaded: e?.actor.propsLoaded ?? false, carryShown: e?.actor.carryShown() ?? false};})};
   }
   function dispose() {
-    if(disposed)return;setActive(false); disposed = true; loading.clear(); root?.remove();
+    if(disposed)return;setActive(false); disposed = true; loading.clear(); root?.remove();speechRoot?.remove();
     try {host.campfireVisual?.disable();}
     finally {
       for(const id of [...personal.keys()])releasePersonal(id);

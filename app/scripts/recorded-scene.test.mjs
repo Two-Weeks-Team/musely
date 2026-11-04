@@ -43,3 +43,18 @@ test('I-11 the displayed public line carries its own cue source rather than a la
  p.setRecordedFrame(f);const shown=p.projection.frames(f.recordedAt).get('00-jolly');
  assert.equal(shown.line,'Public model hello');assert.equal(recorded.frameSource(p.projection,shown,'00-jolly'),'live');
 });
+
+test('the card names the viewing mode while the small source note preserves the exact action source',()=>{
+ assert.equal(recorded.sceneModeLabel(false,'en'),'Live world');assert.equal(recorded.sceneModeLabel(false,'ko'),'실시간 세계');
+ assert.equal(recorded.sceneModeLabel(true,'en'),'Recorded world');
+ assert.equal(recorded.actionSourceLabel('scripted',false,'en'),'Action source · SCRIPTED');
+ assert.equal(recorded.actionSourceLabel('live',true,'ko'),'기록된 행동 출처 · LIVE');
+ assert.equal(recorded.actionSourceLabel('waiting',false,'en'),'');
+});
+test('unrelated events and an absent event window never invent the current action source',()=>{
+ const p=new recorded.SceneProjection(),w=world(2);w.muses[0].beat={id:'rest',clip:'sit_idle',startedAt:AT,endsAt:AT+60000,line:null};
+ p.accept(w,[{id:'someone-else',seq:1,tick:2,at:AT+1,source:'live',kind:'greet',muse:'01-sunny',other:'00-jolly',data:{}}]);
+ const shown=p.projection.frames(AT+1000).get('00-jolly');assert.equal(recorded.frameSource(p.projection,shown,'00-jolly'),'waiting');
+ p.accept({...w,version:3},[{id:'current-beat',seq:2,tick:2,at:AT,source:'scripted',kind:'beat',muse:'00-jolly',data:{beat:'rest'}}]);
+ assert.equal(recorded.frameSource(p.projection,p.projection.frames(AT+1000).get('00-jolly'),'00-jolly'),'scripted');
+});

@@ -1,3 +1,4 @@
+import {residentValues} from './resident-values.ts';
 import {RESIDENT_INSTANCES,residentInstance,isResidentInstance} from './resident-catalog.ts';
 export {isResidentInstance};
 // Character harness: what a chosen character puts on "your Muse" (direction v2, chapter 7).
@@ -47,11 +48,15 @@ export const HARNESSES: readonly Harness[] = [
   {id: '09-copper', name: 'Copper', role: 'Maker', persona: {traits: 'practical, inventive, likes fixing things', voice: 'short and concrete', likes: ['cafe', 'workbench', 'convenience']}, skills: ['repair', 'gadget check', 'crafting'], tools: ['walk', 'inspect_gadget', 'repair', 'craft', 'offer_item'], roleItem: 'pocket_gadget', wants: {goal: "Fix something that's been broken too long", items: ['pocket_gadget', 'coffee', 'repaired_gadget']}},
 ];
 
-export const harnessById = (id: string): Harness => {
+export function harnessById(id:string):Harness;
+export function harnessById(id:string,options:{residentValuesEnabled?:boolean}):Harness;
+export function harnessById(id:string,options:{residentValuesEnabled?:boolean}={}):Harness {
   const instance=residentInstance(id);
   const h = HARNESSES.find(h => h.id === (instance?.roleId ?? id));
   if (!h) throw new Error('Unknown Muse harness: ' + id);
-  return instance ? {...h,id:instance.id,name:instance.name} : h;
+  const base=instance ? {...h,id:instance.id,name:instance.name} : h;
+  const values=options&&options.residentValuesEnabled===true?residentValues(id):null;
+  return values?{...base,persona:{...base.persona,traits:values.traits,voice:values.voice}}:base;
 };
 export const HARNESS_IDS = HARNESSES.map(h => h.id);
 

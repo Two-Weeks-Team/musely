@@ -118,7 +118,7 @@ export class Trust implements TrustRegistry {
    * The executor for an agent and signer kind; (re)issued when missing or expired. While the agent is
    * revoked and the owner has not delegated again, no new delegation is issued (throws DelegationRevoked).
    */
-  async executor(museId: string, signerKind: SignerKind, ownerRootJwk: JsonWebKey | null): Promise<Executor> {
+  async executor(museId: string, signerKind: SignerKind, ownerRootJwk: JsonWebKey | null,authorize?:()=>void): Promise<Executor> {
     const agent = this.agentByMuse(museId);
     if (!agent) throw new Error('Unknown Muse ' + museId);
     if (this.suspended(museId)) throw new DelegationRevoked(museId);
@@ -140,8 +140,9 @@ export class Trust implements TrustRegistry {
     const root = await this.rootPair(agent, ownerRootJwk);
     const exec = await generateKeyPair(true);
     const execJwk = await crypto.subtle.exportKey('jwk', exec.privateKey) as JsonWebKey;
-    this.sql.exec('INSERT OR REPLACE INTO private_keys (kid, jwk) VALUES (?, ?)', exec.kid, JSON.stringify(execJwk));
     const delegation = await issueDelegation(root, exec, {signerKind, version, ttlMs: 24 * 3_600_000});
+    authorize?.();
+    this.sql.exec('INSERT OR REPLACE INTO private_keys (kid, jwk) VALUES (?, ?)', exec.kid, JSON.stringify(execJwk));
     this.sql.exec('INSERT OR REPLACE INTO executors (agent_id, signer_kind, kid, delegation, version) VALUES (?, ?, ?, ?, ?)', agent.agentId, signerKind, exec.kid, delegation, version);
     return {key: exec, delegation, d: peekDelegation(delegation)!};
   }
@@ -177,15 +178,19 @@ export class Trust implements TrustRegistry {
   }
 
   /** Owner revocation (7, "철회"): bump the version and revoke every issued delegation at once. */
-  async revoke(museId: string) {
+  async revoke(museId: string,commit?:(apply:()=>number)=>number) {
     const agent = this.agentByMuse(museId);
     if (!agent) throw new Error('Unknown Muse ' + museId);
-    for (const r of this.sql.exec('SELECT delegation FROM executors WHERE agent_id = ?', agent.agentId).toArray()) this.sql.exec('INSERT OR IGNORE INTO revoked (ref, at) VALUES (?, ?)', await delegationRef(String(r.delegation)), Date.now());
+    const refs:string[]=[];for(const r of this.sql.exec('SELECT delegation FROM executors WHERE agent_id = ?',agent.agentId).toArray())refs.push(await delegationRef(String(r.delegation)));
+    const apply=()=>{
+    for(const ref of refs)this.sql.exec('INSERT OR IGNORE INTO revoked (ref,at) VALUES (?,?)',ref,Date.now());
     // Remember the last delegated version first, so the revocation holds with or without executor rows.
     this.sql.exec('INSERT INTO delegated (agent_id, version) VALUES (?, ?) ON CONFLICT(agent_id) DO UPDATE SET version = MIN(delegated.version, excluded.version)', agent.agentId, this.delegatedVersion(agent.agentId));
     const next = this.delegationVersion(agent.agentId) + 1;
     this.sql.exec('INSERT INTO delegation_versions (agent_id, version) VALUES (?, ?) ON CONFLICT(agent_id) DO UPDATE SET version = excluded.version', agent.agentId, next);
     return next;
+    };
+    return commit?commit(apply):apply();
   }
 
   async card(museId: string, ownerRootJwk: JsonWebKey | null, claim: {claimed: boolean; fingerprint: string | null}, baseUrl: string): Promise<AgentCard> {

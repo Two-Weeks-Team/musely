@@ -1,3 +1,4 @@
+import {PUBLIC_SPEECH_NOT_ENGLISH} from './resident-english-speech.ts';
 /** Opt-in model preparation boundary. No production caller or executor is installed.
  * Reuse the existing transport/schema/budget. Returned choices are NOT committed actions.
  */
@@ -61,7 +62,7 @@ export class ResidentGoalStore {
   this.sql.exec('INSERT INTO resident_wants_goals (world_id,goal_id,revision,body) VALUES (?,?,?,?) ON CONFLICT(world_id,goal_id) DO UPDATE SET revision=excluded.revision,body=excluded.body',world,g.id,revision,JSON.stringify(g));return revision;
  }
 }
-export type WantsModelContext={enabled?:boolean;world:()=>WorldState;now:()=>number;ownership:(id:string)=>'resident'|'personal'|'legacy'|'unknown';
+export type WantsModelContext={enabled?:boolean;residentValuesEnabled?:boolean;world:()=>WorldState;now:()=>number;ownership:(id:string)=>'resident'|'personal'|'legacy'|'unknown';
  /** Shared runtime slot gate, not a second independent concurrency pool. */
  acquireSlot:()=>null|(()=>void);ledger:Ledger;model:ModelConfig|null;goals:ResidentGoalStore};
 export type TradeChoice={decision:'accept'|'counter'|'reject';counter_give:string;counter_want:string;line:string};
@@ -76,7 +77,7 @@ export async function prepareResidentTrade(c:WantsModelContext,goalId:string,tas
  const other=before.muses.find(m=>m.id===task.offer!.by);if(!other||other.id===actor.id||other.travel)return no('invalid_peer');
  if(!hasResidentHarness(other.id))return no('unsupported_peer_harness');
  let input:ReturnType<typeof validate>,messages:unknown[];
- try {input=validate('trade',{muse:actor.id,other:other.id,give:task.offer.give,want:task.offer.want,items:actor.inventory.slice(0,12),otherItems:other.inventory.slice(0,12),round:task.round+1});messages=buildMessages('trade',input);}
+ try {input=validate('trade',{muse:actor.id,other:other.id,give:task.offer.give,want:task.offer.want,items:actor.inventory.slice(0,12),otherItems:other.inventory.slice(0,12),round:task.round+1});messages=buildMessages('trade',c.residentValuesEnabled===true?{...input,residentValuesEnabled:true}:input);}
  catch{return no('unsupported_trade_context');}
  // Only bounded objective IDs, no free-text private reasons or peer instructions.
  const recipe=BEATS.find(b=>b.id===row!.goal.beat);
@@ -87,11 +88,11 @@ export async function prepareResidentTrade(c:WantsModelContext,goalId:string,tas
  if(!c.model?.key)return no('not_connected');const release=c.acquireSlot();if(!release)return no('concurrency_limit');
  const reservationId='wants:'+sha256Hex(JSON.stringify([before.worldId,goalId,row!.revision,taskId,task.round,before.version]));
  try {
-  const reservation=c.ledger.reserve({id:reservationId,tier:'world',session:'world',ip:'',action:'trade',maxCostUsd:maxCostUsd('trade',messages)});
+  const reservation=c.ledger.reserve({id:reservationId,tier:'world',session:'world',ip:'',action:'trade',maxCostUsd:maxCostUsd('trade',messages),residentKind:'trade'});
   if(!reservation.ok)return no(reservation.reason);if(reservation.existing)return no('already_reserved');
   const result=await callModel(c.model,'trade',messages);
   if(!result.ok){c.ledger.settle(reservationId,failureCostUsd(result),result.kind==='timeout'?'timeout':'error');return no(result.kind);}
-  const problem=checkOutput('trade',input,result.output);c.ledger.settle(reservationId,actualCostUsd(result.usage),problem?'rejected':'live');if(problem)return no('output_rejected');
+  const problem=checkOutput('trade',input,result.output);c.ledger.settle(reservationId,actualCostUsd(result.usage),problem?'rejected':'live');if(problem)return no(problem===PUBLIC_SPEECH_NOT_ENGLISH?'output_rejected:'+PUBLIC_SPEECH_NOT_ENGLISH:'output_rejected');
   const current=c.world(),latest=c.goals.load(current.worldId,goalId);
   if(c.enabled!==true||current.worldId!==before.worldId||current.version!==before.version||latest?.revision!==row!.revision||!eligible(current,latest))return no('stale_authority_or_state');
   const fresh=current.inbox?.tasks.find(t=>t.id===taskId);if(!fresh||fresh.status!=='pending'||fresh.awaiting!==actor.id||fresh.deadline<=c.now())return no('stale_task');

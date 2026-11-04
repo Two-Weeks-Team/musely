@@ -1,3 +1,4 @@
+import {uiText} from './i18n.ts';
 // Real-device measurement (direction 20.4, 17 "DPR cap"): `?perf=1` shows frame rate and render cost on
 // the device itself; `?dpr=1|1.5|2|max` overrides the pixel-ratio cap for that visit so one phone can
 // compare caps. The default cap is decided from these measurements and recorded in the docs.
@@ -24,9 +25,9 @@ export function mountPerf(getSample: () => {drawCalls: number; triangles: number
   box.id = 'perf';
   const text = document.createElement('pre');
   const copy = document.createElement('button');
-  copy.type = 'button'; copy.textContent = 'Copy measurement';
+  copy.type = 'button'; copy.textContent = uiText('Copy measurement');
   const saved = document.createElement('textarea');
-  saved.readOnly = true; saved.hidden = true; saved.setAttribute('aria-label', 'Measurement JSON');
+  saved.readOnly = true; saved.hidden = true; saved.setAttribute('aria-label', uiText('Measurement JSON'));
   box.append(text, copy, saved);
   document.body.append(box);
   let frames = 0, worst = 0, last = performance.now(), windowStart = last;
@@ -40,11 +41,11 @@ export function mountPerf(getSample: () => {drawCalls: number; triangles: number
       while (history.length && now - history[0].at > 120_000) history.shift();
       const avg = fpsOver(history, now, 10_000);
       text.textContent = [
-        `fps ${history.at(-1)!.fps} (10 s avg ${avg}) · worst frame ${history.at(-1)!.worstMs} ms`,
-        `DPR device ${ratio.device} · applied ${ratio.applied} (${ratio.cap === null ? 'no cap' : 'cap ' + ratio.cap}, ${ratio.source})`,
-        `buffer ${s.canvas.width}×${s.canvas.height} · css ${s.canvas.clientWidth}×${s.canvas.clientHeight}`,
-        `draw calls ${s.drawCalls} · triangles ${s.triangles}`,
-        `cores ${nav.hardwareConcurrency ?? '?'} · memory ${nav.deviceMemory ?? '?'} GB`,
+        uiText`fps ${history.at(-1)!.fps} (10 s avg ${avg}) · worst frame ${history.at(-1)!.worstMs} ms`,
+        uiText`DPR device ${ratio.device} · applied ${ratio.applied} (${ratio.cap === null ? uiText('no cap') : uiText('cap ') + ratio.cap}, ${ratio.source})`,
+        uiText`buffer ${s.canvas.width}×${s.canvas.height} · css ${s.canvas.clientWidth}×${s.canvas.clientHeight}`,
+        uiText`draw calls ${s.drawCalls} · triangles ${s.triangles}`,
+        uiText`cores ${nav.hardwareConcurrency ?? '?'} · memory ${nav.deviceMemory ?? '?'} GB`,
       ].join('\n');
       frames = 0; worst = 0; windowStart = now;
     }
@@ -64,9 +65,9 @@ export function mountPerf(getSample: () => {drawCalls: number; triangles: number
   };
   copy.onclick = async () => {
     const r = JSON.stringify(report());
-    try { await navigator.clipboard.writeText(r); copy.textContent = 'Copied'; }
-    catch { saved.value = r; saved.hidden = false; saved.select(); copy.textContent = 'Shown below — select and copy'; }
-    setTimeout(() => (copy.textContent = 'Copy measurement'), 2000);
+    try { await navigator.clipboard.writeText(r); copy.textContent = uiText('Copied'); }
+    catch { saved.value = r; saved.hidden = false; saved.select(); copy.textContent = uiText('Shown below — select and copy'); }
+    setTimeout(() => (copy.textContent = uiText('Copy measurement')), 2000);
   };
   return {report};
 }

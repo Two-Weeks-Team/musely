@@ -1,12 +1,13 @@
+import {uiText,catalogText,inventoryText,activityStatus} from './i18n.ts';
 // Owner location on screen (direction v2, 13 and 13.1), without the DOM so Node tests drive it (scripts/location.test.mjs):
-//  - the always-on header line: "Virtual location (demo)", the owner's destination cell and the Muse's own current cell, with the
+//  - the always-on header line: "Virtual neighborhood", the owner's destination cell and the Muse's own current cell, with the
 //    trip and its ETA. The two cells are kept apart on screen exactly as on the server.
 //  - the device location (GPS) permission flow. S1–S3 ship the permission flow only: the position is matched on this device to the
 //    nearest preset neighborhood and only that preset id is kept. Nothing is sent to the server, nothing is stored, and it does not
 //    verify a neighborhood (the demo verification is staged on the virtual location; GPS verification is phase 2).
 import {nearestPreset, presetById, type PresetId, type NeighborhoodArea} from '../engine/location.ts';
 import {PLACE_BY_ID} from '../engine/places.ts';
-import {harnessById} from '../engine/harness.ts';
+import {readPublicProfile, type ProfileMuse} from './personal-profile.ts';
 
 type PlaceRef = {id: string; name?: string};
 /** The public GET /api/owner/location answer (mcp-tools.ts ownerView plus the preset list). */
@@ -21,24 +22,30 @@ export type OwnerLocationView = {
 export type LocationSnapshot = {view: OwnerLocationView; etaAt: number | null};
 export const snapshotOf = (view: OwnerLocationView, receivedAt: number): LocationSnapshot => ({view, etaAt: view.muse?.eta_ms != null ? receivedAt + view.muse.eta_ms : null});
 
-const placeName = (p: PlaceRef | null | undefined) => (p ? p.name ?? PLACE_BY_ID.get(p.id)?.name ?? p.id : '');
-const museShort = (id: string) => { try { return harnessById(id).name; } catch { return 'The Muse'; } };
+const placeName = (p: PlaceRef | null | undefined) => (p ? (p.id.startsWith('osm:') ? p.name ?? PLACE_BY_ID.get(p.id)?.name ?? p.id : catalogText(p.name ?? PLACE_BY_ID.get(p.id)?.name ?? p.id)) : '');
+export type LocationName = (id: string) => string;
+const unnamedMuse: LocationName = () => uiText('The Muse');
+/** Owner location carries an actor id, not its display profile. Use only the live public profile; never an asset/harness name. */
+export function publicLocationName(id: string, world?: {muses: readonly ProfileMuse[]} | null): string {
+  const m = world?.muses.find(m => m.id === id);
+  return readPublicProfile(id, m?.profile)?.displayName ?? unnamedMuse(id);
+}
 export const minutesLeft = (etaAt: number, now: number) => Math.max(1, Math.round((etaAt - now) / 60_000));
 
 /**
- * Where the Muse is now and, on a trip, where it goes: "Jolly at Bench Circle → Stanford, walking, 42 min". The Muse's own current
+ * Where the Muse is now and, on a trip, where it goes: "ComBba at Bench Circle → Stanford, walking, 42 min". The Muse's own current
  * place leads even mid-trip (the server keeps it until arrival), so the line never shows the owner's destination as the Muse's cell.
  */
-export function museLine(snap: LocationSnapshot, now: number): string {
+export function museLine(snap: LocationSnapshot, now: number, nameOf: LocationName = unnamedMuse): string {
   const m = snap.view.muse;
-  if (!m) return 'Muse unknown';
-  const who = museShort(m.id);
+  if (!m) return uiText('Muse unknown');
+  const who = nameOf(m.id);
   if (m.travelling_to) {
-    const how = m.speed === 'bus' ? 'bus' : 'walking';
-    const left = snap.etaAt === null ? '' : snap.etaAt <= now ? ', arriving' : `, ${minutesLeft(snap.etaAt, now)} min`;
-    return `${who} at ${placeName(m.place)} → ${placeName(m.travelling_to)}, ${how}${left}`;
+    const how = m.speed === 'bus' ? catalogText('bus') : catalogText('walking');
+    const left = snap.etaAt === null ? '' : snap.etaAt <= now ? uiText(', arriving') : uiText`, ${minutesLeft(snap.etaAt, now)} min`;
+    return uiText`${who} at ${placeName(m.place)} → ${placeName(m.travelling_to)}, ${how}${left}`;
   }
-  return `${who} at ${placeName(m.place)}${m.in_owner_area ? ' · in your neighborhood' : ''}`;
+  return uiText`${who} at ${placeName(m.place)}${m.in_owner_area ? uiText(' · in your neighborhood') : ''}`;
 }
 
 export type LocationLine = {text: string; title: string; state: 'virtual' | 'gps' | 'unknown'; stale: boolean};
@@ -46,16 +53,16 @@ export type LocationLine = {text: string; title: string; state: 'virtual' | 'gps
  * The header line. With no answer yet it says unknown (never "HQ commons" by assumption); after a failure it keeps the last answer and
  * says it is not updating.
  */
-export function locationLine(snap: LocationSnapshot | null, now: number, error: string | null = null): LocationLine {
-  if (!snap) return {text: error ? `Location · unknown (${error})` : 'Location · …', title: error ? 'The owner location could not be read, so it is unknown right now.' : '', state: 'unknown', stale: !!error};
+export function locationLine(snap: LocationSnapshot | null, now: number, error: string | null = null, nameOf: LocationName = unnamedMuse): LocationLine {
+  if (!snap) return {text: error ? uiText`Location · unknown (${error})` : uiText('Location · …'), title: error ? uiText('The owner location could not be read, so it is unknown right now.') : '', state: 'unknown', stale: !!error};
   const v = snap.view, m = v.muse;
-  const where = `${v.source === 'virtual' ? 'Virtual location (demo)' : 'Device-mapped neighborhood'} · owner neighborhood: ${v.area?.label ?? presetById(v.preset ?? '')?.label ?? v.cell_label ?? '?'}${v.neighborhood_verified ? ' (verified)' : ''}`;
-  const text = `${where} · ${museLine(snap, now)}${error ? ' · not updating' : ''}`;
+  const where = uiText`${v.source === 'virtual' ? uiText('Virtual neighborhood') : uiText('Device-mapped neighborhood')} · owner neighborhood: ${v.area?.label ?? presetById(v.preset ?? '')?.label ?? v.cell_label ?? '?'}${v.neighborhood_verified ? uiText(' (verified)') : ''}`;
+  const text = `${where} · ${museLine(snap, now, nameOf)}${error ? uiText(' · not updating') : ''}`;
   const title = [
-    v.area ? `Owner neighborhood ${v.area.label}: ${v.area.radiusM} m radius, ${v.area.placeIds.length} activity places. The Muse freely walks between these places.` : 'Owner neighborhood bounds unavailable.',
-    m ? `${museShort(m.id)}'s current place: ${placeName(m.place)}. Discovery, trades and the MCP world state use this place.` : '',
-    m?.travelling_to ? `Trip to ${placeName(m.travelling_to)} by ${m.speed ?? 'walk'}${m.arrive_at ? `, arrives ${new Date(m.arrive_at).toISOString()}` : ''}.` : '',
-    error ? `Not updating (${error}); this is the last answer received.` : '',
+    v.area ? uiText`Owner neighborhood ${v.area.label}: ${v.area.radiusM} m radius, ${v.area.placeIds.length} activity places. The Muse freely walks between these places.` : uiText('Owner neighborhood bounds unavailable.'),
+    m ? uiText`${nameOf(m.id)}'s current place: ${placeName(m.place)}. Discovery, trades and the MCP world state use this place.` : '',
+    m?.travelling_to ? uiText`Trip to ${placeName(m.travelling_to)} by ${m.speed ?? 'walk'}${m.arrive_at ? uiText`, arrives ${new Date(m.arrive_at).toISOString()}` : ''}.` : '',
+    error ? uiText`Not updating (${error}); this is the last answer received.` : '',
   ].filter(Boolean).join(' ');
   return {text, title, state: v.source === 'virtual' ? 'virtual' : 'gps', stale: !!error};
 }
@@ -91,19 +98,19 @@ export function deviceWatchdog(prev: DeviceLocation, startedAt: number, now: num
   return prev.status === 'requesting' && prev.startedAt === startedAt ? {status: 'timeout', preset: null, startedAt: null, at: now} : prev;
 }
 
-export const VIRTUAL_FALLBACK = '가상 동네를 골라 계속 둘러보세요. / Choose a virtual neighborhood to keep exploring.';
+export const VIRTUAL_FALLBACK = uiText('가상 동네를 골라 계속 둘러보세요. / Choose a virtual neighborhood to keep exploring.');
 /** Easy public wording; mapping never changes ownership or verifies a neighborhood. */
 export function deviceText(d: DeviceLocation): {heading: string; detail: string; fallback: boolean} {
-  const kept = '좌표는 이 기기에서만 확인하고 보내거나 저장하지 않아요. / Coordinates stay on this device: not sent or stored.';
+  const kept = uiText('좌표는 이 기기에서만 확인하고 보내거나 저장하지 않아요. / Coordinates stay on this device: not sent or stored.');
   switch (d.status) {
-    case 'idle': return {heading: '내 동네 찾기 / Find my neighborhood', detail: '위치 공유는 선택이에요. / Sharing location is optional.', fallback: false};
-    case 'requesting': return {heading: '동네를 찾고 있어요… / Finding your neighborhood…', detail: '브라우저의 위치 안내에 답해 주세요. / Respond to your browser’s location prompt.', fallback: false};
-    case 'near': return {heading: `${presetById(d.preset ?? '')?.label ?? d.preset} 근처예요 / Your nearby neighborhood`, detail: `${kept} 지도에서만 보여드리며 동네 인증은 하지 않아요. / This shows the map only; it does not verify your neighborhood.`, fallback: false};
-    case 'outside': return {heading: '이 지역 밖에 계시네요 / You’re outside our Bay Area neighborhoods', detail: `${kept} ${VIRTUAL_FALLBACK}`, fallback: true};
-    case 'denied': return {heading: '위치를 공유하지 않아도 괜찮아요 / You can continue without location', detail: VIRTUAL_FALLBACK, fallback: true};
-    case 'unavailable': return {heading: '위치를 찾지 못했어요 / We couldn’t find your location', detail: VIRTUAL_FALLBACK, fallback: true};
-    case 'timeout': return {heading: '위치 확인이 오래 걸려요 / Location is taking too long', detail: VIRTUAL_FALLBACK, fallback: true};
-    case 'unsupported': return {heading: '이 브라우저에서는 위치를 찾을 수 없어요 / Location isn’t available in this browser', detail: VIRTUAL_FALLBACK, fallback: true};
+    case 'idle': return {heading: uiText('내 동네 찾기 / Find my neighborhood'), detail: uiText('위치 공유는 선택이에요. / Sharing location is optional.'), fallback: false};
+    case 'requesting': return {heading: uiText('동네를 찾고 있어요… / Finding your neighborhood…'), detail: uiText('브라우저의 위치 안내에 답해 주세요. / Respond to your browser’s location prompt.'), fallback: false};
+    case 'near': return {heading: uiText`Your nearby neighborhood: ${presetById(d.preset ?? '')?.label ?? d.preset}`, detail: `${kept} ${uiText('지도에서만 보여드리며 동네 인증은 하지 않아요. / This shows the map only; it does not verify your neighborhood.')}`, fallback: false};
+    case 'outside': return {heading: uiText('이 지역 밖에 계시네요 / You’re outside our Bay Area neighborhoods'), detail: `${kept} ${VIRTUAL_FALLBACK}`, fallback: true};
+    case 'denied': return {heading: uiText('위치를 공유하지 않아도 괜찮아요 / You can continue without location'), detail: VIRTUAL_FALLBACK, fallback: true};
+    case 'unavailable': return {heading: uiText('위치를 찾지 못했어요 / We couldn’t find your location'), detail: VIRTUAL_FALLBACK, fallback: true};
+    case 'timeout': return {heading: uiText('위치 확인이 오래 걸려요 / Location is taking too long'), detail: VIRTUAL_FALLBACK, fallback: true};
+    case 'unsupported': return {heading: uiText('이 브라우저에서는 위치를 찾을 수 없어요 / Location isn’t available in this browser'), detail: VIRTUAL_FALLBACK, fallback: true};
   }
 }
 

@@ -20,7 +20,7 @@ import {campfireVenue, campfireInviteeNear, type CampfirePolicy} from './campfir
 import {detectInjection, INJECTION_LIMIT_NOTE, wrapUntrusted} from '../../src/identity/untrusted.ts';
 import {harnessById} from '../../src/engine/harness.ts';
 import {placeById, distanceM, WALK_MPS} from '../../src/engine/places.ts';
-import {itemSpec, itemName, appendHistory, takeTimed, transferItem, grantItem, RULES, type Category} from '../../src/engine/items.ts';
+import {itemSpec, itemName, appendHistory, takeTimed, transferItem, grantItem, type Category} from '../../src/engine/items.ts';
 import {placeCell} from '../../src/engine/location.ts';
 import {beginTrip} from '../../src/engine/travel.ts';
 import {rngFor} from '../../src/engine/rng.ts';
@@ -36,7 +36,8 @@ export type Outcome = {ok: true; data: Record<string, unknown>; text?: string} |
 const museOf = (s: WorldState, id: string) => s.muses.find(m => m.id === id)!;
 const inboxOf = (s: WorldState): Inbox => (s.inbox ??= emptyInbox());
 const name = (id: string) => harnessById(id).name;
-const near = (a: MuseState, b: MuseState) => distanceM(placeById(a.place), placeById(b.place)) <= RULES.tradeRangeM;
+/** Gift/help keep their existing 100m delivery contract; negotiated trades use the shared 50m conversation policy. */
+const near = (a: MuseState, b: MuseState) => distanceM(placeById(a.place), placeById(b.place)) <= 100;
 /** Outgoing free text that reads like an instruction is not sent; the refusal is logged without the text. */
 function blockedText(text: string | null, me: string, other: string | null, what: string, live: Emit, at: number): Outcome | null {
   if (!text) return null;

@@ -1220,7 +1220,7 @@
           },
           "checks": [
             "Both sides hold the items? yes",
-            "Within 100 m? yes",
+            "Within 50 m? yes",
             "Ability change on either side? no → refused"
           ],
           "next": "retry"
@@ -1228,7 +1228,7 @@
         {
           "id": "too-far",
           "title": "Refused: too far apart",
-          "text": "Trades need both Muses within 100 m of each other. At about 240 m (an example distance) the offer is refused and nothing changes.",
+          "text": "Trades need both Muses within 50 m of each other. At about 240 m (an example distance) the offer is refused and nothing changes.",
           "status": {
             "task": "rejected",
             "reason": "too far"
@@ -1244,7 +1244,7 @@
             ]
           },
           "checks": [
-            "Within 100 m? no → refused"
+            "Within 50 m? no → refused"
           ],
           "next": "retry"
         },

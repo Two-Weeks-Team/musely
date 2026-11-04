@@ -1,9 +1,13 @@
+import {emptyWriteBody} from './empty-write-body.ts';
+import {personalAuthFailure, type PersonalAuthFailure, type PersonalAuthReason} from './personal-auth-failure.ts';
+import {personalOwnerRoutes,type PersonalOwnerStub,type PersonalOwnerConfig} from './personal-owner-api.ts';
 // Personal authentication route adapter only. A valid login never creates an actor or inherits legacy owner powers.
 import {originAllowed,OWNER_COOKIE} from './owner-session.ts';
 import type {DecisionOutcome} from './tasks.ts';
 import type {PersonalBinding} from './personal-registration.ts';
 import type {ActorProfile} from '../../src/identity/participant.ts';
-import {personalAuthorizeUrl, personalThreadsIdentity, type PersonalThreadsConfig} from './threads.ts';
+import {isSocialMode} from '../../src/engine/social-status.ts';
+import {personalAuthorizeUrl, personalThreadsIdentity, ThreadsLoginError, type PersonalThreadsConfig} from './threads.ts';
 import {
   PERSONAL_CLAIM_FLOW_COOKIE,PERSONAL_CLAIM_STATE_PREFIX,claimFlowCookie,clearClaimFlowCookie,
   PERSONAL_COOKIE, PERSONAL_FLOW_COOKIE, PERSONAL_CALLBACK, PERSONAL_STATE_PREFIX, PERSONAL_FLOW_TTL_MS,
@@ -12,7 +16,9 @@ import {
 } from './personal-session.ts';
 
 type MaybePromise<T> = T | Promise<T>;
-export interface PersonalAuthStub {
+export interface PersonalAuthStub extends PersonalOwnerStub {
+  personalSocialStatusGet?(binding:PersonalBinding):MaybePromise<unknown>;
+  personalSocialStatusSet?(binding:PersonalBinding,input:unknown):MaybePromise<unknown>;
   personalLegacyView(binding:PersonalBinding,ownerCookie:string|null):MaybePromise<unknown>;
   personalLegacyAdopt(binding:PersonalBinding,ownerCookie:string|null,input:unknown):MaybePromise<unknown>;
   personalLegacyInbox(binding:PersonalBinding):MaybePromise<unknown>;
@@ -38,15 +44,21 @@ export interface PersonalAuthStub {
   personalProfilePatch(binding: PersonalBinding, input: unknown): MaybePromise<ActorProfile>;
   personalAuthBegin(flow: PersonalFlow): MaybePromise<boolean>;
   personalAuthConsume(binding: Pick<PersonalFlow, 'stateDigest' | 'browserDigest' | 'appId' | 'redirectUri'>, now: number): MaybePromise<boolean>;
+  personalAuthFailure(binding: Pick<PersonalFlow, 'stateDigest' | 'browserDigest' | 'appId' | 'redirectUri'>, detail: PersonalAuthFailure, now: number): MaybePromise<boolean>;
   personalAuthComplete(stateDigest: string, appId: string, subject: string, sidDigest: string, now: number): MaybePromise<PersonalSessionRow | null>;
   personalAuthActive(sidDigest: string, proof: PersonalSessionRow, appId: string, now: number): MaybePromise<boolean>;
   personalAuthRevoke(sidDigest: string, proof: PersonalSessionRow, appId: string, now: number): MaybePromise<boolean>;
 }
-export type PersonalConfig = {secret: string; origin: string; appId?: string; appSecret?: string; rateLimit?: () => Promise<boolean>; fetcher?: typeof fetch; now?: () => number};
+export type PersonalConfig = PersonalOwnerConfig & {appSecret?: string; rateLimit?: () => Promise<boolean>; fetcher?: typeof fetch};
 const BASE = '/api/personal';
 const START = BASE + '/auth/threads/start';
 const VIEWING = {entry: {state: 'viewing'}};
 const headers = () => new Headers({'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'content-type': 'application/json; charset=utf-8'});
+
+export function signInFailurePage():Response {
+  const h = headers(); h.set('content-type', 'text/html; charset=utf-8'); h.set('content-security-policy', "default-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+  return new Response('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Check Threads connection</title><body><h1>Could not verify sign-in</h1><p>We could not finish connecting Threads. Keep watching, or accept your beta invitation in Threads Settings → Account → Website permissions → Invites before signing in.</p><a href="/">Keep watching</a></body></html>', {status:400, headers:h});
+}
 const json = (value: unknown, status = 200, cookie?: string) => { const h = headers(); if (cookie) h.append('set-cookie', cookie); return new Response(JSON.stringify(value), {status, headers: h}); };
 const failure = (error: string, status: number, clearFlow = false) => json({error}, status, clearFlow ? clearFlowCookie : undefined);
 function redirect(result: 'authenticated' | 'failed' | 'declined', session?: string) {
@@ -58,29 +70,16 @@ const nonceValid = (v: string | null): v is string => !!v && /^[A-Za-z0-9_-]{43}
 /** Cookie presence never selects the handler. Ambiguous mixed states are routed here and rejected. */
 export const isPersonalCallback = (url: URL) => url.pathname === PERSONAL_CALLBACK && url.searchParams.getAll('state').some(s => (s.startsWith(PERSONAL_STATE_PREFIX)||s.startsWith(PERSONAL_CLAIM_STATE_PREFIX)));
 /** Every exception is reduced to a fixed category here, before the legacy API's general logging handler. */
-// An incoming empty HTTP write can have a non-null, already closed body stream.
-async function emptyWriteBody(request: Request): Promise<boolean> {
-  if (!request.body) return true;
-  const reader = request.body.getReader(); let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('body_deadline')), 1000); });
-  try {
-    for (let i = 0; i < 8; i++) {
-      const part = await Promise.race([reader.read(), deadline]);
-      if (part.done) return true;
-      if (part.value.byteLength) return false;
-    }
-    return false;
-  } catch { return false; } finally { if (timer !== undefined) clearTimeout(timer); void reader.cancel().catch(() => {}); }
-}
-const bootstrapMethods = (path:string):string[]|null => path===BASE+'/claim'?['GET','DELETE']:path===BASE+'/claim/start'?['POST']:path===BASE+'/location'?['GET','POST']:path===BASE+'/status'?['GET']:path===BASE+'/authority'?['GET','POST','DELETE']:path===BASE+'/keys'?['GET','POST']:/^\/api\/personal\/keys\/pak_[a-f0-9-]{36}$/.test(path)?['DELETE']:path===BASE+'/entry-attempts'?['POST']:/^\/api\/personal\/entry-attempts\/pea_[a-f0-9-]{36}$/.test(path)?['GET','DELETE']:null;
-async function bootstrapJSON(request:Request):Promise<unknown>{
+const bootstrapMethods = (path:string):string[]|null => path===BASE+'/social-status'?['GET','PATCH']:path===BASE+'/claim'?['GET','DELETE']:path===BASE+'/claim/start'?['POST']:path===BASE+'/location'?['GET','POST']:path===BASE+'/status'?['GET']:path===BASE+'/authority'?['GET','POST','DELETE']:path===BASE+'/keys'?['GET','POST']:/^\/api\/personal\/keys\/pak_[a-f0-9-]{36}$/.test(path)?['DELETE']:path===BASE+'/entry-attempts'?['POST']:/^\/api\/personal\/entry-attempts\/pea_[a-f0-9-]{36}$/.test(path)?['GET','DELETE']:null;
+async function bootstrapJSON(request:Request,limit=4096):Promise<unknown>{
  if(!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')||!request.body)throw Error('invalid_entry');
  const reader=request.body.getReader(),parts:number[]=[];let timer:ReturnType<typeof setTimeout>|undefined;
  const timeout=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('invalid_entry')),1000);});
- try{let reads=0;for(;;){if(++reads>4097)throw Error('invalid_entry');const p=await Promise.race([reader.read(),timeout]);if(p.done)break;if(parts.length+p.value.length>4096)throw Error('invalid_entry');for(const b of p.value)parts.push(b);}return JSON.parse(new TextDecoder('utf-8',{fatal:true,ignoreBOM:false}).decode(new Uint8Array(parts)));}finally{if(timer!==undefined)clearTimeout(timer);void reader.cancel().catch(()=>{});}
+ try{let reads=0;for(;;){if(++reads>limit+1)throw Error('invalid_entry');const p=await Promise.race([reader.read(),timeout]);if(p.done)break;if(parts.length+p.value.length>limit)throw Error('invalid_entry');for(const b of p.value)parts.push(b);}return JSON.parse(new TextDecoder('utf-8',{fatal:true,ignoreBOM:false}).decode(new Uint8Array(parts)));}finally{if(timer!==undefined)clearTimeout(timer);void reader.cancel().catch(()=>{});}
 }
 export async function personalRoutes(request: Request, url: URL, cfg: PersonalConfig, stub: PersonalAuthStub): Promise<Response> {
   try {
+    if(url.pathname.startsWith(BASE+'/owner/'))return personalOwnerRoutes(request,url,cfg,stub);
     const now = cfg.now ?? Date.now;
     const routes = new Map([[START, 'POST'], [PERSONAL_CALLBACK, 'GET'], [BASE + '/me', 'GET'], [BASE + '/session', 'DELETE'], [BASE + '/draft', 'POST'], [BASE + '/profile', request.method === 'PATCH' ? 'PATCH' : 'GET']]);
     const bootstrap=url.pathname===BASE+'/legacy-muse'?['GET','POST']:url.pathname===BASE+'/inbox'?['GET']:url.pathname===BASE+'/approvals'?['POST']:bootstrapMethods(url.pathname);
@@ -89,7 +88,7 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
     if (request.method !== method) { const r = failure('method_not_allowed', 405); r.headers.set('allow', bootstrap?bootstrap.join(', '):url.pathname === BASE + '/profile' ? 'GET, PATCH' : method); return r; }
     if (method !== 'GET' && !originAllowed(request, [cfg.origin])) return failure('origin_not_allowed', 403);
     const profileWrite = url.pathname === BASE + '/draft' || (url.pathname === BASE + '/profile' && request.method === 'PATCH');
-    const bootstrapWrite=!!bootstrap&&(request.method==='POST'||([BASE+'/authority',BASE+'/claim'].includes(url.pathname)&&request.method==='DELETE'));
+    const bootstrapWrite=!!bootstrap&&(request.method==='POST'||url.pathname===BASE+'/social-status'&&request.method==='PATCH'||([BASE+'/authority',BASE+'/claim'].includes(url.pathname)&&request.method==='DELETE'));
     if (method !== 'GET' && !profileWrite && !bootstrapWrite && !await emptyWriteBody(request)) return failure('body_not_allowed', 400);
     if (url.pathname !== PERSONAL_CALLBACK && url.search) return failure('bad_query', 400);
     const sessionReady = !!cfg.secret && typeof cfg.appId === 'string' && /^[0-9]{1,32}$/.test(cfg.appId);
@@ -105,7 +104,25 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
       const p=await current();
       if(!p){if(url.pathname===BASE+'/status')return json({profile:null,authority:null,keys:[],connection:{connected:false,lastSeenAt:null},entry:{state:'viewing',actor:null,attempt:null,receipt:null,reason:'signed_out'}});return failure('personal_session_required',401);}
       const binding:PersonalBinding={sidDigest:await personalDigest('sid',p.sid),appId:cfg.appId!,proof:{principalId:p.principalId,authVersion:p.authVersion,issuedAt:p.issuedAt,expiresAt:p.expiresAt}};
-      let input:unknown;if(bootstrapWrite){try{input=await bootstrapJSON(request);}catch{return failure('invalid_entry',400);}}
+      const social=url.pathname===BASE+'/social-status';
+      let input:unknown;if(bootstrapWrite){try{input=await bootstrapJSON(request,social?512:4096);}catch{return failure(social?'invalid_social_status':'invalid_entry',400);}}
+      if(social){
+       if(request.method==='PATCH'){
+        if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).sort().join(',')!=='expectedRevision,mode')return failure('invalid_social_status',400);
+        const x=input as {mode:unknown;expectedRevision:unknown};if(!isSocialMode(x.mode)||typeof x.expectedRevision!=='number'||!Number.isSafeInteger(x.expectedRevision)||x.expectedRevision<0||x.expectedRevision>=Number.MAX_SAFE_INTEGER)return failure('invalid_social_status',400);
+       }
+       try{
+        if(request.method==='GET'){if(!stub.personalSocialStatusGet)return failure('social_status_unavailable',503);return json(await stub.personalSocialStatusGet(binding));}
+        if(!stub.personalSocialStatusSet)return failure('social_status_unavailable',503);return json(await stub.personalSocialStatusSet(binding,input));
+       }catch(e){
+        let name:unknown,code:unknown;try{if(e&&typeof e==='object'){name='name'in e?e.name:null;code='code'in e?e.code:null;}}catch{}
+        if(name==='PersonalRegistryError'&&code==='personal_session_required')return failure('personal_session_required',401);
+        if(name==='SocialStatusError'&&code==='social_status_forbidden')return failure('social_status_forbidden',403);
+        if(name==='SocialStatusError'&&code==='invalid_social_status')return failure('invalid_social_status',400);
+        if(name==='SocialStatusError'&&code==='social_status_conflict')return failure('social_status_conflict',409);
+        return failure('social_status_unavailable',503);
+       }
+      }
       try{
        if(url.pathname===BASE+'/legacy-muse'){const ownerCookie=personalCookieValue(request,OWNER_COOKIE);return json(request.method==='GET'?await stub.personalLegacyView(binding,ownerCookie):await stub.personalLegacyAdopt(binding,ownerCookie,input));}
        if(url.pathname===BASE+'/inbox')return json(await stub.personalLegacyInbox(binding));
@@ -195,20 +212,40 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
       const safe=['claimed','declined','not_found','failed'].includes(result)?result:'failed',h=headers();h.set('location','/?personalClaim='+safe);h.append('set-cookie',clearClaimFlowCookie);return new Response(null,{status:303,headers:h});
     }
 
-    if ([...q.keys()].some(k => !['state', 'code', 'error', 'error_reason', 'error_description'].includes(k)) || q.getAll('state').length !== 1 || q.getAll('code').length > 1 || q.getAll('error').length > 1 || (q.has('code') && q.has('error'))) return failure('auth_flow_invalid', 400, true);
+    const logFailure = (detail: PersonalAuthFailure) => console.error(JSON.stringify({event: 'personal_auth_failed', ...personalAuthFailure(detail.reason, detail.metaCode, detail.metaSubcode)}));
+    const callbackFailure = (reason: 'state_invalid' | 'auth_code_invalid' = 'state_invalid') => {
+      if (!(request.headers.get('accept') ?? '').includes('text/html')) return failure(reason === 'state_invalid' ? 'auth_flow_invalid' : reason, 400, true);
+      const response=signInFailurePage();response.headers.append('set-cookie',clearFlowCookie);return response;
+    };
+    const invalid = () => { logFailure({reason:'state_invalid'}); return callbackFailure(); };
+    if ([...q.keys()].some(k => !['state', 'code', 'error', 'error_reason', 'error_description'].includes(k)) || q.getAll('state').length !== 1 || ['code','error','error_reason','error_description'].some(k=>q.getAll(k).length>1) || (q.has('code') && (q.has('error')||q.has('error_reason')))) return invalid();
     const state = q.get('state'), verifier = personalCookieValue(request, PERSONAL_FLOW_COOKIE);
-    if (!state?.startsWith(PERSONAL_STATE_PREFIX) || !nonceValid(state.slice(PERSONAL_STATE_PREFIX.length)) || !nonceValid(verifier)) return failure('auth_flow_invalid', 400, true);
+    if (!state?.startsWith(PERSONAL_STATE_PREFIX) || !nonceValid(state.slice(PERSONAL_STATE_PREFIX.length)) || !nonceValid(verifier)) return invalid();
     const stateDigest = await personalDigest('state', state);
-    if (!await stub.personalAuthConsume({stateDigest, browserDigest: await personalDigest('browser', verifier), appId: cfg.appId!, redirectUri: providerCfg().redirectUri}, now())) return failure('auth_flow_invalid', 400, true);
-    if (q.has('error')) return redirect('declined');
+    const binding = {stateDigest, browserDigest: await personalDigest('browser', verifier), appId: cfg.appId!, redirectUri: providerCfg().redirectUri};
+    const record = async (detail: PersonalAuthFailure) => {
+      logFailure(detail);
+      try { if (!await stub.personalAuthFailure(binding, detail, now())) console.error(JSON.stringify({event:'personal_auth_diagnostic_store_failed',hint:'flow_ineligible_or_missing'})); } catch { console.error(JSON.stringify({event: 'personal_auth_diagnostic_store_failed'})); }
+    };
+    try { if (!await stub.personalAuthConsume(binding, now())) return invalid(); }
+    // An RPC error does not prove this invocation consumed the flow; a replay must not poison its owner.
+    catch { logFailure({reason:'state_store_failed'}); return redirect('failed'); }
+    if (q.has('error')||q.has('error_reason')) { await record({reason:'provider_declined'}); return redirect('declined'); }
     const code = q.get('code');
-    if (!code || code.length > 4096 || /[\u0000-\u001f\u007f]/.test(code)) return failure('auth_code_invalid', 400, true);
+    if (!code || code.length > 4096 || /[\u0000-\u001f\u007f]/.test(code)) { await record({reason:'auth_code_invalid'}); return callbackFailure('auth_code_invalid'); }
+    let stage: PersonalAuthReason = 'token_exchange_failed';
     try {
       const {subject} = await personalThreadsIdentity(providerCfg(), code);
+      stage = 'session_store_failed';
       const sid = personalNonce(), row = await stub.personalAuthComplete(stateDigest, cfg.appId!, subject, await personalDigest('sid', sid), now());
-      if (!row) return failure('auth_flow_invalid', 400, true);
+      if (!row) { await record({reason:'state_invalid'}); return callbackFailure(); }
+      stage = 'session_sign_failed';
       const token = await signPersonalSession(cfg.secret, {v: 1, sid, ...row}, now());
       return redirect('authenticated', token);
-    } catch { return redirect('failed'); }
+    } catch (e) {
+      const detail = e instanceof ThreadsLoginError ? e.diagnostic : personalAuthFailure(stage);
+      await record(detail);
+      return redirect('failed');
+    }
   } catch { return failure('personal_auth_unavailable', 503); }
 }

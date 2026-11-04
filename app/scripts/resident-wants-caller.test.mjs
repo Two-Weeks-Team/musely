@@ -41,3 +41,32 @@ test('visitor turns queued during resident negotiation retain FIFO order for lat
  const second=await r.heartbeat(T+120_000);assert.equal(second.spotlight.muse,'00-jolly');assert.equal(second.spotlight.priority,true);
  assert.deepEqual(r.state().spotlight.visitorQueue,[]);assert.equal(x.calls(),1);
 });
+test('Life03 completion scheduler retains the actual model Task answer service and does not choose a second activity',async t=>{const x=fixture(t);const {r}=scheduled(x,{residentActions:{enabled:true,maxConcurrent:4},residentBudgetEnabled:true});await r.heartbeat(T);assert.equal(r.state().inbox.tasks[0].status,'completed');assert.equal(x.calls(),1);assert.equal(x.sql.exec('SELECT count(*) n FROM resident_wants_decisions').toArray()[0].n,1);assert.ok(r.events(0,1000).some(e=>e.kind==='trade_completed'&&e.data.decisionSource==='resident_model'));assert.equal(r.runLog.lastInput().input.residentActions.turns.some(v=>v.muse==='02-moss'),false);});
+
+async function individualTradeFixture(t,{actions,values}){
+ const id='nr_juniper',x=fixture(t),packets=[],transport=x.policy.context.model.fetcher;
+ x.policy.context.model.fetcher=async(url,init)=>{packets.push(JSON.parse(init.body));return transport(url,init);};
+ x.goals.saveInTransaction('w',null,{id:'g-nr',muse:id,beat:'garden_plant',createdAt:T,expiresAt:T+60000,status:'active'});
+ x.policy.goalFor=actor=>actor===id?'g-nr':null;
+ // A policy's own flag cannot override the Runtime's validated server configuration.
+ x.policy.context.residentValuesEnabled=true;
+ x.runtime.commitExternal(T,'fixture-nr-pending-task',s=>{s.muses.push({...structuredClone(s.muses.find(m=>m.id==='02-moss')),id,residentRole:'02-moss'});const task=s.inbox.tasks[0];task.to=id;task.awaiting=id;});
+ const r=new WorldRuntime(x.sql,{worldId:'w',ledger:x.ledger,model:x.policy.context.model,meetingGate:async()=>()=>({ok:false,event:null}),residentWants:x.policy,residentValuesEnabled:values,...(actions?{residentActions:{enabled:true,maxConcurrent:4},residentBudgetEnabled:true}:{}),residentLife:{enabled:true,roster:'neighborhood-24-v1',initialState:{schema:1,residents:[{id,roleId:'02-moss',goal:'Grow Bloom',routine:[],memories:[],promises:[],lastServedAt:0,served:0}]},allowedPlaceIds:['commons:garden'],ownershipKind:actor=>actor.startsWith('nr_')?'resident':'personal'}});
+ r.init(T);r.commitExternal(T,'fixture-nr-only-turn',s=>{s.spotlight.cursor=s.muses.findIndex(m=>m.id===id);for(const m of s.muses)if(![id,'05-bloom'].includes(m.id))(s.paused??={})[m.id]={at:T,version:1,by:'fixture'};});
+ return{x,r,id,packets};
+}
+for(const actions of [false,true]){
+ test(`actual ${actions?'completion':'legacy'} heartbeat trade packet uses the confirmed individual persona`,async t=>{const {x,r,id,packets}=await individualTradeFixture(t,{actions,values:true});await r.heartbeat(T);assert.equal(packets.length,1);assert.equal(packets[0].response_format.json_schema.name,'trade_answer');const text=packets[0].messages[0].content;const {residentPersona}=await import('../worker/core/actions.ts');assert.ok(text.startsWith(residentPersona(id)));assert.match(text,/ISFP/);assert.match(text,/조용하고 감각적/);assert.equal(r.state().inbox.tasks[0].status,'completed');assert.equal(x.sql.exec('SELECT count(*) n FROM resident_wants_decisions').toArray()[0].n,1);assert.equal(x.calls(),1);});
+ test(`actual ${actions?'completion':'legacy'} heartbeat OFF trade prompt is byte-identical and external flags are dropped`,async t=>{const {x,r,id,packets}=await individualTradeFixture(t,{actions,values:false});const before=r.state(),a=before.muses.find(m=>m.id===id),b=before.muses.find(m=>m.id==='05-bloom');const {validate,buildMessages}=await import('../worker/core/actions.ts');const input=validate('trade',{muse:id,other:b.id,give:'garden_pass',want:'tea',items:a.inventory.slice(0,12),otherItems:b.inventory.slice(0,12),round:1,residentValuesEnabled:true});assert.equal(input.residentValuesEnabled,undefined);const oldBytes=JSON.stringify(buildMessages('trade',input));await r.heartbeat(T);assert.equal(packets.length,1);assert.equal(JSON.stringify(packets[0].messages.slice(0,2)),oldBytes);assert.equal(r.state().inbox.tasks[0].status,'completed');assert.equal(x.calls(),1);});
+}
+
+for(const actions of [false,true])test(`a non-English trade response preserves the pending offer and spends one call before a real English RULE activity (${actions?'completion':'legacy'})`,async t=>{
+ const x=fixture(t),original=x.policy.context.model.fetcher;
+ x.policy.context.model.fetcher=async(...args)=>{await original(...args);return new Response(JSON.stringify({id:'synthetic-non-english',choices:[{message:{content:JSON.stringify({decision:'accept',counter_give:'',counter_want:'',line:'좋아요. 씨앗을 교환해요.'})}}],usage:{prompt_tokens:10,completion_tokens:10}}));};
+ const {r}=scheduled(x,actions?{residentActions:{enabled:true,maxConcurrent:4,fallbackRecovery:true},residentBudgetEnabled:true}:{});const before=r.state().inbox.tasks.find(q=>q.id==='trade1');const result=await r.heartbeat(T);
+ assert.equal(result.status,'committed');assert.equal(x.calls(),1,'no retry or second spotlight call');if(!actions){assert.equal(result.spotlight.source,'rule');assert.equal(result.spotlight.reason,'output_rejected:public_speech_not_english');}
+ assert.deepEqual(r.state().inbox.tasks.find(q=>q.id==='trade1'),before);assert.equal(x.sql.exec('SELECT count(*) n FROM resident_wants_decisions').toArray()[0].n,0);
+ const actual=r.events(0,1000).filter(e=>e.muse==='02-moss'&&['beat','depart'].includes(e.kind));assert.ok(actual.length);assert.ok(actual.every(e=>e.source==='rule'));
+ assert.ok(!r.events(0,1000).some(e=>e.muse==='02-moss'&&['trade_completed','trade_rejected','trade_countered','trade_proposed'].includes(e.kind)));assert.ok(!r.events(0,1000).some(e=>/[가-힣]/u.test(e.line??'')));
+ assert.equal(r.runLog.lastInput().input.residentEnglishFallback,'02-moss');
+});

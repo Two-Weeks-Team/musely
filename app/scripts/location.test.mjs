@@ -1,3 +1,4 @@
+import './ui-language-fixture.mjs';
 // I-08 (#55): the owner's destination cell, the Muse's own current cell, trips and the verified teleport (direction v2, 11, 13, 13.1;
 // contracts C03, C07). One block per acceptance criterion:
 //   AC1 a new owner location does not move the Muse's current cell at once
@@ -293,25 +294,25 @@ test('AC4 presets: HQ commons (default) and the seven Bay activity places of dir
   assert.equal(new Set(PRESETS.map(p => placeCell(p.place))).size, 8, 'eight distinct cells');
 });
 
-test('AC4 always-on line: virtual location (demo), the owner destination and the Muse\'s own cell with a counting ETA; unknown is never assumed', () => {
+test('AC4 always-on line: virtual neighborhood, the owner destination and the Muse\'s own cell with a counting ETA; unknown is never assumed', () => {
   const view = {area: areaById('stanford'), source: 'virtual', preset: 'stanford', cell_label: 'Stanford', cell: placeCell('bay:stanford'), location: 'virtual (demo)', neighborhood_verified: false,
     muse: {id: OWNER_SLOT, place: {id: 'commons:benches', name: 'Bench Circle'}, at_owner_cell: false, travelling_to: {id: 'bay:stanford', name: 'Stanford'}, speed: 'walk', eta_ms: 42 * 60_000, arrive_at: T0 + 42 * 60_000}};
   const snap = snapshotOf(view, T0);
   const l = locationLine(snap, T0);
   // The owner's destination and the Muse's own current cell are told apart, also mid-trip (13.1).
-  assert.equal(l.text, 'Virtual location (demo) · owner neighborhood: Stanford · Jolly at Bench Circle → Stanford, walking, 42 min');
+  assert.equal(l.text, 'Virtual neighborhood · owner neighborhood: Stanford · The Muse at Bench Circle → Stanford, walking, 42 min');
   assert.match(l.title, /Owner neighborhood Stanford: 1500 m/);
   assert.match(l.title, /current place: Bench Circle/);
   assert.match(locationLine(snap, T0 + 30 * 60_000).text, /12 min$/, 'the ETA counts down between answers');
-  assert.match(locationLine(snap, T0 + 43 * 60_000).text, /Jolly at Bench Circle → Stanford, walking, arriving$/);
-  assert.equal(museLine(snapshotOf({...view, muse: {...view.muse, speed: 'bus', eta_ms: 8 * 60_000}}, T0), T0), 'Jolly at Bench Circle → Stanford, bus, 8 min');
-  assert.match(locationLine(snapshotOf({...view, neighborhood_verified: true, muse: {...view.muse, place: {id: 'bay:stanford', name: 'Stanford'}, at_owner_cell: true, in_owner_area: true, travelling_to: null, speed: null, eta_ms: null}}, T0), T0).text, /owner neighborhood: Stanford \(verified\) · Jolly at Stanford · in your neighborhood/);
+  assert.match(locationLine(snap, T0 + 43 * 60_000).text, /The Muse at Bench Circle → Stanford, walking, arriving$/);
+  assert.equal(museLine(snapshotOf({...view, muse: {...view.muse, speed: 'bus', eta_ms: 8 * 60_000}}, T0), T0), 'The Muse at Bench Circle → Stanford, bus, 8 min');
+  assert.match(locationLine(snapshotOf({...view, neighborhood_verified: true, muse: {...view.muse, place: {id: 'bay:stanford', name: 'Stanford'}, at_owner_cell: true, in_owner_area: true, travelling_to: null, speed: null, eta_ms: null}}, T0), T0).text, /owner neighborhood: Stanford \(verified\) · The Muse at Stanford · in your neighborhood/);
   assert.match(locationLine(snap, T0, 'HTTP 503').text, /not updating$/, 'a failure keeps the last answer and says so');
   const none = locationLine(null, T0, 'HTTP 503');
   assert.equal(none.state, 'unknown'); assert.doesNotMatch(none.text, /HQ/);
   // Mounted in the header for the whole page (story and world), and no style hides it.
   const panel = readFileSync(new URL('../src/ui/world-panel.ts', import.meta.url), 'utf8'), css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
-  assert.match(panel, /mountLocationChip\(header, spot\)/);
+  assert.match(panel, /mountLocationChip\(header, spot, locationName\)/);
   // The chip's answer is applied when it arrives; the rest of the refresh does not wait for it (and nothing is applied during a replay).
   assert.match(panel, /if \(!isolation\.replay\) \{locChip\.update\(lr\); paintOwnerArea\(\);\}/);
   assert.ok(!/await\s+locReq|await load<OwnerLocationView>/.test(panel), 'refresh does not wait for the location answer');

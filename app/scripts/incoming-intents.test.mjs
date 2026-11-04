@@ -59,6 +59,6 @@ test('moving, paused and out-of-range senders are facts, never invitations to ap
   assert.equal(signal.paused,true);assert.equal(signal.in_trade_range,false);
   t.edit(s=>{delete s.paused['05-bloom'];s.muses.find(m=>m.id==='05-bloom').place='bay:stanford:garden';});
   signal=(await t.tool(JOLLY,'get_world_state')).structuredContent.incoming_trade_intents[0];
-  assert.equal(signal.travelling,false);assert.equal(signal.in_trade_range,false);
+  assert.equal(Object.hasOwn(signal,'travelling'),false);assert.equal(Object.hasOwn(signal,'paused'),false);assert.equal(signal.in_trade_range,false);
   assert.equal(t.state().inbox.tasks.length,0);
 });

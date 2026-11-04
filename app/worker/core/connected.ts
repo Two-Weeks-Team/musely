@@ -63,10 +63,12 @@ export class ConnectedHost {
   }
 
   // ----- agent keys -----
-  async issueKey(muse = OWNER_MUSE) {
+  async issueKey(muse = OWNER_MUSE,authorize?:()=>void) {
     const now = this.now();
-    const {key, row} = await this.keys.issue(muse, now);
-    this.d.runtime.commitExternal(now, 'agent-key-' + uniq(), (_s, emit) => emit({at: now, source: 'live', kind: 'agent_key_issued', muse, line: 'A Musely agent key was issued for a custom connector', data: {key_id: row.id, signer_kind: row.signerKind}, tags: []}));
+    const {key, row} = await this.keys.issue(muse, now,authorize?(insert,row)=>{
+      authorize();this.d.runtime.commitExternal(now,'agent-key-'+uniq(),(_s,emit)=>{authorize();insert();emit({at:now,source:'live',kind:'agent_key_issued',muse,line:'A Musely agent key was issued for a custom connector',data:{key_id:row.id,signer_kind:row.signerKind},tags:[]});});
+    }:undefined);
+    if(!authorize)this.d.runtime.commitExternal(now, 'agent-key-' + uniq(), (_s, emit) => emit({at: now, source: 'live', kind: 'agent_key_issued', muse, line: 'A Musely agent key was issued for a custom connector', data: {key_id: row.id, signer_kind: row.signerKind}, tags: []}));
     return {key, id: row.id, muse, signer_kind: row.signerKind, created_at: row.createdAt, shown_once: true};
   }
 
@@ -160,7 +162,8 @@ export class ConnectedHost {
     const ctx: ToolCtx = {campfires:()=>this.d.campfires,trust: this.d.trust, runtime: this.d.runtime, hooks: this.d.hooks, ownerRoot: this.d.ownerRoot(), ownerClaimed: this.d.ownerClaimed(), ownerClaimedNow: () => this.d.ownerClaimed(), claimExempt: key.muse === REVIEWER_MUSE, baseUrl: this.d.baseUrl, key, now: () => this.now(), ownerOf: m => this.ownerOf(m), authorize: () => this.keys.byId(key.id)?.revokedAt === null ? null : 'agent_key_revoked'};
     try {
       const out = await dispatch(method, params, {list:()=>toolList(this.d.runtime.state().muses.map(m=>m.id)), call: (n, a) => runTool(ctx, n, a), isInvalidParams: e => e instanceof InvalidParams});
-      // A successful world action puts the Muse in the priority queue (deduplicated, 3 per hour); a revoked Muse never.
+      // Legacy mode requests display priority after a native action. Action mode keeps that already-recorded
+      // native action out of the resident model FIFO; neither path thinks for a connected Muse.
       const tool = method === 'tools/call' ? String((params as {name?: unknown} | null)?.name ?? '') : '';
       if (ACTION_TOOLS.has(tool) && (out.result as {isError?: boolean} | undefined)?.isError === false && !this.d.trust.suspended(key.muse)) this.d.runtime.requestSpotlight(key.muse, this.now(), {origin: 'connected', requester: 'connected:' + key.muse});
       try{this.freshness.observe(key,method,tool,out.result,this.now());}catch{/* Private diagnostics never alter dispatch results. */}

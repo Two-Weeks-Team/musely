@@ -86,3 +86,28 @@ test('an overdue timer cannot accept a response after the total provider deadlin
  try {await assert.rejects(personalThreadsIdentity({appId:app,appSecret:'secret',redirectUri,timeoutMs:10000,fetcher:async()=>{calls++;clock+=10001;return new Response(calls===1?'{"access_token":"SYNTHETIC_TOKEN"}':'{"id":"42"}');}},'code'),e=>e.name==='ThreadsLoginError');assert.equal(calls,1);}
  finally {Date.now=original;}
 });
+
+test('diagnostic migration preserves old rows across restart and failure cannot issue a session or overwrite another browser',async t=>{
+ const {store,db}=boot(t),f=await flow(store);const original=JSON.stringify(db.prepare('SELECT state_digest,browser_digest,consumed_at,completed_at FROM personal_auth_flows').get());
+ for(const column of ['failed_at','failure_reason','failure_meta_code','failure_meta_subcode'])db.exec('ALTER TABLE personal_auth_flows DROP COLUMN '+column);
+ store.init();store.init();assert.equal(JSON.stringify(db.prepare('SELECT state_digest,browser_digest,consumed_at,completed_at FROM personal_auth_flows').get()),original);
+ assert.equal(store.fail(f,{reason:'token_exchange_failed'},now),false,'unconsumed flow cannot be marked by diagnostic caller');assert.equal(store.consume(f,now),true);
+ for(const binding of [{...f,browserDigest:'d'.repeat(64)},{...f,appId:'555'},{...f,redirectUri:'https://evil.invalid/api/threads/callback'}])assert.equal(store.fail(binding,{reason:'me_fetch_failed'},now),false);
+ assert.equal(store.fail(f,{reason:'me_fetch_failed',metaCode:'PRIVATE_CODE_CANARY',metaSubcode:Infinity},now),true);
+ const row=db.prepare('SELECT * FROM personal_auth_flows').get();assert.equal(row.failure_reason,'me_fetch_failed');assert.equal(row.failure_meta_code,null);assert.equal(row.failure_meta_subcode,null);
+ assert.equal(store.fail(f,{reason:'session_store_failed'},now),false);assert.equal(store.complete(f.stateDigest,app,'42','c'.repeat(64),now),null);assert.equal(count(db,'personal_auth_sessions'),0);
+ store.init();assert.deepEqual(db.prepare('SELECT * FROM personal_auth_flows').get(),row);
+});
+
+test('a consumed flow that expires during provider work still records failure but can never issue a session',async t=>{
+ const {store,db}=boot(t),f=await flow(store);assert.equal(store.consume(f,f.expiresAt-1),true);
+ assert.equal(store.complete(f.stateDigest,app,'42','c'.repeat(64),f.expiresAt),null);
+ assert.equal(store.fail(f,{reason:'state_invalid'},f.expiresAt),true);
+ assert.equal(db.prepare('SELECT failure_reason FROM personal_auth_flows').get().failure_reason,'state_invalid');assert.equal(count(db,'personal_auth_sessions'),0);
+});
+
+test('received token HTTP status survives empty, oversized or unreadable error bodies',async()=>{
+ for(const [status,body]of [[400,null],[503,null],[400,'x'.repeat(65537)],[503,new ReadableStream({start(c){c.error(Error('PRIVATE_BODY_CANARY'));}})]]){
+  await assert.rejects(personalThreadsIdentity({appId:app,appSecret:'synthetic',redirectUri,fetcher:async()=>new Response(body,{status})},'synthetic-code'),e=>e.diagnostic?.reason===(status===400?'token_exchange_http_4xx':'token_exchange_http_5xx'));
+ }
+});

@@ -1,3 +1,4 @@
+import {uiText} from './i18n.ts';
 // Optional account proof, independent of connector permissions and committed world entry.
 import {claimText} from '../identity/fingerprint.ts';
 import {threadsPermalink} from '../identity/threads-permalink.ts';
@@ -51,26 +52,26 @@ export function mountPersonalClaim(host:HTMLElement,options:PersonalClaimOptions
   }finally{clearTimeout(timer);}
  }
  function failure(error:unknown,c:Context){
-  if(disposed||generation!==c.generation)return;busy=false;writeBusy(false);data=null;phase='error';message='다시 확인해 주세요. 관람과 연결 설정은 계속할 수 있어요. / Check again. You can keep watching or setting up your connection.';
-  if(error instanceof Failure&&error.status===401){phase='observer';context={authenticated:false,profile:null,busy:false};message='다시 로그인해 주세요. / Sign in again.';notify(options.onSessionLost);}
+  if(disposed||generation!==c.generation)return;busy=false;writeBusy(false);data=null;phase='error';message=uiText('다시 확인해 주세요. 관람과 연결 설정은 계속할 수 있어요. / Check again. You can keep watching or setting up your connection.');
+  if(error instanceof Failure&&error.status===401){phase='observer';context={authenticated:false,profile:null,busy:false};message=uiText('다시 로그인해 주세요. / Sign in again.');notify(options.onSessionLost);}
   if(expanded===null)setExpanded(true,false);render();
  }
  function accept(value:unknown,c:Context){data=parsePersonalClaim(value,c.actorId);phase='ready';busy=false;if(expanded===null)setExpanded(!data.claimed,false);render();}
  async function refresh(){const c=begin();if(!c)return;try{const value=await request('GET',c);if(!current(c))return;accept(value,c);}catch(e){failure(e,c);}}
  async function verify(){
   if(!data)return;const version=data.version,c=begin(true);if(!c)return;
-  try{const answer=await request('POST',c,{expectedVersion:version});if(!current(c))return;const url=authorize(answer);await navigate(url);if(!current(c))return;busy=false;writeBusy(false);phase='ready';message='Threads에서 확인한 뒤 돌아와 주세요. 돌아오면 현재 결과를 다시 확인해요. / Return after checking in Threads; we will read the current result here.';render();}
+  try{const answer=await request('POST',c,{expectedVersion:version});if(!current(c))return;const url=authorize(answer);await navigate(url);if(!current(c))return;busy=false;writeBusy(false);phase='ready';message=uiText('Threads에서 확인한 뒤 돌아와 주세요. 돌아오면 현재 결과를 다시 확인해요. / Return after checking in Threads; we will read the current result here.');render();}
   catch(e){failure(e,c);}
  }
  async function cancel(){
   if(!data)return;const previous=data.version,c=begin(true);if(!c)return;
-  try{const answer=await request('DELETE',c,{expectedVersion:previous});if(!current(c))return;const next=parsePersonalClaim(answer,c.actorId);if(next.claimed||next.version!==previous+1)throw new Failure();writeBusy(false);step='copy';accept(next,c);message='계정 확인을 취소하고 검증용 연결정보를 삭제했어요. / Account verification cancelled and its verification connection removed.';render();}
+  try{const answer=await request('DELETE',c,{expectedVersion:previous});if(!current(c))return;const next=parsePersonalClaim(answer,c.actorId);if(next.claimed||next.version!==previous+1)throw new Failure();writeBusy(false);step='copy';accept(next,c);message=uiText('계정 확인을 취소하고 검증용 연결정보를 삭제했어요. / Account verification cancelled and its verification connection removed.');render();}
   catch(e){failure(e,c);}
  }
  async function copy(){
   if(!data||!active()||disposed||!visible||!foreground()||busy||copying||externalBusy)return;const g=generation,text=data.text;copying=true;render();
-  try{await(options.clipboard??navigator.clipboard).writeText(text);if(disposed||generation!==g||!visible)return;step='publish';message='복사했어요. 이 공개 문안을 직접 Threads에 게시해 주세요. / Copied. Publish this public text on Threads yourself.';}
-  catch{if(disposed||generation!==g||!visible)return;message='복사하지 못했어요. 아래 공개 문안을 직접 선택해 복사해 주세요. / Select and copy the public text below.';}
+  try{await(options.clipboard??navigator.clipboard).writeText(text);if(disposed||generation!==g||!visible)return;step='publish';message=uiText('복사했어요. 이 공개 문안을 직접 Threads에 게시해 주세요. / Copied. Publish this public text on Threads yourself.');}
+  catch{if(disposed||generation!==g||!visible)return;message=uiText('복사하지 못했어요. 아래 공개 문안을 직접 선택해 복사해 주세요. / Select and copy the public text below.');}
   finally{if(!disposed&&generation===g){copying=false;render();}}
  }
  function setExpanded(value:boolean,load=true){if(disposed)return;expanded=value;notify(()=>options.onExpanded?.(value));render();if(value&&load&&!data&&!busy)void refresh();}
@@ -78,22 +79,22 @@ export function mountPersonalClaim(host:HTMLElement,options:PersonalClaimOptions
   if(disposed)return;root.replaceChildren();root.hidden=!active();root.dataset.state=phase;root.dataset.claimed=String(data?.claimed===true);if(!active())return;
   const el=<K extends keyof HTMLElementTagNameMap>(tag:K,text?:string)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
   const button=(id:string,text:string,fn:()=>void|Promise<void>,primary=false)=>{const b=el('button',text);b.type='button';b.dataset.action=id;b.className=primary?'primary':'secondary';b.disabled=busy||copying||externalBusy;const g=generation;b.onclick=()=>{if(disposed||generation!==g||b.disabled||externalBusy)return;return fn();};return b;};
-  const toggle=button('toggle-claim',data?.claimed?'Threads 계정 확인됨 / Threads account verified':'Threads 계정 확인 / Verify your Threads account',()=>setExpanded(!expanded));toggle.disabled=busy||copying||externalBusy;toggle.setAttribute('aria-expanded',String(expanded===true));toggle.setAttribute('aria-controls','personal-claim-content');root.append(toggle);
-  if(expanded!==true){root.append(el('p',data?.claimed?'계정 확인됨. 세계 입장과 Muse 연결은 별도예요. / Account verified. World entry and your Muse connection are separate.':'계정 확인은 세계 입장과 별개예요. 미확인 상태에서는 거래 등 일부 행동이 제한돼요. / Account verification is separate from entry. Some actions, including trades, stay limited until verified.'));return;}
-  const content=el('div');content.id='personal-claim-content';root.append(content);content.append(el('h3','내 Threads 계정으로 확인하기 / Verify with your Threads account'),el('p',context.profile!.displayName));
-  content.append(el('p','일반 로그인만으로 연결정보를 보관하지 않아요. ‘게시글 확인’을 선택하면 검증용 연결정보만 서버에 암호화해 보관하고, 확인 취소 시 삭제해요. 게시글은 직접 올리며 Musely가 대신 게시하지 않아요. / Ordinary sign-in does not retain this connection. Choosing “Check my post” stores only the verification connection encrypted on the server; cancelling verification deletes it. You publish the post yourself. Musely never publishes for you.'));
-  const status=el('p',message||(!data?'계정 확인 상태를 읽고 있어요. / Reading your account verification.':({pending_claim:'공개 문안을 복사해 직접 게시한 뒤 확인해 주세요. / Copy and publish the public text, then check it.',claimed:'계정 확인됨. 세계 입장과 Muse 연결은 별도예요. / Account verified. World entry and your Muse connection are separate.',claim_revoked:'계정 확인을 취소했어요. 필요하면 다시 확인할 수 있어요. / Verification cancelled. You can verify again when ready.',mismatch:'같은 Threads 계정의 최근 게시글 25개 안에서 문안을 확인하지 못했어요. 계정과 게시글을 확인해 다시 시도해 주세요. / The text was not found in the latest 25 posts of this Threads account. Check the account and post, then try again.',reauth_required:'Threads에 다시 로그인해 게시글을 확인해 주세요. / Sign in to Threads again to check your post.',unavailable:'지금 확인하지 못했어요. 잠시 후 다시 확인해 주세요. / Verification is unavailable. Check again later.'} as Record<ClaimStatus,string>)[data.status]));status.setAttribute('role','status');status.setAttribute('aria-live','polite');content.append(status);
-  if(!data){content.append(button('refresh-claim','다시 확인 / Check again',refresh,true));}
+  const toggle=button('toggle-claim',data?.claimed?uiText('Threads 계정 확인됨 / Threads account verified'):uiText('Threads 계정 확인 / Verify your Threads account'),()=>setExpanded(!expanded));toggle.disabled=busy||copying||externalBusy;toggle.setAttribute('aria-expanded',String(expanded===true));toggle.setAttribute('aria-controls','personal-claim-content');root.append(toggle);
+  if(expanded!==true){root.append(el('p',data?.claimed?uiText('계정 확인됨. 세계 입장과 Muse 연결은 별도예요. / Account verified. World entry and your Muse connection are separate.'):uiText('계정 확인은 세계 입장과 별개예요. 미확인 상태에서는 거래 등 일부 행동이 제한돼요. / Account verification is separate from entry. Some actions, including trades, stay limited until verified.')));return;}
+  const content=el('div');content.id='personal-claim-content';root.append(content);content.append(el('h3',uiText('내 Threads 계정으로 확인하기 / Verify with your Threads account')),el('p',context.profile!.displayName));
+  content.append(el('p',uiText('일반 로그인만으로 연결정보를 보관하지 않아요. ‘게시글 확인’을 선택하면 검증용 연결정보만 서버에 암호화해 보관하고, 확인 취소 시 삭제해요. 게시글은 직접 올리며 Musely가 대신 게시하지 않아요. / Ordinary sign-in does not retain this connection. Choosing “Check my post” stores only the verification connection encrypted on the server; cancelling verification deletes it. You publish the post yourself. Musely never publishes for you.')));
+  const status=el('p',uiText(message||(!data?'계정 확인 상태를 읽고 있어요. / Reading your account verification.':({pending_claim:'공개 문안을 복사해 직접 게시한 뒤 확인해 주세요. / Copy and publish the public text, then check it.',claimed:'계정 확인됨. 세계 입장과 Muse 연결은 별도예요. / Account verified. World entry and your Muse connection are separate.',claim_revoked:'계정 확인을 취소했어요. 필요하면 다시 확인할 수 있어요. / Verification cancelled. You can verify again when ready.',mismatch:'같은 Threads 계정의 최근 게시글 25개 안에서 문안을 확인하지 못했어요. 계정과 게시글을 확인해 다시 시도해 주세요. / The text was not found in the latest 25 posts of this Threads account. Check the account and post, then try again.',reauth_required:'Threads에 다시 로그인해 게시글을 확인해 주세요. / Sign in to Threads again to check your post.',unavailable:'지금 확인하지 못했어요. 잠시 후 다시 확인해 주세요. / Verification is unavailable. Check again later.'} as Record<ClaimStatus,string>)[data.status])));status.setAttribute('role','status');status.setAttribute('aria-live','polite');content.append(status);
+  if(!data){content.append(button('refresh-claim',uiText('다시 확인 / Check again'),refresh,true));}
   else{
-   if(!data.claimed){const text=el('textarea');text.readOnly=true;text.rows=3;text.value=data.text;text.setAttribute('aria-label','직접 게시할 공개 문안 / Public text to post');content.append(text);
-    content.append(button('copy-claim','1 · 공개 문안 복사 / Copy public text',copy,step==='copy'));
-    const publish=el('a','2 · Threads에 직접 게시 / Publish on Threads yourself');publish.dataset.action='publish-claim';publish.href='https://www.threads.com/';publish.target='_blank';publish.rel='noopener noreferrer';publish.className=step==='publish'?'primary':'secondary';const g=generation;publish.onclick=e=>{if(disposed||generation!==g||busy||copying||externalBusy){e?.preventDefault();return;}step='verify';render();};content.append(publish);
-    content.append(button('verify-claim','3 · 게시글 확인 / Check my post',verify,step==='verify'));
+   if(!data.claimed){const text=el('textarea');text.readOnly=true;text.rows=3;text.value=data.text;text.setAttribute('aria-label',uiText('직접 게시할 공개 문안 / Public text to post'));content.append(text);
+    content.append(button('copy-claim',uiText('1 · 공개 문안 복사 / Copy public text'),copy,step==='copy'));
+    const publish=el('a',uiText('2 · Threads에 직접 게시 / Publish on Threads yourself'));publish.dataset.action='publish-claim';publish.href='https://www.threads.com/';publish.target='_blank';publish.rel='noopener noreferrer';publish.className=step==='publish'?'primary':'secondary';const g=generation;publish.onclick=e=>{if(disposed||generation!==g||busy||copying||externalBusy){e?.preventDefault();return;}step='verify';render();};content.append(publish);
+    content.append(button('verify-claim',uiText('3 · 게시글 확인 / Check my post'),verify,step==='verify'));
    }
-   if(data.permalink){const link=el('a','확인한 게시글 보기 / View the checked post');link.href=data.permalink;link.target='_blank';link.rel='noopener noreferrer';content.append(link);}
-   const more=el('details');more.className='entry-advanced';more.append(el('summary','다시 확인·취소 / Recheck or cancel'),button('refresh-claim','현재 결과 다시 확인 / Check current result',refresh),button('cancel-claim','계정 확인 취소·검증정보 삭제 / Cancel verification and delete its connection',cancel));content.append(more);
+   if(data.permalink){const link=el('a',uiText('확인한 게시글 보기 / View the checked post'));link.href=data.permalink;link.target='_blank';link.rel='noopener noreferrer';content.append(link);}
+   const more=el('details');more.className='entry-advanced';more.append(el('summary',uiText('다시 확인·취소 / Recheck or cancel')),button('refresh-claim',uiText('현재 결과 다시 확인 / Check current result'),refresh),button('cancel-claim',uiText('계정 확인 취소·검증정보 삭제 / Cancel verification and delete its connection'),cancel));content.append(more);
   }
-  content.append(button('later-claim','나중에 · 연결 설정으로 돌아가기 / Later · Back to connection setup',()=>setExpanded(false)));
+  content.append(button('later-claim',uiText('나중에 · 연결 설정으로 돌아가기 / Later · Back to connection setup'),()=>setExpanded(false)));
  }
  const visibility=()=>{if(disposed)return;if(!foreground()){invalidate();data=null;message='';render();}else if(visible&&active())void refresh();};
  document.addEventListener('visibilitychange',visibility);

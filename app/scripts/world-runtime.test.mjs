@@ -218,7 +218,8 @@ test('I-05 #2 the other Muse answers a meeting with one live model call: reserve
   assert.equal(s.ledger.status().liveCalls, 2, 'spotlight + encounter');
   assert.deepEqual(r.replies, {live: 1, rule: 0});
   // The other Muse saw the greeting as wrapped data, not as instructions; the rule greeting stays a rule event.
-  assert.match(m.stats.bodies.find(b => b.kind === 'encounter').body.messages[1].content, /They said: <untrusted_data source="other_agent">Hi /);
+  const greeting=rt.events().find(e=>e.kind==='greet');assert.ok(greeting?.line);
+  assert.ok(m.stats.bodies.find(b => b.kind === 'encounter').body.messages[1].content.endsWith('They said: <untrusted_data source="other_agent">'+greeting.line+'</untrusted_data>'),'the exact emitted persona greeting reaches the reply model only as wrapped data');
   assert.equal(rt.events().find(e => e.kind === 'greet').source, 'rule');
 });
 

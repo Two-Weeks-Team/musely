@@ -255,7 +255,7 @@ test('owner revocation: pending Tasks close as cancelled, the Muse stops all pub
   assert.ok(t.dobj.worldEvents(from2, 2000).some(e => e.muse === OWNER && ['spotlight', 'beat', 'depart'].includes(e.kind)), 'active again');
 });
 
-test('no automatic re-delegation: P0, heartbeats and a restart leave a revoked Muse revoked; only /api/owner/redelegate delegates', async () => {
+test('no automatic re-delegation: P0, heartbeats and a restart stay revoked; only explicit owner adapters delegate', async () => {
   const t = await boot();
   const judge = await t.session('judge'), owner = await t.login(OWNER_TOKEN);
   assert.equal((await t.go('POST', '/api/p0/run', undefined, {cookie: judge})).body.before, 'verified');
@@ -277,14 +277,15 @@ test('no automatic re-delegation: P0, heartbeats and a restart leave a revoked M
   assert.equal(t.events().filter(e => e.kind === 'delegation_issued').length, 1);
   assert.equal((await t.go('POST', '/api/p0/run', undefined, {cookie: judge})).body.phase, 'valid');
 
-  // Source check: the only call of Trust.redelegate is in owner-control.ts, reached only from POST /api/owner/redelegate.
+  // Trust.redelegate remains confined to owner-control. The personal adapter additionally
+  // reaches the same explicit action after current-session/adoption and Muse checks.
   const files = [];
   const walk = d => { for (const f of readdirSync(d, {withFileTypes: true})) { const p = join(d, f.name); if (f.isDirectory()) walk(p); else if (/\.ts$/.test(f.name) && !f.name.endsWith('.d.ts')) files.push(p); } };
   walk(new URL('../worker', import.meta.url).pathname);
   const callers = files.filter(f => /\.redelegate\(/.test(readFileSync(f, 'utf8'))).map(f => f.split('/worker/')[1]);
   assert.deepEqual(callers, ['core/owner-control.ts']);
   const routes = files.filter(f => /\.ownerRedelegate\(/.test(readFileSync(f, 'utf8'))).map(f => f.split('/worker/')[1]);
-  assert.deepEqual(routes, ['core/owner-api.ts']);
+  assert.deepEqual(routes, ['core/owner-api.ts','world-do.ts']);
   assert.ok(!/\.redelegate\(|redelegateMuse\(/.test(readFileSync(new URL('../worker/core/a2a.ts', import.meta.url), 'utf8').split('export async function runP0')[1].split('\n}\n')[0]), 'runP0 has no re-delegation');
 });
 
@@ -320,7 +321,9 @@ test('a new visitor gains nothing by replaying the owner\'s claim or ritual reco
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
     if (!String(url).startsWith('https://api.meta.ai/')) return realFetch(url, init);
-    return new Response(JSON.stringify({id: 'r1', usage: {prompt_tokens: 10, completion_tokens: 10}, choices: [{message: {content: JSON.stringify({results: [1, 2, 3].map(i => ({step: 's' + i, passed: true, confidence: .9, observation: 'ok'}))})}}]}), {headers: {'x-request-id': 'req-' + Math.random().toString(36).slice(2, 8)}});
+    const prompt = JSON.parse(init.body).messages.find(m => m.role === 'user').content.find(x => x.type === 'text').text;
+    const steps = [...prompt.matchAll(/\b[123]\. ([a-z_]+):/g)].map(m => m[1]); assert.equal(steps.length, 3);
+    return new Response(JSON.stringify({id: 'r1', usage: {prompt_tokens: 10, completion_tokens: 10}, choices: [{message: {content: JSON.stringify({results: steps.map(step => ({step, passed: true, confidence: .9, observation: 'ok'}))})}}]}), {headers: {'x-request-id': 'req-' + Math.random().toString(36).slice(2, 8)}});
   };
   const frames = [1, 2, 3].map(() => 'data:image/jpeg;base64,AAAA');
   const ritual = async (cookie, id) => {
@@ -505,4 +508,21 @@ test('a revoke or re-delegation that failed after the registry write is complete
   } finally {
     console.error = err; rt.commitExternal = real;
   }
+});
+
+test('visitor audience cannot restore a stale owner for camera records or the judge P0 path',async()=>{
+ const t=await boot({MODEL_API_KEY:'synthetic-audience-model-key'}),visitor=await t.session('visitor'),judge=await t.session('judge'),owner=await t.login(OWNER_TOKEN),audience={'x-musely-audience':'visitor',origin:ORIGIN};
+ assert.equal((await t.go('POST','/api/p0/run',undefined,{cookie:owner,...audience})).status,403);
+ assert.equal((await t.go('POST','/api/p0/run',undefined,{cookie:visitor+'; '+owner,...audience})).status,403);
+ assert.equal((await t.go('POST','/api/p0/run',undefined,{cookie:judge+'; '+owner,...audience})).status,200);
+ assert.equal((await t.go('POST','/api/p0/run',undefined,{cookie:owner,origin:ORIGIN})).status,200,'the untagged emergency path is preserved');
+});
+
+test('visitor audience camera keeps an old owner cookie out of the owner record',async()=>{
+ const t=await boot({MODEL_API_KEY:'synthetic-audience-model-key'}),visitor=await t.session('visitor'),judge=await t.session('judge'),owner=await t.login(OWNER_TOKEN),audience={'x-musely-audience':'visitor',origin:ORIGIN};
+ const old={at:Date.now()-1000,passed:true,results:[],requestId:'preserved-owner-positive',model:'synthetic',tier:'owner'};t.dobj.ritualRecord(old,'fixture',true);
+ const saved=globalThis.fetch;let calls=0;globalThis.fetch=async(url,init)=>{assert.equal(String(url),'https://api.meta.ai/v1/chat/completions');calls++;const content=JSON.parse(init.body).messages.find(m=>m.role==='user').content.find(x=>x.type==='text').text,steps=[...content.matchAll(/\b[123]\. ([a-z_]+):/g)].map(m=>m[1]);return new Response(JSON.stringify({id:'synthetic-audience',usage:{prompt_tokens:1,completion_tokens:1},choices:[{message:{content:JSON.stringify({results:steps.map(step=>({step,passed:true,confidence:.99,observation:'Synthetic frame'}))})}}]}),{headers:{'x-request-id':'synthetic-audience-'+calls}});};
+ try{
+  for(const session of [visitor,judge]){const cookies=session+'; '+owner,start=(await t.go('POST','/api/ritual/start',undefined,{cookie:cookies})).body;const r=await t.go('POST','/api/muse',{action:'challenge',input:{challengeId:start.id,frames:Array(3).fill('data:image/jpeg;base64,AAAA')}},{cookie:cookies,...audience});assert.equal(r.body.source,'live');assert.deepEqual(t.dobj.ritualOwnerRecord(),old);const e=t.events().filter(e=>e.kind==='ritual_judged').at(-1);assert.equal(e.data.actorOrigin,'trial');assert.equal(e.data.actor,undefined);assert.match(e.data.who,new RegExp('^'+(session===visitor?'visitor':'judge')));}
+ }finally{globalThis.fetch=saved;}
 });
