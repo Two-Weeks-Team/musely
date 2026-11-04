@@ -203,13 +203,13 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
     }
     const q = url.searchParams;
     if(q.getAll('state').some(x=>x.startsWith(PERSONAL_CLAIM_STATE_PREFIX))){
-      const bad=()=>json({error:'auth_flow_invalid'},400,clearClaimFlowCookie);
-      if([...q.keys()].some(k=>!['state','code','error','error_reason','error_description'].includes(k))||q.getAll('state').length!==1||q.getAll('code').length>1||q.getAll('error').length>1||(q.has('code')&&q.has('error')))return bad();
+      const bad=()=>{if(!(request.headers.get('accept')??'').includes('text/html'))return json({error:'auth_flow_invalid'},400,clearClaimFlowCookie);const r=signInFailurePage();r.headers.append('set-cookie',clearClaimFlowCookie);return r;};
+      if([...q.keys()].some(k=>!['state','code','error','error_reason','error_description'].includes(k))||q.getAll('state').length!==1||['code','error','error_reason','error_description'].some(k=>q.getAll(k).length>1)||(q.has('code')&&(q.has('error')||q.has('error_reason'))))return bad();
       const state=q.get('state'),verifier=personalCookieValue(request,PERSONAL_CLAIM_FLOW_COOKIE);
       if(!state?.startsWith(PERSONAL_CLAIM_STATE_PREFIX)||!nonceValid(state.slice(PERSONAL_CLAIM_STATE_PREFIX.length))||!nonceValid(verifier))return bad();
-      const code=q.has('error')?null:q.get('code');
-      if(!q.has('error')&&(!code||code.length>4096||/[\u0000-\u001f\u007f]/.test(code)))return bad();
-      const result=await stub.personalClaimComplete({stateDigest:await personalDigest('state',state),browserDigest:await personalDigest('browser',verifier),appId:cfg.appId!,redirectUri:providerCfg().redirectUri},code);
+      const cancelled=q.has('error')||q.has('error_reason'),code=cancelled?null:q.get('code');
+      if(!cancelled&&(!code||code.length>4096||/[\u0000-\u001f\u007f]/.test(code)))return bad();
+      let result:string;try{result=await stub.personalClaimComplete({stateDigest:await personalDigest('state',state),browserDigest:await personalDigest('browser',verifier),appId:cfg.appId!,redirectUri:providerCfg().redirectUri},code);}catch{result='failed';}
       if(result==='invalid')return bad();
       const safe=['claimed','declined','not_found','failed'].includes(result)?result:'failed',h=headers();h.set('location','/?personalClaim='+safe);h.append('set-cookie',clearClaimFlowCookie);return new Response(null,{status:303,headers:h});
     }
