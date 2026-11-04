@@ -57,7 +57,7 @@ async function profileBody(request: Request): Promise<unknown> {
   finally {if(timer!==undefined)clearTimeout(timer);void reader.cancel().catch(()=>{});}
 }
 
-async function socialBody(request:Request):Promise<{mode:unknown;expectedRevision:number}> {
+export async function socialBody(request:Request):Promise<{mode:unknown;expectedRevision:number}> {
  if(!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')||!request.body)throw Error('invalid_social_status');
  const reader=request.body.getReader(),bytes:number[]=[];let timer:ReturnType<typeof setTimeout>|undefined;
  const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('invalid_social_status')),1000);});
@@ -155,14 +155,16 @@ export async function connectedRoutes(request: Request, url: URL, auth: OwnerAut
   // ----- reviewer Muse reset (G-08): the reviewer session only, for its own Muse -----
   if (p === '/api/owner/reset' && method === 'POST') {
     if (!originAllowed(request, cfg.origins)) return json({error: 'origin_not_allowed'}, 403);
-    if (!reviewerConfigured(cfg.tokens)) return json({error: 'not_configured', detail: 'The reviewer principal is not configured: REVIEWER_CONTROL_TOKEN is missing or invalid.'}, 503);
+    if (!reviewerConfigured(cfg.tokens)&&auth.owner?.principal!=='owner') return json({error: 'not_configured', detail: 'The reviewer principal is not configured: REVIEWER_CONTROL_TOKEN is missing or invalid.'}, 503);
     const pre = gate({write: true});
     if (pre instanceof Response) return pre;
-    if (pre.principal !== 'reviewer') return json({error: 'reviewer_only', detail: 'Only the reviewer session can reset its Muse.'}, 403);
     const b = await body(request, 512);
     if (!b) return json({error: 'bad_request'}, 400);
     const muse = b.muse === undefined ? PRINCIPALS.reviewer.muses[0] : String(b.muse);
-    const s = gate({write: true, muse});
+    const shared=muse==='10-judge'&&(pre.principal==='owner'||pre.principal==='reviewer');
+    if(!shared&&!reviewerConfigured(cfg.tokens))return json({error:'not_configured'},503);
+    if(!shared&&pre.principal!=='reviewer')return json({error:'reviewer_only'},403);
+    const s = gate({write:true,...(shared?{}:{muse})});
     if (s instanceof Response) return s;
     const r = await stub.resetMuse(muse, s.ownerId);
     if (r.ok) return json(r);

@@ -20,7 +20,7 @@ function boot(t,{file=':memory:',enabled=true,roster=RESIDENT_ROSTER_MODE,cap=0,
  const ledger=new Ledger(sql,{dailyCapUsd:cap,now:()=>NOW});ledger.init();const opts={worldId:'roster-test',ledger,model,meetingGate:'off',residentLife:p,beforeCommit};const runtime=new WorldRuntime(sql,opts);runtime.init(NOW);return {db,sql,owners,base,ownership,policy:p,ledger,runtime,opts,store:new ResidentLifeStore(sql)};
 }
 test('catalog separates 17 immutable instance IDs from ten reusable role and appearance templates',()=>{
- assert.equal(RESIDENT_INSTANCES.length,17);assert.equal(HARNESS_IDS.length,10);assert.equal(ACTOR_IDS.length,27);assert.equal(new Set(ACTOR_IDS).size,27);
+ assert.equal(RESIDENT_INSTANCES.length,17);assert.equal(HARNESS_IDS.length,10);assert.equal(ACTOR_IDS.length,28);assert.equal(new Set(ACTOR_IDS).size,28);
  for(const r of RESIDENT_INSTANCES){assert.equal(harnessById(r.id).id,r.id);assert.equal(harnessRoleId(r.id),r.roleId);assert.equal(harnessById(r.id).name,r.name);assert.ok(HARNESS_IDS.includes(r.appearanceId));}
  for(const id of ['nr_forged','pm_alba','constructor','__proto__']){assert.equal(isResidentInstance(id),false);assert.equal(hasActorHarness(id),false);assert.throws(()=>harnessById(id));}
 });

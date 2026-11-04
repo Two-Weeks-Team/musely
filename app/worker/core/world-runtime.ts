@@ -1,3 +1,5 @@
+import {harnessById} from '../../src/engine/harness.ts';
+import {JUDGE_MUSE} from '../../src/engine/judge-muse.ts';
 import {PUBLIC_SPEECH_NOT_ENGLISH} from './resident-english-speech.ts';
 import {compactResidentContext} from './resident-recovery-context.ts';
 import {residentCallJitterMs} from './resident-call-jitter.ts';
@@ -70,6 +72,7 @@ export type SpotlightOrigin = 'visitor' | 'judge' | 'connected';
 export type SpotlightRequestResult = {ok: true; muse: string; position: number; already: boolean; eventIds: string[]} | {ok: false; reason: 'unknown_muse' | 'paused' | 'queue_full' | 'hourly_limit' | 'self_directed' | 'model_unavailable'};
 
 export type RuntimeOptions = {
+  judgeMuseEnabled?:()=>boolean;
   perception?:PerceptionPolicy;
   residentValuesEnabled?:boolean;
   residentReflection?:{enabled:boolean;persona:(id:string)=>string};
@@ -241,6 +244,21 @@ export class WorldRuntime {
         },changed=>changed,'external',()=>({action:'resident_roster',roster:policy.roster}));
       }
     }
+    if(this.opts.judgeMuseEnabled?.()===true){
+      const world=this.state(),existing=world.muses.find(m=>m.id===JUDGE_MUSE.id);
+      if(existing&&(existing.residentRole!==JUDGE_MUSE.roleId||existing.profile||existing.controlMode==='personal'))throw Error('judge_muse_identity_collision');
+      const life=this.lifeStore?.load(this.worldId);
+      if(!existing||life&&!life.state.residents.some(r=>r.id===JUDGE_MUSE.id))this.commit(now,'judge-muse-v1',(s,emit)=>{
+        if(this.opts.judgeMuseEnabled?.()!==true)throw Error('judge_muse_unavailable');
+        const h=harnessById(JUDGE_MUSE.id);
+        if(!s.muses.some(m=>m.id===JUDGE_MUSE.id)){
+          if(s.muses.length>=64)throw Error('resident world capacity');
+          s.muses.push({id:JUDGE_MUSE.id,residentRole:JUDGE_MUSE.roleId,place:'commons:campfire',travel:null,beat:null,inventory:[h.roleItem!],memory:[],reflection:'',lastMet:{},intent:null,wants:{goal:h.wants.goal,items:[...h.wants.items],source:'harness',updatedAt:now}});
+          emit({at:now,source:'rule',kind:'resident_join',muse:JUDGE_MUSE.id,place:'commons:campfire',data:{roster:'shared-judge-v1'},tags:[]});
+        }
+        if(this.lifeStore){const row=this.lifeStore.load(this.worldId)!;if(!row.state.residents.some(r=>r.id===JUDGE_MUSE.id)){row.state.residents.push({id:JUDGE_MUSE.id,roleId:JUDGE_MUSE.roleId,goal:h.wants.goal,routine:[{hour:0,place:'commons:campfire'}],memories:[],promises:[],lastServedAt:0,served:0});this.lifeStore.saveInTransaction(this.worldId,row.revision,row.state);}}
+      },changed=>changed,'external',()=>({action:'judge_muse_enrollment'}));
+    }
     this.reconcileResidentFreeze(now);
   }
 
@@ -287,17 +305,18 @@ export class WorldRuntime {
 
   private registryControls(muse:string):boolean {
     const kind=this.opts.residentLife?.ownershipKind(muse);
+    if(muse===JUDGE_MUSE.id&&this.opts.judgeMuseEnabled?.()!==true)return true;
     return kind==='personal'||kind==='unknown'||(isResidentInstance(muse)&&(this.opts.residentLife?.enabled!==true||this.opts.residentLife.roster!=='neighborhood-24-v1'));
   }
 
   /** Current server policy for signed preconditions, including the interval before the next alarm. */
   residentUnavailable(id:string):boolean {
     const m=this.state().muses.find(m=>m.id===id);
-    return !!m&&isResidentInstance(id)&&m.residentRole===harnessRoleId(id)&&m.controlMode!=='personal'&&!m.profile&&this.registryControls(id);
+    return !!m&&(isResidentInstance(id)||id===JUDGE_MUSE.id)&&m.residentRole===harnessRoleId(id)&&m.controlMode!=='personal'&&!m.profile&&this.registryControls(id);
   }
 
   private frozenResidents(world:WorldState):string[]{
-    return world.muses.filter(m=>isResidentInstance(m.id)&&this.registryControls(m.id)).map(m=>m.id);
+    return world.muses.filter(m=>(isResidentInstance(m.id)||m.id===JUDGE_MUSE.id)&&this.registryControls(m.id)).map(m=>m.id);
   }
 
   private residentIdleIds(life:LifeState|undefined,world:WorldState,now:number):string[]{
@@ -682,7 +701,7 @@ export class WorldRuntime {
       const out = r.output as Decision['output'] & {freedom?: string};
       // A recorded answer is used only if it was made for this freedom; otherwise the scenario continues.
       if (r.source === 'replay' && out?.freedom === freedom && (r.recorded as {muse?: string} | null)?.muse === muse) return {decision: {muse, freedom, source: 'replay' as const, output: out, evidence: {replayOf: r.recorded}}, info: {source: 'replay', reason}};
-      return {decision: null, info: {source: 'scripted', reason}};
+      return {decision: null, info: {source: muse===JUDGE_MUSE.id?'rule':'scripted', reason}};
     };
     // A connected Muse thinks in its owner's runtime (8.8): the team key never decides for it.
     if (!this.opts.model?.key) return fallback('not_connected');

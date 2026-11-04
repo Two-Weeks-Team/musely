@@ -9,7 +9,7 @@ import {PRINCIPALS} from './owner-session.ts';
 import {ResidentGoalStore} from './resident-wants-model.ts';
 import {type WorldRuntime} from './world-runtime.ts';
 export type ResidentGoalLoopPolicy={enabled?:boolean;goals:ResidentGoalStore;ownership:(id:string)=>'resident'|'personal'|'legacy'|'unknown';authorize:(s:WorldState,actor:string,peer:string|null,at:number)=>boolean;goalBeatsFor:(actor:string)=>readonly string[]};
-const eligible=(s:WorldState,id:string,p:ResidentGoalLoopPolicy,now:number)=>hasResidentHarness(id)&&!Object.values(PRINCIPALS).some(x=>x.muses.includes(id))&&p.ownership(id)==='resident'&&!s.paused?.[id]&&!isRuntimeControlled(s,id,now)&&p.authorize(s,id,null,now);
+const eligible=(s:WorldState,id:string,p:ResidentGoalLoopPolicy,now:number)=>hasResidentHarness(id)&&!Object.values(PRINCIPALS).some(x=>x.id!=='shared-judge'&&x.muses.includes(id))&&p.ownership(id)==='resident'&&!s.paused?.[id]&&!isRuntimeControlled(s,id,now)&&p.authorize(s,id,null,now);
 /** Receipts are emitted only from authoritative committed craft evidence, in caller's shared SQL transaction. */
 export function completeResidentGoalsInTransaction(p:ResidentGoalLoopPolicy,before:WorldState,after:WorldState,events:readonly WorldEvent[],now:number){
  if(p.enabled!==true)return;

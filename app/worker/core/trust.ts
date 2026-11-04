@@ -1,3 +1,4 @@
+import {JUDGE_MUSE} from '../../src/engine/judge-muse.ts';
 import {currentPersonalClaim, type CurrentPersonalClaim} from './personal-claim-state.ts';
 import {actorProfile} from '../../src/engine/participants.ts';
 // Trust registry and executor keys inside the world Durable Object (direction v2, 6 and 12.1).
@@ -76,6 +77,14 @@ export class Trust implements TrustRegistry {
         }
       }
     }
+  }
+
+  /** Internal resident root only; no browser/agent key is issued. */
+  async ensureJudgeAgent(){
+    if(this.agentByMuse(JUDGE_MUSE.id))return;
+    const root=await generateKeyPair(true),jwk=await crypto.subtle.exportKey('jwk',root.privateKey);
+    this.sql.exec('INSERT INTO private_keys (kid,jwk) VALUES (?,?)',root.kid,JSON.stringify(jwk));
+    this.sql.exec('INSERT INTO agents (agent_id,muse_id,root_jwk,kind,label) VALUES (?,?,?,?,?)',root.kid,JUDGE_MUSE.id,JSON.stringify(root.publicJwk),'resident',JUDGE_MUSE.label);
   }
 
   agentByMuse(museId: string): AgentRow | null {

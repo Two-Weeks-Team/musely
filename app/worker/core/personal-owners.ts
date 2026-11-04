@@ -1,3 +1,4 @@
+import {JUDGE_MUSE} from '../../src/engine/judge-muse.ts';
 // Private registry behind verified personal routes; no agent credentials or world entry are issued here.
 // ensurePrincipal requires an already-verified provider subject from its future trusted auth caller.
 // registerDraft accepts server-provisioned agent/root references, never private key material or a claim verdict.
@@ -144,6 +145,7 @@ export function createOwnershipAdapter(owners: PersonalOwners) {
   const resolve = (actorId: string): Ownership => {
     const actor = owners.actor(actorId);
     if (actor) return {kind: 'personal', actorId, principalId: actor.principalId, ownerId: actor.principalId};
+    if(actorId===JUDGE_MUSE.id)return {kind:'resident',actorId};
     const legacy = Object.values(PRINCIPALS).find(p => p.muses.includes(actorId));
     if (legacy) return {kind: 'legacy', actorId, principalId: legacy.id, ownerId: legacy.ownerId};
     return HARNESS_IDS.includes(actorId) ? {kind: 'resident', actorId} : {kind: 'unknown', actorId};
