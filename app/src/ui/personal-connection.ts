@@ -110,17 +110,14 @@ export function mountPersonalConnection(host:HTMLElement,options:Options={}){
   const issue=button('issue-key',issueIntent?uiText('지난 키 요청 확인 / Check last key request'):uiText('연결 키 만들기 / Create connection key'),issueKey);
   if(data.authority?.active){if(readyGrant&&!currentKey&&!raw)main(issue);else advanced.append(issue);}
   if(data.authority?.active&&currentKey){
-   const pictures=el('ol');pictures.className='entry-setup-pictures';
-   for(const [title,icon,caption]of[
-    [uiText('1 · Muse 설정 열기 / Open Muse settings'),'⚙',uiText('설정 / Settings')],
-    [uiText('2 · 맞춤 커넥터 추가 / Add custom connector'),'＋',uiText('Musely · https://musely.net/mcp')],
-    [uiText('3 · 보안 API 키 칸에 붙여넣기 / Paste in the secure API key field'),'••••••••',uiText('채팅창에는 붙이지 마세요 / Never paste in chat')]]){
-    const step=el('li'),picture=el('div',icon);picture.className='entry-setup-picture';picture.setAttribute('role','img');picture.setAttribute('aria-label',title);step.append(el('strong',title),picture,el('p',caption));pictures.append(step);
-   }
-   root.append(pictures);
+   const steps=el('ol');steps.className='entry-setup-steps';
+   const first=el('li',uiText('Muse 설정 열기 / Open Muse settings')),second=el('li'),third=el('li',uiText('키 붙여넣기 / Paste the key'));
+   const endpoint=el('span','Musely · https://musely.net/mcp');endpoint.className='entry-mcp-endpoint';
+   const copyUrl=button('copy-mcp-url',uiText('URL 복사 / Copy URL'),async()=>{if(!active()||!panelVisible||!docVisible())return;const mine=generation;try{const clipboard=options.clipboard??globalThis.navigator?.clipboard;need(clipboard);await clipboard.writeText('https://musely.net/mcp');if(!current(mine))return;message=uiText('Musely MCP 주소를 복사했어요. / Musely MCP URL copied.');}catch{if(!current(mine))return;message=uiText('주소를 복사하지 못했어요. 위 주소를 선택해 복사해 주세요. / Could not copy the URL. Select the address above to copy it.');}if(current(mine)&&panelVisible&&docVisible())render();});
+   second.append(el('span',uiText('맞춤 커넥터 추가 / Add custom connector')),endpoint,copyUrl);steps.append(first,second,third);root.append(steps);
   }
   if(raw&&panelVisible&&docVisible()){
-   const label=el('label',uiText('한 번만 보이는 연결 키 / One-time connection key')),input=el('input');input.type='password';input.name='one-time-key';input.readOnly=true;input.autocomplete='off';input.spellcheck=false;input.value=raw;rawInput=input;label.append(input);root.append(label);
+   const label=el('label',uiText('Musely 연결 키 · 한 번만 표시 / Musely connection key · shown once')),input=el('input');input.type='password';input.name='one-time-key';input.readOnly=true;input.autocomplete='off';input.spellcheck=false;input.value=raw;rawInput=input;label.append(input);root.append(label,el('p',uiText('Muse → 설정 → 맞춤 커넥터 (Musely · https://musely.net/mcp) → 보안 API 키 칸에 붙여넣어 주세요. 다른 사람에게 공개하지 마세요. / Paste it into Muse → Settings → Custom connector (Musely · https://musely.net/mcp) → secure API key field. Keep it private.')));
    const copy=button('copy-key',uiText('키 복사 / Copy key'),async()=>{
     if(!raw||!panelVisible||!docVisible())return;
     const copyGeneration=generation,copyKeyId=rawKeyId,copyValue=raw,stillCurrent=()=>current(copyGeneration)&&panelVisible&&docVisible()&&rawKeyId===copyKeyId&&raw===copyValue;
