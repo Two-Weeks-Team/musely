@@ -1,6 +1,7 @@
 // Item catalog and reward rules (direction v2, 9 and 9.1). Principle: convenience can be sold,
 // provenance cannot — place stamps, postcards and relics are never for sale or trade.
 // Items go to the agents; people watch. This is reward design, not learning (no RL claim).
+import {CONVERSATION_RANGE_M} from './speech.ts';
 import {PLACES, placeById, distanceM, type Place, type PlaceKind} from './places.ts';
 import {OWNER_MUSE, sameArea} from './location.ts';
 import {canonicalize} from '../identity/jcs.ts';
@@ -125,10 +126,13 @@ const FIND_AT: Partial<Record<PlaceKind, string[]>> = {
   library: ['reading_list', 'postage_stamp'], bookshelf: ['reading_list'], campfire: ['invite_token'], landmark: ['spark', 'event_pass'], ice_cream: ['snack_box'],
 };
 
+/** Read-only public discovery catalog. This does not acquire or guarantee any item. */
+export const publicCatalogItems = (kind:PlaceKind):readonly string[] => [...(FIND_AT[kind] ?? [])];
+
 // Abuse limits (9, shown on screen): per Muse one discovery per place per day, at most 10 a day,
 // none above walking speed, history is append-only. Decay (9.1): repeat finds of the same kind give 0.
 // A Recharge Ticket adds one discovery after the 10 (at most `rechargesPerDay` a day).
-export const RULES = {perPlacePerDay: 1, perDay: 10, pairTradesPerDay: 1, tradeRangeM: 100, maxCounterOffers: 2, busStopsForTransitPass: 3, rechargesPerDay: 1} as const;
+export const RULES = {perPlacePerDay: 1, perDay: 10, pairTradesPerDay: 1, tradeRangeM: CONVERSATION_RANGE_M, maxCounterOffers: 2, busStopsForTransitPass: 3, rechargesPerDay: 1} as const;
 /** Entries the world state keeps; older ones leave the state but the chain anchor still links to them. */
 export const HISTORY_KEEP = 200;
 

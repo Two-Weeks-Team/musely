@@ -19,7 +19,7 @@ export async function bootWorldDo(t){
  const pair=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
  const root=await crypto.subtle.exportKey('jwk',pair.privateKey);
  const tokens={owner:'fixture-owner-control-token-000001',peer:'fixture-peer-control-token-000002'};
- const env={PUBLIC_ORIGIN:HOST,DAILY_BUDGET_USD:'0.00001',OWNER_ROOT_JWK:JSON.stringify(root),OWNER_CONTROL_TOKEN:tokens.owner,DEMO_PEER_CONTROL_TOKEN:tokens.peer,MODEL_BASE:'https://invalid.test',MODEL_ID:'offline-fixture',MODEL_API_KEY:undefined};
+ const env={LOCAL_PERCEPTION_MODE:'local-v1',PUBLIC_ORIGIN:HOST,DAILY_BUDGET_USD:'0.00001',OWNER_ROOT_JWK:JSON.stringify(root),OWNER_CONTROL_TOKEN:tokens.owner,DEMO_PEER_CONTROL_TOKEN:tokens.peer,MODEL_BASE:'https://invalid.test',MODEL_ID:'offline-fixture',MODEL_API_KEY:undefined};
  const world=new WorldDO(ctx,env);await ready;
  // Claim is deliberately a setup fixture, not a real external identity verification result.
  world.setClaim('owner-muse',{status:'claimed',path:'fixture',fingerprint:'fixture-only',machineVerified:false});

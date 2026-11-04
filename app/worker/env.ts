@@ -13,6 +13,8 @@ export interface Env {
   PUBLIC_ORIGIN: string;
   /** Default absent/off. Server-only experimental installation; never set by a browser. */
   WORLD_LIFE_MODE?: string;
+  /** Public in-game AOI only; absent/off disables derived local notices. */
+  LOCAL_PERCEPTION_MODE?: string;
   /** Public label only; absent/off retains the legacy world and private routes. */
   SOCIAL_STATUS_MODE?: string;
   /** Confirmed resident persona tendencies only; absent/off retains legacy behavior. */

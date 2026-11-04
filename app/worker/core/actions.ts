@@ -1,4 +1,5 @@
 import {residentValues,residentRhythmPrompt} from '../../src/engine/resident-values.ts';
+import {perceptionPacket,perceptionMessage,perceptionOutputProblem} from './local-perception-runtime.ts';
 // Allowed Muse Spark actions (direction v2, 15): spotlight, encounter, trade, negotiate, challenge.
 // The server validates a small structured input and assembles the prompt from the character harness.
 // Free text is never forwarded as instructions; another agent's words enter only as wrapped data.
@@ -115,12 +116,14 @@ export function buildMessages(action: Action, input: ActionInput): unknown[] {
     case 'spotlight':
       return [
         {role: 'system', content: persona(i.muse,i.residentValuesEnabled===true) + '\n' + RULES + `\nThis turn you have freedom "${i.freedom}" (where = choose a place; who = choose whom to approach; offer = choose what to propose or trade; plan = choose your next plan). Decide for yourself instead of following a script.`},
-        {role: 'user', content: JSON.stringify({local_time: i.localTime, you_are_at: i.place, places_nearby: i.places, muses_nearby: i.muses.map((m: any) => ({...m, name: named(m.muse)})), your_items: i.items, recent_memory: i.memory})},
+        {role: 'user', content: JSON.stringify({local_time: i.localTime, you_are_at: perceptionPacket(input)?.current.place?.name??(perceptionPacket(input)?'In transit':i.place), places_nearby: i.places, ...(!perceptionPacket(input)?{muses_nearby:i.muses.map((m: any) => ({...m, name: named(m.muse)}))}:{}), your_items: i.items, recent_memory: i.memory})},
+        ...(perceptionMessage(input)?[perceptionMessage(input)!]:[]),
       ];
     case 'encounter':
       return [
         {role: 'system', content: persona(i.muse,i.residentValuesEnabled===true) + '\n' + RULES + '\nYou have just met another Muse whose signed Agent Card and delegation were verified. Choose how to engage.'},
-        {role: 'user', content: JSON.stringify({local_time: i.localTime, place: i.place, other_muse: named(i.other), your_items: i.items, their_items: i.otherItems, recent_memory: i.memory}) + (i.incoming ? '\nThey said: ' + wrap(i.incoming) : '')},
+        {role: 'user', content: JSON.stringify({local_time: i.localTime, place: perceptionPacket(input)?.current.place?.name??(perceptionPacket(input)?'In transit':i.place), ...(!perceptionPacket(input)?{other_muse:named(i.other),their_items:i.otherItems}:{}), your_items: i.items, recent_memory: i.memory}) + (i.incoming ? '\nThey said: ' + wrap(i.incoming) : '')},
+        ...(perceptionMessage(input)?[perceptionMessage(input)!]:[]),
       ];
     case 'trade':
       return [
@@ -200,6 +203,7 @@ export function checkOutput(action: Action, input: ActionInput, out: any): strin
   if (structural) return structural;
   const i = input as any;
   if (action === 'spotlight' && out.freedom !== i.freedom) return 'freedom mismatch';
+  if(action==='spotlight'){const problem=perceptionOutputProblem(input,out);if(problem)return problem;}
   // An encounter answer may only name an item the answering Muse holds (it is shown in public).
   if (action === 'encounter' && out.item && !i.items.includes(out.item)) return 'item not held';
   if (action === 'negotiate') {

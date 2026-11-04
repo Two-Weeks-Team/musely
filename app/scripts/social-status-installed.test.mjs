@@ -43,7 +43,7 @@ test('current personal session, entry and application binding are required befor
 });
 
 test('MCP current world exposes own and neighbor status labels only; recorded state and OFF stay unchanged',async t=>{
- const a=await bootWorldDo(t,{mode:'sandbox-v1',envOverrides:ON});a.prepare();
+ const a=await bootWorldDo(t,{mode:'sandbox-v1',envOverrides:{...ON,LOCAL_PERCEPTION_MODE:'local-v1'}});a.prepare();
  const p=await a.ownerFor('owner'),q=await a.ownerFor('demo-peer');
  a.world.ownerSocialStatusSet(p,'00-jolly',{mode:'busy',expectedRevision:0});
  a.world.ownerSocialStatusSet(q,'09-copper',{mode:'do_not_disturb',expectedRevision:0});

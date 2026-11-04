@@ -1,3 +1,4 @@
+import {publicCatalogItems} from '../src/engine/items.ts';
 import {losePersonalClaim} from './core/personal-claim-loss.ts';
 import {PersonalClaims,type ClaimFlowBinding} from './core/personal-claims.ts';
 import {LegacyProfile,type LegacyOwnerProof} from './core/legacy-profile.ts';
@@ -80,6 +81,9 @@ export class WorldDO extends DurableObject<Env> {
     // The runtime commits inside the storage transaction; every other store shares the same SQL handle.
     const txSql = {exec: (q: string, ...b: unknown[]) => ctx.storage.sql.exec(q, ...b), transactionSync: <T>(fn: () => T) => ctx.storage.transactionSync(fn)};
     const active=()=>worldLifeEnabled(env.WORLD_LIFE_MODE);
+    const perceptionMode=env.LOCAL_PERCEPTION_MODE;
+    if(perceptionMode!==undefined&&perceptionMode!==''&&perceptionMode!=='off'&&perceptionMode!=='local-v1')throw Error('unsupported_LOCAL_PERCEPTION_MODE');
+    const perceptionEnabled=perceptionMode==='local-v1';
     const valuesMode=env.RESIDENT_VALUES_MODE;
     if(valuesMode!==undefined&&valuesMode!==''&&valuesMode!=='off'&&valuesMode!=='confirmed-v1')throw Error('unsupported_RESIDENT_VALUES_MODE');
     const valuesEnabled=valuesMode==='confirmed-v1';
@@ -108,6 +112,7 @@ export class WorldDO extends DurableObject<Env> {
     if(active())this.worldLife=new WorldLifeController(txSql,this.personalAuth.owners,this.trust,this.ledger,env.MODEL_API_KEY?{base:env.MODEL_BASE,key:env.MODEL_API_KEY,model:env.MODEL_ID,timeoutMs:8000}:null,muse=>this.personalWorld.ownerOf(muse),active);
     this.runtime = new WorldRuntime(txSql, {
       ...this.worldLife?.runtimeOptions(),
+      ...(perceptionEnabled?{perception:{enabled:true,publicCatalogItems,publicGatherings:(worldId:string,now:number)=>this.worldLife?.publicGatherings(worldId,now)??[]}}:{}),
       ...(valuesEnabled?{residentValuesEnabled:true}:{}),
       ...(reflectionEnabled?{residentReflection:{enabled:true,persona:residentPersona}}:{}),
       ...(socialEnabled?{socialStatus:currentSocialStatus}:{}),

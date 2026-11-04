@@ -19,6 +19,7 @@
   "vars": {
     "WORLD_LIFE_MODE": "sandbox-v1",
     "SOCIAL_STATUS_MODE": "public-v1",
+    "LOCAL_PERCEPTION_MODE": "local-v1",
     "RESIDENT_VALUES_MODE": "confirmed-v1",
     "RESIDENT_REFLECTION_MODE": "private-v1",
     "RESIDENT_ACTIONS_MODE": "action-v1",

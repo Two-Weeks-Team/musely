@@ -1,9 +1,9 @@
 import {CONVERSATION_RANGE_M} from '../../src/engine/speech.ts';
+import {localPerception,type LocalPerception} from '../../src/engine/local-perception.ts';
 // Public facts that help a personal Muse decide what interests it next. No model, schedule or actions run here.
 import {participantName,participantRole} from '../../src/engine/participants.ts';
-import {distanceM, placeById, type Place} from '../../src/engine/places.ts';
+import {placeById, type Place} from '../../src/engine/places.ts';
 import {areaContains, nearbyPlaces, ownerArea} from '../../src/engine/location.ts';
-import {RULES} from '../../src/engine/items.ts';
 import {wrapUntrusted} from '../../src/identity/untrusted.ts';
 import type {Introduction, MuseState, WorldState} from '../../src/engine/world.ts';
 
@@ -29,15 +29,13 @@ export function startIntroduction(s: WorldState, from: string, to: string, at: n
   return entry;
 }
 
-export function encounterOpportunities(s: WorldState, museId: string, _now: number) {
+export function encounterOpportunities(s: WorldState, museId: string, now: number,perception:LocalPerception|null=localPerception(s,museId,now)) {
   const me = participant(s, museId), here = placeById(me.place);
   const canAct = !s.paused?.[museId] && !me.travel;
   const area = s.owner?.muse === museId ? ownerArea(s.owner) : null;
-  const newMuses = canAct ? s.muses.filter(other => other.id !== museId && !other.travel && !s.paused?.[other.id] && !introduced(s, museId, other.id))
-    .map(other => ({other, distance: distanceM(here, placeById(other.place))}))
-    .filter(row => row.distance <= CONVERSATION_RANGE_M)
-    .sort((a, b) => a.distance - b.distance || a.other.id.localeCompare(b.other.id))
-    .map(({other, distance}) => ({id: other.id, name: participantName(s,other.id), role: participantRole(s,other.id), place: placeView(placeById(other.place)), distance_m: Math.round(distance), public_wants: {goal: wrapUntrusted(other.wants.goal, 'other_agent_public_wants'), items: [...other.wants.items]}})) : [];
+  const newMuses = canAct ? (perception?.conversation??[]).filter(other=>!other.moving&&!s.muses.find(m=>m.id===other.id)?.travel&&!s.paused?.[other.id]&&!introduced(s,museId,other.id))
+    .sort((a,b)=>a.distanceM-b.distanceM||a.id.localeCompare(b.id))
+    .map(other=>({id:other.id,name:other.name,role:participantRole(s,other.id),place:placeView(placeById(other.placeId!)),distance_m:Math.round(other.distanceM),public_wants:{goal:wrapUntrusted(other.wants.goal,'other_agent_public_wants'),items:[...other.wants.items]}})) : [];
   return {
     here: placeView(here), can_act: !!canAct,
     new_muses: newMuses,
@@ -47,28 +45,29 @@ export function encounterOpportunities(s: WorldState, museId: string, _now: numb
 }
 
 /** A queued notice remains visible after the peer leaves; current availability is always re-evaluated. */
-export function encounterNotices(s: WorldState, museId: string) {
+export function encounterNotices(s: WorldState, museId: string,now=Date.now(),perception:LocalPerception|null=localPerception(s,museId,now)) {
   const me = participant(s, museId);
   return (s.inbox?.encounters?.[museId] ?? []).filter(notice => s.muses.some(other => other.id === notice.other) && !introduced(s, museId, notice.other))
     .map(notice => {
-      const other = participant(s, notice.other);
-      return {...notice, name: participantName(s,other.id), current_place: placeView(placeById(other.place)),
-        can_say_hello_now: !me.travel && !other.travel && !s.paused?.[museId] && !s.paused?.[other.id] && distanceM(placeById(me.place), placeById(other.place)) <= CONVERSATION_RANGE_M};
+      const other=participant(s,notice.other),near=perception?.conversation.find(m=>m.id===other.id);
+      return {id:notice.id,other:notice.other,place:notice.place,at:notice.at,source:notice.source,
+        ...(near?{name:near.name,...(near.placeId?{current_place:placeView(placeById(near.placeId))}:{})}:{}),
+        can_say_hello_now:!!near&&!me.travel&&!other.travel&&!s.paused?.[museId]&&!s.paused?.[other.id]};
     });
 }
 
 /** A public intention is not a negotiated offer: it has no Task, deadline or implied consent. */
-export function incomingTradeIntents(s: WorldState, museId: string) {
-  const me = participant(s, museId), here = placeById(me.place);
+export function incomingTradeIntents(s: WorldState, museId: string,now=Date.now(),perception:LocalPerception|null=localPerception(s,museId,now)) {
+  const me = participant(s, museId);
   return s.muses.filter(other => other.id !== museId && other.intent?.kind === 'trade' && other.intent.target === museId)
     .sort((a,b) => a.id.localeCompare(b.id))
-    .map(other => ({
-      from: other.id, name: participantName(s,other.id), place: placeView(placeById(other.place)),
+    .map(other => {const near=perception?.conversation.find(m=>m.id===other.id);return({
+      from: other.id,...(near?{name:near.name,...(near.placeId?{place:placeView(placeById(near.placeId))}:{})}:{}),
       give: other.intent!.give ?? null, want: other.intent!.want ?? null,
-      travelling: !!other.travel, paused: !!s.paused?.[other.id],
-      in_trade_range: !me.travel && !other.travel && !s.paused?.[museId] && !s.paused?.[other.id] && distanceM(here,placeById(other.place)) <= RULES.tradeRangeM,
+      ...(near?{travelling:!!other.travel,paused:!!s.paused?.[other.id]}:{}),
+      in_trade_range: !!near&&!me.travel && !other.travel && !s.paused?.[museId] && !s.paused?.[other.id] && near.distanceM <= CONVERSATION_RANGE_M,
       status: 'intent_only' as const, task_id: null,
-    }));
+    });});
 }
 
 export const PERSONAL_CONTINUATION = {
