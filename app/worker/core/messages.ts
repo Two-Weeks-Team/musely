@@ -23,7 +23,7 @@ import {itemSpec, itemName, appendHistory, takeTimed, transferItem, grantItem, R
 import {placeCell} from '../../src/engine/location.ts';
 import {beginTrip} from '../../src/engine/travel.ts';
 import {rngFor} from '../../src/engine/rng.ts';
-import {emptyInbox, nextId, deliverMessage, sentToday, isRuntimeControlled, taskView, TASK_TTL_MS, DAILY, type Inbox, type Task, type CampfireInvite} from '../../src/engine/inbox.ts';
+import {emptyInbox, nextId, deliverMessage, sentToday, isRuntimeControlled, isResidentFrozen, taskView, TASK_TTL_MS, DAILY, type Inbox, type Task, type CampfireInvite} from '../../src/engine/inbox.ts';
 import type {WorldState, MuseState, WorldEvent, Hooks} from '../../src/engine/world.ts';
 import {findTask, statusOf, transitionTask, registerTaskKind} from './tasks.ts';
 
@@ -115,7 +115,7 @@ export function inviteCampfire(st: WorldState, me: string, a: {to: string[]; tex
   const blocked = blockedText(a.text, me, null, 'An invitation line', live, at); if (blocked) return blocked;
   if (!m.inventory.includes('invite_token')) return {ok: false, reason: 'needs_invite_token'};
   if (invitesOf(inbox).some(x => x.from === me && x.status === 'open' && x.expiresAt > at)) return {ok: false, reason: 'open_invite_exists'};
-  const unavailable = a.to.filter(id => !!st.paused?.[id] || check(id, at) !== null);
+  const unavailable = a.to.filter(id => !!st.paused?.[id] || isResidentFrozen(st,id) || check(id, at) !== null);
   if (unavailable.length === a.to.length) return {ok: false, reason: 'no_invitee_available'};
   m.inventory.splice(m.inventory.indexOf('invite_token'), 1);
   const inv: CampfireInvite = {id: nextId(inbox, 'invite'), from: me, to: [...a.to], place: CAMPFIRE, note: a.text, at, expiresAt: at + INVITE_TTL_MS, status: 'open', answers: {}};
@@ -141,7 +141,7 @@ export function inviteCampfire(st: WorldState, me: string, a: {to: string[]; tex
 function present(st: WorldState, inv: CampfireInvite, now: number) {
   return [inv.from, ...inv.to].filter(id => {
     const m = st.muses.find(x => x.id === id);
-    if (!m || st.paused?.[id] || m.travel || m.place !== inv.place) return false;
+    if (!m || st.paused?.[id] || isResidentFrozen(st,id) || m.travel || m.place !== inv.place) return false;
     if (id === inv.from) return true;
     const answer = inv.answers[id];
     return answer?.answer === 'accept' || (answer?.answer === 'pending' && isRuntimeControlled(st, id, now) && answer.comingAt !== undefined && answer.comingAt >= inv.at);
@@ -198,7 +198,7 @@ export function inviteUpkeep(s: WorldState, now: number): E[] {
   const out: E[] = [], list = s.inbox?.invites;
   if (!list?.length) return out;
   for (const inv of list) {
-    if (inv.status !== 'open') continue;
+    if (inv.status !== 'open' || isResidentFrozen(s,inv.from)) continue;
     if (s.paused?.[inv.from]) {
       inv.status = 'cancelled'; inv.closedAt = now;
       out.push({at: now, source: 'rule', kind: 'campfire_invite_cancelled', muse: inv.from, place: inv.place, line: 'A campfire invite was cancelled: the owner revoked the delegation', data: {invite_id: inv.id, reason: 'delegation_revoked'}, tags: []});
@@ -379,3 +379,4 @@ export function answerHelp(st: WorldState, me: string, a: {taskId: string; answe
   completeHelp(st, t, 'live', live, at);
   return done({result: help.result});
 }
+

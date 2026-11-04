@@ -6,15 +6,16 @@ import type {ActorProfile} from '../identity/participant.ts';
 // enter only as recorded inputs (`decision`) and are stored in the run log; replays feed them back.
 import {BEATS, CLIP_FALLBACK, inHours, type Beat} from './beats.ts';
 import {PLACES, PLACE_BY_ID, placeById, distanceM, WALK_MPS, type Place} from './places.ts';
-import {HARNESSES, harnessById} from './harness.ts';
+import {actorLabel, knownActorNamed} from './actor-display.ts';
+import {HARNESSES, harnessById, hasActorHarness, harnessRoleId,isResidentInstance} from './harness.ts';
 import {ITEM_BY_ID, itemUpkeep, grantItem, putTimed, historyFault, spendSpotlightTickets} from './items.ts';
 import {rngFor, weightedPick, daySeed} from './rng.ts';
 import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
-import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
+import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-5: dynamic personal admission and recorded public profiles; exact engine 2/3/4 checkpoints remain historical. */
-export const ENGINE_VERSION = 'engine-5';
+/** Branch-specific fixed NPC enrollment/freeze semantics; combined goal integration uses a distinct version. */
+export const ENGINE_VERSION = 'engine-6-resident-v2';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
@@ -25,6 +26,10 @@ export type Introduction = {id: string; at: number; place: string};
 
 export type MuseState = {
   id: string;
+  /** Server enrollment marker for a fixed NPC instance; never a personal appearance/authority claim. */
+  residentRole?: string;
+  /** Opt-in fixed roster freeze, separate from owner delegation revocation. */
+  residentFrozenAt?: number;
   /** Actual public identity of an admitted personal actor, independent of the appearance asset. */
   profile?: ActorProfile;
   place: string;
@@ -134,7 +139,7 @@ export const SPOTLIGHT_QUEUE_MAX = 5;
 /** After this many priority turns in a row the next turn goes to the rotation, so the queue cannot hold the spotlight. */
 export const MAX_PRIORITY_STREAK = 2;
 /** Queued Muses that can still take a turn: known and not paused (a revoked Muse never gets one). */
-const queued = (s: WorldState) => s.spotlight.visitorQueue.filter(id => !s.paused?.[id] && s.muses.some(m => m.id === id));
+const queued = (s: WorldState) => s.spotlight.visitorQueue.filter(id => !s.paused?.[id] && !isResidentFrozen(s,id) && s.muses.some(m => m.id === id));
 
 /** The Muse whose turn it is (visitor Muses queue ahead of residents), and the freedom it gets. */
 export function spotlightFor(s: WorldState, now: number): {muse: string; freedom: Freedom; priority: boolean} {
@@ -150,7 +155,7 @@ export function spotlightFor(s: WorldState, now: number): {muse: string; freedom
  */
 export function requestSpotlight(s: WorldState, museId: string): {ok: true; position: number} | {ok: false; reason: 'unknown_muse' | 'paused' | 'already_queued' | 'queue_full'; position?: number} {
   if (!s.muses.some(m => m.id === museId)) return {ok: false, reason: 'unknown_muse'};
-  if (s.paused?.[museId]) return {ok: false, reason: 'paused'};
+  if (s.paused?.[museId] || isResidentFrozen(s,museId)) return {ok: false, reason: 'paused'};
   // Entries that can no longer take a turn (paused since) do not hold a place.
   s.spotlight.visitorQueue = queued(s);
   const at = s.spotlight.visitorQueue.indexOf(museId);
@@ -194,7 +199,7 @@ export const encounterId = (s: Pick<WorldState, 'day' | 'tick'>, a: string, b: s
 function eligibleBeats(m: MuseState, place: Place, hour: number) {
   return BEATS.filter(b => b.kinds.includes(place.kind) && inHours(b, hour) && (b.needs ?? []).every(n => m.inventory.includes(n)));
 }
-function beatWeight(b: Beat, museId: string) { return (b.weight ?? 1) * (b.roles?.includes(museId) ? 3 : 1); }
+function beatWeight(b: Beat, museId: string) { return (b.weight ?? 1) * (b.roles?.includes(harnessRoleId(museId)) ? 3 : 1); }
 
 function chooseDestination(s: WorldState, m: MuseState, rand: () => number, hour: number): Place | null {
   const here = placeById(m.place), liked = new Set<string>(participantLikes(s,m.id));
@@ -215,15 +220,33 @@ export function tripMs(from: Place, to: Place, speed: Speed) {
  * With `replies` (the runtime passes it, possibly empty) every meeting gets the other Muse's answer: the recorded
  * live answer for that meeting, or a rule answer. Without it (pure scenario runs) no answers are emitted.
  */
-export function tick(prev: WorldState, input: {now: number; decision?: Decision | null; replies?: EncounterReply[]; spot?: {muse: string; priority: boolean}}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
+export function setResidentFrozen(s:WorldState,ids:readonly string[],now:number):void {
+  // Only enrolled fixed-catalog NPCs can be paused by this switch. Personal and legacy actors are untouched.
+  for(const m of s.muses){
+    if(!isResidentInstance(m.id)||m.residentRole!==harnessRoleId(m.id)||m.controlMode==='personal'||m.profile)continue;
+    if(ids.includes(m.id)){if(m.residentFrozenAt===undefined)m.residentFrozenAt=now;}
+    else if(m.residentFrozenAt!==undefined){
+      const delay=Math.max(0,now-m.residentFrozenAt);
+      if(m.travel){m.travel.departAt+=delay;m.travel.arriveAt+=delay;}
+      if(m.beat){m.beat.startedAt+=delay;m.beat.endsAt+=delay;}
+      delete m.residentFrozenAt;
+    }
+  }
+}
+
+export function tick(prev: WorldState, input: {now: number; decision?: Decision | null; replies?: EncounterReply[]; spot?: {muse: string; priority: boolean}; residentMove?: {muse:string;place:string;expectedVersion:number};residentIdle?:readonly string[];residentFrozen?:readonly string[]}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
   const now = input.now, clock = localClock(now);
   const s: WorldState = structuredClone(prev);
+  if(input.residentFrozen!==undefined)setResidentFrozen(s,input.residentFrozen,now);
   const events: WorldEvent[] = [];
   s.items ??= emptyLedger();
   s.owner ??= defaultOwner(OWNER_MUSE, now);
   s.inbox ??= emptyInbox();
   const emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => events.push({...tagLocation(s.owner, e), id: `${s.day}:${s.tick}:${events.length}`, tick: s.tick});
-  for (const m of s.muses) m.wants ??= harnessWants(m.id, now);
+  for (const m of s.muses) {
+    if(!m.wants && !hasActorHarness(m.id)) throw new Error('Personal actor requires explicit public Wants before world entry');
+    m.wants ??= harnessWants(m.id, now);
+  }
   const newDay = clock.date !== s.day;
   if (newDay) {
     s.day = clock.date; s.seed = daySeed(s.worldId, s.day);
@@ -241,7 +264,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   }
   // Inbox upkeep: overdue Tasks expire; postcards in transit arrive on the real clock.
   for (const t of expireTasks(s.inbox, now)) emit({at: now, source: 'rule', kind: 'task_expired', muse: t.awaiting, other: t.awaiting === t.from ? t.to : t.from, data: {task_id: t.id, task: t.kind}, tags: []});
-  const paused = (id: string) => !!s.paused?.[id];
+  const paused = (id: string) => !!s.paused?.[id] || isResidentFrozen(s,id);
   // A postcard from or to a paused Muse (delegation revoked) waits in the queue; it is delivered on the first tick after
   // the owner delegates again.
   const due = s.inbox.mail.filter(x => x.deliverAt <= now && !paused(x.from) && !paused(x.to));
@@ -258,8 +281,8 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   const computed = spotlightFor(s, now);
   const spot = input.spot && s.muses.some(m => m.id === input.spot!.muse) ? {muse: input.spot.muse, priority: input.spot.priority, freedom: computed.freedom} : computed;
   // 1. Spotlight: a recorded live/replay decision for this turn, or the scenario's own choice. A paused Muse's turn passes silently.
-  const d = input.decision && input.decision.muse === spot.muse && !paused(spot.muse) ? input.decision : null;
-  if (input.decision && !d) emit({at: now, source: input.decision.source, kind: 'decision_rejected', muse: input.decision.muse, data: {reason: paused(input.decision.muse) ? 'paused: the owner revoked this Muse\'s delegation' : 'not this Muse\'s spotlight turn'}, tags: []});
+  const d = input.decision && input.decision.muse === spot.muse && !paused(spot.muse) && !isRuntimeControlled(s,spot.muse,now) ? input.decision : null;
+  if (input.decision && !d) emit({at: now, source: input.decision.source, kind: 'decision_rejected', muse: input.decision.muse, data: {reason: paused(input.decision.muse) ? 'paused: the owner revoked this Muse\'s delegation' : isRuntimeControlled(s,input.decision.muse,now) ? 'personal or connected control' : 'not this Muse\'s spotlight turn'}, tags: []});
   if (d) applyDecision(s, d, spot.freedom, now, emit, hooks);
   else if (!paused(spot.muse)) emit({at: now, source: 'scripted', kind: 'spotlight', muse: spot.muse, data: {freedom: spot.freedom, live: false}, tags: []});
 
@@ -285,7 +308,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     if (m.beat && m.beat.endsAt > now) continue;
     if (m.beat) finishBeat(m, now, emit, s.items, !!itemFault);
     if (connected) {
-      if (m.controlMode === 'personal') continue;
+      if (m.controlMode === 'personal' || !hasActorHarness(m.id)) continue;
       // Ambient owner-area walking is world physics, not a connected command or a team-model decision.
       // A real command, an incoming approach, any pending commitment, or an existing trip/beat takes priority.
       const area = s.owner?.muse === m.id ? ownerArea(s.owner) : null;
@@ -300,6 +323,29 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
         if (dest) startTrip(s, m, placeById(m.place), dest, now, 'rule', emit, hooks);
       }
       continue;
+    }
+    // Optional resident-life rule intent after expired activity finishes. Never overrides a
+    // live/replay decision, active trip/beat, personal command or pending commitment.
+    const plan=input.residentMove;
+    if(plan && !input.decision && !spot.priority && plan.muse===spot.muse && plan.muse===m.id && plan.expectedVersion===prev.version && !m.intent){
+      const to=PLACE_BY_ID.get(plan.place),from=placeById(m.place);
+      const pending=s.inbox.tasks.some(t=>t.status==='pending'&&(t.from===m.id||t.to===m.id));
+      const invited=(s.inbox.invites??[]).some(i=>i.status==='open'&&(i.from===m.id||i.to.includes(m.id)));
+      const approached=s.muses.some(o=>o.id!==m.id&&o.intent?.target===m.id);
+      if(to&&!pending&&!invited&&!approached&&to.id!==from.id&&to.zone==='commons'&&from.zone==='commons'&&sameArea(from,to)){
+        startTrip(s,m,from,to,now,'rule',emit,hooks);
+        const trip=m.travel as MuseState['travel'];if(trip)trip.chosen=true;
+        continue;
+      }
+    }
+    // Opt-in enrolled residents wait idle after finishing activity until their own turn.
+    // Otherwise generic auto-restarts can indefinitely hide idle snapshots from the scheduler.
+    // Pending social/owner actions never wait behind this hold.
+    if(input.residentIdle?.includes(m.id)&&m.id!==spot.muse&&!m.intent){
+      const pending=s.inbox.tasks.some(t=>t.status==='pending'&&(t.from===m.id||t.to===m.id));
+      const invited=(s.inbox.invites??[]).some(i=>i.status==='open'&&(i.from===m.id||i.to.includes(m.id)));
+      const approached=s.muses.some(o=>o.id!==m.id&&o.intent?.target===m.id);
+      if(!pending&&!invited&&!approached)continue;
     }
     const place = placeById(m.place);
     const stay = eligibleBeats(m, place, clock.hour);
@@ -340,7 +386,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       if (gate?.event) emit(gate.event);
       for (const e of hooks.onEncounter?.(s, initiator, other, placeById(placeId), rngFor(s.seed, s.tick, initiator.id, other.id, 'meet'), now) ?? []) emit(e);
       // The other Muse answers (8.3). A connected Muse answers from its owner's runtime, so nothing is said for it here.
-      if (input.replies && !isRuntimeControlled(s, other.id, now)) replyTo(other, initiator, placeId, meeting, input.replies.find(r => r.encounterId === meeting && r.muse === other.id && r.other === initiator.id), now, emit);
+      if (input.replies && !isRuntimeControlled(s, other.id, now)) replyTo(s, other, initiator, placeId, meeting, input.replies.find(r => r.encounterId === meeting && r.muse === other.id && r.other === initiator.id), now, emit);
       if (initiator.intent?.target === other.id) initiator.intent = null;
       remember(a, `Met ${participantName(s,b.id)} at ${placeById(placeId).name}`);
       remember(b, `Met ${participantName(s,a.id)} at ${placeById(placeId).name}`);
@@ -390,14 +436,16 @@ function remember(m: MuseState, line: string) { m.memory = [line, ...m.memory.fi
  * anything else is a rule answer with the reason it is not live (no key, budget, limits, invalid output, discarded).
  * A rule answer never carries model evidence.
  */
-function replyTo(m: MuseState, to: MuseState, placeId: string, meeting: string, r: EncounterReply | undefined, now: number, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void) {
-  const toName = to.profile?.displayName ?? harnessById(to.id).name;
+function replyTo(s:WorldState, m: MuseState, to: MuseState, placeId: string, meeting: string, r: EncounterReply | undefined, now: number, emit: (e: Omit<WorldEvent, 'id' | 'tick'>) => void) {
+  const toName = to.profile?.displayName ?? actorLabel(to.id);
   if (r && r.source !== 'rule' && r.output) {
     const o = r.output;
     emit({at: now, source: r.source, kind: 'encounter_reply', muse: m.id, other: to.id, place: placeId, line: o.line || null, data: {encounterId: meeting, intent: o.intent, item: o.item || null, public_reason: o.public_reason, injection_suspected: o.injection_suspected, evidence: r.evidence ?? null}, tags: []});
+    if(o.line&&isRuntimeControlled(s,to.id,now))deliverMessage(s.inbox!,{from:m.id,to:to.id,kind:'greet',at:now,text:o.line});
     m.reflection = `With ${toName}: ${o.public_reason || o.line}`.slice(0, 100);
     return;
   }
+  if(isRuntimeControlled(s,to.id,now))deliverMessage(s.inbox!,{from:m.id,to:to.id,kind:'greet',at:now,text:`Nice to see you, ${toName}.`});
   emit({at: now, source: 'rule', kind: 'encounter_reply', muse: m.id, other: to.id, place: placeId, line: `Nice to see you, ${toName}.`, data: {encounterId: meeting, intent: 'greet', item: null, reason: r?.reason ?? 'no_answer_requested'}, tags: []});
 }
 
@@ -438,7 +486,7 @@ function findPlaceByName(name: string): Place | null {
 }
 function findMuse(s: WorldState, ref: string): MuseState | null {
   const r = ref.trim().toLowerCase();
-  return s.muses.find(m => m.id === r || participantName(s,m.id).toLowerCase() === r) ?? null;
+  return s.muses.find(m => m.id === r) ?? s.muses.find(m => (m.profile || hasActorHarness(m.id)) && participantName(s,m.id).toLowerCase() === r) ?? null;
 }
 
 /** Validates a live/replayed spotlight decision against the world and the Muse's scope, then applies it. */

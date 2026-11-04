@@ -11,7 +11,7 @@ import {generateKeyPair, importPrivateJwk, type KeyPair,signBytes,verifyBytes} f
 import {issueDelegation, delegationRef, peekDelegation, type Delegation, type SignerKind} from '../../src/identity/delegation.ts';
 import {buildCard, signCard, type AgentCard} from '../../src/identity/card.ts';
 import type {EcPublicJwk} from '../../src/identity/fingerprint.ts';
-import {HARNESSES, harnessById, SCOPES} from '../../src/engine/harness.ts';
+import {HARNESSES, harnessById, isResidentInstance, SCOPES} from '../../src/engine/harness.ts';
 
 export const OWNER_SLOT = '00-jolly';
 const SCOPE_SUMMARY = {allowed: [...SCOPES.allowed], approval: [...SCOPES.approval], forbidden: [...SCOPES.forbidden]};
@@ -53,8 +53,9 @@ export class Trust implements TrustRegistry {
   }
 
   /** Creates resident roots once and registers the owner root from the secret. Idempotent. */
-  async ensureAgents(ownerRootJwk: JsonWebKey | null) {
-    for (const h of HARNESSES) {
+  async ensureAgents(ownerRootJwk: JsonWebKey | null, residentIds:readonly string[] = []) {
+    if(residentIds.length>17||new Set(residentIds).size!==residentIds.length||residentIds.some(id=>!isResidentInstance(id)))throw Error('invalid resident agent roster');
+    for (const h of [...HARNESSES,...residentIds.map(harnessById)]) {
       if (h.id === OWNER_SLOT && ownerRootJwk) continue;
       if (this.agentByMuse(h.id)) continue;
       const root = await generateKeyPair(true);

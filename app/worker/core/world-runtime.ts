@@ -1,3 +1,5 @@
+import {setResidentFrozen} from '../../src/engine/world.ts';
+import {isResidentInstance,harnessRoleId} from '../../src/engine/harness.ts';
 import {actorProfile} from '../../src/engine/participants.ts';
 // Shared-world heartbeat inside the world Durable Object (direction v2, 8.7).
 // - Commit point: state, events and the tick record are written in one synchronous block; a tick that
@@ -20,12 +22,16 @@ import {createWorld, tick, spotlightFor, spotlightInput, encounterInput, request
 import {validate, buildMessages, maxCostUsd, actualCostUsd, failureCostUsd, checkOutput} from './actions.ts';
 import {callModel, type ModelConfig} from './model.ts';
 import {replayFor} from './replay.ts';
-import {isRuntimeControlled} from '../../src/engine/inbox.ts';
+import {isRuntimeControlled,isConnected} from '../../src/engine/inbox.ts';
 import {COMMANDS_TABLE, type CommandResult} from './commands.ts';
 import {syncTasks} from './tasks.ts';
 import {withMessageHooks} from './messages.ts';
 import type {Ledger, Sql} from './ledger.ts';
 import {RunLog, evidenceIds, commandFields, outputFields, reasonCode, type InputKind, type CommitRecord} from './run-log.ts';
+import {ResidentLifeStore, residentProposalForWorld, rememberCommittedResidentEvents, knownResident, type ResidentOwnershipKind} from './resident-life-adapter.ts';
+import {enrollResidentRoster} from './resident-roster.ts';
+import {residentContextForWorld, withResidentContext, type ResidentContext} from './resident-life-context.ts';
+import {noteServed, restoreLife, saveLife, type LifeState} from '../../src/engine/resident-life.ts';
 import {recountAutonomy, values} from './autonomy-oracle.ts';
 
 /** The world's SQL handle plus the Durable Object storage transaction (ctx.storage.transactionSync). */
@@ -47,6 +53,11 @@ export type SpotlightOrigin = 'visitor' | 'judge' | 'connected';
 export type SpotlightRequestResult = {ok: true; muse: string; position: number; already: boolean; eventIds: string[]} | {ok: false; reason: 'unknown_muse' | 'paused' | 'queue_full' | 'hourly_limit'};
 
 export type RuntimeOptions = {
+  /** Default absent/off. Trusted server-only policy; no browser-controlled flags. */
+  residentLife?: {enabled:boolean;initialState:LifeState;allowedPlaceIds:readonly string[];
+    /** Explicit enrollment only; never inferred from appearance or a personal profile. */
+    roster?:'neighborhood-24-v1';
+    ownershipKind:(id:string)=>ResidentOwnershipKind;promiseLeadMs?:number;promiseGraceMs?:number};
   worldId: string;
   model: (Omit<ModelConfig, 'key'> & {key: string | undefined}) | null;
   ledger: Ledger;
@@ -82,6 +93,7 @@ const synchronous = <T>(r: T): T => {
 export class WorldRuntime {
   private sql: TxSql;
   private opts: RuntimeOptions;
+  private lifeStore: ResidentLifeStore | null = null;
   /** Commands between their lookup and their commit, per actor:commandId (one DO instance runs them all). */
   readonly pending = new Set<string>();
   private slotsInUse = 0;
@@ -115,6 +127,14 @@ export class WorldRuntime {
     this.sql.exec(COMMANDS_TABLE);
     this.sql.exec('CREATE TABLE IF NOT EXISTS refusals (key TEXT PRIMARY KEY, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, count INTEGER NOT NULL)');
     this.runLog.init();
+    if(this.opts.residentLife?.enabled===true){
+      this.lifeStore=new ResidentLifeStore(this.sql);this.lifeStore.init();
+      if(!this.lifeStore.load(this.worldId)){
+        const initial=restoreLife(saveLife(this.opts.residentLife.initialState));
+        initial.residents=initial.residents.filter(r=>knownResident(r.id,this.opts.residentLife!.ownershipKind));
+        this.lifeStore.save(this.worldId,null,initial);
+      }
+    }
     const existed = this.sql.exec('SELECT id FROM world WHERE id = 1').toArray().length > 0;
     if (!existed) {
       const s = createWorld(this.opts.worldId, now);
@@ -122,6 +142,26 @@ export class WorldRuntime {
     }
     // A new world, the first start of a world stored before the run log, or new code versions: the run record says which.
     this.runLog.open(this.state(), now, existed);
+    const policy=this.opts.residentLife;
+    if(policy?.enabled===true&&policy.roster){
+      const row=this.lifeStore!.load(this.worldId)!;
+      if(enrollResidentRoster(this.state(),row.state,now,{...policy,roster:policy.roster}).changed){
+        this.commit(now,'resident-roster-v1',(world,emit)=>{
+          if(policy.enabled!==true||!policy.roster)throw Error('resident roster disabled before commit');
+          const fresh=this.lifeStore!.load(this.worldId)!;
+          const enrolled=enrollResidentRoster(world,fresh.state,now,{...policy,roster:policy.roster});
+          world.muses=enrolled.world.muses;
+          this.lifeStore!.saveInTransaction(this.worldId,fresh.revision,enrolled.life);
+          for(const id of enrolled.joined)emit({at:now,source:'rule',kind:'resident_join',muse:id,place:world.muses.find(m=>m.id===id)!.place,data:{roster:policy.roster},tags:[]});
+        },changed=>changed,'external',()=>({action:'resident_roster',roster:policy.roster}));
+      }
+    }
+    this.reconcileResidentFreeze(now);
+  }
+
+  private reconcileResidentFreeze(now:number):void {
+    const before=this.state(),next=structuredClone(before);setResidentFrozen(next,this.frozenResidents(next),now);
+    if(JSON.stringify(next)!==JSON.stringify(before))this.commit(now,'resident-roster-policy',()=>{},changed=>changed,'external',()=>({action:'resident_roster_policy',frozen:this.frozenResidents(next)}));
   }
 
   private raw() { return String(this.sql.exec('SELECT state FROM world WHERE id = 1').toArray()[0].state); }
@@ -146,6 +186,31 @@ export class WorldRuntime {
     if (p) this.runLog.append(p, inserted);
   }
 
+  private trustedPersonalPeers(s:WorldState):string[] {
+    return s.muses.filter(m=>/^pm_[A-Za-z0-9_-]{1,128}$/.test(m.id)&&m.controlMode==='personal'&&this.opts.residentLife?.ownershipKind(m.id)==='personal').map(m=>m.id);
+  }
+
+  private registryControls(muse:string):boolean {
+    const kind=this.opts.residentLife?.ownershipKind(muse);
+    return kind==='personal'||kind==='unknown'||(isResidentInstance(muse)&&(this.opts.residentLife?.enabled!==true||this.opts.residentLife.roster!=='neighborhood-24-v1'));
+  }
+
+  /** Current server policy for signed preconditions, including the interval before the next alarm. */
+  residentUnavailable(id:string):boolean {
+    const m=this.state().muses.find(m=>m.id===id);
+    return !!m&&isResidentInstance(id)&&m.residentRole===harnessRoleId(id)&&m.controlMode!=='personal'&&!m.profile&&this.registryControls(id);
+  }
+
+  private frozenResidents(world:WorldState):string[]{
+    return world.muses.filter(m=>isResidentInstance(m.id)&&this.registryControls(m.id)).map(m=>m.id);
+  }
+
+  private residentIdleIds(life:LifeState|undefined,world:WorldState,now:number):string[]{
+    const policy=this.opts.residentLife;
+    if(!life||policy?.enabled!==true)return [];
+    return life.residents.filter(r=>(r.routine.some(x=>policy.allowedPlaceIds.includes(x.place))||r.promises.some(p=>p.status==='pending'&&policy.allowedPlaceIds.includes(p.place)))&&knownResident(r.id,policy.ownershipKind)&&world.muses.some(m=>m.id===r.id)&&!world.paused?.[r.id]&&!isRuntimeControlled(world,r.id,now)&&(!this.opts.delegationValid||this.opts.delegationValid(r.id))).map(r=>r.id);
+  }
+
   /** One heartbeat. Safe to call again after a crash or an alarm retry. */
   async heartbeat(now: number): Promise<HeartbeatResult> {
     const before = this.state();
@@ -158,28 +223,44 @@ export class WorldRuntime {
       const spot = spotlightFor(before, now), turn = {muse: spot.muse, priority: spot.priority};
       const [{decision, info}, canMeet] = await Promise.all([this.liveSpotlight(before, spot.muse, spot.freedom, now), this.meetingGate(before, now)]);
       // The spotlight slot is free again: this tick's meetings, and the other Muse's answer to each.
-      const answers = await this.encounterReplies(before, now, decision, canMeet, turn);
+      const lifeBefore=this.lifeStore?.load(this.worldId) ?? null;
+      const residentIdle=this.residentIdleIds(lifeBefore?.state,before,now);
+      const proposedLife=!decision && (!this.opts.delegationValid||this.opts.delegationValid(spot.muse)) && lifeBefore && this.opts.residentLife ? residentProposalForWorld(lifeBefore.state,before,now,{...this.opts.residentLife,promiseGraceMs:this.opts.residentLife.promiseGraceMs ?? 60*TICK_MS,residentTurnAllowed:true}) : null;
+      const residentMove=proposedLife ? {muse:proposedLife.residentId,place:proposedLife.placeId,expectedVersion:proposedLife.expectedWorldVersion} : undefined;
+      const answers = await this.encounterReplies(before, now, decision, canMeet, turn, residentMove,residentIdle);
       this.opts.beforeCommit?.();
       // Commit point: everything below is synchronous and one storage transaction.
       return this.sql.transactionSync(() => {
       const raw = this.raw(), current: WorldState = JSON.parse(raw);
       if (current.tick !== before.tick || current.day !== before.day || this.sql.exec('SELECT 1 FROM ticks WHERE day = ? AND tick = ?', before.day, before.tick).toArray().length) return {status: 'skipped_duplicate', tick: before.tick, events: 0};
+      const freshLife=this.lifeStore?.load(this.worldId) ?? null;
+      const staleResidentContext=(evidence:Record<string,unknown>|undefined,muse:string):boolean => evidence?.residentLifeRevision!==undefined &&
+        (evidence.residentLifeRevision!==freshLife?.revision || this.opts.residentLife?.enabled!==true || !knownResident(muse,this.opts.residentLife.ownershipKind));
       let usable = decision;
       const late: Omit<WorldEvent, 'id' | 'tick'>[] = [];
       // The answer keeps its turn unless its Muse was paused or revoked, or the world itself moved (a queue request does
       // not move it). One discard event, with the most specific reason.
-      const lost = !decision ? null : current.paused?.[decision.muse] ? 'paused before commit' : this.opts.delegationValid && !this.opts.delegationValid(decision.muse) ? 'delegation revoked before commit' : current.version !== before.version ? 'world changed while the model was answering' : null;
+      const lost = !decision ? null : current.paused?.[decision.muse] ? 'paused before commit' : this.registryControls(decision.muse) ? 'registry controlled before commit' : isRuntimeControlled(current,decision.muse,now) ? 'personal or connected before commit' : this.opts.delegationValid && !this.opts.delegationValid(decision.muse) ? 'delegation revoked before commit' : staleResidentContext(decision.evidence,decision.muse) ? 'resident context changed while the model was answering' : current.version !== before.version ? 'world changed while the model was answering' : null;
       if (decision && lost) { late.push({at: now, source: decision.source, kind: 'decision_discarded', muse: decision.muse, data: {reason: lost, evidence: decision.evidence ?? null}, tags: []}); usable = null; }
       // Same checks for every model answer to a meeting: a revoked answerer or a moved world discards it (it was paid for).
       const discard = (r: EncounterReply, reason: string) => late.push({at: now, source: r.source as WorldEvent['source'], kind: 'encounter_reply_discarded', muse: r.muse, other: r.other, place: r.place, data: {reason, encounterId: r.encounterId, evidence: r.evidence ?? null}, tags: []});
       const replies = answers.map(r => {
         if (r.source === 'rule') return r;
-        const why = current.paused?.[r.muse] ? 'paused before commit' : this.opts.delegationValid && !this.opts.delegationValid(r.muse) ? 'delegation revoked before commit' : current.version !== before.version ? 'world changed while the model was answering' : null;
+        const why = current.paused?.[r.muse] ? 'paused before commit' : this.registryControls(r.muse) ? 'registry controlled before commit' : isRuntimeControlled(current,r.muse,now) ? 'personal or connected before commit' : this.opts.delegationValid && !this.opts.delegationValid(r.muse) ? 'delegation revoked before commit' : staleResidentContext(r.evidence,r.muse) ? 'resident context changed while the model was answering' : current.version !== before.version ? 'world changed while the model was answering' : null;
         if (!why) return r;
         discard(r, why);
         return {muse: r.muse, other: r.other, place: r.place, encounterId: r.encounterId, source: 'rule' as const, output: null, reason: 'discarded: ' + why};
       });
-      const {state, events} = tick(current, {now, decision: usable, replies, spot: turn}, canMeet ? {...this.opts.hooks, canMeet: this.dedupMeetings(canMeet)} : this.opts.hooks);
+      const lifeCandidate=!decision && (!this.opts.delegationValid||this.opts.delegationValid(turn.muse)) && proposedLife && lifeBefore && freshLife?.revision===lifeBefore.revision && current.version===before.version && this.opts.residentLife ? residentProposalForWorld(freshLife.state,current,now,{...this.opts.residentLife,promiseGraceMs:this.opts.residentLife.promiseGraceMs ?? 60*TICK_MS,residentTurnAllowed:true}) : null;
+      const acceptedLife=lifeCandidate && !this.registryControls(lifeCandidate.residentId) && lifeCandidate.residentId===proposedLife?.residentId && lifeCandidate.placeId===proposedLife?.placeId ? lifeCandidate : null;
+      const appliedMove=acceptedLife ? {muse:acceptedLife.residentId,place:acceptedLife.placeId,expectedVersion:acceptedLife.expectedWorldVersion} : undefined;
+      const committedIdle=this.residentIdleIds(freshLife?.state,current,now);
+      const {state, events} = tick(current, {now, decision: usable, replies, spot: turn, residentMove:appliedMove,residentIdle:committedIdle,residentFrozen:this.frozenResidents(current)}, canMeet ? {...this.opts.hooks, canMeet: this.dedupMeetings(canMeet)} : this.opts.hooks);
+      if(this.lifeStore && freshLife && this.opts.residentLife?.enabled===true){
+        let lifeNext=rememberCommittedResidentEvents(freshLife.state,state,events,now,id=>knownResident(id,this.opts.residentLife!.ownershipKind));
+        if(acceptedLife)lifeNext=noteServed(lifeNext,acceptedLife.residentId,now);
+        this.lifeStore.saveInTransaction(this.worldId,freshLife.revision,lifeNext);
+      }
       // Task records (C06, I-07): revision and contentHash follow any content change the tick made.
       syncTasks(state.inbox);
       // A model answer to a meeting that did not happen in the committed tick is not used.
@@ -194,14 +275,17 @@ export class WorldRuntime {
       // The tick's recorded inputs (8.1: not reproducible from the seed): the spotlight answer, used or discarded, and
       // every meeting answer with its source; ids of the model calls, never the prompt.
       const tickInput = {
+        residentRosterFrozen:this.frozenResidents(current),
+        ...(this.opts.residentLife?.enabled===true ? {residentLifePolicy:{version:1,idle:committedIdle}} : {}),
+        ...(acceptedLife ? {residentLife:{policyVersion:1,source:'rule',proposal:acceptedLife,revisionBefore:freshLife!.revision,revisionAfter:freshLife!.revision+1}} : {}),
         seed: state.seed, gate: canMeet ? 'checked' : 'off',
-        spotlight: {muse: turn.muse, priority: turn.priority, source: info.source, reason: reasonCode(info.reason), freedom: spot.freedom, used: !!usable, discarded: decision && lost ? reasonCode(lost) : null,
+        spotlight: {muse: turn.muse, ...(typeof decision?.evidence?.residentLifeRevision==='number'?{residentLifeRevision:decision.evidence.residentLifeRevision}:{}), priority: turn.priority, source: info.source, reason: reasonCode(info.reason), freedom: spot.freedom, used: !!usable, discarded: decision && lost ? reasonCode(lost) : null,
           decision: decision ? {source: decision.source, freedom: decision.freedom, output: outputFields(decision.output), evidence: evidenceIds(decision.evidence)} : null},
-        replies: answers.map(r => ({muse: r.muse, other: r.other, encounterId: r.encounterId, source: r.source, reason: reasonCode(r.reason), output: outputFields(r.output), evidence: evidenceIds(r.evidence), used: r.source === 'rule' || (replies.find(x => x.encounterId === r.encounterId && x.muse === r.muse)?.source !== 'rule' && answered.has(`${r.encounterId}>${r.muse}`))})),
+        replies: answers.map(r => ({muse: r.muse, ...(typeof r.evidence?.residentLifeRevision==='number'?{residentLifeRevision:r.evidence.residentLifeRevision}:{}), other: r.other, encounterId: r.encounterId, source: r.source, reason: reasonCode(r.reason), output: outputFields(r.output), evidence: evidenceIds(r.evidence), used: r.source === 'rule' || (replies.find(x => x.encounterId === r.encounterId && x.muse === r.muse)?.source !== 'rule' && answered.has(`${r.encounterId}>${r.muse}`))})),
       };
       this.logCommit({at: now, kind: 'tick', label: `${current.day}:${current.tick}`, beforeRaw: raw, before: current, after: state, changed: true, events: all, input: tickInput});
       const said = all.filter(e => e.kind === 'encounter_reply');
-      return {status: 'committed' as const, tick: current.tick, events: all.length, spotlight: {muse: turn.muse, priority: turn.priority, ...info}, replies: {live: said.filter(e => e.source === 'live').length, rule: said.filter(e => e.source === 'rule').length}};
+      return {status: 'committed' as const, tick: current.tick, events: all.length, spotlight: {muse: turn.muse, ...(typeof decision?.evidence?.residentLifeRevision==='number'?{residentLifeRevision:decision.evidence.residentLifeRevision}:{}), priority: turn.priority, ...info}, replies: {live: said.filter(e => e.source === 'live').length, rule: said.filter(e => e.source === 'rule').length}};
       });
     } finally {
       this.inFlight.delete(this.reservationId(before));
@@ -273,9 +357,10 @@ export class WorldRuntime {
     // Personal actors do not use the resident model/schema, even when presence is stale.
     if (isRuntimeControlled(s, muse, now)) return {decision: null, info: {source: 'scripted', reason: s.muses.find(m => m.id === muse)?.controlMode === 'personal' ? 'personal_muse' : 'connected_muse'}};
     if (s.paused?.[muse]) return {decision: null, info: {source: 'scripted'}};
+    if(this.registryControls(muse))return {decision:null,info:{source:'scripted',reason:'registry_controlled_actor'}};
     // The world must never stop on one bad input: if the spotlight input cannot be built, the scenario continues.
     let input;
-    try { input = validate('spotlight', spotlightInput(s, muse, freedom, now)); }
+    try { input = validate('spotlight', spotlightInput(s, muse, freedom, now),this.trustedPersonalPeers(s)); }
     catch (e) { return {decision: null, info: {source: 'scripted', reason: 'input_invalid: ' + String((e as Error).message).slice(0, 80)}}; }
     const fallback = (reason: string) => {
       const r = replayFor('spotlight', input);
@@ -286,7 +371,8 @@ export class WorldRuntime {
     };
     // A connected Muse thinks in its owner's runtime (8.8): the team key never decides for it.
     if (!this.opts.model?.key) return fallback('not_connected');
-    const call = await this.modelCall('spotlight', input, this.reservationId(s));
+    const context=residentContextForWorld(this.lifeStore?.load(this.worldId) ?? null,s,muse,now,this.opts.residentLife);
+    const call = await this.modelCall('spotlight', input, this.reservationId(s),context);
     if (!call.ok) return fallback(call.reason);
     return {decision: {muse, freedom, source: 'live', output: call.output as Decision['output'], evidence: call.evidence}, info: {source: 'live', requestId: call.evidence.requestId as string | null}};
   }
@@ -296,13 +382,13 @@ export class WorldRuntime {
    * (an alarm retry cannot reserve twice), the 8-second model deadline, then the real cost settled whatever the
    * answer was. The slot is released in every path, including a throw.
    */
-  private async modelCall(action: 'spotlight' | 'encounter', input: Record<string, unknown>, id: string): Promise<{ok: true; output: unknown; evidence: Record<string, unknown>} | {ok: false; reason: string}> {
+  private async modelCall(action: 'spotlight' | 'encounter', input: Record<string, unknown>, id: string, residentContext:ResidentContext|null=null): Promise<{ok: true; output: unknown; evidence: Record<string, unknown>} | {ok: false; reason: string}> {
     const model = this.opts.model;
     if (!model?.key) return {ok: false, reason: 'not_connected'};
     const release = this.modelSlot();
     if (!release) return {ok: false, reason: 'concurrency_limit'};
     try {
-      const messages = buildMessages(action, input);
+      const messages = withResidentContext(buildMessages(action, input),residentContext);
       const res = this.opts.ledger.reserve({id, tier: 'world', session: 'world', ip: '', action, maxCostUsd: maxCostUsd(action, messages)});
       if (!res.ok) return {ok: false, reason: res.reason};
       // Reserved before (a retried tick after a crash): that call was already made or paid for; never call twice.
@@ -312,7 +398,7 @@ export class WorldRuntime {
       const problem = checkOutput(action, input, result.output);
       this.opts.ledger.settle(id, actualCostUsd(result.usage), problem ? 'rejected' : 'live');
       if (problem) return {ok: false, reason: 'output_rejected:' + problem};
-      return {ok: true, output: result.output, evidence: {model: model.model, requestId: result.requestId, responseId: result.responseId, latencyMs: result.latencyMs, reservationId: id}};
+      return {ok: true, output: result.output, evidence: {model: model.model, requestId: result.requestId, responseId: result.responseId, latencyMs: result.latencyMs, reservationId: id, ...(residentContext ? {residentLifeRevision:residentContext.revision} : {})}};
     } finally {
       release();
     }
@@ -323,13 +409,13 @@ export class WorldRuntime {
    * Muse's answer to each: live when a slot and the budget allow, else rule with the reason. A connected Muse is not
    * answered for. Nothing is written here; the dry run's meeting gate is the undeduplicated one.
    */
-  private async encounterReplies(s: WorldState, now: number, decision: Decision | null, canMeet: Hooks['canMeet'], turn: {muse: string; priority: boolean}): Promise<EncounterReply[]> {
+  private async encounterReplies(s: WorldState, now: number, decision: Decision | null, canMeet: Hooks['canMeet'], turn: {muse: string; priority: boolean}, residentMove?:{muse:string;place:string;expectedVersion:number},residentIdle?:readonly string[]): Promise<EncounterReply[]> {
     let dry: WorldEvent[];
-    try { dry = tick(s, {now, decision, replies: [], spot: turn}, canMeet ? {...this.opts.hooks, canMeet} : this.opts.hooks).events; } catch (e) {
+    try { dry = tick(s, {now, decision, replies: [], spot: turn,residentMove,residentIdle,residentFrozen:this.frozenResidents(s)}, canMeet ? {...this.opts.hooks, canMeet} : this.opts.hooks).events; } catch (e) {
       console.error('encounter dry run failed', e);
       return [];
     }
-    const meetings = dry.filter(e => e.kind === 'encounter' && e.other && e.muse && !isRuntimeControlled(s, e.other, now));
+    const meetings = dry.filter(e => e.kind === 'encounter' && e.other && e.muse && !isRuntimeControlled(s, e.other, now)&&!this.registryControls(e.other));
     // Budget kept for visitors, and a breaker after repeated timeouts: both answer by rule without a call.
     const budget = meetings.length ? this.opts.ledger.status() : null;
     const held = budget && budget.remainingUsd < ENCOUNTER_BUDGET_FLOOR * budget.capUsd ? 'budget_reserved_for_visitors' : now < this.circuitOpenUntil ? 'circuit_open' : null;
@@ -342,8 +428,9 @@ export class WorldRuntime {
       if (held) return rule(held);
       const greeting = dry.find(g => g.kind === 'greet' && g.muse === other && g.other === muse)?.line ?? null;
       let input;
-      try { input = validate('encounter', encounterInput(s, muse, other, place, greeting, now)); } catch (err) { return rule('input_invalid: ' + String((err as Error).message).slice(0, 80)); }
-      return this.modelCall('encounter', input, `${this.opts.worldId}:${s.day}:${s.tick}:encounter:${muse}>${other}`)
+      try { input = validate('encounter', encounterInput(s, muse, other, place, greeting, now),this.trustedPersonalPeers(s)); } catch (err) { return rule('input_invalid: ' + String((err as Error).message).slice(0, 80)); }
+      const context=residentContextForWorld(this.lifeStore?.load(this.worldId) ?? null,s,muse,now,this.opts.residentLife);
+      return this.modelCall('encounter', input, `${this.opts.worldId}:${s.day}:${s.tick}:encounter:${muse}>${other}`,context)
         .then((c): EncounterReply => { this.noteEncounterCall(c.ok ? 'ok' : c.reason, now); return c.ok ? {...base, source: 'live', output: c.output as EncounterReply['output'], evidence: {...c.evidence, encounterId: meeting}} : rule(c.reason); })
         .catch((err): EncounterReply => { console.error('encounter answer failed', err); return rule('error'); });
     }));
@@ -428,6 +515,8 @@ export class WorldRuntime {
   private write(now: number, label: string, mutate: (s: WorldState, emit: Emit) => void, bump: (changed: boolean) => boolean, kind: InputKind, input?: () => Record<string, unknown> | null, after?: (s: WorldState, events: WorldEvent[]) => void) {
     const raw = this.raw();
     const s: WorldState = JSON.parse(raw), out: WorldEvent[] = [];
+    // Current policy is authoritative before every external/signed mutation, not only after an alarm.
+    setResidentFrozen(s,this.frozenResidents(s),now);
     let n = 0;
     synchronous(mutate(s, e => out.push({...e, id: `${s.day}:${s.tick}:${label}:${now}:${n++}`, tick: s.tick})) as unknown);
     // Task records (C06, I-07): revision and contentHash follow any content change this commit made (a counter, new
@@ -437,6 +526,13 @@ export class WorldRuntime {
     if (bumped) s.version += 1;
     const afterRaw = JSON.stringify(s);
     if (changed || bumped) this.sql.exec('UPDATE world SET state = ?, version = ? WHERE id = 1', afterRaw, s.version);
+    // External signed/public commands contribute only factual receipts, in this same rollback boundary.
+    if(this.lifeStore&&this.opts.residentLife?.enabled===true&&out.length){
+      const life=this.lifeStore.load(this.worldId);
+      if(life){const next=rememberCommittedResidentEvents(life.state,s,out,now,id=>knownResident(id,this.opts.residentLife!.ownershipKind)&&!this.registryControls(id));
+        if(saveLife(next)!==saveLife(life.state))this.lifeStore.saveInTransaction(this.worldId,life.revision,next);
+      }
+    }
     after?.(s, out);
     this.logCommit({at: now, kind, label, beforeRaw: raw, before: JSON.parse(raw), after: s, afterRaw, changed: changed || bumped, events: out, input: input?.() ?? null});
     return {state: s, events: out};
@@ -513,6 +609,6 @@ export class WorldRuntime {
   /** Compact public view for clients: positions, current beats, inventories, spotlight. */
   view(now: number) {
     const s = this.state();
-    return {worldId: s.worldId, day: s.day, tick: s.tick, version: s.version, lastTickAt: s.lastTickAt, nextSpotlight: spotlightFor(s, now), spotlightQueue: s.spotlight.visitorQueue.filter(id => !s.paused?.[id]), muses: s.muses.map(m => ({id: m.id,...(m.profile?{profile:actorProfile(m.profile,m.id)}:{}), place: m.place, travel: m.travel, beat: m.beat, inventory: m.inventory, reflection: m.reflection, wants: m.wants, paused: s.paused?.[m.id] ?? null}))};
+    return {worldId: s.worldId, day: s.day, tick: s.tick, version: s.version, lastTickAt: s.lastTickAt, nextSpotlight: spotlightFor(s, now), spotlightQueue: s.spotlight.visitorQueue.filter(id => !s.paused?.[id]), muses: s.muses.map(m => ({id: m.id,...(m.residentRole?{residentRole:m.residentRole}:{}),...(m.residentFrozenAt!==undefined?{residentFrozenAt:m.residentFrozenAt}:{}),...(m.profile?{profile:actorProfile(m.profile,m.id)}:{}), place: m.place, travel: m.travel, beat: m.beat, inventory: m.inventory, reflection: m.reflection, wants: m.wants, paused: s.paused?.[m.id] ?? null}))};
   }
 }

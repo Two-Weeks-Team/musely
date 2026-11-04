@@ -4,7 +4,8 @@ import {participantName} from './participants.ts';
 // abilities); the world Durable Object replaces this with a live Muse Spark negotiation when budget allows.
 import type {Hooks, MuseState, WorldEvent, WorldState} from './world.ts';
 import {discover, receiveDiscovery, grantItem, checkTrade, commitTrade, speedFor, abilityGain, itemName, canCraftTransitPass, historyFault, type Ledger} from './items.ts';
-import {harnessById, HARNESSES} from './harness.ts';
+import {actorLabel} from './actor-display.ts';
+import {HARNESSES} from './harness.ts';
 import type {Place} from './places.ts';
 import {isRuntimeControlled, nextId, deliverMessage, notifyOwner, TASK_TTL_MS, emptyInbox} from './inbox.ts';
 import {teleportCheck, sameArea} from './location.ts';

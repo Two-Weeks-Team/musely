@@ -1,3 +1,5 @@
+import {RESIDENT_INSTANCES,residentInstance,isResidentInstance} from './resident-catalog.ts';
+export {isResidentInstance};
 // Character harness: what a chosen character puts on "your Muse" (direction v2, chapter 7).
 // Shaped like Muse Connector tools from the start so the same contract can move to GTM.
 // Delegation scopes are #7's table verbatim (7.1): allowed / owner approval / forbidden.
@@ -46,8 +48,14 @@ export const HARNESSES: readonly Harness[] = [
 ];
 
 export const harnessById = (id: string): Harness => {
-  const h = HARNESSES.find(h => h.id === id);
+  const instance=residentInstance(id);
+  const h = HARNESSES.find(h => h.id === (instance?.roleId ?? id));
   if (!h) throw new Error('Unknown Muse harness: ' + id);
-  return h;
+  return instance ? {...h,id:instance.id,name:instance.name} : h;
 };
 export const HARNESS_IDS = HARNESSES.map(h => h.id);
+
+/** Actor IDs are distinct from the ten reusable harness/appearance templates. */
+export const ACTOR_IDS = Object.freeze([...HARNESS_IDS,...RESIDENT_INSTANCES.map(r=>r.id)]);
+export const hasActorHarness = (id:string):boolean => ACTOR_IDS.includes(id);
+export const harnessRoleId = (id:string):string => residentInstance(id)?.roleId ?? (HARNESS_IDS.includes(id)?id:(()=>{throw Error('Unknown Muse harness: '+id);})());
