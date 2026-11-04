@@ -121,7 +121,6 @@ function updateUI(){syncProfilePortraits(showingScene()?displayedWorld():null);(
 $('story-title').textContent=catalogText(chapter.title);$('story-speaker').textContent=turn?PEOPLE[turn.person].name:uiText('Around the Bay');const candidate=$('story-candidate');candidate.hidden=turn?.round===undefined;if(turn?.round!==undefined){const r=ROUNDS[turn.round];candidate.textContent=uiText`${r.time} · ${r.place}    Jimin ${r.jimin?uiText('✓ yes'):uiText('✕ no')} · Sora ✓ yes`;}$('card-candidate').hidden=candidate.hidden;$('card-candidate').textContent=candidate.textContent;
 updateContinuity();syncCardScroll();
 }
-updateUI();
 let spark:SparkStatus|null=null;
 void sparkStatus().then(s=>{spark=s;const l=statusLabel(s),el=$('spark-status');el.textContent=catalogText(l.text);el.title=activityStatus(l.title);el.dataset.state=l.state;});
 let bubbles:ReturnType<typeof makeBubbles>;
@@ -158,7 +157,7 @@ setTimeout(()=>{if(!ready){$('loading').innerHTML=uiText('Your Muse is taking a 
 // ?perf=1: on-device frame rate and render cost; ?dpr= compares pixel-ratio caps on one phone.
 const perf=mountPerf(()=>({drawCalls,triangles,canvas:map.getCanvas()}),ratio);
 // Live world surface (task 6): map pins, spotlight chip, feed, highlights, evidence, P1, autonomy, identity, location.
-const worldPanel=mountWorldPanel(map,{onWorld:(w,events,observedAt)=>{pendingLive={world:w,events,observedAt};liveWants=Object.fromEntries(w.muses.filter(m=>m.wants?.goal).map(m=>[m.id,{goal:m.wants!.goal,source:String(m.wants!.source)}]));liveScene?.accept(w,events,observedAt);},onReturnLive:()=>setMode('world'),onSelect:selectLive,isLive:()=>mode==='world',paused:()=>mode==='world'&&clock.paused&&!cues.length});
+const worldPanel=mountWorldPanel(map,{onWorld:(w,events,observedAt)=>{pendingLive={world:w,events,observedAt};liveWants=Object.fromEntries(w.muses.filter(m=>m.wants?.goal).map(m=>[m.id,{goal:m.wants!.goal,source:String(m.wants!.source)}]));liveScene?.accept(w,events,observedAt);updateUI();},onReturnLive:()=>setMode('world'),onSelect:selectLive,isLive:()=>mode==='world',paused:()=>mode==='world'&&clock.paused&&!cues.length});
 worldPanel.onReplayFrame(frame=>{recordedFrame=frame;liveScene?.setRecordedFrame(frame);updateUI();});
 // P-05: one continuous scene. Story (scripted) and live world are explicit modes you can switch between and back;
 // the selected Muse, its state and its source stay visible at every zoom; preview-flow item changes play on the
@@ -183,8 +182,6 @@ const museSource=document.createElement('span');museSource.id='muse-source';muse
 const activitySource=document.createElement('small');activitySource.id='activity-source';activitySource.className='action-source';$('activity-detail').after(activitySource);
 const museAvailability=document.createElement('span');museAvailability.id='muse-availability';museAvailability.className='src';museAvailability.hidden=true;museSource.after(museAvailability);
 function updateContinuity(){
- // updateUI first runs before this block is evaluated; the continuity UI joins from the next refresh.
- if(!museSource||!selectedLine||!cues)return;
  if(showingScene()){
   const shown=displayedWorld(),m=shown?.muses.find(m=>m.id===liveSelected),f=liveScene?.frames.get(liveSelected),p=presentationIn(liveSelected,shown),displayName=showingLive()&&liveSelected==='00-jolly'?publicLocationName(liveSelected,shown):p.name;
   paintAvailabilityLabel(museAvailability,(m as (typeof m & {availability?:unknown}))?.availability,navigator.language.startsWith('ko')?'ko':'en');
@@ -208,6 +205,8 @@ function updateContinuity(){
  selectedLine.textContent=`${name} · ${state} · ${cue?uiText('preview flow'):uiText('scripted story')}`;
  selectedLine.hidden=map.getZoom()>=20.35;
 }
+// All display controls exist for the first paint; public state can repaint them before 3D assets finish or fail.
+updateUI();
 // Preview cues from Preview flows (P-03 scenes): played by the commons character of the same harness variant.
 type Cue={index:number;clip:string|null;item:string|null;line:string|null;label:string;visual:'complete'|'fallback';prop:string|null;reason?:'no_clip'|'prop_unavailable';el:HTMLElement;how:HTMLElement;until:number};
 const itemLabel=(id:string)=>catalogText(id.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()));
