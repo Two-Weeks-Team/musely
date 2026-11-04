@@ -5,6 +5,7 @@ import {mountPersonalEntry,personalAuthResult,type PersonalEntryOptions} from '.
 import {mountPersonalConnection,type EntryProjection} from './personal-connection.ts';
 import {mountPersonalClaim} from './personal-claim.ts';
 import {mountPersonalAdoption} from './personal-adoption.ts';
+import {mountPersonalPause,appendAwayGuide} from './personal-pause.ts';
 import {mountSocialStatus} from './social-status.ts';
 import {judgeMuseAccess} from './judge-muse-access.ts';
 import {mountJudgeMuse} from './judge-muse.ts';
@@ -81,10 +82,10 @@ export function mountOnboarding(opts: {onJudgeFollow?:()=>void;onWatch: () => vo
   document.body.append(panel);
   panel.querySelector('.close')!.setAttribute('aria-label', uiText('Close'));
 
-  let personal: {profile:ReturnType<typeof mountPersonalEntry>; connection:ReturnType<typeof mountPersonalConnection>; claim:ReturnType<typeof mountPersonalClaim>;adoption:ReturnType<typeof mountPersonalAdoption>;social:ReturnType<typeof mountSocialStatus>;apply:()=>void} | null = null;
+  let personal: {profile:ReturnType<typeof mountPersonalEntry>; connection:ReturnType<typeof mountPersonalConnection>; claim:ReturnType<typeof mountPersonalClaim>;adoption:ReturnType<typeof mountPersonalAdoption>;social:ReturnType<typeof mountSocialStatus>;pause:ReturnType<typeof mountPersonalPause>;apply:()=>void} | null = null;
   const stopOwnerSession = personalOwnerAccess.subscribe(reason=>{if(['logout','http401','expired'].includes(reason))personal?.profile.markSessionLost();if(reason==='logout'||reason==='logout_settled')personal?.profile.setExternalBusy(personalOwnerAccess.isLoggingOut());});
   let personalEntry:EntryProjection|null=null,disposed=false;let judgeView:ReturnType<typeof mountJudgeMuse>|null=null;
-  const disposePersonal=()=>{personal?.social.dispose();personal?.adoption.dispose();personal?.claim.dispose();personal?.connection.dispose();personal?.profile.dispose();personal=null;personalEntry=null;};
+  const disposePersonal=()=>{personal?.pause.dispose();personal?.social.dispose();personal?.adoption.dispose();personal?.claim.dispose();personal?.connection.dispose();personal?.profile.dispose();personal=null;personalEntry=null;};
   let judgeDoorShown=false;const stopJudge=judgeMuseAccess.subscribe(()=>{if(disposed)return;const judge=judgeMuseAccess.state();if(judge.mode&&personal)disposePersonal();updateChip();if(judge.mode&&judge.account&&!judgeDoorShown){judgeDoorShown=true;open('connect');}else if(state.open)render();});
   let timer = 0;
   const stopTimer = () => { if (timer) clearInterval(timer); timer = 0; };
@@ -118,7 +119,7 @@ export function mountOnboarding(opts: {onJudgeFollow?:()=>void;onWatch: () => vo
     panel.querySelector<HTMLButtonElement>('.close')?.focus();
   }
   function close() {
-    if(disposed)return;state.open=false;judgeView?.setVisible(false);personal?.adoption.setVisible(false);personal?.apply();
+    if(disposed)return;state.open=false;judgeView?.setVisible(false);personal?.pause.setVisible(false);personal?.adoption.setVisible(false);personal?.apply();
     // Closing the panel mid-connection cancels the staged connection; nothing else changes.
     cancelConnect();
     state.open = false; panel.hidePopover(); updateChip(); chip.focus();
@@ -138,7 +139,7 @@ export function mountOnboarding(opts: {onJudgeFollow?:()=>void;onWatch: () => vo
     body.append(help,button(uiText('계속 둘러보기 / Keep watching'),'link-button',()=>{state.path='watch';close();opts.onWatch();},'entry-watch'));
     const socialDetails=el('details','entry-social-status'),socialHost=el('div');socialDetails.id='entry-social-status';socialDetails.append(el('summary','',uiText('내 Muse 상태 / My Muse status')),socialHost);socialDetails.hidden=true;body.append(socialDetails);
     let connectionBusy=false,claimBusy=false,adoptionBusy=false,socialBusy=false,socialExpanded=false,applying=false;
-    let social:ReturnType<typeof mountSocialStatus>|null=null;
+    let social:ReturnType<typeof mountSocialStatus>|null=null,pause:ReturnType<typeof mountPersonalPause>|null=null;
     let connection:ReturnType<typeof mountPersonalConnection>|null=null,claim:ReturnType<typeof mountPersonalClaim>|null=null,adoption:ReturnType<typeof mountPersonalAdoption>|null=null;
     let studioRouted=false;
     let latest:ReturnType<ReturnType<typeof mountPersonalEntry>['state']>|null=null,connectionVisible:boolean|null=null,claimVisible:boolean|null=null;
@@ -158,7 +159,7 @@ export function mountOnboarding(opts: {onJudgeFollow?:()=>void;onWatch: () => vo
         const current=block||socialExpanded?{authenticated:null,profile:null,busy:true}:latest;
         void connection?.syncProfile(current);void claim?.syncProfile(current);
         void social?.syncOwner({authenticated:latest.authenticated,muse:latest.profile?.actorId??null,busy:latest.busy||connectionBusy||claimBusy||adoptionBusy});
-        social?.setVisible(available&&socialExpanded);
+        social?.setVisible(available&&socialExpanded);pause?.setVisible(state.open);void pause?.syncOwner({authenticated:latest.authenticated,muse:latest.profile?.actorId??null,busy:latest.busy||connectionBusy||claimBusy||adoptionBusy||socialBusy});
       }finally{applying=false;}maybeStudio();
     }
     const p=mountPersonalEntry(profileHost,{...opts.personal,advancedContent:claimHost,fetcher:personalFetch,connectionManaged:true,authResult:personalAuthResult(opts.initial),onWatch:()=>{state.path='watch';close();opts.onWatch();},onState:s=>{latest=s;personalOwnerAccess.syncPersonal(s);void adoption?.syncProfile(s);applyFlow();}});
@@ -170,8 +171,9 @@ export function mountOnboarding(opts: {onJudgeFollow?:()=>void;onWatch: () => vo
       onState:a=>{if(disposed)return;if(a.blocksSetup){personalEntry=a.data?.adopted?a.data.entry:null;updateChip();}else if(latest?.authenticated===false){personalEntry=null;updateChip();}applyFlow();},
       onWriteBusy:value=>{adoptionBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy||personalOwnerAccess.isLoggingOut());claim?.setExternalBusy(value||connectionBusy);},onSessionLost:()=>p.markSessionLost(),onAdopted:()=>p.refresh(),onWatch:()=>{state.path='watch';close();opts.onWatch();}});
     social=mountSocialStatus(socialHost,{fetcher:personalFetch,endpoint:()=>'/api/personal/social-status',onSessionLost:()=>p.markSessionLost(),onWriteBusy:value=>{socialBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy||personalOwnerAccess.isLoggingOut());claim?.setExternalBusy(value||connectionBusy||adoptionBusy);adoption?.setExternalBusy(value||connectionBusy||claimBusy);}});social.setVisible(false);
+    const pauseHost=el('div','entry-personal-pause');body.append(pauseHost);pause=mountPersonalPause(pauseHost,{fetcher:personalFetch,now:opts.personal?.now,sessionCurrent:p.sessionCurrent,sessionExpiresAt:p.sessionExpiresAt,onSessionLost:()=>p.markSessionLost()});appendAwayGuide(body);
     socialDetails.addEventListener('toggle',()=>{socialExpanded=socialDetails.open;applyFlow();});
-    personal={profile:p,connection,claim,adoption,social,apply:applyFlow};latest=p.state();void adoption.syncProfile(latest);applyFlow();
+    personal={profile:p,connection,claim,adoption,social,pause,apply:applyFlow};latest=p.state();void adoption.syncProfile(latest);applyFlow();
   }
 
   function chooseView() {
@@ -295,7 +297,7 @@ export function mountOnboarding(opts: {onJudgeFollow?:()=>void;onWatch: () => vo
 
   chip.onclick = () => panel.matches(':popover-open') ? close() : open();
   const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape'&&state.open){event.preventDefault();close();}};document.addEventListener('keydown',onKey);
-  const onToggle=(event:Event)=>{ if ((event as ToggleEvent).newState === 'closed' && state.open) { cancelConnect(); state.open = false; updateChip(); chip.focus();judgeView?.setVisible(false);personal?.adoption.setVisible(false);personal?.apply(); } };panel.addEventListener('toggle',onToggle);
+  const onToggle=(event:Event)=>{ if ((event as ToggleEvent).newState === 'closed' && state.open) { cancelConnect(); state.open = false; updateChip(); chip.focus();judgeView?.setVisible(false);personal?.pause.setVisible(false);personal?.adoption.setVisible(false);personal?.apply(); } };panel.addEventListener('toggle',onToggle);
   const enter=document.getElementById('enter'),onEnter=()=>open('choose');enter?.addEventListener('click',onEnter);
   updateChip();
 
