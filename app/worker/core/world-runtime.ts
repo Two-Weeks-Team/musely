@@ -1,3 +1,5 @@
+import {finalizeResidentSpeech} from '../../src/engine/world.ts';
+import type {PublicUtterance} from '../../src/engine/resident-utterance.ts';
 import {setResidentFrozen} from '../../src/engine/world.ts';
 import {isResidentInstance,harnessRoleId} from '../../src/engine/harness.ts';
 import {actorProfile} from '../../src/engine/participants.ts';
@@ -138,10 +140,16 @@ export class WorldRuntime {
   // Campfire invites close (gathered, expired, cancelled) on every tick: the invite upkeep joins the hooks here (I-13).
   private goalIdle(s:WorldState,now:number){const p=this.opts.residentGoals;if(!p||p.enabled!==true)return [];if(!this.ownsResidentGoalStore(p.goals))throw Error('resident goal storage mismatch');return residentGoalIdleIds({...p,authorize:(s,a,b,at)=>p.authorize(s,a,b,at)&&(!this.opts.delegationValid||this.opts.delegationValid(a)),ownership:id=>{const r=(this.opts as RuntimeOptions & {residentLife?:{enabled:boolean;ownershipKind:(id:string)=>'resident'|'personal'|'legacy'|'unknown'}}).residentLife;return r?.enabled?r.ownershipKind(id):'unknown';}},s,now);}
 
-  private engineHooks():Hooks {
+  private residentSpeechEnabled(){return this.opts.residentValuesEnabled===true||this.opts.hooks?.residentValuesEnabled===true;}
+  private residentSpeechHistory(now:number):PublicUtterance[]{
+    if(!Number.isFinite(now)||now<0)throw Error('invalid resident speech clock');
+    // Complete time window, deliberately no public events-tail cap and no error fallback.
+    return this.sql.exec('SELECT muse, at, line FROM events WHERE at >= ? AND at <= ? AND line IS NOT NULL ORDER BY seq',now-30*60_000,now).toArray() as PublicUtterance[];
+  }
+  private engineHooks(now?:number):Hooks {
     const h=this.opts.hooks??{},p=this.opts.residentGoals;
     if(p?.enabled===true&&!this.ownsResidentGoalStore(p.goals))throw Error('resident goal storage mismatch');
-    return {...h,canProposeTrade:(s,a,b,g,w,at)=>{
+    return {...h,...(this.residentSpeechEnabled()?{residentValuesEnabled:true,...(now!==undefined?{residentSpeechHistory:this.residentSpeechHistory(now)}:{})}:{}),canProposeTrade:(s,a,b,g,w,at)=>{
       // This main pending-claim constraint applies even with Life mode disabled.
       // A trusted current-claim hook must explicitly authorize personal participation.
       // Prefix alone neither grants authority nor permanently rejects a verified claim.
@@ -324,7 +332,7 @@ export class WorldRuntime {
       const acceptedLife=lifeCandidate && !committedGoalIdle.includes(lifeCandidate.residentId) && !this.registryControls(lifeCandidate.residentId) && lifeCandidate.residentId===proposedLife?.residentId && lifeCandidate.placeId===proposedLife?.placeId ? lifeCandidate : null;
       const appliedMove=acceptedLife ? {muse:acceptedLife.residentId,place:acceptedLife.placeId,expectedVersion:acceptedLife.expectedWorldVersion} : undefined;
       const committedIdle=this.residentIdleIds(freshLife?.state,current,now);
-      const {state, events} = tick(current, {now, decision: usable, replies, spot: turn, residentMove:appliedMove,residentIdle:committedIdle,residentFrozen:this.frozenResidents(current),residentGoalIdle:committedGoalIdle}, canMeet ? {...this.engineHooks(), canMeet: this.dedupMeetings(canMeet)} : this.engineHooks());
+      const {state, events} = tick(current, {now, decision: usable, replies, spot: turn, residentMove:appliedMove,residentIdle:committedIdle,residentFrozen:this.frozenResidents(current),residentGoalIdle:committedGoalIdle}, canMeet ? {...this.engineHooks(now), canMeet: this.dedupMeetings(canMeet)} : this.engineHooks(now));
       if(this.lifeStore && freshLife && this.opts.residentLife?.enabled===true){
         let lifeNext=rememberCommittedResidentEvents(freshLife.state,state,events,now,id=>knownResident(id,this.opts.residentLife!.ownershipKind),current);
         if(acceptedLife)lifeNext=noteServed(lifeNext,acceptedLife.residentId,now);
@@ -439,7 +447,7 @@ export class WorldRuntime {
     const due=dueResidents(before,now,this.actionOwnership,control).filter(id=>allowed(before,id)&&!finishingGoals.includes(id)&&!(serviceConsumed&&id===serviceSpot.muse))
       .sort((a,b)=>(life.residents.find(r=>r.id===a)?.lastServedAt??0)-(life.residents.find(r=>r.id===b)?.lastServedAt??0)||a.localeCompare(b));
     const context=(s:WorldState,id:string)=>residentContextForWorld({revision:stored.revision,state:life},s,id,now,{...this.opts.residentLife!,ownershipKind:this.actionOwnership,includeOperatingResidents:true,includeRelationships:this.opts.residentReflection?.enabled===true});
-    const planning=tick(before,{now,spot:{muse:serviceSpot.muse,priority:serviceSpot.priority},residentActors:actors,requirePriorityApplication:true,residentFrozen:this.frozenResidents(before)},{...this.engineHooks(),canMeet:()=>({ok:false,event:null})}).state;
+    const planning=tick(before,{now,spot:{muse:serviceSpot.muse,priority:serviceSpot.priority},residentActors:actors,requirePriorityApplication:true,residentFrozen:this.frozenResidents(before)},{...this.engineHooks(now),canMeet:()=>({ok:false,event:null})}).state;
     let priorityInfo:{source:string;reason?:string}={source:'rule',reason:'activity_or_authority_pending'};
     let priorityAttempted=false;
     const outcomes=await Promise.all([...due].sort((a,b)=>Number(b===serviceSpot.muse&&serviceSpot.priority)-Number(a===serviceSpot.muse&&serviceSpot.priority)).map(async id=>{
@@ -461,7 +469,7 @@ export class WorldRuntime {
     }));
     const plans=outcomes.flatMap(r=>r.turn?[r.turn]:[]),fallback=outcomes.filter(r=>!r.turn).map(r=>r.id);
     const canMeet=await this.meetingGate(before,now);
-    const preview=tick(before,{now,spot:{muse:serviceSpot.muse,priority:serviceSpot.priority},residentActors:actors,residentTurns:plans,residentFallback:fallback,requirePriorityApplication:true,residentFrozen:this.frozenResidents(before)},canMeet?{...this.engineHooks(),canMeet}:this.engineHooks());
+    const preview=tick(before,{now,spot:{muse:serviceSpot.muse,priority:serviceSpot.priority},residentActors:actors,residentTurns:plans,residentFallback:fallback,requirePriorityApplication:true,residentFrozen:this.frozenResidents(before)},canMeet?{...this.engineHooks(now),canMeet}:this.engineHooks(now));
     const recent=this.events(0,500,{tail:500}).filter(e=>e.at>=before.lastTickAt&&e.at<=now);
     const reacting={...preview.state,version:before.version,tick:before.tick,lastTickAt:before.lastTickAt};
     const prepared=reactionCandidates(reacting,[...recent,...preview.events],life.dialogues??[],now,this.actionOwnership,this.statusOf,control,this.opts.socialStatus!==undefined);
@@ -494,7 +502,7 @@ export class WorldRuntime {
       });
       const currentActors=current.muses.filter(m=>knownResident(m.id,this.actionOwnership,true)&&!m.profile&&m.controlMode!=='personal').map(m=>m.id);
       const failures=[...fallback,...plans.filter(p=>!usable.includes(p)).map(p=>p.decision.muse)].filter(id=>readyAtCommit.has(id)&&allowed(current,id));
-      const {state,events}=tick(current,{now,spot:{muse:serviceSpot.muse,priority:serviceSpot.priority},residentActors:currentActors,residentTurns:usable,residentFallback:failures,residentReactions:usableReactions,requirePriorityApplication:true,residentFrozen:this.frozenResidents(current)},canMeet?{...this.engineHooks(),canMeet:this.dedupMeetings(canMeet)}:this.engineHooks());
+      const {state,events}=tick(current,{now,spot:{muse:serviceSpot.muse,priority:serviceSpot.priority},residentActors:currentActors,residentTurns:usable,residentFallback:failures,residentReactions:usableReactions,requirePriorityApplication:true,residentFrozen:this.frozenResidents(current)},canMeet?{...this.engineHooks(now),canMeet:this.dedupMeetings(canMeet)}:this.engineHooks(now));
       const activityApplied=(p:typeof plans[number])=>usable.includes(p)&&events.some(e=>e.muse===p.decision.muse&&e.source===p.decision.source&&['spotlight','beat','depart','trade_intent'].includes(e.kind));
       const reactionApplied=(r:ResidentReaction)=>usableReactions.includes(r)&&events.some(e=>e.muse===r.reply.muse&&e.data?.triggerId===r.triggerId&&(e.kind==='encounter_reply'||e.kind==='resident_wave'));
       for(const r of usableReactions)if(r.reply.source==='live'&&!reactionApplied(r))late.push({at:now,source:'live',kind:'encounter_reply_discarded',muse:r.reply.muse,other:r.reply.other,data:{reason:'reaction_not_applied',triggerId:r.triggerId,evidence:r.reply.evidence??null},tags:[]});
@@ -682,7 +690,8 @@ export class WorldRuntime {
    */
   private async encounterReplies(s: WorldState, now: number, decision: Decision | null, canMeet: Hooks['canMeet'], turn: {muse: string; priority: boolean}, residentMove?:{muse:string;place:string;expectedVersion:number},residentIdle?:readonly string[]): Promise<EncounterReply[]> {
     let dry: WorldEvent[];
-    try { dry = tick(s, {now, decision, replies: [], spot: turn,residentMove,residentIdle,residentFrozen:this.frozenResidents(s),residentGoalIdle:this.goalIdle(s,now)}, canMeet ? {...this.engineHooks(), canMeet} : this.engineHooks()).events; } catch (e) {
+    const speechHooks=this.engineHooks(now); // Missing history is a failed turn, never an unfiltered dry-run fallback.
+    try { dry = tick(s, {now, decision, replies: [], spot: turn,residentMove,residentIdle,residentFrozen:this.frozenResidents(s),residentGoalIdle:this.goalIdle(s,now)}, canMeet ? {...speechHooks, canMeet} : speechHooks).events; } catch (e) {
       console.error('encounter dry run failed', e);
       return [];
     }
@@ -801,6 +810,7 @@ export class WorldRuntime {
     // Task records (C06, I-07): revision and contentHash follow any content change this commit made (a counter, new
     // meetup candidates), and the approvals made on the old content are dropped, in the same transaction.
     syncTasks(s.inbox);
+    if(this.residentSpeechEnabled()&&out.length)finalizeResidentSpeech(s,out,now,this.residentSpeechHistory(now));
     const changed = JSON.stringify(s) !== raw, bumped = bump(changed);
     if (bumped) s.version += 1;
     const afterRaw = JSON.stringify(s);
