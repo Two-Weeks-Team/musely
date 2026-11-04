@@ -1,3 +1,4 @@
+import {hasActorHarness,isResidentInstance,harnessRoleId} from './harness.ts';
 // Agent inbox and owner notifications (direction v2, 7.2 and 12.3).
 // - Agent inbox: everything a connected Muse needs to keep negotiating — pending Tasks (trade proposals,
 //   counters, meetup candidates) and received messages, each Task with a deadline. Expired Tasks are
@@ -110,7 +111,9 @@ export const DAILY = {postcards: 3, gifts: 3} as const;
 
 export const isConnected = (inbox: Inbox | undefined, museId: string, now: number) => !!inbox && now - (inbox.connected[museId] ?? -Infinity) < CONNECTED_MS;
 /** Ownership/control is permanent; recent connection activity is only presence. */
-export const isRuntimeControlled = (state: Pick<WorldState, 'muses' | 'inbox'>, museId: string, now: number) => state.muses.find(m => m.id === museId)?.controlMode === 'personal' || isConnected(state.inbox, museId, now);
+/** Unknown actor IDs never inherit resident autonomy, even with missing controlMode or expired presence. */
+export const isResidentFrozen = (state:Pick<WorldState,'muses'>,id:string) => {const m=state.muses.find(m=>m.id===id);return !!m&&isResidentInstance(id)&&m.residentRole===harnessRoleId(id)&&m.controlMode!=='personal'&&!m.profile&&m.residentFrozenAt!==undefined;};
+export const isRuntimeControlled = (state: Pick<WorldState, 'muses' | 'inbox'>, museId: string, now: number) => isResidentFrozen(state,museId) || !hasActorHarness(museId) || (isResidentInstance(museId)&&state.muses.find(m=>m.id===museId)?.residentRole!==harnessRoleId(museId)) || state.muses.find(m => m.id === museId)?.controlMode === 'personal' || isConnected(state.inbox, museId, now);
 /** Connection activity is persisted at most every ten minutes; readers must include this uncertainty. */
 export const CONNECTED_REFRESH_MS = 10 * 60_000;
 export const nextId = (inbox: Inbox, prefix: string) => `${prefix}_${(++inbox.seq).toString(36)}`;
