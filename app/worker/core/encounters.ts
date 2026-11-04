@@ -1,3 +1,4 @@
+import {CONVERSATION_RANGE_M} from '../../src/engine/speech.ts';
 // Public facts that help a personal Muse decide what interests it next. No model, schedule or actions run here.
 import {participantName,participantRole} from '../../src/engine/participants.ts';
 import {distanceM, placeById, type Place} from '../../src/engine/places.ts';
@@ -34,7 +35,7 @@ export function encounterOpportunities(s: WorldState, museId: string, _now: numb
   const area = s.owner?.muse === museId ? ownerArea(s.owner) : null;
   const newMuses = canAct ? s.muses.filter(other => other.id !== museId && !other.travel && !s.paused?.[other.id] && !introduced(s, museId, other.id))
     .map(other => ({other, distance: distanceM(here, placeById(other.place))}))
-    .filter(row => row.distance <= RULES.tradeRangeM)
+    .filter(row => row.distance <= CONVERSATION_RANGE_M)
     .sort((a, b) => a.distance - b.distance || a.other.id.localeCompare(b.other.id))
     .map(({other, distance}) => ({id: other.id, name: participantName(s,other.id), role: participantRole(s,other.id), place: placeView(placeById(other.place)), distance_m: Math.round(distance), public_wants: {goal: wrapUntrusted(other.wants.goal, 'other_agent_public_wants'), items: [...other.wants.items]}})) : [];
   return {
@@ -52,7 +53,7 @@ export function encounterNotices(s: WorldState, museId: string) {
     .map(notice => {
       const other = participant(s, notice.other);
       return {...notice, name: participantName(s,other.id), current_place: placeView(placeById(other.place)),
-        can_say_hello_now: !me.travel && !other.travel && !s.paused?.[museId] && !s.paused?.[other.id] && distanceM(placeById(me.place), placeById(other.place)) <= RULES.tradeRangeM};
+        can_say_hello_now: !me.travel && !other.travel && !s.paused?.[museId] && !s.paused?.[other.id] && distanceM(placeById(me.place), placeById(other.place)) <= CONVERSATION_RANGE_M};
     });
 }
 
