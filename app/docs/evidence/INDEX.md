@@ -1,6 +1,6 @@
 # Release evidence index
 
-> Latest status: [M4 source map, 2026-11-05](#m4-source-map-2026-11-05). Original evidence is retained under its original source and scope.
+> Latest status: [PR209/210 evidence supplement, 2026-11-05](#pr209210-evidence-supplement-2026-11-05). Original evidence, failures and measurement units are preserved.
 
 Both scopes retain their original evidence environment and pending acceptance boundaries. Preparation and local checks do not establish operational acceptance.
 
@@ -87,3 +87,13 @@ The activated world's [30-minute actual per-Muse C10](https://github.com/Two-Wee
 - [D04 scoped desktop supplement](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6619008504), [emulated geometry](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6619023526) and [controlled166 C11](https://github.com/Two-Weeks-Team/musely/pull/166#issuecomment-6621314847) remain separate dated evidence; none is a new final-build S23/PSS test.
 
 The [M4 handoff](../RELEASE_ACCEPTANCE.md#m4-evidence-and-closeout-handoff-2026-11-05) owns the remaining closure distinctions. Original evidence bytes, failures and cohort units are preserved. M5 is supervisor-started after the final deployment; old fixed start/freeze times are superseded. [Judge-link examples](../SUBMISSION_DRAFT.md#three-entry-routes) contain only `<JUDGE_LINK_TOKEN>`; final operating verification stays pending. This index adds no evidence folder, harness, credential, GO or attestation procedure.
+
+## PR209/210 evidence supplement (2026-11-05)
+
+| Existing evidence / posted receipt | Reuse boundary |
+|---|---|
+| [D01 partial C10](https://github.com/Two-Weeks-Team/musely/issues/61#issuecomment-6638815031); [path follow-up](../D01_ACCEPTANCE.md#pr209210-scoped-path-follow-up-2026-11-05) | PR210 original pointer gestures 8/8 and held-pointer clearing 4/4 use browser-internal synthetic personal responses. Supervisor PR200 Studio→Save→Connect and PR209 same-key Pause→Resume remain separate human runs; no new Native completion |
+| `output/playwright/postdeploy-1105-210/gesture-results.json` | Four profiles, deployed UI, real private calls/key issuance0; native select popup unmeasured. PR209 `explicit-click-results.json`, `original-explicit-click-results.json`, diagnostic and interruption records are retained unchanged |
+| [PR209 D04 C10](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6638436562), [PR210 D04 C10](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6638821976); [source/conditions/bytes](../DEVICE_ACCEPTANCE.md#pr209210-scoped-first-arrival-2026-11-05) | Existing `output/playwright/postdeploy-1105-209/` and `postdeploy-1105-210/` each retain `c11-start.json`, `c11-result.json`, `c11-source-supplement.json` and their one-attempt arrival image. PR209 5.3143s and PR210 4.7905s measure first arrival only, not fresh full-C11/FPS/phone PSS. Existing Pro/S23 physical/numeric technical acceptance retains its original source; current-source change-impact judgment and D01 remain separate, with no blanket retest gate |
+
+These external artifact names identify existing custody, not new repository artifacts or a new harness. No raw private response, real key or judge token is copied. The [M4 partial handoff](../RELEASE_ACCEPTANCE.md#pr210-m4-partial-handoff-2026-11-05) preserves #51/#170/#176 gaps, open #61/#62/#64 and incomplete M4/M5. This supplement creates no new gate and performs no new execution.
