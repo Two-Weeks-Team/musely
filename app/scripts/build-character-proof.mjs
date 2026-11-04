@@ -6,6 +6,7 @@ await prepareAssets();
 const manifest=JSON.parse(await readFile('assets/source-manifest.json','utf8'));
 for(const[name,entry]of Object.entries(manifest)){const bytes=await readFile('assets/'+name);if(createHash('sha256').update(bytes).digest('hex')!==entry.sha256)throw Error('Changed source asset: '+name);}
 const dir='dist-character-proof';await mkdir(dir+'/character-kit/runtime/base',{recursive:true});await mkdir(dir+'/world',{recursive:true});
+for(const file of['icon.svg','musely-logo.svg','og-image.png','apple-touch-icon.png','icon-512.png','llms.txt','robots.txt','sitemap.xml','manifest.webmanifest'])await copyFile('static/'+file,dir+'/'+file);
 const [proof,world]=await Promise.all([
  build({entryPoints:['src/character-kit/MaterialProof.ts'],bundle:true,write:false,format:'esm',target:'es2022',minify:true}),
  build({entryPoints:['src/main.ts'],bundle:true,write:false,format:'iife',target:'es2022',minify:true,legalComments:'inline'})

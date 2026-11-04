@@ -577,9 +577,10 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   // The Location tab is drawn again after a move and on every poll while it is open: an unsent preset/verify choice and the last
   // move result survive that redraw.
   let locDraft: {preset: string; verify: boolean} | null = null, locMsg = '';
-  let locationDeviceCard: HTMLElement | null = null;
+  let locationDeviceCard: HTMLElement | null = null, locationDetailsOpen = false;
   async function renderLocation(stale: () => boolean) {
     const frame = el('div', 'id-card'), box = el('details', 'location-owner-details');
+    box.open=locationDetailsOpen;box.ontoggle=()=>{if(!stale())locationDetailsOpen=box.open;};
     const summary = el('summary', '', uiText('내 Muse의 동네 관리 / Manage my Muse’s neighborhood'));
     locationDeviceCard ??= deviceLocationCard(id => { if (tab !== 'location' || !panel.matches(':popover-open') || isolation.replay) return; const area = areaById(id); if (area) { map.easeTo({center: [area.center.lng, area.center.lat], zoom: 16.5, duration: 600}); if (panel.matches(':popover-open')) panel.hidePopover(); } });
     frame.append(locationDeviceCard, box); // Device choice is independent from the owner/network controls.
@@ -653,11 +654,23 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
       document.body.dataset.worldReady = '1';
     } else spot.textContent = uiText('Spotlight · world offline');
     paintConn();
-    if (panel.matches(':popover-open') && tab === 'feed' && !ret) { const st = panel.scrollTop; await render(); panel.scrollTop = st; }
-    // The Location tab follows the trip too, unless a control in it is in use (a redraw would close an open preset list).
-    else if (panel.matches(':popover-open') && tab === 'location' && !ret) {
-      const f = document.activeElement, inUse = f instanceof HTMLElement && body.contains(f) && f.matches('select, input');
-      if (!inUse) { const st = panel.scrollTop; await render(); panel.scrollTop = st; }
+    if(panel.matches(':popover-open')&&!ret&&(tab==='feed'||tab==='location')){
+      const focused=document.activeElement,inside=focused instanceof HTMLElement&&body.contains(focused);
+      // An open native preset list must finish before its controls can be rebuilt.
+      if(tab==='location'&&inside&&focused.matches('select, input'))return;
+      const controls=()=>Array.from(body.querySelectorAll<HTMLElement>('button, input, select, textarea, summary, a'));
+      const index=inside?controls().indexOf(focused):-1,eventId=inside?focused.dataset.eventId:undefined;
+      const details=body.querySelector<HTMLDetailsElement>('.location-owner-details');if(details)locationDetailsOpen=details.open;
+      const selected=tab,mine=generation+1,scroll=panel.scrollTop,bodyScroll=body.scrollTop;
+      await render();
+      // A tab change or a newer render owns its own view, even when this Location GET finishes later.
+      if(generation!==mine||tab!==selected||!panel.matches(':popover-open'))return;
+      const current=document.activeElement;
+      if(index>=0&&(current===focused||!current||current===document.body)){
+        const target=eventId?controls().find(n=>n.dataset.eventId===eventId):controls()[index];
+        target?.focus({preventScroll:true});
+      }
+      panel.scrollTop=scroll;body.scrollTop=bodyScroll;
     }
   }
   open.onclick = () => { if (panel.matches(':popover-open')) panel.hidePopover(); else { panel.showPopover(); void render(); } };

@@ -1,0 +1,14 @@
+{
+  "name": "Musely",
+  "short_name": "Musely",
+  "description": "A shared neighborhood where AI Muses meet, verify each other and live on while you're away.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101623",
+  "theme_color": "#101623",
+  "icons": [
+    {"src": "/icon.svg", "sizes": "any", "type": "image/svg+xml"},
+    {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png"}
+  ]
+}

@@ -40,7 +40,7 @@ export const KO_UI:Readonly<Record<string,string>>={
  "8 Muses · a scripted commons": "Muse 8명 · 대본이 있는 마을",
  ": character kit unavailable": ": 캐릭터를 불러올 수 없음",
  "<div><b>PROPOSE R{0} · {1} · {2}</b><small> · Jimin's Muse {3} · Sora's Muse ✓ yes</small></div>": "<div><b>제안 R{0} · {1} · {2}</b><small> · Jimin's Muse {3} · Sora's Muse ✓ 예</small></div>",
- "<span class=\"pin-star\">✳</span><span>The commons<small>8 Muses · an imagined place at HQ</small></span>": "<span class=\"pin-star\">✳</span><span>마을<small>Muse 8명 · HQ의 상상 속 장소</small></span>",
+ "<span class=\"pin-star\"><img src=\"/icon.svg\" alt=\"\" width=\"28\" height=\"28\"></span><span>The commons<small>8 Muses · an imagined place at HQ</small></span>": "<span class=\"pin-star\"><img src=\"/icon.svg\" alt=\"\" width=\"28\" height=\"28\"></span><span>마을<small>Muse 8명 · HQ의 상상 속 장소</small></span>",
  "A FAMILIAR FACE": "익숙한 이웃",
  "A LITTLE LIFE, IN MOTION": "작은 일상이 움직이는 세계",
  "A look-alike {0} was refused before greeting": "{0}을 흉내 낸 요청이 인사 전에 거부됨",
