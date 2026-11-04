@@ -7,6 +7,15 @@ import {issueSession} from '../worker/core/session.ts';
 import {issueOwnerSession} from '../worker/core/owner-session.ts';
 register('data:text/javascript,' + encodeURIComponent(`export async function resolve(s,c,n){if(s==='cloudflare:workers')return{url:'data:text/javascript,export class DurableObject {constructor(ctx,env){this.ctx=ctx;this.env=env;}}',shortCircuit:true};return n(s,c);}`));
 const ORIGIN='https://musely.net', START='/api/personal/auth/threads/start', CALLBACK='/api/threads/callback', ME='/api/personal/me', LOGOUT='/api/personal/session';
+test('installed resident trade policy preserves a current verified personal claim and stops immediately on claim or authority loss',async t=>{
+ const {a,two}=await pair(t),id=two.profile.actorId,rt=a.dobj.runtime,s=rt.state(),at=Date.now();
+ const allowed=()=>rt.canResidentProposeTrade(s,'01-sunny',id,'tea','coffee',at);
+ assert.equal(allowed(),true,'a verified personal peer must reach the ordinary resident trade path');
+ a.db.prepare('UPDATE personal_authority SET active=0 WHERE actor_id=?').run(id);assert.equal(allowed(),false);
+ a.db.prepare('UPDATE personal_authority SET active=1 WHERE actor_id=?').run(id);assert.equal(allowed(),true);
+ a.db.prepare("UPDATE personal_claims SET status='claim_revoked' WHERE actor_id=?").run(id);assert.equal(allowed(),false);
+ assert.equal(rt.canResidentProposeTrade(s,'01-sunny','pm_not_registered','tea','coffee',at),false);
+});
 const OWNER='synthetic-owner-control-token-0000000001';
 const H={origin:ORIGIN,'sec-fetch-site':'same-origin'};
 const cookie=(r,name)=>r.headers.getSetCookie().find(x=>x.startsWith(name+'='))?.split(';')[0];

@@ -1,3 +1,4 @@
+import type {CampfireScenePort} from '../../world-packs/campfire/scene-port.mjs';
 // I-09: read-only server snapshot/event → existing rig, props, labels and four small effects.
 // The scripted eight-character scene stays intact; live mode reuses its matching IDs and adds Ember/Copper.
 import * as T from 'three';
@@ -12,7 +13,7 @@ import {surfaceHeightAt} from '../surfaces.ts';
 import {UPPER_BONES, inventorySummary, museName, ownerOf, type ActorFrame, type FxKind, type LiveWorld, type LiveEvent} from './live-scene-core.ts';
 
 type Host = {scene: T.Scene; actors: MuseActor[] | null | undefined; muses: T.Object3D[]; shadows: T.Mesh[];
-  selection: T.Object3D; library: MaterialLibrary | null | undefined; shadowTexture: T.Texture | null; ambient(t: number): void};
+  selection: T.Object3D; campfireVisual?: CampfireScenePort; library: MaterialLibrary | null | undefined; shadowTexture: T.Texture | null; ambient(t: number): void};
 type Entry = {id: string; actor: MuseActor; shadow: T.Mesh; extra: boolean; label: HTMLElement | null};
 type Point = {x: number; y: number};
 const FX: Record<FxKind, number> = {teleport: 0x8fb8ff, item: 0xffd27d, stamp: 0x92d7b3, trade_lock: 0xe0b2f7};
@@ -20,6 +21,8 @@ const FX: Record<FxKind, number> = {teleport: 0x8fb8ff, item: 0xffd27d, stamp: 0
 export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () => ({x: -100, y: -100})) {
   const store = new SceneProjection();
   let projection = store.projection;
+  // Receipt time comes from the successful HTTP read, including cached startup/pause hand-offs.
+  let liveObservedAt: number | undefined;
   const entries = new Map<string, Entry>(), personal = new Map<string, Entry>(), errors: string[] = [];
   const loading = new Map<string, {variant: MuseVariantId; token: object; promise: Promise<void>}>();
   let active = false, disposed = false, frames = new Map<string, ActorFrame>(), now = 0, selected = '00-jolly';
@@ -62,7 +65,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
   }
   function wanted(id: string, variant: MuseVariantId) {
     const m = projection.world?.muses.find(m => m.id === id), p = m ? resolveMuse(m) : null;
-    return !disposed && p?.kind === 'personal' && p.appearanceId === variant && entries.get(id)?.actor.variant !== variant;
+    return !disposed && (p?.kind === 'personal'||p?.kind === 'resident') && p.appearanceId === variant && entries.get(id)?.actor.variant !== variant;
   }
   async function upgradeEntry(e: Entry, variant: MuseVariantId, current: () => boolean) {
     if (!host.library) return;
@@ -101,8 +104,10 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
   }
   const shadowVisible = (e: Entry, visible: boolean) => {e.shadow.userData.instanceHidden = !visible;if (!e.shadow.userData.instanced) e.shadow.visible = visible;};
   function setActive(value: boolean) {
+    if(disposed)return;
     const leavingLive = active && !value;
     active = value;
+    if(!value) host.campfireVisual?.setWorld(null);
     if (!host.actors?.length) {for (const node of host.muses) node.visible = !value;for (const shadow of host.shadows) {shadow.userData.instanceHidden = value;if (!shadow.userData.instanced) shadow.visible = !value;}}
     if (root) root.hidden = !value;
     for (const e of allEntries()) {
@@ -113,12 +118,23 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
     }
     if (!value) for (const mesh of [...effects.values()]) mesh.visible = false;
   }
-  function accept(world: LiveWorld, events: readonly LiveEvent[]) {if(disposed||!store.accept(withSnapshotProfiles(world,world),events))return false;projection=store.projection;reconcile();return true;}
+  function accept(world: LiveWorld, events: readonly LiveEvent[], observedAt = world.lastTickAt) {
+    if(disposed||!store.accept(withSnapshotProfiles(world,world),events))return false;
+    liveObservedAt=observedAt;projection=store.projection;reconcile();return true;
+  }
   function setRecordedFrame(frame: RecordedFrame | null) {if (disposed) return; store.setRecordedFrame(frame); projection = store.projection; if(frame&&projection.world)projection.world=withSnapshotProfiles(projection.world,frame.publicState);reconcile(); if (root) root.dataset.replay = String(store.replay);}
   const sourceOf = (id: string) => frameSource(projection, frames.get(id), id);
   function update(at: number, selectedId = selected) {
     now = at; selected = selectedId;
-    if (disposed || !active || !projection.world) return;
+    if (disposed || !active) return;
+    if (!projection.world) {
+      // Returning from replay while offline must not leave recorded people or sparks in the live view.
+      frames.clear();host.campfireVisual?.setWorld(null);host.selection.visible=false;
+      for(const e of allEntries()){e.actor.root.visible=false;shadowVisible(e,false);if(e.label)e.label.hidden=true;}
+      for(const mesh of effects.values()){mesh.visible=false;mesh.count=0;}
+      host.ambient(at / 1000);return;
+    }
+    host.campfireVisual?.setWorld(projection.world, store.replay ? store.recordedAt ?? at : liveObservedAt);
     frames = projection.frames(at);
     for (const e of allEntries()) {
       const f = entries.get(e.id) === e && personal.has(e.id) ? undefined : frames.get(e.id), actor = e.actor;
@@ -171,9 +187,13 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
   }
   function dispose() {
     if(disposed)return;setActive(false); disposed = true; loading.clear(); root?.remove();
-    for(const id of [...personal.keys()])releasePersonal(id);
-    for (const e of entries.values()) if (e.extra) {e.actor.dispose(); e.shadow.removeFromParent(); e.shadow.geometry.dispose(); (e.shadow.material as T.Material).dispose();}
-    for (const mesh of [...effects.values()]) {mesh.removeFromParent(); mesh.geometry.dispose(); (mesh.material as T.Material).dispose();}
+    try {host.campfireVisual?.disable();}
+    finally {
+      for(const id of [...personal.keys()])releasePersonal(id);
+      for (const e of entries.values()) if (e.extra) {e.actor.dispose(); e.shadow.removeFromParent(); e.shadow.geometry.dispose(); (e.shadow.material as T.Material).dispose();}
+      for (const mesh of [...effects.values()]) {mesh.removeFromParent(); mesh.geometry.dispose(); (mesh.material as T.Material).dispose();}
+    }
   }
   return {get ready(){return Promise.all([legacyReady,...[...loading.values()].map(p=>p.promise)]);}, accept, setRecordedFrame, setActive, update, getMetrics, dispose, get projection() {return projection;}, get liveProjection() {return store.live;}, get frames() {return frames;}, get active() {return active;}};
 }
+

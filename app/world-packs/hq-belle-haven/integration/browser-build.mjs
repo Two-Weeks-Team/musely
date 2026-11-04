@@ -1,0 +1,2 @@
+import {build} from 'esbuild';import fs from 'node:fs';
+const cwd=new URL('./',import.meta.url).pathname;fs.mkdirSync(cwd+'browser-dist',{recursive:true});await build({entryPoints:[cwd+'browser-entry.mjs'],bundle:true,format:'esm',platform:'browser',outfile:cwd+'browser-dist/proof.js'});for(const f of ['maplibre-gl-worker.mjs','maplibre-gl-shared.mjs','maplibre-gl.css'])fs.copyFileSync(cwd+'node_modules/maplibre-gl/dist/'+f,cwd+'browser-dist/'+f);

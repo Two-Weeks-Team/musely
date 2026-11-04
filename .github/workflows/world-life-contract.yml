@@ -1,0 +1,113 @@
+name: World Life Contract
+on:
+  pull_request:
+    paths:
+      - 'app/worker/**'
+      - 'app/src/engine/**'
+      - 'app/src/replay/**'
+      - 'app/src/ui/**'
+      - 'app/src/main.ts'
+      - 'app/src/scene.ts'
+      - 'app/world-packs/**'
+      - 'app/scripts/**'
+      - 'app/package*.json'
+      - 'app/docs/WORLD_LIFE_INTEGRATION.md'
+      - '.github/workflows/world-life-contract.yml'
+permissions:
+  contents: read
+jobs:
+  installed-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+        working-directory: app
+      # Test the actual merged source. No historical overlay or feature activation.
+      # npm check includes all top-level world-life, resident, personal, replay,
+      # campfire, five-PR coexistence and asset/transport/build regressions.
+      - name: Check the installed application and Worker, including dry-run build
+        run: npm run check
+        working-directory: app
+      - name: Verify installed-controller and compatibility subdirectory suites
+        run: node --test scripts/installed/*.test.mjs scripts/compat/*.test.mjs
+        working-directory: app
+      - name: Check the independent world-life contract type surface
+        run: npx tsc -p scripts/tsconfig.world-life-contract.json
+        working-directory: app
+      # Keep the original five-PR visual pack validation on the installed tree.
+      # The individual world-pack and campfire workflows remain independent too.
+      - run: npm ci --ignore-scripts && npm test && npm run typecheck && npm run validate
+        working-directory: app/world-packs/campfire
+      - run: npm ci --ignore-scripts && npm test
+        working-directory: app/world-packs/hq-belle-haven/authoring
+      - run: npm ci --ignore-scripts && npm test && npm run browser:build
+        working-directory: app/world-packs/hq-belle-haven/integration
+  historical-checkpoint-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: d4521aa70467fb2e18705dcd26816ba482ec3892
+          path: reviewed-main
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 098718d50cb25cd4d17a65160411b5644581cf6f
+          path: dependency-139
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 44b4ba860813d0716637a59235f929129a963efe
+          path: dependency-138
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ec65543f254e34b60e0c7712b189b384f78e470d
+          path: predecessor-140
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 6fe12e6c7782d2048b179b617b7dce123ae701ea
+          path: predecessor-138
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: c9a7ef0d4a21a7e0496cb02e3326eb1e3ba176ef
+          path: predecessor-139
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+        working-directory: app
+      - run: npm ci --ignore-scripts
+        working-directory: dependency-139/app
+      - name: Capture exact historical runtime checkpoint fixtures
+        run: |
+          ln -s "$PWD/dependency-139/app/node_modules" reviewed-main/app/node_modules
+          ln -s "$PWD/dependency-139/app/node_modules" dependency-138/app/node_modules
+          ln -s "$PWD/dependency-139/app/node_modules" predecessor-138/app/node_modules
+          ln -s "$PWD/dependency-139/app/node_modules" predecessor-139/app/node_modules
+          node app/scripts/capture-engine-checkpoint.mjs reviewed-main/app /tmp/main5.json engine-5
+          node app/scripts/capture-engine-checkpoint.mjs dependency-139/app /tmp/wants6.json engine-6
+          node app/scripts/capture-engine-checkpoint.mjs predecessor-138/app /tmp/resident6.json engine-6-resident-v1
+          node app/scripts/capture-engine-checkpoint.mjs dependency-138/app /tmp/resident-v2.json engine-6-resident-v2
+          # Only these pinned historical checkouts are composed for the engine-7 fixture.
+          # Never pass the current app as a composition input or output.
+          bash predecessor-140/app/scripts/compose-world-life.sh predecessor-140/app reviewed-main/app predecessor-138/app predecessor-139/app full
+          node app/scripts/capture-engine-checkpoint.mjs predecessor-139/app /tmp/combined7.json engine-7
+      - name: Replay all five unchanged histories with the installed current player
+        run: node scripts/verify-integrated-replay.mjs /tmp/main5.json /tmp/wants6.json /tmp/resident6.json /tmp/resident-v2.json /tmp/combined7.json
+        working-directory: app
+      - name: Confirm historical composition did not modify the current application
+        run: git diff --exit-code -- app

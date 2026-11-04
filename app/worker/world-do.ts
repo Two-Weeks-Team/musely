@@ -15,6 +15,7 @@ import {Ledger, type ReserveRequest, type Outcome, type Tier} from './core/ledge
 import type {Env} from './env.ts';
 import type {ClaimRecord} from './core/threads.ts';
 import {WorldRuntime} from './core/world-runtime.ts';
+import {WorldLifeController,worldLifeEnabled,WORLD_LIFE_PLACES} from './core/world-life-controller.ts';
 import {TICK_MS} from '../src/engine/world.ts';
 import {makeHooks} from '../src/engine/rules.ts';
 import {Trust, OWNER_SLOT} from './core/trust.ts';
@@ -39,6 +40,7 @@ export class WorldDO extends DurableObject<Env> {
   private personalWorld: PersonalWorld;
   private personalClaims:PersonalClaims;
   private runtime: WorldRuntime;
+  private worldLife: WorldLifeController|null=null;
   private trust: Trust;
   private ritual: RitualStore;
   private ownerRoot: JsonWebKey | null;
@@ -58,24 +60,35 @@ export class WorldDO extends DurableObject<Env> {
     this.ritual = new RitualStore(ctx.storage.sql);
     this.ownerRoot = env.OWNER_ROOT_JWK ? JSON.parse(env.OWNER_ROOT_JWK) : null;
     const hooks = makeHooks();
+    // The registry's current proof decides personal participation; a pm_ prefix is never authority.
+    // MeetingCheck still verifies both signed Cards/delegations and rechecks their exact proof at commit.
+    hooks.canProposeTrade = (_s,a,b,_give,_want,at) => [a,b].every(id => {
+      const agent=this.trust.agentByMuse(id);
+      if(!id.startsWith('pm_')&&agent?.kind!=='personal')return true;
+      return agent?.kind==='personal'&&!this.trust.suspended(id)&&this.trust.personalClaim(id,at).claimed;
+    });
     // The runtime commits inside the storage transaction; every other store shares the same SQL handle.
     const txSql = {exec: (q: string, ...b: unknown[]) => ctx.storage.sql.exec(q, ...b), transactionSync: <T>(fn: () => T) => ctx.storage.transactionSync(fn)};
+    const active=()=>worldLifeEnabled(env.WORLD_LIFE_MODE);
+    if(active())this.worldLife=new WorldLifeController(txSql,this.personalAuth.owners,this.trust,this.ledger,env.MODEL_API_KEY?{base:env.MODEL_BASE,key:env.MODEL_API_KEY,model:env.MODEL_ID,timeoutMs:8000}:null,muse=>this.personalWorld.ownerOf(muse),active);
     this.runtime = new WorldRuntime(txSql, {
+      ...this.worldLife?.runtimeOptions(),
       // Live decisions for a Muse whose delegation was revoked (and not re-issued) are discarded.
       delegationValid: museId => !this.trust.suspended(museId),
       // Every meeting: both Agent Cards and delegations are verified before any greeting or trade.
-      meetingGate: (s, now) => this.meetings.prepare(s, now),
+      meetingGate: async (s, now) => {const gate=await this.meetings.prepare(s,now);this.worldLife?.acceptMeetingGate(s,now,gate);return gate;},
       worldId: 'musely',
       ledger: this.ledger,
       hooks,
       model: {base: env.MODEL_BASE, key: env.MODEL_API_KEY, model: env.MODEL_ID, timeoutMs: 8000},
     });
+    this.worldLife?.bind(this.runtime);
     // Stable personal/legacy ownership never falls back to resident consent when login is unavailable.
     this.personalClaims=new PersonalClaims(ctx.storage,this.personalAuth,{secret:env.SESSION_SECRET??'',appId:env.THREADS_APP_ID??'',appSecret:env.THREADS_APP_SECRET??'',redirectUri:this.origin+'/api/threads/callback'},(actor,status,version)=>losePersonalClaim(this.runtime,this.trust,actor,status,version,Date.now()));
     this.trust.setPersonalClaimRefresh(actor=>this.personalClaims.refresh(actor));
     this.legacyProfile=new LegacyProfile(ctx.storage,this.runtime);
     this.personalWorld=new PersonalWorld(ctx.storage,this.personalAuth,this.personalRegistration,this.runtime,this.trust,this.origin,hooks,{root:()=>this.ownerRoot,claimed:()=>this.getClaim('owner-muse')?.status==='claimed'});
-    this.connected = new ConnectedHost({personal:this.personalWorld,sql: ctx.storage.sql, trust: this.trust, runtime: this.runtime, hooks, baseUrl: this.origin, ownerRoot: () => this.ownerRoot, ownerClaimed: () => this.getClaim('owner-muse')?.status === 'claimed', ownerOf: muse => this.personalWorld.ownerOf(muse)});
+    this.connected = new ConnectedHost({campfires:this.worldLife?{get enabled(){return active();},placeIds:WORLD_LIFE_PLACES}:undefined,personal:this.personalWorld,sql: ctx.storage.sql, trust: this.trust, runtime: this.runtime, hooks, baseUrl: this.origin, ownerRoot: () => this.ownerRoot, ownerClaimed: () => this.getClaim('owner-muse')?.status === 'claimed', ownerOf: muse => this.worldLife?this.worldLife.ownerOf(muse,id=>this.personalWorld.ownerOf(id)):this.personalWorld.ownerOf(muse)});
     this.personalAdoption=new PersonalAdoption(ctx.storage,this.personalAuth,{
       currentLegacy:()=>{const agent=this.trust.agentByMuse(OWNER_SLOT);if(!agent)throw new PersonalRegistryError('adoption_unavailable');const{kty,crv,x,y}=agent.rootJwk;return{actorId:OWNER_SLOT,agentId:agent.agentId,rootBinding:canonicalize({kty,crv,x,y}),worldId:this.runtime.worldId,profile:this.legacyProfile.view()};},
       commitProfile:(owner,input)=>{const profile=this.legacyProfile.patch(owner,input),commit=this.runtime.runLog.lastInput();if(!commit)throw new PersonalRegistryError('adoption_unavailable');const event=ctx.storage.sql.exec("SELECT seq,id FROM events WHERE run_id=? AND input_seq=? AND kind='legacy_profile_updated' AND muse=? ORDER BY seq DESC LIMIT 1",commit.runId,commit.seq,OWNER_SLOT).toArray()[0];if(!event)throw new PersonalRegistryError('adoption_unavailable');if(!commit.afterSnapshot&&commit.afterSnapshotError==='replay_storage_limit')this.receiptSnapshots.put({kind:'legacy_adoption',actorId:OWNER_SLOT,worldId:this.runtime.worldId,runId:commit.runId,inputSeq:commit.seq,eventId:String(event.id),afterHash:commit.afterHash},this.runtime.state());return{profile,commit:{worldId:this.runtime.worldId,runId:commit.runId,inputSeq:commit.seq,eventSeq:Number(event.seq),eventId:String(event.id),afterHash:commit.afterHash}};},
@@ -87,6 +100,7 @@ export class WorldDO extends DurableObject<Env> {
       this.personalAdoption.init();
       this.personalRegistration.init();
       this.runtime.init(Date.now());
+      this.worldLife?.init();
       // Task records version 2 (C06, I-07): migrates a stored version 1 inbox once, before any other commit; a restart writes nothing.
       migrateTaskStore(this.runtime, Date.now());
       initRetention(ctx.storage.sql);
@@ -100,7 +114,7 @@ export class WorldDO extends DurableObject<Env> {
       this.legacyProfile.init();
       this.connected.init();
       this.ritual.init();
-      await this.trust.ensureAgents(this.ownerRoot);
+      if(this.worldLife)await this.worldLife.ensureAgents(this.ownerRoot);else await this.trust.ensureAgents(this.ownerRoot);
       // The world's paused Muses always match the registry's revoked ones (C06).
       reconcilePaused({trust: this.trust, runtime: this.runtime});
       // The owner's Muse arrives with a small welcome gift so it has something to trade (logged as a rule).
@@ -147,6 +161,7 @@ export class WorldDO extends DurableObject<Env> {
   quota(session: string, tier: Tier) { return this.ledger.quotaFor(session, tier); }
   async alarm() {
     try {
+      if(this.worldLife){const s=this.runtime.state(),now=Date.now();this.worldLife.acceptMeetingGate(s,now,await this.meetings.prepare(s,now));}
       const r = await this.runtime.heartbeat(Date.now());
       if (r.status === 'committed') console.log('heartbeat', r.tick, r.spotlight?.muse, r.spotlight?.source, r.spotlight?.reason ?? '', 'replies', r.replies?.live ?? 0, 'live', r.replies?.rule ?? 0, 'rule');
     } finally {
@@ -182,6 +197,7 @@ export class WorldDO extends DurableObject<Env> {
     return this.runtime.commitExternal(Date.now(), 'ritual-' + Math.random().toString(36).slice(2, 10), (_s, emit) => emit({at: Date.now(), source: rec.requestId ? 'live' : 'replay', kind: 'ritual_judged', muse: null, line: rec.passed ? 'Welcome ritual passed' : 'Welcome ritual not passed', data: {passed: rec.passed, results: rec.results, evidence: rec.requestId ? {model: rec.model, requestId: rec.requestId} : null, who: byOwner ? 'owner (owner session)' : rec.tier === 'judge' ? 'judge link ' + sessionTag : 'visitor ' + sessionTag, framesStored: false, ...(byOwner ? {actor: 'owner'} : {actorOrigin: 'trial'})}, tags: ['ritual']}));
   }
   worldView() { return this.runtime.view(Date.now()); }
+  worldLifeView() { return worldLifeEnabled(this.env.WORLD_LIFE_MODE)?this.worldLife?.view()??null:null; }
   /** A visitor's priority spotlight request (8.2); the Worker route checks the session and passes an opaque requester id. */
   requestSpotlight(muse: string, origin: 'visitor' | 'judge', requester: string) {
     if (this.trust.suspended(muse)) return {ok: false as const, reason: 'paused' as const};

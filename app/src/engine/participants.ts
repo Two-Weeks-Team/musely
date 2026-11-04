@@ -1,6 +1,6 @@
 // Public actor identity is separate from reusable appearance and from every private owner/key reference.
 import type {WorldState} from './world.ts';
-import {HARNESS_IDS,harnessById} from './harness.ts';
+import {hasActorHarness,harnessById} from './harness.ts';
 import {MUSE_VARIANTS} from '../character-kit/catalog.ts';
 import type {ActorProfile} from '../identity/participant.ts';
 export function actorProfile(value: unknown, actorId: string): ActorProfile {
@@ -20,14 +20,16 @@ export function admitPersonal(s:WorldState,profile:ActorProfile,at:number):boole
 }
 export function participantName(s:WorldState,id:string):string{const m=s.muses.find(m=>m.id===id);
  if(m?.profile)return actorProfile(m.profile,id).displayName;
- if(HARNESS_IDS.includes(id))return harnessById(id).name;
+ if(hasActorHarness(id))return harnessById(id).name;
+ if(m)return 'Visiting Muse';
  throw Error('unknown_actor');
  }
-export function participantRole(s:WorldState,id:string):string{const m=s.muses.find(m=>m.id===id);
+export function participantRole(s:WorldState,id:string):string|null{const m=s.muses.find(m=>m.id===id);
  if(m?.profile)return'Personal Muse';
- return harnessById(id).role;
+ return hasActorHarness(id)?harnessById(id).role:null;
  }
 export function participantLikes(s:WorldState,id:string):readonly string[]{const m=s.muses.find(m=>m.id===id);
- if(m?.profile&&!HARNESS_IDS.includes(id))return[];
+ if(!hasActorHarness(id))return[];
  return harnessById(id).persona.likes;
  }
+

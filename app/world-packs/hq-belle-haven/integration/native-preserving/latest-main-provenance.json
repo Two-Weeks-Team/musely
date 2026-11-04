@@ -1,0 +1,54 @@
+{
+  "sha": "e8060f13b08142758aaa0ef0fb27a736bf3d7c3d",
+  "checked": "2026-11-03T10:17Z",
+  "blobs": [
+    {
+      "path": "app/assets/geography.json",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "97a2c2c19002bfb3a7e591c13d53283eeff3a02f",
+      "size": 509,
+      "url": "https://api.github.com/repos/Two-Weeks-Team/musely/git/blobs/97a2c2c19002bfb3a7e591c13d53283eeff3a02f"
+    },
+    {
+      "path": "app/assets/map-style.json",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "db3f7f78a67646091e75908afec9d85a3266149d",
+      "size": 46161,
+      "url": "https://api.github.com/repos/Two-Weeks-Team/musely/git/blobs/db3f7f78a67646091e75908afec9d85a3266149d"
+    },
+    {
+      "path": "app/package.json",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e9b46a72d5e88b4bd2871299be47a41237983d87",
+      "size": 898,
+      "url": "https://api.github.com/repos/Two-Weeks-Team/musely/git/blobs/e9b46a72d5e88b4bd2871299be47a41237983d87"
+    },
+    {
+      "path": "app/src/engine/places.ts",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9181d3f4800c8d3100d96c200a94fd6f8d77618d",
+      "size": 4176,
+      "url": "https://api.github.com/repos/Two-Weeks-Team/musely/git/blobs/9181d3f4800c8d3100d96c200a94fd6f8d77618d"
+    },
+    {
+      "path": "app/src/main.ts",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "ff1230581390c20e152a2c71af3aa2ab3398c2fd",
+      "size": 37111,
+      "url": "https://api.github.com/repos/Two-Weeks-Team/musely/git/blobs/ff1230581390c20e152a2c71af3aa2ab3398c2fd"
+    },
+    {
+      "path": "app/src/ui/live-scene-core.ts",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "e81b2082c451ae33b93717c0ed2054e7d95512df",
+      "size": 31247,
+      "url": "https://api.github.com/repos/Two-Weeks-Team/musely/git/blobs/e81b2082c451ae33b93717c0ed2054e7d95512df"
+    }
+  ]
+}

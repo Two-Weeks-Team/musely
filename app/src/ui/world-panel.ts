@@ -1,3 +1,4 @@
+import {observeWorld, type WorldObservation} from './world-observation.ts';
 import {presentationIn, resolveMuse, withSnapshotProfiles} from './personal-profile.ts';
 import {recordedSceneFrame} from './recorded-scene.ts';
 import type {RecordedFrame, RecordedEvidence, RecordedEvent} from '../replay/player.ts';
@@ -33,7 +34,7 @@ import {taskCancelledText, envelopeFacts} from './evidence-text';
 import {mountLocationChip, deviceLocationCard} from './location-bar';
 import {museLine, snapshotOf, type OwnerLocationView} from './location-state';
 import {mountOwnerArea} from './area-map';
-import {acceptsSnapshot, liveFrames, scheduleCues, sceneToLngLat, inventorySummary, ownerOf, type LiveWorld, type LiveEvent} from './live-scene-core';
+import {liveFrames, scheduleCues, sceneToLngLat, inventorySummary, ownerOf, type LiveWorld, type LiveEvent} from './live-scene-core';
 export {sourceLabel};
 
 type Ev = {seq: number; id: string; tick: number; at: number; source: 'live' | 'rule' | 'scripted' | 'replay'; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data: any; tags: string[]; runId?: string | null; inputSeq?: number | null};
@@ -199,7 +200,7 @@ const describeEvent = describe;
 type EvidenceEv = Ev & {fixture?: boolean; recorded?: RecordedEvidence};
 const PARTS: [Filter['part'], string][] = [['', 'Any time'], ['night', 'Night 0–6'], ['morning', 'Morning 6–12'], ['afternoon', 'Afternoon 12–18'], ['evening', 'Evening 18–24']];
 
-export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorld, events: readonly LiveEvent[]) => void; onSelect?: (id: string) => void; isLive?: () => boolean; paused?: () => boolean; onReturnLive?: () => void} = {}) {
+export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorld, events: readonly LiveEvent[], observedAt: number) => void; onSelect?: (id: string) => void; isLive?: () => boolean; paused?: () => boolean; onReturnLive?: () => void} = {}) {
   enforceIsolation();
   const displayWorld=()=>currentRecorded?withSnapshotProfiles(recordedSceneFrame(currentRecorded).world,currentRecorded.publicState):world;
   const museName=(id:string|null|undefined)=>publicMuseName(id,displayWorld());
@@ -238,6 +239,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   const evidence = el('section', 'evidence'); evidence.id = 'evidence'; evidence.setAttribute('popover', 'auto'); evidence.setAttribute('role', 'dialog'); evidence.setAttribute('aria-labelledby', 'evidence-title');
   document.body.append(evidence);
 
+  let observation: WorldObservation<WorldView> | null = null;
   let world: WorldView | null = null, events: Ev[] = [], tab = 'feed', hf: Filter = {...EMPTY_FILTER};
   let ownerInboxView: ReturnType<typeof ownerInboxCard> | null = null;
   const pins = museMarkers(map, live.onSelect ?? (() => {}), live.isLive ?? (() => true));
@@ -594,9 +596,10 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     // First load takes the newest events (the live tail); later polls fetch only what is new since then.
     const [wr, er] = await Promise.all([load<WorldView>('world', '/api/world'), load<Ev[]>('events', lastSeq ? `/api/world/events?since=${lastSeq}&limit=500` : '/api/world/events?tail=200')]);
     if (isolation.replay || (!wr.ok && wr.error === BLOCKED) || (!er.ok && er.error === BLOCKED)) return; // asked before the replay opened: not applied; the next refresh fetches it again
-    if (wr.ok && acceptsSnapshot(world, wr.data)) world = wr.data;
+    observation = observeWorld(observation, wr);
+    if(observation)world=observation.world;
     if (er.ok && er.data.length) { events.push(...er.data); events = events.slice(-1500); lastSeq = er.data[er.data.length - 1].seq; }
-    if (!live.paused?.()) {pins.update(world, events); if (world) live.onWorld?.(world, events);}
+    if (!live.paused?.()) {pins.update(world, events); if (world) live.onWorld?.(world, events, observation!.observedAt);}
     const last = [...events].reverse().find(e => e.kind === 'spotlight' || e.kind === 'spotlight_fallback');
     if (world) {
       const live = last && last.source === 'live', stalled = !wr.ok;

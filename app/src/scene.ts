@@ -1,3 +1,4 @@
+import {createCampfireScenePort} from '../world-packs/campfire/scene-port.mjs';
 import * as T from 'three';
 import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
@@ -11,6 +12,15 @@ import {loadWorldCharacters} from './character-kit/WorldCharacters';
 import type {MuseActor,Lod} from './character-kit/MuseActor';
 import {MUSE_VARIANTS,RESIDENT_VARIANTS,variantById} from './character-kit/catalog';
 import {residentBehavior,ResidentClock,chooseLods} from './character-kit/residents';
+/** Product defaults; explicit maintenance overrides do not affect world state. */
+export function worldVisualSettings(search:string){const p=new URLSearchParams(search),enabled=p.get('worldVisuals')!=='0';return {roofs:enabled&&p.get('roofs')!=='0',campfire:enabled&&p.get('campfire')!=='0'};}
+/** Inverse view-projection maps the homogeneous camera origin to local scene metres. */
+export function campfireDistanceFromProjection(viewProjection:T.Matrix4):number{
+ if(!Number.isFinite(viewProjection.determinant())||viewProjection.determinant()===0)return Infinity;
+ const p=new T.Vector4(0,0,1,0).applyMatrix4(viewProjection.clone().invert());
+ if(!Number.isFinite(p.w)||Math.abs(p.w)<1e-15)return Infinity;
+ const d=Math.hypot(p.x/p.w,p.y/p.w,p.z/p.w-2);return Number.isFinite(d)?d:Infinity;
+}
 export const PEOPLE=[
  {name:"Jimin's Muse",color:'#e8ddc7',accent:'#d9a38d',variant:'00-jolly',role:'Your Muse',activity:'Finding a moment to meet'},
  {name:"Sora's Muse",color:'#e7b75b',accent:'#d9886c',variant:'01-sunny',role:'A familiar face',activity:'A hello at the cafe'},
@@ -24,7 +34,7 @@ export const PEOPLE=[
 const ENV={background:'#101623',ground:'#1B2436',path:'#2A3550',building:'#232E47',fire:'#FF9E45',core:'#FFD98A',cream:'#F2E9D8'};
 const mat=(c:string)=>new T.MeshStandardMaterial({color:c,roughness:.96,metalness:0});
 /** kitBase: shared rigged character kit URL; null keeps the earlier rigid preview characters. */
-export async function makeWorld(glb:string,sigils:string[],kitBase:string|null='/character-kit/runtime/',sharedLibrary?:MaterialLibrary,sourceHeight?:number){
+export async function makeWorld(glb:string,sigils:string[],kitBase:string|null='/character-kit/runtime/',sharedLibrary?:MaterialLibrary,sourceHeight?:number,campfireOptions?:{enabled:boolean;distanceM:()=>number}){
  const scene=new T.Scene(), staticRoot=new T.Group();staticRoot.name='HQCommons';scene.add(staticRoot);
  const mats=new Map<string,T.MeshBasicMaterial>(),batches=new Map<T.Material,T.BufferGeometry[]>();
  function material(c:string){if(!mats.has(c))mats.set(c,new T.MeshBasicMaterial({color:c,vertexColors:true}));return mats.get(c)!;}
@@ -127,6 +137,8 @@ export async function makeWorld(glb:string,sigils:string[],kitBase:string|null='
  const glowCanvas=document.createElement('canvas');glowCanvas.width=glowCanvas.height=128;const gc=glowCanvas.getContext('2d')!,gg=gc.createRadialGradient(64,64,0,64,64,64);gg.addColorStop(0,'rgba(255,158,69,.26)');gg.addColorStop(.3,'rgba(255,158,69,.12)');gg.addColorStop(1,'rgba(255,158,69,0)');gc.fillStyle=gg;gc.fillRect(0,0,128,128);const pool=new T.Mesh(new T.PlaneGeometry(11,11),new T.MeshBasicMaterial({map:new T.CanvasTexture(glowCanvas),transparent:true,depthWrite:false}));pool.rotation.x=-Math.PI/2;pool.position.set(0,.047,2);scene.add(pool);
  const fire=new T.Group();fire.name='Fire';scene.add(fire);fire.position.set(0,.28,2);
  for(let i=0;i<3;i++){const f=new T.Mesh(new T.SphereGeometry(1,8,6),new T.MeshBasicMaterial({color:['#ef9c55','#ffd27d','#ffe6ac'][i]}));f.position.set((i-1)*.12,.18+i*.04,0);f.scale.set(.15-i*.025,.37-i*.05,.13);fire.add(f);}
+ const campfireVisual=createCampfireScenePort(scene,fire);
+ if(campfireOptions?.enabled) void campfireVisual.enable(campfireOptions).catch(e=>console.warn('Campfire visual fallback',e));
  // The rigged kit uses physical maps; without tone mapping, the earlier 1.7 sky fill would clip its palettes to white.
  scene.add(new T.HemisphereLight('#7E93B8','#101623',actors?.95:1.7));const fireLight=new T.PointLight('#FF9E45',5,10,1.7);fireLight.position.set(0,.7,2);scene.add(fireLight);
  // The commons is mostly unlit; a soft moonlight key keeps rigged Muse palettes readable at night
@@ -144,10 +156,11 @@ export async function makeWorld(glb:string,sigils:string[],kitBase:string|null='
  }
  if(i===3){const drops=root.getObjectByName('GardenDrops');if(drops){const tending=!p.moving&&partner===undefined;drops.scale.setScalar(tending?1:0);drops.position.y=-((t*.08)%.04);}}shadows[i].position.x=p.x;shadows[i].position.z=p.z;shadows[i].position.y=surfaceHeightAt(p.x,p.z)+.002;}const p=positionAt(selected,t);selection.position.x=p.x;selection.position.z=p.z;selection.position.y=surfaceHeightAt(p.x,p.z)+.004;ambient(t);}
  /** Shadow instances and the fire; the live scene (ui/live-scene.ts) moves actors and shadows itself, then calls this. */
- function ambient(t:number){updateInstances();fire.children.forEach((f,i)=>{f.scale.y=(.37-i*.05)*(1+Math.sin(t*8+i*3)*.12);});}
+ function ambient(t:number){campfireVisual.update(t*1000);updateInstances();fire.children.forEach((f,i)=>{f.scale.y=(.37-i*.05)*(1+Math.sin(t*8+i*3)*.12);});}
  update(0,0);
  /** Apply the single LOD selector from projected screen heights (px). */
  function setLods(heights:number[],priority:number[]){if(!actors)return;lods=chooseLods(heights,lods,priority);actors.forEach((a,i)=>{if(a.lod!==lods[i])a.setLod(lods[i]);});}
  function actorBounds(i:number){const a=actors?.[i];if(!a)return null;const p=a.root.position;return new T.Box3(new T.Vector3(p.x-.45,p.y,p.z-.45),new T.Vector3(p.x+.45,p.y+.95,p.z+.45));}
- return {scene,muses,selection,update,ambient,shadows,shadowTexture,actors,setLods,actorBounds,library,upgradeCharacters,upgradeTimes,catalog:MUSE_VARIANTS,sourceHeight:loaded.sourceHeight};
+ return {scene,muses,selection,update,ambient,campfireVisual,shadows,shadowTexture,actors,setLods,actorBounds,library,upgradeCharacters,upgradeTimes,catalog:MUSE_VARIANTS,sourceHeight:loaded.sourceHeight};
 }
+

@@ -91,7 +91,7 @@ export const SNAPSHOT_FIELDS: Record<'state' | 'muse' | 'wants' | 'beat' | 'owne
 };
 const F = SNAPSHOT_FIELDS;
 // A Muse's anchor is the owner's cell (13.1): private.
-Object.assign(F.muse, {id: 'copy', profile: (v: unknown) => pick(v as Record<string, unknown>, {actorId:'copy',displayName:'copy',appearanceId:'copy',revision:'copy'}), place: 'copy', travel: 'copy', beat: (v: unknown) => pick(v as Record<string, unknown>, F.beat), inventory: 'copy', memory: 'texts', reflection: 'text', lastMet: 'copy', introductions: 'copy', controlMode: 'copy', intent: 'copy', wants: (v: unknown) => pick(v as Record<string, unknown>, F.wants), anchor: 'private'} satisfies Table);
+Object.assign(F.muse, {id: 'copy', residentRole: 'copy', residentFrozenAt: 'copy', profile: (v: unknown) => pick(v as Record<string, unknown>, {actorId:'copy',displayName:'copy',appearanceId:'copy',revision:'copy'}), place: 'copy', travel: 'copy', beat: (v: unknown) => pick(v as Record<string, unknown>, F.beat), inventory: 'copy', memory: 'texts', reflection: 'text', lastMet: 'copy', introductions: 'copy', controlMode: 'copy', intent: 'copy', wants: (v: unknown) => pick(v as Record<string, unknown>, F.wants), anchor: 'private'} satisfies Table);
 Object.assign(F.task, {help: (v: unknown) => pick(v as Record<string, unknown>, F.help)} satisfies Table);
 Object.assign(F.inbox, {version: 'copy', tasks: each(F.task), messages: each(F.message), mail: each(F.mail), notifications: each(F.notification), invites: each(F.invite), connected: 'copy', encounters: 'copy', sent: 'copy', seq: 'copy'} satisfies Table);
 Object.assign(F.state, {worldId: 'copy', day: 'copy', seed: 'copy', tick: 'copy', version: 'copy', lastTickAt: 'copy', spotlight: 'copy', items: 'copy', paused: 'copy', muses: each(F.muse), owner: (v: unknown) => pick(v as Record<string, unknown>, F.owner), inbox: (v: unknown) => pick(v as Record<string, unknown>, F.inbox)} satisfies Table);
@@ -127,7 +127,7 @@ export const COMMAND_FIELDS: Record<string, readonly string[]> = {
   propose_trade: ['kind', 'to', 'give', 'want'], counter_trade: ['kind', 'task_id', 'give', 'want'], accept_trade: ['kind', 'task_id'], reject_trade: ['kind', 'task_id'],
   send_postcard: ['kind', 'to', 'item'], give_gift: ['kind', 'to', 'item'], propose_meetup: ['kind', 'to'], answer_candidate: ['kind', 'task_id', 'answer'], update_wants: ['kind', 'items'],
   // I-13: the invitation and request lines (`text`) are never kept.
-  invite_campfire: ['kind', 'to'], answer_campfire: ['kind', 'invite_id', 'answer'], propose_help: ['kind', 'to', 'item', 'needs'], answer_help: ['kind', 'task_id', 'answer', 'item'],
+  invite_campfire: ['kind', 'to', 'place_id'], answer_campfire: ['kind', 'invite_id', 'answer'], propose_help: ['kind', 'to', 'item', 'needs'], answer_help: ['kind', 'task_id', 'answer', 'item'],
 };
 /** The allowed fields of a command payload whose values are ids (or lists of ids); every other key is only named in `omitted`. */
 export function commandFields(action: string, payload: unknown): {fields: Record<string, unknown>; omitted: string[]} {
