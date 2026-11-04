@@ -78,7 +78,8 @@ test('owner session vs judge session: owner actions need the owner session; the 
   }
   assert.equal(t.dobj.trust.suspended(OWNER), false, 'nothing was revoked by the judge');
   // What the judge keeps: reads and the P0 demonstration.
-  for (const p of ['/api/world', '/api/owner/location', '/api/owner/notifications', '/api/claim/owner-muse', '/api/world/events']) assert.equal((await t.go('GET', p, undefined, {cookie: judge})).status, 200, p);
+  for (const p of ['/api/world', '/api/owner/location', '/api/claim/owner-muse', '/api/world/events']) assert.equal((await t.go('GET', p, undefined, {cookie: judge})).status, 200, p);
+  assert.equal((await t.go('GET','/api/owner/notifications',undefined,{cookie:judge})).status,404,'shared Judge OFF cannot expose another Muse notification');
   const p0 = await t.go('POST', '/api/p0/run', undefined, {cookie: judge});
   assert.equal(p0.status, 200); assert.equal(p0.body.phase, 'valid');
   assert.equal((await t.go('POST', '/api/p0/run')).status, 403, 'P0 still needs the judge link (or the owner)');
