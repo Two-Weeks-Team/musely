@@ -1,3 +1,4 @@
+import {bindWorldClock} from './world-clock-input.ts';
 import {harnessById} from '../../src/engine/harness.ts';
 import {JUDGE_MUSE} from '../../src/engine/judge-muse.ts';
 import {PUBLIC_SPEECH_NOT_ENGLISH} from './resident-english-speech.ts';
@@ -735,6 +736,7 @@ export class WorldRuntime {
       if(this.opts.perception?.enabled===true&&!packet)return{ok:false,reason:'perception_unavailable'};
       const modelInput=packet?bindPerceptionInput(brandedInput,packet,this.perceptionNotices(String(input.muse)),activity):brandedInput;
       if(packet&&action==='encounter'&&!observedActorId(modelInput,input.other))return{ok:false,reason:'recipient_not_observed'};
+      bindWorldClock(modelInput,frame.at);
       const selectedContext=this.opts.residentActions?.fallbackRecovery?compactResidentContext(residentContext):residentContext;
       const messages = activity?activityMessages(modelInput,selectedContext):withResidentContext(buildMessages(action, modelInput),selectedContext);
       const personalPeer=action==='encounter'&&(input.other==='00-jolly'||typeof input.other==='string'&&this.opts.residentLife?.ownershipKind(input.other)==='personal');
@@ -911,6 +913,12 @@ export class WorldRuntime {
     const day = opts.day && /^\d{4}-\d{2}-\d{2}$/.test(opts.day) ? opts.day + ':%' : '%';
     return this.rows(`SELECT ${EV_COLS} FROM events WHERE seq > ? AND id LIKE ? ORDER BY seq LIMIT ?`, sinceSeq, day, limit);
   }
+  /** Human live Feed only. Raw events()/runId/day reads and recorded counts remain unchanged. */
+  feedEvents(sinceSeq=0,limit=200,opts:{tail?:number}={}) {
+    const visible="kind NOT IN ('perception_notice','cards_verified')";
+    if(opts.tail)return this.rows(`SELECT ${EV_COLS} FROM events WHERE ${visible} ORDER BY seq DESC LIMIT ?`,Math.min(500,opts.tail)).reverse();
+    return this.rows(`SELECT ${EV_COLS} FROM events WHERE ${visible} AND seq > ? ORDER BY seq LIMIT ?`,sinceSeq,limit);
+  }
   private rows(q: string, ...b: unknown[]): LoggedEvent[] {
     return this.sql.exec(q, ...b).toArray().map(r => ({...r, data: JSON.parse(String(r.data)), tags: JSON.parse(String(r.tags))}) as LoggedEvent);
   }
@@ -923,7 +931,7 @@ export class WorldRuntime {
    * comes back full, so nothing beyond the first page is out of reach.
    */
   highlights(limit = 100, opts: {before?: number | null; from?: number | null; to?: number | null} = {}) {
-    return this.rows(`SELECT ${EV_COLS} FROM events WHERE tags != '[]' AND seq < ? AND at >= ? AND at < ? ORDER BY seq DESC LIMIT ?`, opts.before ?? Number.MAX_SAFE_INTEGER, opts.from ?? 0, opts.to ?? Number.MAX_SAFE_INTEGER, limit);
+    return this.rows(`SELECT ${EV_COLS} FROM events WHERE tags != '[]' AND kind NOT IN ('perception_notice','cards_verified') AND seq < ? AND at >= ? AND at < ? ORDER BY seq DESC LIMIT ?`, opts.before ?? Number.MAX_SAFE_INTEGER, opts.from ?? 0, opts.to ?? Number.MAX_SAFE_INTEGER, limit);
   }
   /** One event with the commit that wrote it and its run (P2: highlight → run id + event id → inputs and evidence). */
   eventRecord(id: string) {

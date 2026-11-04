@@ -1,3 +1,4 @@
+import {worldClockMessage} from './world-clock-input.ts';
 import {nonEnglishResidentSpeech,PUBLIC_SPEECH_NOT_ENGLISH} from './resident-english-speech.ts';
 import {residentValues,residentRhythmPrompt} from '../../src/engine/resident-values.ts';
 import {perceptionPacket,perceptionMessage,perceptionOutputProblem,observedActorId} from './local-perception-runtime.ts';
@@ -113,24 +114,27 @@ const wrap = (text: string) => `<untrusted_data source="other_agent">${text.repl
 const named = (id: string) => actorLabel(id);
 
 export function buildMessages(action: Action, input: ActionInput): unknown[] {
-  const i = input as any;
+  const i = input as any,clock=worldClockMessage(input),clockMessages=clock?[clock]:[];
   switch (action) {
     case 'spotlight':
       return [
         {role: 'system', content: persona(i.muse,i.residentValuesEnabled===true) + '\n' + RULES + `\nThis turn you have freedom "${i.freedom}" (where = choose a place; who = choose whom to approach; offer = choose what to propose or trade; plan = choose your next plan). Decide for yourself instead of following a script.`},
         {role: 'user', content: JSON.stringify({local_time: i.localTime, you_are_at: perceptionPacket(input)?.current.place?.name??(perceptionPacket(input)?'In transit':i.place), places_nearby: i.places, ...(!perceptionPacket(input)?{muses_nearby:i.muses.map((m: any) => ({...m, name: named(m.muse)}))}:{}), your_items: i.items, recent_memory: i.memory})},
         ...(perceptionMessage(input)?[perceptionMessage(input)!]:[]),
+        ...clockMessages,
       ];
     case 'encounter':
       return [
         {role: 'system', content: persona(i.muse,i.residentValuesEnabled===true) + '\n' + RULES + '\nYou have just met another Muse whose signed Agent Card and delegation were verified. Choose how to engage.'},
         {role: 'user', content: JSON.stringify({local_time: i.localTime, place: perceptionPacket(input)?.current.place?.name??(perceptionPacket(input)?'In transit':i.place), ...(!perceptionPacket(input)?{other_muse:named(i.other),their_items:i.otherItems}:{other_muse:observedActorId(input,i.other)}), your_items: i.items, recent_memory: i.memory}) + (i.incoming ? '\nThey said: ' + wrap(i.incoming) : '')},
         ...(perceptionMessage(input)?[perceptionMessage(input)!]:[]),
+        ...clockMessages,
       ];
     case 'trade':
       return [
         {role: 'system', content: persona(i.muse,i.residentValuesEnabled===true) + '\n' + RULES + '\nAnother Muse proposes an in-world trade. Accept, counter once with items you or they actually hold, or reject. You may keep your reasons to yourself.'},
         {role: 'user', content: JSON.stringify({from: named(i.other), they_give: i.give, they_want: i.want, your_items: i.items, their_items: i.otherItems, round: i.round})},
+        ...clockMessages,
       ];
     case 'negotiate':
       return [
