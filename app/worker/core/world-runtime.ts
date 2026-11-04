@@ -1,3 +1,4 @@
+import {PUBLIC_SPEECH_NOT_ENGLISH} from './resident-english-speech.ts';
 import {compactResidentContext} from './resident-recovery-context.ts';
 import {residentCallJitterMs} from './resident-call-jitter.ts';
 import {finalizeResidentSpeech} from '../../src/engine/world.ts';
@@ -320,7 +321,8 @@ export class WorldRuntime {
       const residentIdle=this.residentIdleIds(lifeBefore?.state,before,now);
       const proposedLife=!decision && (!this.opts.delegationValid||this.opts.delegationValid(spot.muse)) && lifeBefore && this.opts.residentLife ? residentProposalForWorld(lifeBefore.state,before,now,{...this.opts.residentLife,promiseGraceMs:this.opts.residentLife.promiseGraceMs ?? 60*TICK_MS,residentTurnAllowed:true}) : null;
       const residentMove=proposedLife ? {muse:proposedLife.residentId,place:proposedLife.placeId,expectedVersion:proposedLife.expectedWorldVersion} : undefined;
-      const answers = await this.encounterReplies(before, now, decision, canMeet, turn, residentMove,residentIdle);
+      const englishFallback = info.reason === 'output_rejected:' + PUBLIC_SPEECH_NOT_ENGLISH ? spot.muse : undefined;
+      const answers = await this.encounterReplies(before, now, decision, canMeet, turn, residentMove,residentIdle,englishFallback);
       this.opts.beforeCommit?.();
       // Commit point: everything below is synchronous and one storage transaction.
       const result=this.sql.transactionSync<HeartbeatResult>(() => {
@@ -349,7 +351,7 @@ export class WorldRuntime {
       const acceptedLife=lifeCandidate && !committedGoalIdle.includes(lifeCandidate.residentId) && !this.registryControls(lifeCandidate.residentId) && lifeCandidate.residentId===proposedLife?.residentId && lifeCandidate.placeId===proposedLife?.placeId ? lifeCandidate : null;
       const appliedMove=acceptedLife ? {muse:acceptedLife.residentId,place:acceptedLife.placeId,expectedVersion:acceptedLife.expectedWorldVersion} : undefined;
       const committedIdle=this.residentIdleIds(freshLife?.state,current,now);
-      const {state, events} = tick(current, {now, decision: usable, replies, spot: turn, residentMove:appliedMove,residentIdle:committedIdle,residentFrozen:this.frozenResidents(current),residentGoalIdle:committedGoalIdle}, canMeet ? {...this.engineHooks(now), canMeet: this.dedupMeetings(canMeet)} : this.engineHooks(now));
+      const {state, events} = tick(current, {now, decision: usable, replies, spot: turn, residentMove:appliedMove,residentIdle:committedIdle,residentFrozen:this.frozenResidents(current),residentGoalIdle:committedGoalIdle,...(englishFallback?{residentEnglishFallback:englishFallback}:{})}, canMeet ? {...this.engineHooks(now), canMeet: this.dedupMeetings(canMeet)} : this.engineHooks(now));
       if(this.lifeStore && freshLife && this.opts.residentLife?.enabled===true){
         let lifeNext=rememberCommittedResidentEvents(freshLife.state,state,events,now,id=>knownResident(id,this.opts.residentLife!.ownershipKind),current);
         if(acceptedLife)lifeNext=noteServed(lifeNext,acceptedLife.residentId,now);
@@ -369,6 +371,7 @@ export class WorldRuntime {
       // The tick's recorded inputs (8.1: not reproducible from the seed): the spotlight answer, used or discarded, and
       // every meeting answer with its source; ids of the model calls, never the prompt.
       const tickInput = {
+        ...(englishFallback?{residentEnglishFallback:englishFallback}:{}),
         residentRosterFrozen:this.frozenResidents(current),
         ...(this.opts.residentLife?.enabled===true ? {residentLifePolicy:{version:1,idle:committedIdle}} : {}),
         ...(acceptedLife ? {residentLife:{policyVersion:1,source:'rule',proposal:acceptedLife,revisionBefore:freshLife!.revision,revisionAfter:freshLife!.revision+1}} : {}),
@@ -656,6 +659,7 @@ export class WorldRuntime {
     try { input = validate('spotlight', spotlightInput(s, muse, freedom, now),this.trustedPersonalPeers(s));if(activity)input={...input,activities:residentActivityCatalog(s,muse,now)}; }
     catch (e) { return {decision: null, info: {source: 'scripted', reason: 'input_invalid: ' + String((e as Error).message).slice(0, 80)}}; }
     const fallback = (reason: string) => {
+      if(reason === 'output_rejected:' + PUBLIC_SPEECH_NOT_ENGLISH) return {decision:null,info:{source:'rule',reason}};
       if(this.opts.residentBudgetEnabled&&isResidentBudgetRefusal(reason))return {decision:null,info:{source:'rule',reason}};
       const r = replayFor('spotlight', input);
       const out = r.output as Decision['output'] & {freedom?: string};
@@ -718,10 +722,10 @@ export class WorldRuntime {
    * Muse's answer to each: live when a slot and the budget allow, else rule with the reason. A connected Muse is not
    * answered for. Nothing is written here; the dry run's meeting gate is the undeduplicated one.
    */
-  private async encounterReplies(s: WorldState, now: number, decision: Decision | null, canMeet: Hooks['canMeet'], turn: {muse: string; priority: boolean}, residentMove?:{muse:string;place:string;expectedVersion:number},residentIdle?:readonly string[]): Promise<EncounterReply[]> {
+  private async encounterReplies(s: WorldState, now: number, decision: Decision | null, canMeet: Hooks['canMeet'], turn: {muse: string; priority: boolean}, residentMove?:{muse:string;place:string;expectedVersion:number},residentIdle?:readonly string[],residentEnglishFallback?:string): Promise<EncounterReply[]> {
     let dry: WorldEvent[];
     const speechHooks=this.engineHooks(now); // Missing history is a failed turn, never an unfiltered dry-run fallback.
-    try { dry = tick(s, {now, decision, replies: [], spot: turn,residentMove,residentIdle,residentFrozen:this.frozenResidents(s),residentGoalIdle:this.goalIdle(s,now)}, canMeet ? {...speechHooks, canMeet} : speechHooks).events; } catch (e) {
+    try { dry = tick(s, {now, decision, replies: [], spot: turn,residentMove,residentIdle,residentFrozen:this.frozenResidents(s),residentGoalIdle:this.goalIdle(s,now),...(residentEnglishFallback?{residentEnglishFallback}:{})}, canMeet ? {...speechHooks, canMeet} : speechHooks).events; } catch (e) {
       console.error('encounter dry run failed', e);
       return [];
     }

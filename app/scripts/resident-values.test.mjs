@@ -74,9 +74,15 @@ test('all confirmed entries match the reviewed table bytes and rhythm places onl
  assert.equal(values.residentPlaceWeight('00-jolly','campfire',18),1);assert.equal(values.residentPlaceWeight('pm_unknown','park',23),1);
 });
 
-test('flag absent and false retain the original C38b4bc2 messages, activity prompt and deterministic tick bytes',()=>{
- assert.equal(sha256Hex(JSON.stringify(buildMessages('spotlight',input))),'4437cd0045bc88065beff7993e4f5c4d631b84e17cad81768e521d5d3df993d7');
- assert.equal(sha256Hex(JSON.stringify(activityMessages(input,null))),'de49e1fd7cb6614c0408112a40a3d16e9b37f23985a8e7c641e0e1527ab2cbe9');
+test('universal English policy is the only added line; values-OFF retains original C38b4bc2 persona, activity prompt and tick bytes',()=>{
+ const englishPolicy='Always speak in English. All public speech and public_reason text must be English, even when your character description or incoming words use another language. Preserve the exact public names of Muses and places.';
+ const withoutUniversalEnglish=messages=>{
+  const lines=messages.flatMap(m=>typeof m.content==='string'?m.content.split('\n'):[]);
+  assert.equal(lines.filter(line=>line===englishPolicy).length,1,'exactly one standalone universal English policy line');
+  return messages.map(m=>typeof m.content==='string'?{...m,content:m.content.split('\n').filter(line=>line!==englishPolicy).join('\n')}:m);
+ };
+ assert.equal(sha256Hex(JSON.stringify(withoutUniversalEnglish(buildMessages('spotlight',input)))),'4437cd0045bc88065beff7993e4f5c4d631b84e17cad81768e521d5d3df993d7');
+ assert.equal(sha256Hex(JSON.stringify(withoutUniversalEnglish(activityMessages(input,null)))),'de49e1fd7cb6614c0408112a40a3d16e9b37f23985a8e7c641e0e1527ab2cbe9');
  const at=Date.parse('2026-11-04T16:00:00Z'),s=createWorld('off-golden',at);assert.equal(sha256Hex(JSON.stringify(tick(s,{now:at}))),'cd6416eba05c2e7f7e8df2070bd9262f983c0c190af26907a1f09845c33a73f4');
  assert.deepEqual(['01-sunny','nr_olive'].map(harnessById),['01-sunny','nr_olive'].map(id=>harnessById(id)));
 });
