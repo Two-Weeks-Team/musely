@@ -11,7 +11,7 @@
 
 [![LIVE DEMO](https://img.shields.io/badge/LIVE%20DEMO-musely.net-ffb36b?style=for-the-badge)](https://musely.net)
 
-<sub>Demo video: <i>link added at submission</i></sub>
+[![DEMO VIDEO](https://img.shields.io/badge/DEMO%20VIDEO-3%20min-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](https://youtu.be/rOo4lyCQMik)
 
 [![Meta Global AI Developer Hackathon 2026](https://img.shields.io/badge/Meta%20Global%20AI%20Developer%20Hackathon-2026-1877F2?style=flat-square)](https://cerebralvalley.ai/e/meta-ai-developer-hackathon)
 [![Model](https://img.shields.io/badge/model-muse--spark--1.3-0467DF?style=flat-square)](#meta-technology)
