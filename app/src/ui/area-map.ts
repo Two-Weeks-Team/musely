@@ -1,3 +1,4 @@
+import {uiText} from './i18n.ts';
 import type {Map as LibreMap, GeoJSONSource} from 'maplibre-gl';
 import type {FeatureCollection} from 'geojson';
 import type {NeighborhoodArea} from '../engine/location.ts';
@@ -13,7 +14,7 @@ export function areaGeometry(area: NeighborhoodArea | null, source = 'virtual'):
   ring.push([...ring[0]]);
   return {type: 'FeatureCollection', features: [
     {type: 'Feature', properties: {kind: 'area'}, geometry: {type: 'Polygon', coordinates: [ring]}},
-    {type: 'Feature', properties: {kind: 'label', label: `Owner neighborhood · ${area.label}${source === 'virtual' ? ' (virtual)' : ''}`}, geometry: {type: 'Point', coordinates: [lng, lat]}},
+    {type: 'Feature', properties: {kind: 'label', label: uiText`Owner neighborhood · ${area.label}${source === 'virtual' ? uiText(' (virtual)') : ''}`}, geometry: {type: 'Point', coordinates: [lng, lat]}},
   ]};
 }
 

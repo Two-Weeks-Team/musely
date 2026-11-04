@@ -1,3 +1,4 @@
+import {uiText,catalogText,inventoryText,activityStatus} from './i18n.ts';
 import {resolveMuse} from './personal-profile.ts';
 // Owner inbox (contract C06, direction v2 12.3; I-07). Separate from the Muse's agent inbox (heartbeat_check): it shows
 // only the meetups waiting for this owner's decision, the recent decisions and the three owner notification kinds
@@ -73,28 +74,28 @@ export function saveConditions(store: Pick<Storage, 'setItem'> | null, c: Privat
 const windowText = (ws: readonly Window[]) => ws.map(w => `${String(Math.floor(w.from / 60)).padStart(2, '0')}:${String(w.from % 60).padStart(2, '0')}-${String(Math.floor(w.to / 60)).padStart(2, '0')}:${String(w.to % 60).padStart(2, '0')}`).join(', ');
 
 export const DECISION_REASONS: Record<string, string> = {
-  owner_session_required: 'The owner session ended. Start it again in the Identity tab.',
-  not_your_muse: 'This owner session does not control that Muse. Nothing changed.',
-  origin_not_allowed: 'Refused: the request did not come from this site. Nothing changed.',
-  stale_approval: 'The candidates changed since you looked (a new revision). Nothing was approved; the list is refreshed.',
-  task_expired: 'The approval window closed. Nothing was confirmed.',
-  task_cancelled: 'The meetup was cancelled (a delegation was revoked). Nothing was confirmed.',
-  task_rejected: 'The meetup was declined. Nothing was confirmed.',
-  task_completed: 'This meetup is already confirmed.',
-  candidate_mismatch: 'The other owner approved a different candidate. Choose that one, or decline.',
-  candidate_required: 'Choose one candidate first.',
-  not_ready_for_approval: 'The Muses are still answering. It comes here when both say yes.',
-  delegation_revoked: 'Your Muse\'s delegation is revoked. Delegate it again first.',
-  already_decided: 'You already decided on this revision.',
-  history_tamper: 'The item history failed its check, so nothing can be issued. Nothing was approved.',
+  owner_session_required: uiText('The owner session ended. Start it again in the Identity tab.'),
+  not_your_muse: uiText('This owner session does not control that Muse. Nothing changed.'),
+  origin_not_allowed: uiText('Refused: the request did not come from this site. Nothing changed.'),
+  stale_approval: uiText('The candidates changed since you looked (a new revision). Nothing was approved; the list is refreshed.'),
+  task_expired: uiText('The approval window closed. Nothing was confirmed.'),
+  task_cancelled: uiText('The meetup was cancelled (a delegation was revoked). Nothing was confirmed.'),
+  task_rejected: uiText('The meetup was declined. Nothing was confirmed.'),
+  task_completed: uiText('This meetup is already confirmed.'),
+  candidate_mismatch: uiText('The other owner approved a different candidate. Choose that one, or decline.'),
+  candidate_required: uiText('Choose one candidate first.'),
+  not_ready_for_approval: uiText('The Muses are still answering. It comes here when both say yes.'),
+  delegation_revoked: uiText('Your Muse\'s delegation is revoked. Delegate it again first.'),
+  already_decided: uiText('You already decided on this revision.'),
+  history_tamper: uiText('The item history failed its check, so nothing can be issued. Nothing was approved.'),
 };
-export const decisionText = (r: {status: number; data: any}) => DECISION_REASONS[r.data?.error] ?? (r.status ? `HTTP ${r.status}${r.data?.error ? ' · ' + r.data.error : ''}` : 'network error');
+export const decisionText = (r: {status: number; data: any}) => DECISION_REASONS[r.data?.error] ?? (r.status ? uiText`HTTP ${r.status}${r.data?.error ? ' · ' + r.data.error : ''}` : uiText('network error'));
 
 // ---------- the card (DOM) ----------
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const at = (ms: number) => new Intl.DateTimeFormat(undefined, {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}).format(new Date(ms));
 const defaultName = (id: string) => resolveMuse({id}).name;
-const KIND_LABEL: Record<Notification['kind'], string> = {meetup_candidate: 'Meetup candidate', trade_completed: 'Trade completed', blocked: 'Blocked attempt'};
+const KIND_LABEL: Record<Notification['kind'], string> = {meetup_candidate: uiText('Meetup candidate'), trade_completed: uiText('Trade completed'), blocked: uiText('Blocked attempt')};
 const COMMONS = PLACES.filter(p => p.zone === 'commons');
 
 /** The mounted card can refresh without remounting its private editor or unchanged approval controls. */
@@ -107,7 +108,7 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fe
   let pending: Promise<void> | null = null;
   let view: {owner: string; waiting: HTMLElement; approvals: HTMLElement; recent: HTMLElement; notifications: HTMLElement; status: HTMLElement} | null = null;
   const cards = new Map<string, {key: string; node: HTMLElement & {updateOther(side: Side): void;updateNames():void}}>();
-  const refreshButton = () => { const b = el('button', 'secondary', 'Refresh owner inbox'); b.type = 'button'; b.onclick = () => void recheckSession(); return b; };
+  const refreshButton = () => { const b = el('button', 'secondary', uiText('Refresh owner inbox')); b.type = 'button'; b.onclick = () => void recheckSession(); return b; };
   // Keep nodes that already occupy the right slot connected: removing and re-appending an editor blurs it in browsers.
   const reconcile = (parent: HTMLElement, nodes: HTMLElement[]) => {
     nodes.forEach((node, i) => { if (parent.children[i] !== node) parent.insertBefore(node, parent.children[i] ?? null); });
@@ -119,9 +120,9 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fe
     const v = value as OwnerInboxSession;
     return typeof v.principal === 'string' && !!v.principal && typeof v.ownerId === 'string' && !!v.ownerId && Number.isSafeInteger(v.expiresAt) && v.expiresAt > Date.now() ? {principal:v.principal,ownerId:v.ownerId,expiresAt:v.expiresAt} : null;
   };
-  function signedOut(message = 'Start the owner session (owner control above) to see the meetups waiting for your approval.') {
+  function signedOut(message = uiText('Start the owner session (owner control above) to see the meetups waiting for your approval.')) {
     view = null; cards.clear(); result.textContent = '';
-    box.replaceChildren(el('span', 'eyebrow', 'OWNER INBOX · YOUR APPROVALS'), el('h4', '', 'Owner inbox'), el('p', 'muted', message), refreshButton(), result);
+    box.replaceChildren(el('span', 'eyebrow', uiText('OWNER INBOX · YOUR APPROVALS')), el('h4', '', uiText('Owner inbox')), el('p', 'muted', message), refreshButton(), result);
   }
   function setOwnerSession(value: unknown) {
     if (disposed) return;
@@ -133,7 +134,7 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fe
   }
   function recheckSession() {
     if (disposed || !active()) return Promise.resolve();
-    sessionGeneration++; request++; pending = null; session = undefined; signedOut('Checking the owner session…');
+    sessionGeneration++; request++; pending = null; session = undefined; signedOut(uiText('Checking the owner session…'));
     return paint();
   }
   function paint(force = false): Promise<void> {
@@ -153,32 +154,32 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fe
       const check = await call(f, 'GET', '/api/owner/session');
       if (!current()) return;
       session = check.ok ? sessionValue(check.data?.owner) : null;
-      if (!session) { signedOut(check.ok || check.status === 401 ? undefined : 'The owner session could not be confirmed. Check owner control above or refresh explicitly.'); return; }
+      if (!session) { signedOut(check.ok || check.status === 401 ? undefined : uiText('The owner session could not be confirmed. Check owner control above or refresh explicitly.')); return; }
     }
     const r = await loadOwnerInbox(f);
     if (!current()) return;
     if (!session || session.expiresAt <= Date.now() || r.status === 401) { setOwnerSession(null); return; }
-    const head = el('span', 'eyebrow', 'OWNER INBOX · YOUR APPROVALS');
+    const head = el('span', 'eyebrow', uiText('OWNER INBOX · YOUR APPROVALS'));
     if (!r.ok || !r.data) {
-      const message = `It could not be read (${decisionText(r)}). This is not the same as an empty inbox.`;
-      if (view) { view.status.textContent = `Owner inbox is not updating. ${message} Showing the last successful answer.`; return; }
-      box.replaceChildren(head, el('h4', '', 'Owner inbox unavailable'), el('p', 'muted', message), refreshButton(), result); return;
+      const message = uiText`It could not be read (${decisionText(r)}). This is not the same as an empty inbox.`;
+      if (view) { view.status.textContent = uiText`Owner inbox is not updating. ${message} Showing the last successful answer.`; return; }
+      box.replaceChildren(head, el('h4', '', uiText('Owner inbox unavailable')), el('p', 'muted', message), refreshButton(), result); return;
     }
     const d = r.data as InboxAnswer, owner = JSON.stringify(d.owner);
     if (!view || view.owner !== owner) {
       cards.clear();
       const waiting = el('h4'), approvals = el('div'), recent = el('div'), notifications = el('div'), status = el('p', 'muted');
       status.setAttribute('role', 'status');
-      const parts: HTMLElement[] = [head, el('h4', '', `Owner inbox · ${d.owner.label}`),
-        el('p', 'muted', 'This is not your Muse\'s agent inbox. Only meetups waiting for you, completed trades and blocked attempts come here. Nothing is confirmed until both sides approve the same candidates.')];
-      if (d.demo_limits) parts.push(el('span', 'src src-scripted', 'DEMO PRINCIPAL · team-controlled'), el('p', 'muted', d.demo_limits));
-      parts.push(conditionsBlock(() => void paint(true)), refreshButton(), status, waiting, approvals, recent, el('h4', '', 'Notifications'), notifications, result);
+      const parts: HTMLElement[] = [head, el('h4', '', uiText`Owner inbox · ${d.owner.label}`),
+        el('p', 'muted', uiText('This is not your Muse\'s agent inbox. Only meetups waiting for you, completed trades and blocked attempts come here. Nothing is confirmed until both sides approve the same candidates.'))];
+      if (d.demo_limits) parts.push(el('span', 'src src-scripted', uiText('DEMO PRINCIPAL · team-controlled')), el('p', 'muted', d.demo_limits));
+      parts.push(conditionsBlock(() => void paint(true)), refreshButton(), status, waiting, approvals, recent, el('h4', '', uiText('Notifications')), notifications, result);
       box.replaceChildren(...parts);
       view = {owner, waiting, approvals, recent, notifications, status};
     }
     view.status.textContent = '';
     const waiting = d.approvals.filter(t => !t.yours).length;
-    view.waiting.textContent = `Waiting for your decision (${waiting})`;
+    view.waiting.textContent = uiText`Waiting for your decision (${waiting})`;
     const nodes = d.approvals.map(t => {
       const key = JSON.stringify([{...t, theirs: null}, d.approval_window_min]), old = cards.get(t.task_id);
       if (!force && old?.key === key) { old.node.updateOther(t.theirs);old.node.updateNames(); return old.node; }
@@ -187,27 +188,27 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fe
       cards.set(t.task_id, {key, node}); return node;
     });
     for (const id of cards.keys()) if (!d.approvals.some(t => t.task_id === id)) cards.delete(id);
-    reconcile(view.approvals, nodes.length ? nodes : [el('p', 'muted', 'Nothing is waiting for you.')]);
+    reconcile(view.approvals, nodes.length ? nodes : [el('p', 'muted', uiText('Nothing is waiting for you.'))]);
     view.recent.replaceChildren();
     if (d.recent.length) {
       const ul = el('ul', 'ev-list');
-      for (const t of d.recent) ul.append(el('li', '', `${name(t.other)} · ${t.confirmed ? `confirmed (${t.confirmed.candidate})` : t.status === 'input-required' ? 'approval window closed' : t.status}`));
-      view.recent.append(el('h4', '', 'Recent'), ul);
+      for (const t of d.recent) ul.append(el('li', '', `${name(t.other)} · ${t.confirmed ? uiText`confirmed (${t.confirmed.candidate})` : t.status === 'input-required' ? uiText('approval window closed') : t.status}`));
+      view.recent.append(el('h4', '', uiText('Recent')), ul);
     }
     const nl = el('ul', 'ev-list');
     for (const n of d.notifications.slice(0, 20)) nl.append(el('li', '', `${at(n.at)} · ${KIND_LABEL[n.kind]} · ${n.line}`));
-    view.notifications.replaceChildren(nl.childNodes.length ? nl : el('p', 'muted', 'No notifications yet.'));
+    view.notifications.replaceChildren(nl.childNodes.length ? nl : el('p', 'muted', uiText('No notifications yet.')));
   }
 
   function conditionsBlock(repaint: () => void) {
     const wrap = el('div', 'owner-private');
-    wrap.append(el('p', 'muted', 'Your private conditions stay on this device. They are checked here against the candidates and are never sent to Musely, to your Muse or to anyone.'));
-    const lab = el('label', 'fld'); lab.append(el('span', '', 'Times you cannot make (commons time, e.g. 17:00-19:00, 21:30-22:00)'));
-    const input = el('input'); input.type = 'text'; input.autocomplete = 'off'; input.spellcheck = false; input.value = windowText(cond.busy); input.setAttribute('aria-label', 'Times you cannot make');
+    wrap.append(el('p', 'muted', uiText('Your private conditions stay on this device. They are checked here against the candidates and are never sent to Musely, to your Muse or to anyone.')));
+    const lab = el('label', 'fld'); lab.append(el('span', '', uiText('Times you cannot make (commons time, e.g. 17:00-19:00, 21:30-22:00)')));
+    const input = el('input'); input.type = 'text'; input.autocomplete = 'off'; input.spellcheck = false; input.value = windowText(cond.busy); input.setAttribute('aria-label', uiText('Times you cannot make'));
     lab.append(input);
-    const places = el('fieldset', 'owner-avoid'); places.append(el('legend', '', 'Places to skip'));
+    const places = el('fieldset', 'owner-avoid'); places.append(el('legend', '', uiText('Places to skip')));
     const boxes = COMMONS.map(p => { const l = el('label', ''); const c = el('input'); c.type = 'checkbox'; c.value = p.id; c.checked = cond.avoid.includes(p.id); l.append(c, document.createTextNode(' ' + p.name)); places.append(l); return c; });
-    const save = el('button', 'secondary', 'Check candidates on this device'); save.type = 'button';
+    const save = el('button', 'secondary', uiText('Check candidates on this device')); save.type = 'button';
     save.onclick = () => { cond = {busy: parseBusy(input.value), avoid: boxes.filter(b => b.checked).map(b => b.value)}; saveConditions(store, cond); repaint(); };
     wrap.append(lab, places, save);
     return wrap;
@@ -217,41 +218,41 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fe
     const card = el('div', 'owner-approval');
     const dl = el('dl', 'facts');
     const g = (k: string, v: string) => { const value = el('dd', '', v); dl.append(el('dt', '', k), value); return value; };
-    const meetupName=g('Meetup', `${name(t.muse)} with ${name(t.other)}`);
-    g('Other side', t.other_side ?? '—');
-    g('Decide by', `${at(t.deadline)} (a ${windowMin}-minute window, server time)`);
-    g('Revision', `${t.revision} · ${t.content_hash.slice(0, 12)}`);
-    g('Your decision', t.yours ? `${t.yours.decision === 'approve' ? 'approved' : 'declined'}${t.yours.candidate ? ' ' + t.yours.candidate : ''}` : 'not yet');
-    const otherValue = g('Their decision', '');
-    const node = Object.assign(card, {updateNames(){meetupName.textContent=`${name(t.muse)} with ${name(t.other)}`;},updateOther(side: Side) { otherValue.textContent = side ? `${side.decision === 'approve' ? 'approved' : 'declined'}${side.candidate ? ' ' + side.candidate : side.source === 'rule' ? ' (by rule, any candidate)' : ''}` : 'not yet'; }});
+    const meetupName=g(uiText('Meetup'), uiText`${name(t.muse)} with ${name(t.other)}`);
+    g(uiText('Other side'), t.other_side ?? '—');
+    g(uiText('Decide by'), uiText`${at(t.deadline)} (a ${windowMin}-minute window, server time)`);
+    g(uiText('Revision'), `${t.revision} · ${t.content_hash.slice(0, 12)}`);
+    g(uiText('Your decision'), t.yours ? `${t.yours.decision === 'approve' ? 'approved' : 'declined'}${t.yours.candidate ? ' ' + t.yours.candidate : ''}` : uiText('not yet'));
+    const otherValue = g(uiText('Their decision'), '');
+    const node = Object.assign(card, {updateNames(){meetupName.textContent=uiText`${name(t.muse)} with ${name(t.other)}`;},updateOther(side: Side) { otherValue.textContent = side ? `${side.decision === 'approve' ? 'approved' : 'declined'}${side.candidate ? ' ' + side.candidate : side.source === 'rule' ? uiText(' (by rule, any candidate)') : ''}` : uiText('not yet'); }});
     node.updateOther(t.theirs);
     if (t.yours) {
       const chosen = t.candidates.find(c => c.id === t.yours!.candidate);
-      if (chosen) g('Chosen candidate', `${chosen.id} · ${chosen.time} · ${chosen.place}`);
-      card.append(dl, el('p', 'muted', t.yours.decision === 'approve' ? 'Waiting for the other side. Your decision on this revision is already recorded.' : 'You declined this revision. Nothing is confirmed.'));
+      if (chosen) g(uiText('Chosen candidate'), `${chosen.id} · ${chosen.time} · ${chosen.place}`);
+      card.append(dl, el('p', 'muted', t.yours.decision === 'approve' ? uiText('Waiting for the other side. Your decision on this revision is already recorded.') : uiText('You declined this revision. Nothing is confirmed.')));
       return node;
     }
     const verdicts = evaluateCandidates(t.candidates, cond);
     const pick = selected && t.candidates.some(c => c.id === selected) ? selected : suggestCandidate(t, verdicts);
-    const list = el('fieldset', 'owner-candidates'); list.append(el('legend', '', 'Candidates (from public information)'));
+    const list = el('fieldset', 'owner-candidates'); list.append(el('legend', '', uiText('Candidates (from public information)')));
     const radios = t.candidates.map(c => {
       const v = verdicts.find(x => x.id === c.id)!;
       const l = el('label', v.fits ? '' : 'muted'); const r = el('input'); r.type = 'radio'; r.name = 'cand-' + t.task_id; r.value = c.id; r.checked = c.id === pick;
-      l.append(r, document.createTextNode(` ${c.id} · ${c.time} · ${c.place} — ${c.public_basis} · ${v.fits ? 'fits your private conditions' : v.clash === 'busy' ? 'clashes with a time you cannot make (checked here only)' : 'a place you skip (checked here only)'}`));
+      l.append(r, document.createTextNode(` ${c.id} · ${c.time} · ${c.place} — ${c.public_basis} · ${v.fits ? uiText('fits your private conditions') : v.clash === 'busy' ? uiText('clashes with a time you cannot make (checked here only)') : uiText('a place you skip (checked here only)')}`));
       list.append(l); return r;
     });
     const actions = el('div', 'id-actions');
-    const approve = el('button', 'secondary', 'Approve the chosen candidate'); approve.type = 'button';
-    const decline = el('button', 'secondary', 'Decline'); decline.type = 'button';
+    const approve = el('button', 'secondary', uiText('Approve the chosen candidate')); approve.type = 'button';
+    const decline = el('button', 'secondary', uiText('Decline')); decline.type = 'button';
     const send = async (decision: 'approve' | 'reject') => {
       if (disposed || !active() || !session || session.expiresAt <= Date.now() || approve.disabled || decline.disabled) return;
       const generation = sessionGeneration;
-      approve.disabled = decline.disabled = true; result.textContent = decision === 'approve' ? 'Approving…' : 'Declining…';
+      approve.disabled = decline.disabled = true; result.textContent = decision === 'approve' ? uiText('Approving…') : uiText('Declining…');
       try {
         const res = await submitDecision(f, t, decision, decision === 'approve' ? radios.find(r => r.checked)?.value ?? null : null);
         if (disposed || !active() || generation !== sessionGeneration) return;
         if (res.status === 401 || !session || session.expiresAt <= Date.now()) { setOwnerSession(null); return; }
-        result.textContent = res.ok ? (res.data.confirmed ? `Confirmed: both sides approved. ${name(t.muse)} and ${name(t.other)} each got a Meetup Ember.` : decision === 'approve' ? 'Approved. Waiting for the other side.' : 'Declined. Nothing is confirmed and no reason was sent.') : decisionText(res);
+        result.textContent = res.ok ? (res.data.confirmed ? uiText`Confirmed: both sides approved. ${name(t.muse)} and ${name(t.other)} each got a Meetup Ember.` : decision === 'approve' ? uiText('Approved. Waiting for the other side.') : uiText('Declined. Nothing is confirmed and no reason was sent.')) : decisionText(res);
         request++; pending = null; await paint();
         if (!disposed && active() && generation === sessionGeneration) onChange();
       } finally {
@@ -267,7 +268,7 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => fe
     return node;
   }
 
-  box.append(el('span', 'eyebrow', 'OWNER INBOX · YOUR APPROVALS'), el('p', 'muted', 'Checking the owner inbox…'));
+  box.append(el('span', 'eyebrow', uiText('OWNER INBOX · YOUR APPROVALS')), el('p', 'muted', uiText('Checking the owner inbox…')));
   void paint();
   return Object.assign(box, {refresh: () => paint(), setOwnerSession, dispose() { if (disposed) return; disposed = true; sessionGeneration++; request++; pending = null; session = null; view = null; cards.clear(); result.textContent = ''; box.replaceChildren(); }});
 }

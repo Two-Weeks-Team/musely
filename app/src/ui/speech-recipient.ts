@@ -1,3 +1,4 @@
+import {uiLanguage} from './i18n.ts';
 import {presentationIn, type ProfileMuse} from './personal-profile.ts';
 import type {ActorFrame,LiveEvent,LiveWorld} from './live-scene-core.ts';
 type PublicWorld={muses:readonly ProfileMuse[]};
@@ -23,7 +24,7 @@ export function paintFrameSpeech(node:HTMLElement,frame:ActorFrame|undefined,wor
   // Child content is cleared by the existing Story textContent assignment too: no stale spoken addressee.
   const visible=node.ownerDocument.createElement('span'),spoken=node.ownerDocument.createElement('span');
   visible.setAttribute('aria-hidden','true');visible.textContent=speech.text;
-  spoken.className='speech-address-a11y';spoken.textContent=`To ${speech.recipient} / ${speech.recipient}에게: ${frame!.line}`;
+  spoken.className='speech-address-a11y';spoken.textContent=uiLanguage()==='ko'?`${speech.recipient}에게: ${frame!.line}`:`To ${speech.recipient}: ${frame!.line}`;
   node.replaceChildren(visible,spoken);
  }
 }

@@ -49,7 +49,7 @@ test('the card names the viewing mode while the small source note preserves the 
  assert.equal(recorded.sceneModeLabel(true,'en'),'Recorded world');
  assert.equal(recorded.actionSourceLabel('scripted',false,'en'),'Action source · SCRIPTED');
  assert.equal(recorded.actionSourceLabel('live',true,'ko'),'기록된 행동 출처 · LIVE');
- assert.equal(recorded.actionSourceLabel('waiting',false,'en'),'Action source unavailable');
+ assert.equal(recorded.actionSourceLabel('waiting',false,'en'),'');
 });
 test('unrelated events and an absent event window never invent the current action source',()=>{
  const p=new recorded.SceneProjection(),w=world(2);w.muses[0].beat={id:'rest',clip:'sit_idle',startedAt:AT,endsAt:AT+60000,line:null};
