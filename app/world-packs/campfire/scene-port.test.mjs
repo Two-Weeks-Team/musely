@@ -43,3 +43,32 @@ test('port disposal releases its scene owner even when a GPU resource cleanup ca
  scene.getObjectByName('campfire:commons:campfire').getObjectByName('bright_core').geometry.addEventListener('dispose',()=>{throw Error('cleanup failed');});
  assert.throws(()=>p.dispose(),AggregateError);assert.equal(p.getMetrics().disposed,true);assert.equal(fire.visible,true);createCampfireScenePort(scene,fire).dispose();
 });
+
+// Timer substitution preserves the actual signal/abort path; the successful transport still parses the real GLB.
+async function delayedTransport(t,{delayMs=null,bodyDelay=false}={}){
+ t.mock.timers.enable({apis:['setTimeout']});
+ t.mock.method(AbortSignal,'timeout',ms=>{const c=new AbortController();setTimeout(()=>c.abort(new DOMException('Optional transport deadline','TimeoutError')),ms);return c.signal;});
+ let requests=0;
+ t.mock.method(globalThis,'fetch',async(_url,{signal})=>{requests++;
+  const wait=()=>new Promise((resolve,reject)=>{let timer;const abort=()=>{if(timer!==undefined)clearTimeout(timer);reject(signal.reason);};if(signal.aborted){abort();return;}signal.addEventListener('abort',abort,{once:true});if(delayMs!==null)timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve(bytes);},delayMs);});
+  if(bodyDelay)return {ok:true,arrayBuffer:async()=>{const b=await wait();return b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength);}};
+  return new Response(await wait());
+ });
+ const h=host(),port=createCampfireScenePort(h.scene,h.fire);t.after(()=>port.dispose());
+ let settled=false;const pending=port.enable({distanceM:()=>2}).then(value=>{settled=true;return{ok:true,value};},error=>{settled=true;return{ok:false,name:error.name};});
+ for(let n=0;n<20&&requests===0;n++)await new Promise(setImmediate);
+ assert.equal(requests,1);return{...h,port,pending,settled:()=>settled,requests:()=>requests,turn:()=>new Promise(setImmediate)};
+}
+test('ten-second optional cold request succeeds beyond eight seconds with real verified GLB parsing',async t=>{
+ const x=await delayedTransport(t,{delayMs:10000});t.mock.timers.tick(8001);await x.turn();
+ assert.equal(x.settled(),false,'a normal delayed optional request must remain alive after eight seconds');assert.equal(x.fire.visible,true);assert.equal(x.port.getMetrics().pending,true);
+ t.mock.timers.tick(1999);assert.deepEqual(await x.pending,{ok:true,value:true});assert.equal(x.port.getMetrics().enabled,true);assert.equal(x.fire.visible,false);assert.ok(x.scene.getObjectByName('bright_core'));assert.equal(x.requests(),1);x.port.disable();assert.equal(x.fire.visible,true);
+});
+test('hung optional headers have one finite deadline and retain the original fire without retry',async t=>{
+ const x=await delayedTransport(t);t.mock.timers.tick(29999);await x.turn();assert.equal(x.settled(),false);assert.equal(x.fire.visible,true);
+ t.mock.timers.tick(1);assert.deepEqual(await x.pending,{ok:false,name:'TimeoutError'});assert.equal(x.port.getMetrics().pending,false);assert.equal(x.port.getMetrics().enabled,false);assert.equal(x.fire.visible,true);assert.equal(x.scene.children.length,1);t.mock.timers.tick(60000);assert.equal(x.requests(),1);
+});
+test('hung optional response body shares the same finite deadline and preserves legacy fire',async t=>{
+ const x=await delayedTransport(t,{bodyDelay:true});t.mock.timers.tick(29999);await x.turn();assert.equal(x.settled(),false);
+ t.mock.timers.tick(1);assert.deepEqual(await x.pending,{ok:false,name:'TimeoutError'});assert.equal(x.port.getMetrics().enabled,false);assert.equal(x.fire.visible,true);assert.equal(x.requests(),1);
+});

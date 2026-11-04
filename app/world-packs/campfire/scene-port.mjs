@@ -8,7 +8,7 @@ const disposeSource = scene => {
 };
 async function loadBundledAsset(){
  const {GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js');
- const response=await fetch(asset.url,{credentials:'same-origin',signal:AbortSignal.timeout(8000)});
+ const response=await fetch(asset.url,{credentials:'same-origin',signal:AbortSignal.timeout(30000)});
  if(!response.ok)throw Error('Campfire asset unavailable');
  const bytes=await response.arrayBuffer();
  if(bytes.byteLength!==asset.bytes)throw Error('Campfire asset size mismatch');
