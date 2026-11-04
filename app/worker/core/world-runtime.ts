@@ -114,6 +114,9 @@ type Emit = (e: Omit<WorldEvent, 'id' | 'tick'>) => void;
 /** A stored event: its log position, run and the input row that committed it (null for events before the run log). */
 export type LoggedEvent = WorldEvent & {seq: number; runId: string | null; inputSeq: number | null};
 const EV_COLS = 'seq, id, tick, at, source, kind, muse, other, place, line, data, tags, run_id AS runId, input_seq AS inputSeq';
+// Preserve historical day-prefixed events, supplementing derived notices whose immutable IDs name their run.
+// The input must belong to this exact run: timestamps and a coincident input sequence are not a world-day proof.
+const EVENT_DAY = "(id LIKE ? OR (kind = 'perception_notice' AND EXISTS (SELECT 1 FROM run_inputs i WHERE i.seq = events.input_seq AND i.run_id = events.run_id AND i.day = ?)))";
 /** Largest server-side autonomy sample (a world day is about 15,000 events) and the longest period of one recount. */
 export const AUTONOMY_SAMPLE_MAX = 20_000;
 export const AUTONOMY_PERIOD_MAX_MS = 48 * 3_600_000;
@@ -906,12 +909,12 @@ export class WorldRuntime {
     return {state: s, events: out};
   }
 
-  /** Events after `sinceSeq` in order; with `day` only that world day (ids start with the day); with `tail` the newest N. */
+  /** Events after `sinceSeq` in order; `day` includes derived notices by their recorded world day; `tail` is newest N. */
   events(sinceSeq = 0, limit = 200, opts: {day?: string; tail?: number; runId?: string} = {}) {
     if (opts.runId) return this.rows(`SELECT ${EV_COLS} FROM events WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?`, opts.runId, sinceSeq, limit);
     if (opts.tail) return this.rows(`SELECT ${EV_COLS} FROM events ORDER BY seq DESC LIMIT ?`, Math.min(500, opts.tail)).reverse();
-    const day = opts.day && /^\d{4}-\d{2}-\d{2}$/.test(opts.day) ? opts.day + ':%' : '%';
-    return this.rows(`SELECT ${EV_COLS} FROM events WHERE seq > ? AND id LIKE ? ORDER BY seq LIMIT ?`, sinceSeq, day, limit);
+    const day = opts.day && /^\d{4}-\d{2}-\d{2}$/.test(opts.day) ? opts.day : null;
+    return this.rows(`SELECT ${EV_COLS} FROM events WHERE seq > ?${day ? ' AND '+EVENT_DAY : ''} ORDER BY seq LIMIT ?`, sinceSeq, ...(day ? [day+':%',day] : []), limit);
   }
   /** Human live Feed only. Raw events()/runId/day reads and recorded counts remain unchanged. */
   feedEvents(sinceSeq=0,limit=200,opts:{tail?:number}={}) {
@@ -943,7 +946,7 @@ export class WorldRuntime {
   }
   /**
    * The six autonomy measures recounted on the server from the run log (C09): one world, one period and optionally one
-   * run. The period is `from`..`to` (ms, `to` exclusive) or one world `day` (Menlo Park; its ids start with the day, and
+   * run. The period is `from`..`to` (ms, `to` exclusive) or one world `day` (Menlo Park; historical IDs or notice input day,
    * the time range around that day bounds the index scan). At most AUTONOMY_PERIOD_MAX_MS (a longer request keeps its
    * newest 48 hours) and AUTONOMY_SAMPLE_MAX events (the oldest ones); either limit makes the answer `partial`, never
    * silently complete. Events written before the run log belong to the pre-run-log run.
@@ -976,8 +979,8 @@ export class WorldRuntime {
     const runId = q.runId ?? null;
     const runClause = runId ? (runId === pre ? ' AND (run_id = ? OR run_id IS NULL)' : ' AND run_id = ?') : '';
     // Ordered by time (the `at` index serves the range and the order); autonomy() puts the sample back in log order.
-    const sql = `SELECT ${EV_COLS} FROM events WHERE at >= ? AND at < ?${day ? ' AND id LIKE ?' : ''}${runClause} ORDER BY at, seq LIMIT ?`;
-    const params = [from, to, ...(day ? [day + ':%'] : []), ...(runId ? [runId] : []), AUTONOMY_SAMPLE_MAX + 1];
+    const sql = `SELECT ${EV_COLS} FROM events WHERE at >= ? AND at < ?${day ? ' AND '+EVENT_DAY : ''}${runClause} ORDER BY at, seq LIMIT ?`;
+    const params = [from, to, ...(day ? [day + ':%',day] : []), ...(runId ? [runId] : []), AUTONOMY_SAMPLE_MAX + 1];
     return {sql, params, period: from < to ? {from, to} : null, notes};
   }
   /** Current public label only. Never persist private override reasons or inject into replay snapshots. */
