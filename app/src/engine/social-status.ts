@@ -1,7 +1,8 @@
-import {residentValues,residentRhythm,residentLocalHour,residentSociability} from './resident-values.ts';
+import {residentRhythm,residentLocalHour,residentSociability} from './resident-values.ts';
 /** Public social availability. Never a location, calendar, reason or permission grant. */
 import type {WorldState} from './world.ts';
 import {hasActorHarness,harnessById} from './harness.ts';
+import {BEATS} from './beats.ts';
 export const SOCIAL_STATUSES = ['welcoming','busy','do_not_disturb'] as const;
 export type SocialStatus = typeof SOCIAL_STATUSES[number];
 export type SocialMode = 'auto' | SocialStatus;
@@ -9,19 +10,16 @@ export type Availability = {status:SocialStatus};
 export type SocialWorld = Pick<WorldState,'muses'|'paused'>;
 export const isSocialStatus=(v:unknown):v is SocialStatus=>typeof v==='string'&&(SOCIAL_STATUSES as readonly string[]).includes(v);
 export const isSocialMode=(v:unknown):v is SocialMode=>v==='auto'||isSocialStatus(v);
-// Existing catalog rest/social beats. Unknown future activities remain busy, never implicitly open.
-const REST = new Set(['cafe_drink','cafe_people_watch','cafe_save_seat','park_bench_rest','eat_together','eat_snack',
- 'resident_stay','listen_music','observe_sky','night_pass_stargaze','campfire_sit','look_around','welcome','reassure']);
+// Only explicit catalog making/repair occupies a stationary Muse. A pending agreement is not processing.
+const MAKING = new Set(['cafe_fix_gadget','repair','craft',...BEATS.filter(b=>b.result?.craft).map(b=>b.id)]);
 export function resolveSocialStatus(world:SocialWorld,actorId:string,now:number,override:unknown='auto',residentValuesEnabled=false):SocialStatus {
  const actor=world.muses.find(m=>m.id===actorId);
  if(!actor||!Number.isSafeInteger(now)||now<0||!isSocialMode(override))return 'do_not_disturb';
  if(override!=='auto')return override; // The owner's explicit setting takes priority over activity defaults.
  if(world.paused?.[actorId])return 'do_not_disturb';
  if(actor.travel)return 'busy';
- if(actor.beat&&actor.beat.endsAt>now&&!REST.has(actor.beat.id))return 'busy';
- if(residentValuesEnabled===true&&residentValues(actorId)&&actorId!=='00-jolly'&&!actor.profile&&actor.controlMode!=='personal'){
-  const hour=residentLocalHour(now),rhythm=hour===null?null:residentRhythm(actorId,hour);if(rhythm&&!rhythm.active)return 'busy';
- }
+ if(actor.beat&&actor.beat.endsAt>now&&MAKING.has(actor.beat.id))return 'busy';
+ // Daily rhythm changes resident-initiated tendencies, never willingness to receive conversation.
  return 'welcoming';
 }
 export function publicAvailability(world:SocialWorld,actorId:string,now:number,override:unknown='auto',residentValuesEnabled=false):Availability {
@@ -39,7 +37,10 @@ export function personalApproachProbability(world:SocialWorld,actorId:string,pee
  if(!actor||!peer||actorId===peerId||actorId==='00-jolly'||actor.profile||actor.controlMode==='personal'||!hasActorHarness(actorId)
    ||world.paused?.[actorId]||!(peer.controlMode==='personal'||peer.profile?.actorId===peer.id||peer.id==='00-jolly')
    ||interactionPolicy(peerStatus??resolveSocialStatus(world,peerId,now))!=='approach')return 0;
- if(residentValuesEnabled===true){const probability=residentSociability(actorId);if(probability!==null)return probability;}
+ if(residentValuesEnabled===true){const probability=residentSociability(actorId);if(probability!==null){
+  const hour=residentLocalHour(now),rhythm=hour===null?null:residentRhythm(actorId,hour);
+  return probability*(rhythm?.moveMultiplier??1);
+ }}
  const h=harnessById(actorId),social=h.persona.traits.includes('outgoing')||h.skills.includes('hosting')||h.persona.traits.includes('shared company');
  return social?0.45:0.15;
 }

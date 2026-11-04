@@ -16,8 +16,8 @@ test('missing or asynchronous authorization is never treated as an affirmative o
 test('corrupt stored mode fails closed and never becomes a public field or reason',t=>{const f=setup(t);f.db.exec('PRAGMA ignore_check_constraints=ON');f.db.prepare('INSERT INTO social_status_overrides VALUES (?,?,?,?)').run('status-world','00-jolly','PRIVATE_CANARY',1);assert.deepEqual(f.store.public('00-jolly'),{status:'do_not_disturb'});assert.throws(()=>f.store.get(f.own,'00-jolly'),/social_status_unavailable/);});
 test('trusted resident-values flag keeps public and own automatic labels aligned without changing SQL or personal defaults',t=>{
  const f=setup(t),at=Date.parse('2026-11-04T16:00:00Z'),options={...f.options,now:()=>at,residentValuesEnabled:true},store=new api.SocialStatusStore(f.storage,options),own={muse:'01-sunny',exp:at+10000};
- const before=JSON.stringify(f.s);assert.equal(store.get(own,'01-sunny').status,'busy');assert.deepEqual(store.public('01-sunny'),{status:'busy'});
+ const before=JSON.stringify(f.s);assert.equal(store.get(own,'01-sunny').status,'welcoming');assert.deepEqual(store.public('01-sunny'),{status:'welcoming'});
  assert.equal(store.set(own,'01-sunny',{mode:'welcoming',expectedRevision:0}).status,'welcoming');assert.deepEqual(store.public('01-sunny'),{status:'welcoming'});
- assert.equal(store.set(own,'01-sunny',{mode:'auto',expectedRevision:1}).status,'busy');assert.equal(new api.SocialStatusStore(f.storage,{...options,residentValuesEnabled:false}).public('01-sunny').status,'welcoming');
+ assert.equal(store.set(own,'01-sunny',{mode:'auto',expectedRevision:1}).status,'welcoming');assert.equal(new api.SocialStatusStore(f.storage,{...options,residentValuesEnabled:false}).public('01-sunny').status,'welcoming');
  assert.equal(store.public('00-jolly').status,'welcoming');assert.equal(JSON.stringify(f.s),before);assert.deepEqual(f.db.prepare('PRAGMA table_info(social_status_overrides)').all().map(x=>x.name),['world_id','actor_id','mode','revision']);
 });

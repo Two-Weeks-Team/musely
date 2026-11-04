@@ -5,7 +5,7 @@ const ON={SOCIAL_STATUS_MODE:'public-v1',RESIDENT_BUDGET_MODE:'split-v1',DAILY_B
 test('confirmed resident values install the same server-only flag in runtime, RULE hooks, private preferences and public labels',async t=>{
  const a=await bootWorldDo(t,{mode:'sandbox-v1',envOverrides:ON});assert.equal(a.runtime.opts.residentValuesEnabled,true);assert.equal(a.runtime.opts.hooks.residentValuesEnabled,true);
  const at=Date.parse('2026-11-04T16:00:00Z');t.mock.method(Date,'now',()=>at);a.edit(s=>{const m=s.muses.find(m=>m.id==='01-sunny');m.travel=null;m.beat=null;});
- const state=a.runtime.state();assert.equal(a.runtime.opts.socialStatus(state,'01-sunny',at),'busy');assert.deepEqual(a.world.worldView().muses.find(m=>m.id==='01-sunny').availability,{status:'busy'});
+ const state=a.runtime.state();assert.equal(a.runtime.opts.socialStatus(state,'01-sunny',at),'welcoming');assert.deepEqual(a.world.worldView().muses.find(m=>m.id==='01-sunny').availability,{status:'welcoming'});
  const before=JSON.stringify(a.runtime.state());a.world.worldView();assert.equal(JSON.stringify(a.runtime.state()),before,'public values projection must not store schedule or preference labels');
 });
 test('absent or off values retain the legacy runtime and RULE options and do not enable reflection',async t=>{

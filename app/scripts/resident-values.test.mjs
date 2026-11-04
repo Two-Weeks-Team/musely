@@ -38,9 +38,9 @@ test('rhythm intervals are LA-time half-open, including night midnight wrap and 
  assert.equal(values.residentRhythm('pm_unknown',18),null);assert.equal(values.residentRhythm('01-sunny',NaN),null);
  const a=values.residentRhythm('01-sunny',18),b=values.residentRhythm('01-sunny',8);assert(b.moveMultiplier<a.moveMultiplier);assert(b.stayMultiplier>a.stayMultiplier);
 });
-test('status keeps explicit owner preference, work/travel and personal identity ahead of resident rhythm defaults',()=>{
+test('status welcomes stationary residents at every rhythm while keeping owner preference and explicit busy actions',()=>{
  const at=Date.parse('2026-11-04T16:00:00Z'),s=createWorld('rhythm',at),sun=s.muses.find(m=>m.id==='01-sunny');sun.travel=null;sun.beat=null;
- assert.equal(resolveSocialStatus(s,sun.id,at,'auto',false),'welcoming');assert.equal(resolveSocialStatus(s,sun.id,at,'auto',true),'busy');assert.equal(resolveSocialStatus(s,sun.id,at,'welcoming',true),'welcoming');
+ assert.equal(resolveSocialStatus(s,sun.id,at,'auto',false),'welcoming');assert.equal(resolveSocialStatus(s,sun.id,at,'auto',true),'welcoming');assert.equal(resolveSocialStatus(s,sun.id,at,'welcoming',true),'welcoming');
  const evening=Date.parse('2026-11-04T02:00:00Z');assert.equal(resolveSocialStatus(s,sun.id,evening,'auto',true),'welcoming');sun.travel={to:'commons:cafe',departAt:evening,arriveAt:evening+60000,speed:'walk'};assert.equal(resolveSocialStatus(s,sun.id,evening,'auto',true),'busy');sun.travel=null;sun.beat={id:'craft',clip:'think',startedAt:evening,endsAt:evening+60000,line:null};assert.equal(resolveSocialStatus(s,sun.id,evening,'auto',true),'busy');
  assert.equal(resolveSocialStatus(s,'00-jolly',at,'auto',true),resolveSocialStatus(s,'00-jolly',at));sun.controlMode='personal';sun.beat=null;assert.equal(resolveSocialStatus(s,sun.id,at,'auto',true),'welcoming');
 });
@@ -79,4 +79,16 @@ test('flag absent and false retain the original C38b4bc2 messages, activity prom
  assert.equal(sha256Hex(JSON.stringify(activityMessages(input,null))),'de49e1fd7cb6614c0408112a40a3d16e9b37f23985a8e7c641e0e1527ab2cbe9');
  const at=Date.parse('2026-11-04T16:00:00Z'),s=createWorld('off-golden',at);assert.equal(sha256Hex(JSON.stringify(tick(s,{now:at}))),'cd6416eba05c2e7f7e8df2070bd9262f983c0c190af26907a1f09845c33a73f4');
  assert.deepEqual(['01-sunny','nr_olive'].map(harnessById),['01-sunny','nr_olive'].map(id=>harnessById(id)));
+});
+
+
+test('outside rhythm lowers only resident-initiated personal approach weight; a quiet peer remains available',()=>{
+ const inside=Date.parse('2026-11-04T02:00:00Z'),outside=Date.parse('2026-11-04T16:00:00Z'),s=createWorld('personal-approach-rhythm',inside);
+ const p=s.muses[0];p.controlMode='personal';p.travel=null;p.beat=null;
+ const active=personalApproachProbability(s,'01-sunny',p.id,inside,'welcoming',true),quiet=personalApproachProbability(s,'01-sunny',p.id,outside,'welcoming',true);
+ assert.equal(active,.45);assert.equal(quiet,active*values.residentRhythm('01-sunny',8).moveMultiplier);assert(quiet>0&&quiet<active);
+ assert.equal(resolveSocialStatus(s,'01-sunny',outside,'auto',true),'welcoming');
+ assert.equal(personalApproachProbability(s,'01-sunny',p.id,outside,'busy',true),0);assert.equal(personalApproachProbability(s,'01-sunny',p.id,outside,'do_not_disturb',true),0);
+ assert.equal(personalApproachProbability(s,'01-sunny',p.id,outside,'welcoming',false),personalApproachProbability(s,'01-sunny',p.id,inside,'welcoming',false));
+ assert.equal(personalApproachProbability(s,p.id,'01-sunny',outside,'welcoming',true),0);
 });

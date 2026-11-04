@@ -152,10 +152,21 @@ export class WorldRuntime {
     // Complete time window, deliberately no public events-tail cap and no error fallback.
     return this.sql.exec('SELECT muse, at, line FROM events WHERE at >= ? AND at <= ? AND line IS NOT NULL ORDER BY seq',now-30*60_000,now).toArray() as PublicUtterance[];
   }
+  private conversationHistory(now:number):NonNullable<Hooks['conversationHistory']>{
+    if(!Number.isSafeInteger(now)||now<0)throw Error('invalid conversation history clock');
+    // Complete authoritative window, never a public tail sample. Private greetings,
+    // utterance text, reasons and inbox fields are not projected into engine hooks.
+    const rows=this.sql.exec("SELECT at,kind,muse,other FROM events WHERE at >= ? AND at <= ? AND muse IS NOT NULL AND other IS NOT NULL AND muse != other AND kind IN ('encounter','greet','encounter_reply','resident_wave','resident_passby') AND (kind != 'greet' OR json_extract(data,'$.public') = 1) ORDER BY seq",now-30*60_000,now).toArray();
+    return rows.map(({at,kind,muse,other})=>{
+      if(typeof at!=='number'||!Number.isSafeInteger(at)||typeof muse!=='string'||typeof other!=='string'||!['encounter','greet','encounter_reply','resident_wave','resident_passby'].includes(String(kind)))throw Error('invalid conversation history row');
+      if(kind!=='encounter'&&kind!=='greet'&&kind!=='encounter_reply'&&kind!=='resident_wave'&&kind!=='resident_passby')throw Error('invalid conversation history kind');
+      return{at,kind,muse,other};
+    });
+  }
   private engineHooks(now?:number):Hooks {
     const h=this.opts.hooks??{},p=this.opts.residentGoals;
     if(p?.enabled===true&&!this.ownsResidentGoalStore(p.goals))throw Error('resident goal storage mismatch');
-    return {...h,...(this.opts.residentActions?.fallbackRecovery?{residentFallbackRecovery:true}:{}),...(this.residentSpeechEnabled()?{residentValuesEnabled:true,...(now!==undefined?{residentSpeechHistory:this.residentSpeechHistory(now)}:{})}:{}),canProposeTrade:(s,a,b,g,w,at)=>{
+    return {...h,...(now!==undefined&&this.opts.socialStatus?{conversationHistory:this.conversationHistory(now)}:{}),...(this.opts.residentActions?.fallbackRecovery?{residentFallbackRecovery:true}:{}),...(this.residentSpeechEnabled()?{residentValuesEnabled:true,...(now!==undefined?{residentSpeechHistory:this.residentSpeechHistory(now)}:{})}:{}),canProposeTrade:(s,a,b,g,w,at)=>{
       // This main pending-claim constraint applies even with Life mode disabled.
       // A trusted current-claim hook must explicitly authorize personal participation.
       // Prefix alone neither grants authority nor permanently rejects a verified claim.
@@ -480,7 +491,7 @@ export class WorldRuntime {
     const preview=tick(before,{now,spot:{muse:serviceSpot.muse,priority:serviceSpot.priority},residentActors:actors,residentTurns:plans,residentFallback:fallback,requirePriorityApplication:true,residentFrozen:this.frozenResidents(before)},canMeet?{...this.engineHooks(now),canMeet}:this.engineHooks(now));
     const recent=this.events(0,500,{tail:500}).filter(e=>e.at>=before.lastTickAt&&e.at<=now);
     const reacting={...preview.state,version:before.version,tick:before.tick,lastTickAt:before.lastTickAt};
-    const prepared=reactionCandidates(reacting,[...recent,...preview.events],life.dialogues??[],now,this.actionOwnership,this.statusOf,control,this.opts.socialStatus!==undefined);
+    const prepared=reactionCandidates(reacting,[...recent,...preview.events],life.dialogues??[],now,this.actionOwnership,this.statusOf,control,this.opts.socialStatus!==undefined,this.opts.socialStatus?this.conversationHistory(now):undefined);
     const reactions=await Promise.all(prepared.candidates.map(async candidate=>{
       const base={muse:candidate.muse,other:candidate.other,place:candidate.place,encounterId:candidate.encounterId};
       const rule=(reason:string):ResidentReaction=>({triggerId:candidate.triggerId,kind:candidate.kind,reply:{...base,source:'rule',output:null,reason}});
