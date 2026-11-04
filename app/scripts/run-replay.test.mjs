@@ -40,8 +40,8 @@ test('exact historical goal/resident/combined and engine5/4/3/2 tuples play snap
  }
 });
 
-test('shared Judge engine17 versions its separate actor catalog', () => {
- assert.deepEqual(currentVersions(), {schemaVersion:'run-log-2',engineVersion:'engine-17',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-d42ba8247057'});
+test('wave and clock engine18 preserves its separate actor catalog', () => {
+ assert.deepEqual(currentVersions(), {schemaVersion:'run-log-2',engineVersion:'engine-18',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-d42ba8247057'});
  const r=record();r.engineVersion='engine-6';rejects(r,'incompatible_record');
 });
 
