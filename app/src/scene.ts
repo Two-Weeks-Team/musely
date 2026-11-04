@@ -12,6 +12,15 @@ import {loadWorldCharacters} from './character-kit/WorldCharacters';
 import type {MuseActor,Lod} from './character-kit/MuseActor';
 import {MUSE_VARIANTS,RESIDENT_VARIANTS,variantById} from './character-kit/catalog';
 import {residentBehavior,ResidentClock,chooseLods} from './character-kit/residents';
+/** Product defaults; explicit maintenance overrides do not affect world state. */
+export function worldVisualSettings(search:string){const p=new URLSearchParams(search),enabled=p.get('worldVisuals')!=='0';return {roofs:enabled&&p.get('roofs')!=='0',campfire:enabled&&p.get('campfire')!=='0'};}
+/** Inverse view-projection maps the homogeneous camera origin to local scene metres. */
+export function campfireDistanceFromProjection(viewProjection:T.Matrix4):number{
+ if(!Number.isFinite(viewProjection.determinant())||viewProjection.determinant()===0)return Infinity;
+ const p=new T.Vector4(0,0,1,0).applyMatrix4(viewProjection.clone().invert());
+ if(!Number.isFinite(p.w)||Math.abs(p.w)<1e-15)return Infinity;
+ const d=Math.hypot(p.x/p.w,p.y/p.w,p.z/p.w-2);return Number.isFinite(d)?d:Infinity;
+}
 export const PEOPLE=[
  {name:"Jimin's Muse",color:'#e8ddc7',accent:'#d9a38d',variant:'00-jolly',role:'Your Muse',activity:'Finding a moment to meet'},
  {name:"Sora's Muse",color:'#e7b75b',accent:'#d9886c',variant:'01-sunny',role:'A familiar face',activity:'A hello at the cafe'},
