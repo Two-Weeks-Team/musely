@@ -11,7 +11,7 @@ export type ModelResult =
   | {ok: true; output: unknown; responseId: string | null; requestId: string | null; latencyMs: number; usage: Usage | undefined}
   | {ok: false; kind: 'timeout' | 'rate_limited' | 'upstream' | 'bad_output' | 'network'; status?: number; latencyMs: number; requestId?: string | null; usage?: Usage};
 
-export async function callModel(cfg: ModelConfig, action: Action, messages: unknown[]): Promise<ModelResult> {
+export async function callModel(cfg: ModelConfig, action: Action, messages: unknown[], responseFormat: unknown = OUTPUT_SCHEMAS[action]): Promise<ModelResult> {
   const started = Date.now(), controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), cfg.timeoutMs);
   const headers: Record<string, string> = {authorization: 'Bearer ' + cfg.key, 'content-type': 'application/json'};
@@ -21,7 +21,7 @@ export async function callModel(cfg: ModelConfig, action: Action, messages: unkn
   try {
     const res = await Promise.race([(cfg.fetcher ?? fetch)(cfg.base.replace(/\/$/, '') + '/chat/completions', {
       method: 'POST', headers, signal: controller.signal,
-      body: JSON.stringify({model: cfg.model, messages, max_tokens: ACTION_LIMITS[action].maxTokens, reasoning_effort: ACTION_LIMITS[action].effort, response_format: OUTPUT_SCHEMAS[action]}),
+      body: JSON.stringify({model: cfg.model, messages, max_tokens: ACTION_LIMITS[action].maxTokens, reasoning_effort: ACTION_LIMITS[action].effort, response_format: responseFormat}),
     }), deadline]);
     const requestId = res.headers.get('x-request-id');
     const body = await Promise.race([res.text(), deadline]);

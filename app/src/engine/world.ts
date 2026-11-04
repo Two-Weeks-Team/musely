@@ -14,8 +14,8 @@ import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-8: combined resident enrollment/freeze and atomic goal/craft semantics. */
-export const ENGINE_VERSION = 'engine-8';
+/** engine-9: opt-in completion-driven resident activities and bounded, independent reactions. */
+export const ENGINE_VERSION = 'engine-9';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
@@ -63,6 +63,13 @@ export type WorldState = {worldId: string; day: string; seed: string; tick: numb
    * trip and meets nobody, until its owner delegates again. Set and cleared only by pauseMuse / resumeMuse.
    */
   paused?: Record<string, Paused>};
+/** Public virtual-route proximity; never a browser/device location. */
+export function socialDistance(s:WorldState,a:string,b:string,now:number):number {
+ const position=(id:string)=>{const m=s.muses.find(m=>m.id===id);if(!m)return null;const from=PLACE_BY_ID.get(m.place);if(!from)return null;
+  if(!m.travel)return{x:from.x,z:from.z};const to=PLACE_BY_ID.get(m.travel.to),span=m.travel.arriveAt-m.travel.departAt;
+  if(!to||!Number.isFinite(span)||span<=0)return null;const p=Math.max(0,Math.min(1,(now-m.travel.departAt)/span));return{x:from.x+(to.x-from.x)*p,z:from.z+(to.z-from.z)*p};};
+ const x=position(a),y=position(b);return x&&y?Math.hypot(x.x-y.x,x.z-y.z):Infinity;
+}
 export type Paused = {at: number; version: number; by: string};
 export type Decision = {muse: string; freedom: Freedom; source: 'live' | 'replay'; output: {decision: string; target_place: string; target_agent: string; offer_item: string; want_item: string; public_reason: string; line: string}; evidence?: Record<string, unknown>};
 /**
@@ -70,6 +77,9 @@ export type Decision = {muse: string; freedom: Freedom; source: 'live' | 'replay
  * `Decision`: live (a model answer, with evidence) or rule (no model answer; `reason` says why). `muse` answers `other`.
  */
 export type EncounterReply = {muse: string; other: string; place: string; encounterId: string; source: 'live' | 'replay' | 'rule'; output: {intent: string; item: string; line: string; public_reason: string; injection_suspected: boolean} | null; reason?: string; evidence?: Record<string, unknown>};
+/** Server-selected opt-in resident choice, recorded as a tick input for replay. */
+export type ResidentTurn = {decision:Decision;stayMinutes:number};
+export type ResidentReaction = {reply:EncounterReply;triggerId:string;kind:'reply'|'wave'};
 export type TradeProposalGuard=(s:WorldState,actor:string,peer:string,give:string,want:string,at:number)=>boolean;
 export type Hooks = {
   /** Trusted server policy for each autonomous offer; unrelated greetings remain allowed. */
@@ -237,7 +247,7 @@ export function setResidentFrozen(s:WorldState,ids:readonly string[],now:number)
   }
 }
 
-export function tick(prev: WorldState, input: {now: number; decision?: Decision | null; replies?: EncounterReply[]; spot?: {muse: string; priority: boolean}; residentMove?: {muse:string;place:string;expectedVersion:number};residentIdle?:readonly string[];residentFrozen?:readonly string[];residentGoalIdle?:readonly string[]}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
+export function tick(prev: WorldState, input: {now: number; decision?: Decision | null; replies?: EncounterReply[]; spot?: {muse: string; priority: boolean}; residentMove?: {muse:string;place:string;expectedVersion:number};residentIdle?:readonly string[];residentFrozen?:readonly string[];residentGoalIdle?:readonly string[];residentActors?:readonly string[];residentTurns?:readonly ResidentTurn[];residentFallback?:readonly string[];residentReactions?:readonly ResidentReaction[];requirePriorityApplication?:boolean}, hooks: Hooks = {}): {state: WorldState; events: WorldEvent[]} {
   const now = input.now, clock = localClock(now);
   const s: WorldState = structuredClone(prev);
   if(input.residentFrozen!==undefined)setResidentFrozen(s,input.residentFrozen,now);
@@ -268,6 +278,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   // Inbox upkeep: overdue Tasks expire; postcards in transit arrive on the real clock.
   for (const t of expireTasks(s.inbox, now)) emit({at: now, source: 'rule', kind: 'task_expired', muse: t.awaiting, other: t.awaiting === t.from ? t.to : t.from, data: {task_id: t.id, task: t.kind}, tags: []});
   const paused = (id: string) => !!s.paused?.[id] || isResidentFrozen(s,id);
+  const managed=(m:MuseState)=>input.residentActors?.includes(m.id)===true && m.id!=='00-jolly' && !m.id.startsWith('pm_') && hasActorHarness(m.id) && m.controlMode!=='personal' && !m.profile;
   // A postcard from or to a paused Muse (delegation revoked) waits in the queue; it is delivered on the first tick after
   // the owner delegates again.
   const due = s.inbox.mail.filter(x => x.deliverAt <= now && !paused(x.from) && !paused(x.to));
@@ -287,7 +298,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   const d = input.decision && input.decision.muse === spot.muse && !paused(spot.muse) && !isRuntimeControlled(s,spot.muse,now) ? input.decision : null;
   if (input.decision && !d) emit({at: now, source: input.decision.source, kind: 'decision_rejected', muse: input.decision.muse, data: {reason: paused(input.decision.muse) ? 'paused: the owner revoked this Muse\'s delegation' : isRuntimeControlled(s,input.decision.muse,now) ? 'personal or connected control' : 'not this Muse\'s spotlight turn'}, tags: []});
   if (d) applyDecision(s, d, spot.freedom, now, emit, hooks);
-  else if (!paused(spot.muse)) emit({at: now, source: 'scripted', kind: 'spotlight', muse: spot.muse, data: {freedom: spot.freedom, live: false}, tags: []});
+  else if (!paused(spot.muse)&&!(input.requirePriorityApplication&&spot.priority)) emit({at: now, source: 'scripted', kind: 'spotlight', muse: spot.muse, data: {freedom: spot.freedom, live: false}, tags: []});
 
   // 2. Every Muse advances: arrivals, then a new beat or a trip when the current beat ends.
   for (const m of s.muses) {
@@ -303,7 +314,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       const speed = m.travel.speed, chosen = !!m.travel.chosen;
       m.place = place.id; m.travel = null;
       // A Muse that chose this place itself stays for a beat instead of wandering off at once.
-      if (chosen && !connected && !input.residentGoalIdle?.includes(m.id)) { const b = weightedPick(rand, eligibleBeats(m, place, clock.hour), x => beatWeight(x, m.id)); if (b) { emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed, chosen}, tags: speed === 'taxi' ? ['teleport'] : []}); for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e); startBeat(m, b, place, now, 'rule', emit, s); continue; } }
+      if (chosen && !connected && !managed(m) && !input.residentGoalIdle?.includes(m.id)) { const b = weightedPick(rand, eligibleBeats(m, place, clock.hour), x => beatWeight(x, m.id)); if (b) { emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed, chosen}, tags: speed === 'taxi' ? ['teleport'] : []}); for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e); startBeat(m, b, place, now, 'rule', emit, s); continue; } }
       emit({at: now, source: 'rule', kind: 'arrive', muse: m.id, place: place.id, data: {speed}, tags: speed === 'taxi' ? ['teleport'] : []});
       for (const e of hooks.onArrive?.(s, m, place, rand, now) ?? []) emit(e);
     }
@@ -326,6 +337,25 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
         if (dest) startTrip(s, m, placeById(m.place), dest, now, 'rule', emit, hooks);
       }
       continue;
+    }
+    // Life03 choices use the existing movement/intent validation after real arrival/beat completion.
+    // A reaction is independent; it never restarts this activity or changes its ETA.
+    if(managed(m)){
+      const turn=input.residentTurns?.find(t=>t.decision.muse===m.id);
+      const waiting=s.inbox.tasks.some(t=>t.status==='pending'&&(t.from===m.id||t.to===m.id));
+      if(turn&&!m.intent&&!waiting&&Number.isFinite(turn.stayMinutes)&&turn.stayMinutes>=5&&turn.stayMinutes<=60){
+        const first=events.length;
+        applyDecision(s,turn.decision,turn.decision.freedom,now,emit,hooks);
+        const rejected=events.slice(first).some(e=>e.kind==='decision_rejected');
+        if(!rejected&&!m.travel){
+          const selected=eligibleBeats(m,placeById(m.place),clock.hour).find(b=>b.id===turn.decision.output.decision);
+          if(selected){startBeat(m,{...selected,minutes:turn.stayMinutes},placeById(m.place),now,turn.decision.source,emit,s);continue;}
+          m.beat={id:'resident_stay',clip:'idle_breathe',startedAt:now,endsAt:now+turn.stayMinutes*60000,line:null};
+          emit({at:now,source:turn.decision.source,kind:'beat',muse:m.id,place:m.place,line:null,data:{beat:'resident_stay',clip:'idle_breathe',minutes:turn.stayMinutes,evidence:turn.decision.evidence??null},tags:[]});
+        }
+        continue;
+      }
+      if(!m.intent&&!input.residentFallback?.includes(m.id))continue;
     }
     // Trusted goal scheduler owns idle boundaries, never personal commands or live decisions.
     if(input.residentGoalIdle?.includes(m.id)&&!m.intent&&input.decision?.muse!==m.id)continue;
@@ -359,10 +389,10 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     if (goTravel) {
       // Choose among the area's places first; never discard an already-picked place at a cell edge.
       const dest = chooseDestination(s, m, rand, clock.hour);
-      if (dest) { startTrip(s, m, place, dest, now, 'scripted', emit, hooks); continue; }
+      if (dest) { startTrip(s, m, place, dest, now, managed(m)?'rule':'scripted', emit, hooks); continue; }
     }
     const beat = weightedPick(rand, stay, b => beatWeight(b, m.id));
-    if (beat) startBeat(m, beat, place, now, 'scripted', emit, s);
+    if (beat) startBeat(m, managed(m)?{...beat,minutes:Math.max(5,Math.min(60,beat.minutes))}:beat, place, now, managed(m)?'rule':'scripted', emit, s);
   }
 
   // 3. Encounters: Muses at the same place, not travelling, who have not met in the last 30 minutes.
@@ -391,7 +421,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
       if (gate?.event) emit(gate.event);
       for (const e of hooks.onEncounter?.(s, initiator, other, placeById(placeId), rngFor(s.seed, s.tick, initiator.id, other.id, 'meet'), now,hooks.canProposeTrade) ?? []) emit(e);
       // The other Muse answers (8.3). A connected Muse answers from its owner's runtime, so nothing is said for it here.
-      if (input.replies && !isRuntimeControlled(s, other.id, now)) replyTo(s, other, initiator, placeId, meeting, input.replies.find(r => r.encounterId === meeting && r.muse === other.id && r.other === initiator.id), now, emit);
+      if (input.replies && !input.residentReactions?.some(r=>r.reply.muse===other.id&&r.reply.other===initiator.id) && !isRuntimeControlled(s, other.id, now)) replyTo(s, other, initiator, placeId, meeting, input.replies.find(r => r.encounterId === meeting && r.muse === other.id && r.other === initiator.id), now, emit);
       if (initiator.intent?.target === other.id) initiator.intent = null;
       remember(a, `Met ${participantName(s,b.id)} at ${placeById(placeId).name}`);
       remember(b, `Met ${participantName(s,a.id)} at ${placeById(placeId).name}`);
@@ -399,13 +429,30 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
     const place = placeById(placeId);
     if (place.kind === 'campfire' && group.length >= 3 && clock.hour >= 17) emit({at: now, source: 'rule', kind: 'gathering', muse: group[0].id, place: placeId, data: {count: group.length, muses: group.map(m => m.id)}, tags: ['campfire_gathering_3plus']});
   }
+  // Immediate resident responses are recorded inputs. They never move either participant,
+  // answer for a personal actor, or replace an in-progress activity.
+  const handled=new Set<string>();
+  for(const reaction of input.residentReactions??[]){
+    const r=reaction.reply,m=s.muses.find(m=>m.id===r.muse),to=s.muses.find(m=>m.id===r.other),key=r.muse+'|'+reaction.triggerId;
+    if(!m||!to||!managed(m)||paused(m.id)||paused(to.id)||isRuntimeControlled(s,m.id,now)||handled.has(key)||socialDistance(s,m.id,to.id,now)>100)continue;
+    const gate=hooks.canMeet?.(s,m,to,placeById(m.place),now);if(gate&&!gate.ok)continue;
+    handled.add(key);
+    if(reaction.triggerId.startsWith('passby:')){
+      m.lastMet[to.id]=to.lastMet[m.id]=now;
+      emit({at:now,source:'rule',kind:'resident_passby',muse:m.id,other:to.id,place:m.place,data:{triggerId:reaction.triggerId,peerSpoke:false},tags:[]});
+    }
+    if(reaction.kind==='wave')emit({at:now,source:'rule',kind:'resident_wave',muse:m.id,other:to.id,place:m.place,data:{triggerId:reaction.triggerId,continuingActivity:true},tags:[]});
+    else {const first=events.length;replyTo(s,m,to,m.place,r.encounterId,r,now,emit);for(const e of events.slice(first))e.data={...e.data,triggerId:reaction.triggerId,continuingActivity:true};}
+  }
   for (const e of hooks.onTick?.(s, now) ?? []) emit(e);
 
   // A priority turn leaves the queue (only its own entry, and any paused since); requests that arrived meanwhile stay
   // for the next tick. The rotation waits during priority turns.
-  if (spot.priority) s.spotlight.visitorQueue = s.spotlight.visitorQueue.filter(id => id !== spot.muse && !paused(id));
+  const priorityApplied=spot.priority&&(!input.requirePriorityApplication||(input.residentTurns?.some(t=>t.decision.muse===spot.muse&&t.decision.source==='live')&&events.some(e=>e.muse===spot.muse&&e.source==='live'&&['spotlight','beat','depart','trade_intent'].includes(e.kind))));
+  if(input.requirePriorityApplication&&spot.priority&&!priorityApplied)emit({at:now,source:'rule',kind:'spotlight_deferred',muse:spot.muse,data:{reason:'priority_not_applied',queued:true},tags:[]});
+  if (priorityApplied) s.spotlight.visitorQueue = s.spotlight.visitorQueue.filter(id => id !== spot.muse && !paused(id));
   else s.spotlight.cursor = (s.spotlight.cursor + 1) % s.muses.length;
-  s.spotlight.streak = spot.priority ? (s.spotlight.streak ?? 0) + 1 : 0;
+  s.spotlight.streak = priorityApplied ? (s.spotlight.streak ?? 0) + 1 : 0;
   // Spotlight Tickets are spent after this turn was served, so the next heartbeat's spotlightFor sees the same queue.
   if (!itemFault) for (const e of spendSpotlightTickets(s, now, id => paused(id) || isRuntimeControlled(s, id, now))) emit(e);
   s.tick += 1; s.version += 1; s.lastTickAt = now;
@@ -553,6 +600,10 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
 }
 
 export const placeOf = (id: string) => PLACE_BY_ID.get(id) ?? null;
+
+export function residentActivityCatalog(s:WorldState,id:string,now:number):{id:string;minutes:number}[]{
+ const m=s.muses.find(m=>m.id===id);return m?eligibleBeats(m,placeById(m.place),localClock(now).hour).map(b=>({id:b.id,minutes:b.minutes})):[];
+}
 
 /** Trusted resident rule intent. Uses the same engine travel/activity implementation.
  * Host must additionally verify current server ownership and delegation. No user/model prose. */
