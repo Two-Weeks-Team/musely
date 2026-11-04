@@ -25,7 +25,7 @@ import {runResidentWantsTurn,type ResidentWantsCallerPolicy} from './resident-wa
 import {callModel, type ModelConfig} from './model.ts';
 import {residentKindFor,isResidentBudgetRefusal} from './resident-budget-policy.ts';
 import {replayFor} from './replay.ts';
-import {isRuntimeControlled,isConnected} from '../../src/engine/inbox.ts';
+import {isRuntimeControlled, isResidentFrozen,isConnected} from '../../src/engine/inbox.ts';
 import {COMMANDS_TABLE, type CommandResult} from './commands.ts';
 import {syncTasks} from './tasks.ts';
 import {withMessageHooks} from './messages.ts';
@@ -59,7 +59,7 @@ export const ENCOUNTER_CIRCUIT_MS = 10 * 60_000;
 /** 8.2: priority spotlight requests per requester per hour (visitors: the free 3 per hour). */
 export const SPOTLIGHT_REQUESTS_PER_HOUR: Record<SpotlightOrigin, number> = {visitor: 3, judge: 120, connected: 3};
 export type SpotlightOrigin = 'visitor' | 'judge' | 'connected';
-export type SpotlightRequestResult = {ok: true; muse: string; position: number; already: boolean; eventIds: string[]} | {ok: false; reason: 'unknown_muse' | 'paused' | 'queue_full' | 'hourly_limit'};
+export type SpotlightRequestResult = {ok: true; muse: string; position: number; already: boolean; eventIds: string[]} | {ok: false; reason: 'unknown_muse' | 'paused' | 'queue_full' | 'hourly_limit' | 'self_directed' | 'model_unavailable'};
 
 export type RuntimeOptions = {
   residentActions?:{enabled:boolean;maxConcurrent?:number};
@@ -362,6 +362,17 @@ export class WorldRuntime {
     const kind=this.opts.residentLife?.ownershipKind(id)??'unknown';
     return this.opts.residentActions?.enabled&&['04-ember','09-copper'].includes(id)&&kind==='legacy'?'resident':kind;
   };
+  /** Model priority is not native-action display priority. No owner/connected actor is thought for here. */
+  private modelPriorityBlock(s:WorldState,id:string,now:number):'self_directed'|'model_unavailable'|null {
+    const m=s.muses.find(m=>m.id===id);if(!m)return 'model_unavailable';
+    if(id==='00-jolly'||id.startsWith('pm_')||m.profile||m.controlMode==='personal'||this.actionOwnership(id)==='personal')return 'self_directed';
+    if(['04-ember','09-copper'].includes(id)){
+      const control=this.opts.operatingResidentControl?.(id,now)??'unknown';
+      if(control==='connected')return 'self_directed';
+      if(control!=='resident')return 'model_unavailable';
+    }else if(isRuntimeControlled(s,id,now))return 'self_directed';
+    return knownResident(id,this.actionOwnership,true)?null:'model_unavailable';
+  }
   private statusOf=(s:WorldState,id:string,now:number):SocialStatus=>this.opts.socialStatus?.(s,id,now)??(s.muses.find(m=>m.id===id)?.travel?'busy':'welcoming');
   private choiceAvailable(s:WorldState,d:Decision,now:number):boolean{
     if(!this.opts.socialStatus||!['who','offer'].includes(d.freedom))return true;
@@ -381,6 +392,18 @@ export class WorldRuntime {
   private async activityHeartbeat(initial:WorldState,now:number):Promise<HeartbeatResult>{
     if(!this.lifeStore||!this.opts.residentLife?.enabled)throw Error('resident_life_required');
     let before=initial;
+    // Older releases enqueued a connected actor after its own action. Those entries
+    // describe already-recorded native activity, not an authorization for a team-model decision.
+    const cancelledPriority=(s:WorldState,id:string)=>!s.muses.some(m=>m.id===id)?'unknown_muse':this.modelPriorityBlock(s,id,now)==='self_directed'?'self_directed':null;
+    if(before.spotlight.visitorQueue.some(id=>cancelledPriority(before,id))){
+      this.commit(now,'spotlight-native-queue-reconcile',(s,emit)=>{
+        s.spotlight.visitorQueue=s.spotlight.visitorQueue.filter(id=>{
+          const reason=cancelledPriority(s,id);if(!reason)return true;
+          emit({at:now,source:'rule',kind:'spotlight_cancelled',muse:id,data:{reason,queued:false},tags:[]});return false;
+        });
+      },()=>false,'external',()=>({action:'spotlight_native_queue_reconcile'}));
+      before=this.state();
+    }
     const control=this.opts.operatingResidentControl;
     if(control){
       const proposed=handoffOperatingResidents(before,now,this.actionOwnership,control);
@@ -655,6 +678,14 @@ export class WorldRuntime {
    * version does not move (the queue is not part of any command's plan).
    */
   requestSpotlight(museId: string, now: number, by: {origin: SpotlightOrigin; requester: string}): SpotlightRequestResult {
+    if(this.opts.residentActions?.enabled){
+      const s=this.state(),m=s.muses.find(m=>m.id===museId);
+      if(!m)return{ok:false,reason:'unknown_muse'};
+      if(s.paused?.[museId]||isResidentFrozen(s,museId))return{ok:false,reason:'paused'};
+      if(by.origin==='connected')return{ok:false,reason:'self_directed'}; // native action/event is already recorded
+      const blocked=this.modelPriorityBlock(s,museId,now);
+      if(blocked)return{ok:false,reason:blocked};
+    }
     const recent = Number(this.sql.exec("SELECT COUNT(*) AS n FROM events WHERE kind = 'spotlight_requested' AND at > ? AND json_extract(data, '$.requester') = ?", now - 3_600_000, by.requester).toArray()[0]?.n ?? 0);
     const box: {out: SpotlightRequestResult} = {out: {ok: false, reason: 'unknown_muse'}};
     const done = this.commit(now, `spotlight-request-${museId}-${Math.random().toString(36).slice(2, 8)}`, (st, emit) => {

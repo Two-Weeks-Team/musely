@@ -75,6 +75,7 @@ export function describe(e: Ev,w?: LiveWorld | null): string {
     case 'encounter': return `${a} meets ${b} at ${placeName(e.place)}`;
     case 'encounter_reply': return e.source === 'rule' ? `${a} answers ${b} by rule (${String(d.reason ?? 'no model answer').replace(/_/g, ' ')})` : `${a} answers ${b}: ${e.line ?? d.intent ?? ''}`;
     case 'encounter_reply_discarded': return `${a}'s late answer to ${b} was discarded: ${d.reason}`;
+    case 'spotlight_cancelled': if(d.reason==='unknown_muse')return `${a}: This Muse is no longer available. Watch current activity in the Feed. / 현재 세계에 없는 Muse예요. Feed에서 현재 활동을 볼 수 있어요.`; return `${a}: This Muse chooses for itself. Watch its activity in the Feed. / 이 Muse는 스스로 행동해요. Feed에서 활동을 볼 수 있어요.`;
     case 'spotlight_requested': return `${a} asked for the next spotlight turn (${d.origin === 'connected' ? 'your Muse' : 'visitor'}, #${d.position} in line)`;
     case 'cards_verified': return `${a} and ${b} verified each other's Agent Card`;
     case 'greet': return `${a} greets ${b}`;

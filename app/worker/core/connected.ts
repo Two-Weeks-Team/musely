@@ -160,7 +160,8 @@ export class ConnectedHost {
     const ctx: ToolCtx = {campfires:()=>this.d.campfires,trust: this.d.trust, runtime: this.d.runtime, hooks: this.d.hooks, ownerRoot: this.d.ownerRoot(), ownerClaimed: this.d.ownerClaimed(), ownerClaimedNow: () => this.d.ownerClaimed(), claimExempt: key.muse === REVIEWER_MUSE, baseUrl: this.d.baseUrl, key, now: () => this.now(), ownerOf: m => this.ownerOf(m), authorize: () => this.keys.byId(key.id)?.revokedAt === null ? null : 'agent_key_revoked'};
     try {
       const out = await dispatch(method, params, {list:()=>toolList(this.d.runtime.state().muses.map(m=>m.id)), call: (n, a) => runTool(ctx, n, a), isInvalidParams: e => e instanceof InvalidParams});
-      // A successful world action puts the Muse in the priority queue (deduplicated, 3 per hour); a revoked Muse never.
+      // Legacy mode requests display priority after a native action. Action mode keeps that already-recorded
+      // native action out of the resident model FIFO; neither path thinks for a connected Muse.
       const tool = method === 'tools/call' ? String((params as {name?: unknown} | null)?.name ?? '') : '';
       if (ACTION_TOOLS.has(tool) && (out.result as {isError?: boolean} | undefined)?.isError === false && !this.d.trust.suspended(key.muse)) this.d.runtime.requestSpotlight(key.muse, this.now(), {origin: 'connected', requester: 'connected:' + key.muse});
       try{this.freshness.observe(key,method,tool,out.result,this.now());}catch{/* Private diagnostics never alter dispatch results. */}
