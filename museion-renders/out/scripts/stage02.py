@@ -1,4 +1,4 @@
-exec(open('/Users/kimsejun/museion-renders/out/scripts/enhance_common.py').read())
+exec(open('/Users/you/museion-renders/out/scripts/enhance_common.py').read())
 source=bpy.data.scenes['04 • Flame enhanced']
 add_emblems(source)
 s=avatar_sheet(source);save_checkpoint('stage-02-avatars.blend')

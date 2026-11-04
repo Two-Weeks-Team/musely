@@ -1,4 +1,4 @@
-exec(open('/Users/kimsejun/museion-renders/out/scripts/enhance_common.py').read())
+exec(open('/Users/you/museion-renders/out/scripts/enhance_common.py').read())
 s=clone_scene(bpy.data.scenes['02 • Ember split'],'07 • Ember split animation')
 for o in list(s.objects):
     if o.name.startswith(('Ember 1 •','Ember 2 •','Phone 1 • received','Phone 2 • received')):bpy.data.objects.remove(o,do_unlink=True)

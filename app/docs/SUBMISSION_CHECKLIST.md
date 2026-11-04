@@ -1,6 +1,12 @@
 # Submission checklist — D-06 #66
 
-**State: team-review preparation; final submission readiness unverified; competition submission/publication/agreements are outside the current engineering work.** Source baseline: `81a7199c236733f159e607d349e6e0d6256a947b`. Later release integration must update the gates without rewriting the historical plan as PASS.
+**State: team-review preparation; final submission readiness unverified; competition submission/publication/agreements are outside the current engineering work.** Original planning baseline: `81a7199c236733f159e607d349e6e0d6256a947b`. Later release integration must update the gates without rewriting the historical plan as PASS.
+
+## Current summary — 2026-11-05
+
+**Judge Muse is ON through [PR203](https://github.com/Two-Weeks-Team/musely/pull/203), with supervisor fresh-profile confirmation at 02:12 KST.** The operating verifier recorded en-US/ko-KR desktop/mobile entry and follow, public status auto→busy→auto in four profiles with final auto/revision8, foreign-Muse read denial and three received greetings matched to the original recipient. Received proposals and notifications had no positive sample; those paths are not marked measured.
+
+The supervisor's 01:50 KST actual tester check reached login → automatic Studio → 3D selection → Save → step 3, with key issuance0/Native admission0. Full Native admission for that tester, final C11 and whole S3 acceptance remain separate. Public repository/video access, form submission and consent remain under their own gates. The current three entry routes match the [root README](../../README.md#for-judges); the dated PR200 checkpoint below is historical.
 
 ## Requirements and evidence basis
 
@@ -14,13 +20,11 @@ Capture SHA-256: `ba508566504af4f492bff7ebd06ce2377e98fa1715c01c9be6c252597e7526
 
 | Route | Entry and audience | Verification boundary |
 |---|---|---|
-| Public observation | https://musely.net — no login needed to watch | Verify in a new signed-out profile on the final release |
-| Judge experience | `https://musely.net/?judge=<JUDGE_LINK_TOKEN>` → intended shared **Judge Muse**, shown as **Your Muse (judge account)** with **Judge account · provided by the team** | Dedicated Muse currently **OFF**; ON behavior awaits the operating verifier. After enablement, judges share this Muse: follow it, set public availability and read received greetings/proposals/notifications. It acts autonomously; Threads identity, key issuance, delegation revocation, reset and speech-by-proxy are unavailable. Exclude other Muses' private information; public watching remains available |
-| Own Muse connection | Threads tester invitation → accept in Threads Settings → Account → Website permissions → Invites → **Sign in with Threads** → new-account **Muse Studio** → **Save my Muse** → **3 · Connect your Muse** using the existing Native Muse app | Save updates draft/profile name and appearance only; admission still requires the Muse's signed `enter_world` through the existing connection. Existing ComBba keeps its established account flow. Invitation must be accepted. The actual new-tester end-to-end path remains unverified; watching is open to everyone |
+| Public observation | **Watch:** https://musely.net — no sign-in required; choose a Muse to follow | Public viewing, neighbors and language selection are separate from owner or judge authority |
+| Judge experience | **Judge access:** private submission-form link → shared team-provided **Judge Muse**, shown as **Your Muse (judge account)** | **ON since PR203; fresh-profile entry/follow/public status observed at 02:12 KST.** Received greetings have original-event matches; received-proposal/notification positive samples are unmeasured. No Threads identity, key issuance, delegation revocation, reset or speech-by-proxy. Keep other Muses' private information outside this access |
+| Own Muse connection | **Bring your own Muse:** Threads tester invite → accept in Threads → Settings → Account → Website permissions → Invites → **Sign in with Threads → Character Studio → Save my Muse → 3 · Connect your Muse** → Muse app **Settings → Custom connector · Musely · https://musely.net/mcp** | Use your own Musely connection key only in the secure key field. Save prepares name/appearance; your Muse signs its own Native world entry. The supervisor observed preparation through step3, with no key issuance or Native admission in that check. Existing ComBba keeps its established account flow |
 
 The judge URL above contains only the placeholder `?judge=<JUDGE_LINK_TOKEN>`. Use the canonical `https://musely.net` origin. The actual link belongs only in the submission form's private access field; never put the token in a public repository, README, video, screenshot, event or log. Preparing these routes neither publishes a real link nor marks any gate complete.
-
-Entry implementation checkpoint (2026-11-05): [PR200](https://github.com/Two-Weeks-Team/musely/pull/200), source `8bf0696de963859ee994c63fa2732afc428e7828`, has the reported Studio **Save my Muse → 3 · Connect your Muse** flow on Worker `4f0a308f-e9c0-4b8d-bbbf-aca10b9e2122`. Saving prepares a profile; existing Native signed admission remains authoritative. Dedicated Judge Muse is **OFF** and its UI is still being integrated. A source/deployment record, corrected day lookup or successful session exchange does not establish actual new-account admission or Judge ON acceptance.
 
 ## Completion gates
 
@@ -29,7 +33,7 @@ Entry implementation checkpoint (2026-11-05): [PR200](https://github.com/Two-Wee
 | Exact final release | **Identity recorded; whole S3 acceptance pending** | Retain source/deploy/config and scoped acceptance records; D01/D03 and dependent outputs are not inferred from a fixed build |
 | Public repository | **Public access not established: anonymous draft check HTTP 404; final visibility UNVERIFIED** | Exact repository URL, explicit publication authorization, observed public visibility and logged-out source access |
 | Three-minute video | **Private180.000s media reviewed; public delivery team-owned/UNVERIFIED** | Retain5400frames/content hash and original footage/run/event links. Public URL/upload/anonymous access require the team's separate action; no platform duration tolerance is inferred |
-| Judge entry and fallback | **Dedicated Muse OFF; ON acceptance UNVERIFIED** | Only after enablement: fresh en-US/ko-KR desktop/mobile profiles, immediate session exchange/token removal on success/failure; badge; Watch → Camera → P0 guidance; team-labelled **Your Muse (judge account)** card, follow and public-status change; received-only inbox/notifications and no other-Muse private access. Current OFF404/session-transport evidence does not complete ON acceptance. The operating verifier must record the enabled final behavior without its token |
+| Judge entry and fallback | **ON; scoped entry/follow/status/isolation observed on PR203** | 02:12 KST en-US/ko-KR desktop/mobile: query removal, team-labelled own-Muse entry/follow, four public-status changes/restorations to auto/rev8, foreign reads48/48 denied, owner8/8 null, foreign state scope denials3. Received greet3 matches recipient10-judge; proposal/notification positive samples remain unmeasured. Preserve separate invalid-link/model/budget/replay and camera/P0 evidence; this scoped check is not whole final-release acceptance |
 | P0/P1/P2 and six measures | **Recorded scoped proofs available; D02 prerequisite acceptance pending** | Revocation cause isolated with fresh IDs/nonces; controlled item-only comparison; scene→event→run/input→request or verdict; raw recount with scope/sample/missing notes |
 | Recorded replay | **I11 technical evidence retained; actual C01 reclosure23:41:10Z recorded** | Actual supported record versions, public-only state, backward seek/end/return live, zero new model/MCP/write/reward effects |
 | Device and operational evidence | **D04 numeric/physical scope evidenced; D01/D03 acceptance pending** | Preserve approved Pro/S23 references, local physical-client pair vs production cold entry,8vs10 budgets and source identities;4h/fallback/quota and whole prerequisites remain separate |
@@ -73,3 +77,7 @@ D-06 completion means a checked team preparation/handoff package; it is not a su
 5. The team owns any later publication/upload/form/agreement/Submit decision and its receipt. This engineering work performs none of those actions; submitted/confirmed remain false until separately evidenced.
 
 No authentication, account change, form input, upload, public visibility change, submission or message delivery is performed by this documentation task.
+
+## Historical checkpoint — PR200 (2026-11-05, before Judge ON)
+
+Entry implementation checkpoint (2026-11-05): [PR200](https://github.com/Two-Weeks-Team/musely/pull/200), source `8bf0696de963859ee994c63fa2732afc428e7828`, has the reported Studio **Save my Muse → 3 · Connect your Muse** flow on Worker `4f0a308f-e9c0-4b8d-bbbf-aca10b9e2122`. Saving prepares a profile; existing Native signed admission remains authoritative. Dedicated Judge Muse is **OFF** and its UI is still being integrated. A source/deployment record, corrected day lookup or successful session exchange does not establish actual new-account admission or Judge ON acceptance.

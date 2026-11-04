@@ -15,7 +15,7 @@
 2. 파이썬 환경: `python3 -m venv .venv && .venv/bin/pip install osmium shapely`
 3. 추출: `.venv/bin/python extract_osm.py` → bayarea.json (건물·고속도로·해안선). 로그의 buildings/highways 개수를 INDEX 로그에 기록.
 4. 육지/물: `.venv/bin/python make_land.py` → land.json (해안선 polygonize로 육지·물 분리 + 육지 패브릭 샘플점)
-5. 렌더: `MUSEION_OUT=/Users/kimsejun/museion-renders/out blender -b --factory-startup -P map_scene2.py -- check` 로 구도 확인 → 문제없으면 `-- full`.
+5. 렌더: `MUSEION_OUT=/Users/you/museion-renders/out blender -b --factory-startup -P map_scene2.py -- check` 로 구도 확인 → 문제없으면 `-- full`.
    - Blender 경로는 이 맥의 Blender 5.2 바이너리 사용.
 6. 산출물: out/map-museion2.png + out/museion-map2.blend
 

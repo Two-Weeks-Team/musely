@@ -27,5 +27,5 @@ assert max(report['arrival_errors'])<1e-5
 assert report['final_phone_strengths']==[5,5]
 assert report['fps']==24 and report['frame_range']==[1,72]
 assert len([o for o in s.objects if o.name.startswith('GEO-anim-trail-')])==8
-report['status']='PASS';Path('/Users/kimsejun/museion-renders/out/ember-motion-validation.json').write_text(json.dumps(report,indent=2))
+report['status']='PASS';Path('/Users/you/museion-renders/out/ember-motion-validation.json').write_text(json.dumps(report,indent=2))
 result=report

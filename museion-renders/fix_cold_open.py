@@ -1,7 +1,7 @@
 import bpy,json,traceback,time
 from pathlib import Path
 from mathutils import Vector
-OUT=Path('/Users/kimsejun/museion-renders')
+OUT=Path('/Users/you/museion-renders')
 s=bpy.data.scenes['03 • Cold open']
 delta=Vector((9,-8,0)).normalized()*12.6
 s.camera.location+=delta

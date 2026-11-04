@@ -16,12 +16,12 @@
 
 ## 대상과 소유권
 
-- 실행 수신 탭: museion-renders 프로젝트/폴더 `/Users/kimsejun/museion-renders`, `web-terminal-3043583f-98c1-4641-9c88-403d07da933a`.
-- 2026-11-01 발견한 수신 handle: `term_8ebace9a-d689-4340-a5e1-b2c9bc10e512`. runtime 재시작 후에는 재발견한다.
+- 실행 수신 탭: museion-renders 프로젝트/폴더 `~/museion-renders`, `web-terminal-3043583f-98c1-4641-9c88-403d07da933a`.
+- 2026-11-01 발견한 수신 handle: `(Orca terminal handle)`. runtime 재시작 후에는 재발견한다.
 - 같은 프로젝트에 다른 Claude 탭이 이미 있다. 새 탭/claude -p를 만들거나 기존 탭을 닫지 않는다. 명시된 수신 탭만 사용한다.
-- 제품 저장소는 `Two-Weeks-Team/musely`, 로컬 `/Users/kimsejun/musely`다. 문서 전용 작업트리는 `/Users/kimsejun/orca/workspaces/musely/docs-four-stage-execution`, 브랜치 `docs/four-stage-execution`이다.
+- 제품 저장소는 `Two-Weeks-Team/musely`, 로컬 `~/musely`다. 문서 전용 작업트리는 `~/orca/workspaces/musely/docs-four-stage-execution`, 브랜치 `docs/four-stage-execution`이다.
 - museion-renders는 folder 프로젝트다. 그곳을 Git 제품 저장소로 오인하지 말고 제품 변경은 실제 musely 저장소의 지침/작업 소유권을 확인한 별도 작업트리에서 한다.
-- 원래 `/Users/kimsejun/musely`에는 이전 로드맵 문서 초안이 dirty/untracked로 남아 있다. 이를 최신 계약으로 쓰거나 통째로 stage/reset/삭제하지 않는다. 최신 기준은 고정 커밋과 PR #31이다. UI/성능/Blender 자산·현재 작업·프로세스는 보존한다.
+- 원래 `~/musely`에는 이전 로드맵 문서 초안이 dirty/untracked로 남아 있다. 이를 최신 계약으로 쓰거나 통째로 stage/reset/삭제하지 않는다. 최신 기준은 고정 커밋과 PR #31이다. UI/성능/Blender 자산·현재 작업·프로세스는 보존한다.
 
 ## 기준과 권한
 

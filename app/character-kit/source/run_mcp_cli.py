@@ -9,7 +9,7 @@ from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-SERVER = '/Users/kimsejun/.local/share/blender-official/v1.0.3/venv/bin/blender-mcp'
+SERVER = os.environ.get('BLENDER_MCP', os.path.expanduser('~/.local/share/blender-official/v1.0.3/venv/bin/blender-mcp'))
 
 async def main(blend, script, timeout):
     code = f'__file__ = {str(Path(script).resolve())!r}\n' + Path(script).read_text()

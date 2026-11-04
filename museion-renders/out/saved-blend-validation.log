@@ -1,9 +1,9 @@
-00:00.668  blend            | Read blend: "/Users/kimsejun/museion-renders/out/museion-enhanced.blend"
+00:00.668  blend            | Read blend: "/Users/you/museion-renders/out/museion-enhanced.blend"
 Reloading external rigs...
 Reloading external metarigs...
 {
   "status": "PASS",
-  "file": "/Users/kimsejun/museion-renders/out/museion-enhanced.blend",
+  "file": "/Users/you/museion-renders/out/museion-enhanced.blend",
   "readback": "fresh Blender background process; no render or file mutation",
   "scenes": [
     "01 • Campfire",

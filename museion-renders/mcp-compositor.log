@@ -11,7 +11,7 @@
 ──────────────────────────────────────────────────────────────
 
 2026-10-30 20:50:31,135 - BlenderMCPServer - INFO - BlenderMCP server starting up
-2026-10-30 20:50:31,135 - BlenderMCPServer - WARNING - MCP for Blender addon on disk is outdated (expected protocol 15): /Users/kimsejun/Library/Application Support/Blender/5.2/scripts/addons/blender_mcp.py. Run `uvx mcp-for-blender install-addon` to update it, then in Blender: Preferences → Add-ons → disable and re-enable 'Interface: MCP for Blender' (or restart Blender) and click Start MCP Server.
+2026-10-30 20:50:31,135 - BlenderMCPServer - WARNING - MCP for Blender addon on disk is outdated (expected protocol 15): /Users/you/Library/Application Support/Blender/5.2/scripts/addons/blender_mcp.py. Run `uvx mcp-for-blender install-addon` to update it, then in Blender: Preferences → Add-ons → disable and re-enable 'Interface: MCP for Blender' (or restart Blender) and click Start MCP Server.
 2026-10-30 20:50:31,136 - blender-mcp-telemetry - WARNING - Telemetry disabled via environment variable
 2026-10-30 20:50:31,138 - BlenderMCPServer - INFO - Connected to Blender at localhost:9876
 2026-10-30 20:50:31,138 - BlenderMCPServer - INFO - Created new persistent connection to Blender

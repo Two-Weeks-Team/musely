@@ -7,7 +7,8 @@ from mathutils import Vector
 random.seed(7)
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 VARIANT = argv[0] if argv else "hero"
-OUT = "/Users/kimsejun/museion-renders/out"
+import os
+OUT = os.path.expanduser("~/museion-renders/out")
 
 def mat(name, color, rough=0.85, emit=None, emit_strength=0.0, metallic=0.0):
     m = bpy.data.materials.get(name) or bpy.data.materials.new(name)

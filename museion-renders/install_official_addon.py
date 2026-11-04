@@ -1,6 +1,6 @@
 import bpy,json,shutil,hashlib,time
 from pathlib import Path
-ROOT=Path('/Users/kimsejun/.local/share/blender-official/v1.0.3')
+ROOT=Path('/Users/you/.local/share/blender-official/v1.0.3')
 backup=ROOT/'backups';backup.mkdir(exist_ok=True)
 scene_before={'filepath':bpy.data.filepath,'scene':bpy.context.scene.name,'objects':len(bpy.context.scene.objects),'dirty':bpy.data.is_dirty}
 if bpy.data.is_dirty:
