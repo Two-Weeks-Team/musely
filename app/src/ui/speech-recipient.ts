@@ -2,8 +2,8 @@ import {presentationIn, type ProfileMuse} from './personal-profile.ts';
 import type {ActorFrame,LiveEvent,LiveWorld} from './live-scene-core.ts';
 type PublicWorld={muses:readonly ProfileMuse[]};
 /** Explicit public addressee only: never infer one from speech, a destination or an animation partner. */
-export function speechRecipient(event:Pick<LiveEvent,'muse'|'other'|'line'|'data'>,world?:PublicWorld|null):{id:string;name:string}|null {
- if(typeof event.line!=='string'||!event.line.trim())return null;
+export function speechRecipient(event:Pick<LiveEvent,'muse'|'other'|'line'|'data'>&{fixture?:boolean},world?:PublicWorld|null):{id:string;name:string}|null {
+ if(event.fixture===true||typeof event.line!=='string'||!event.line.trim())return null;
  const id=event.other??event.data?.target_agent;
  if(typeof id!=='string'||!id||id===event.muse||!world?.muses.some(m=>m.id===id))return null;
  const p=presentationIn(id,world);

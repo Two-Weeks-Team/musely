@@ -1,7 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {build} from 'esbuild';
-import {frameSpeech,paintFrameSpeech} from '../src/ui/speech-recipient.ts';
+import {frameSpeech,paintFrameSpeech,speechRecipient} from '../src/ui/speech-recipient.ts';
+import replayFixture from '../fixtures/replay-run.json' with {type:'json'};
 const bundle=await build({entryPoints:[new URL('../src/ui/world-panel.ts',import.meta.url).pathname],bundle:true,platform:'node',format:'esm',write:false,logLevel:'silent'});
 const {describe}=await import('data:text/javascript;base64,'+Buffer.from(bundle.outputFiles[0].text).toString('base64'));
 const profile=(actorId,displayName)=>({actorId,displayName,appearanceId:'00-jolly',revision:1});
@@ -35,4 +36,11 @@ test('an animation partner, different speaker, invalid public profile or missing
  for(const [w,events] of [[world,[]],[world,[{...event,muse:'02-moss'}]],[world,[{...event,other:null}]],[{muses:[{id:'pm_a',profile:profile('foreign','Not mine')}]},[event]]]){
   assert.deepEqual(frameSpeech(frame,w,events),{text:'Original',recipient:null});
  }
+});
+test('fx-0018 fixture speech never uses a current live profile in accessible or visible labels',()=>{
+ const fixture=replayFixture.events.find(e=>e.id==='fx-0018'),live={muses:[{id:'03-ripple'},{id:'06-ink',profile:{actorId:'06-ink',displayName:'LIVE_PROFILE_CANARY',appearanceId:'06-ink',revision:1}}]};
+ assert.equal(speechRecipient(fixture,live),null);
+ assert.deepEqual(frameSpeech({id:'03-ripple',line:fixture.line,cue:{eventId:fixture.id}},live,[fixture]),{text:fixture.line,recipient:null});
+ assert.deepEqual(speechRecipient({...fixture,fixture:false},live),{id:'06-ink',name:'LIVE_PROFILE_CANARY'});
+ assert.equal(speechRecipient(fixture,{get muses(){throw Error('fixture must not inspect current world');}}),null);
 });
