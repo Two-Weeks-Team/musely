@@ -24,6 +24,7 @@ import {JUDGE_MUSE} from './engine/judge-muse.ts';
 import {judgeMuseAccess} from './ui/judge-muse-access.ts';
 import {personalOwnerAccess} from './ui/personal-owner.ts';
 import {mountJudgeEntry} from './ui/judge-entry.ts';
+import {createJudgeOpenAccess} from './ui/judge-open.ts';
 import {paintAppearanceIcon} from './ui/appearance-icon.ts';
 import {mountScreenUI} from './ui/screen-ui.ts';
 import {liveActivity,destinationLine,recentLiveSpeech,speechDisplay} from './ui/live-display.ts';
@@ -43,6 +44,7 @@ import {mountArrivalOverview} from './arrival-overview';
 localizeStaticUI();
 const startupStatus=sparkStatus();personalOwnerAccess.setJudgeContext(startupStatus.then(async s=>{if(s?.session?.tier==='judge')await judgeMuseAccess.start();return !!s;}));
 const judgeEntry=mountJudgeEntry({judge:()=>void judgeMuseAccess.start(),watch:()=>window.__world?.setMode('world'),camera:()=>window.__world?.worldPanel.openTab('identity'),demo:()=>window.__world?.worldPanel.openTab('identity')});document.body.append(judgeEntry.box);
+const judgeOpen=createJudgeOpenAccess({tokenAttempted:judgeEntry.attempted,onEntry:result=>{void judgeEntry.openPublic(result).then(async session=>{if(!session)return;const phase=judgeMuseAccess.state().phase;if(phase==='lost'||phase==='ready')await judgeMuseAccess.refresh();if(judgeMuseAccess.active())window.__world?.onboarding.open('connect');});}});void judgeOpen.begin().catch(()=>{});
 declare global {interface Window {__world:any}}
 // Production uses a hash-pinned same-origin classic worker; .cjs selects its supported worker mode.
 // The inline local proof keeps its data/Blob worker behavior.
@@ -133,7 +135,7 @@ $('story-title').textContent=catalogText(chapter.title);$('story-speaker').textC
 updateContinuity();syncCardScroll();
 }
 let spark:SparkStatus|null=null;
-void startupStatus.then(s=>{spark=s;judgeEntry.sync(s?.session??null);const l=statusLabel(s),el=$('spark-status');el.textContent=catalogText(l.text);el.title=activityStatus(l.title);el.dataset.state=l.state;});
+void startupStatus.then(s=>{spark=s;judgeOpen.sync(s);judgeEntry.sync(s?.session??null);const l=statusLabel(s),el=$('spark-status');el.textContent=catalogText(l.text);el.title=activityStatus(l.title);el.dataset.state=l.state;});
 let bubbles:ReturnType<typeof makeBubbles>;
 let world:Awaited<ReturnType<typeof makeWorld>>,renderer:T.WebGLRenderer,camera:T.Camera,projection=new T.Matrix4();
 const localMatrix=new T.Matrix4().makeTranslation(origin.x,origin.y,origin.z).multiply(new T.Matrix4().makeScale(unit,-unit,unit)).multiply(new T.Matrix4().makeRotationX(Math.PI/2)).multiply(new T.Matrix4().makeRotationY(-gridYaw));
@@ -217,7 +219,7 @@ function updateContinuity(){
  selectedLine.textContent=`${name} · ${state} · ${cue?uiText('preview flow'):uiText('scripted story')}`;
  selectedLine.hidden=map.getZoom()>=20.35;
 }
-screenUI=mountScreenUI({project:f=>map.project(toGeo(f.x,f.z))});
+screenUI=mountScreenUI({judgeOpen,project:f=>map.project(toGeo(f.x,f.z))});
 // All display controls exist for the first paint; public state can repaint them before 3D assets finish or fail.
 updateUI();
 // Preview cues from Preview flows (P-03 scenes): played by the commons character of the same harness variant.

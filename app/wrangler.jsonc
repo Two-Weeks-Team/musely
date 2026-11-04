@@ -17,6 +17,7 @@
   "migrations": [{"tag": "v1", "new_sqlite_classes": ["WorldDO"]}],
   "ratelimits": [{"name": "BURST", "namespace_id": "26110201", "simple": {"limit": 20, "period": 60}}],
   "vars": {
+    "JUDGE_OPEN_UNTIL": "2026-11-12T07:59:59Z",
     "WORLD_LIFE_MODE": "sandbox-v1",
     "SOCIAL_STATUS_MODE": "public-v1",
     "LOCAL_PERCEPTION_MODE": "local-v1",

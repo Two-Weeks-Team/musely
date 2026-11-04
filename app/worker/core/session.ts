@@ -23,8 +23,9 @@ export function timingSafeEqual(a: string, b: string) {
   return diff === 0;
 }
 
-export async function issueSession(secret: string, tier: Session['tier'], now = Date.now()): Promise<{token: string; session: Session}> {
-  const session: Session = {sid: b64url(crypto.getRandomValues(new Uint8Array(16))), tier, exp: now + SESSION_TTL_MS};
+export async function issueSession(secret: string, tier: Session['tier'], now = Date.now(), ttlMs=SESSION_TTL_MS): Promise<{token: string; session: Session}> {
+  if(!Number.isSafeInteger(ttlMs)||ttlMs<=0||ttlMs>SESSION_TTL_MS)throw Error('invalid_session_ttl');
+  const session: Session = {sid: b64url(crypto.getRandomValues(new Uint8Array(16))), tier, exp: now + ttlMs};
   const body = b64url(enc.encode(JSON.stringify(session)));
   return {token: body + '.' + b64url(await hmac(secret, body)), session};
 }
@@ -46,8 +47,8 @@ export async function readSession(secret: string, token: string | null | undefin
 export const cookieValue = (header: string | null, name = SESSION_COOKIE) =>
   header?.split(/;\s*/).find(p => p.startsWith(name + '='))?.slice(name.length + 1) ?? null;
 
-export const sessionCookie = (token: string) =>
-  `${SESSION_COOKIE}=${token}; Path=/api; Max-Age=${SESSION_TTL_MS / 1000}; HttpOnly; Secure; SameSite=Strict`;
+export const sessionCookie = (token: string,ttlMs=SESSION_TTL_MS) =>
+  `${SESSION_COOKIE}=${token}; Path=/api; Max-Age=${Math.ceil(ttlMs / 1000)}; HttpOnly; Secure; SameSite=Strict`;
 
 export async function hashIp(secret: string, ip: string) {
   return b64url(await hmac(secret, 'ip:' + ip)).slice(0, 22);

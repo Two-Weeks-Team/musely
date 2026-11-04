@@ -1,10 +1,11 @@
 import {judgeAliasPage,judgeEntryFailure,wwwSessionOrigin,sessionPreflight,sessionCors,CANONICAL_JUDGE_ORIGIN,WWW_JUDGE_ORIGIN} from './core/judge-canonical.ts';
 import {judgeRoutes} from './core/judge-api.ts';
+import {judgeOpenAccess,judgeAccessEnded} from './core/judge-open.ts';
 import {isInstalledResidentId} from './core/world-life-controller.ts';
 import {serveCriticalAsset} from './asset-encoding.ts';
 // Musely main product Worker (musely.net): static assets plus the /api surface (direction v2, 15 and 20.2).
 import {handleMuse} from './core/proxy.ts';
-import {issueSession, readSession, cookieValue, sessionCookie, hashIp, timingSafeEqual, verifyTurnstile} from './core/session.ts';
+import {issueSession, readSession, cookieValue, sessionCookie, hashIp, timingSafeEqual, verifyTurnstile,SESSION_TTL_MS} from './core/session.ts';
 import type {Env} from './env.ts';
 import {authorizeUrl, claimViaWorker, recheck, ownerDirectRecord, ThreadsError, ClaimStepError, type ThreadsConfig} from './core/threads.ts';
 import ownerClaim from '../fixtures/owner-claim.json' with {type: 'json'};
@@ -54,6 +55,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
       model: {id: env.MODEL_ID, connected: !!env.MODEL_API_KEY, live: !!env.MODEL_API_KEY && (budget.residentBudget?.interactive.availableUsd ?? budget.remainingUsd) > 0},
       budget,
       turnstile: {sitekey: env.TURNSTILE_SITEKEY, configured: !!env.TURNSTILE_SECRET},
+      judgeAccess:judgeOpenAccess(env),
       session: session ? {tier: session.tier, expiresAt: session.exp, quota: await world(env).quota(session.sid, session.tier)} : null,
       owner: owner ? {principal: owner.principal, expiresAt: owner.exp} : null,
       aiGateway: env.MODEL_BASE.includes('gateway.ai.cloudflare.com'),
@@ -62,11 +64,21 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
 
   if (url.pathname === '/api/session' && request.method === 'POST') {
     if (!env.SESSION_SECRET) return json({error: 'not_configured'}, 503);
-    let body: {turnstile?: string; judge?: string};
+    let body: {turnstile?: string; judge?: string;judgeOpen?:boolean};
     try { body = await readJson(request, 4096); } catch { return json({error: 'bad_request'}, 400); }
+    if(!body||typeof body!=='object'||Array.isArray(body))return json({error:'bad_request'},400);
     if(wwwSessionOrigin(request,env.PUBLIC_ORIGIN)&&(!body||typeof body.judge!=='string'||!body.judge||body.judge.length>512))return json({error:'judge_link_invalid'},403);
     let tier: 'visitor' | 'judge';
-    if (body.judge) {
+    let issuedAt:number|undefined,ttlMs=SESSION_TTL_MS;
+    if(body.judgeOpen===true){
+      if(Object.keys(body).length!==1)return json({error:'bad_request'},400);
+      if(!originAllowed(request,[new URL(env.PUBLIC_ORIGIN).origin]))return json({error:'origin_not_allowed'},403);
+      if(!judgeOpenAccess(env).open)return judgeAccessEnded();
+      if(!env.BURST)return json({error:'judge_access_unavailable'},503);
+      if(!(await env.BURST.limit({key:'judge-open:'+await hashIp(env.SESSION_SECRET,ip)})).success)return json({error:'slow_down'},429);
+      issuedAt=Date.now();const current=judgeOpenAccess(env,issuedAt);if(!current.open)return judgeAccessEnded();
+      ttlMs=Math.min(SESSION_TTL_MS,current.until!-issuedAt);tier='judge';
+    } else if (body.judge) {
       if (!env.JUDGE_TOKEN || !timingSafeEqual(body.judge, env.JUDGE_TOKEN)) return json({error: 'judge_link_invalid'}, 403);
       tier = 'judge';
     } else {
@@ -74,8 +86,8 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
       if (!check.ok) return json({error: 'turnstile_failed', codes: check.codes}, 403);
       tier = 'visitor';
     }
-    const {token, session: s} = await issueSession(env.SESSION_SECRET, tier);
-    return json({tier, expiresAt: s.exp, quota: await world(env).quota(s.sid, tier)}, 200, {'set-cookie': sessionCookie(token)});
+    const {token, session: s} = await issueSession(env.SESSION_SECRET, tier,issuedAt??Date.now(),ttlMs);
+    return json({tier, expiresAt: s.exp, quota: await world(env).quota(s.sid, tier)}, 200, {'set-cookie': sessionCookie(token,ttlMs)});
   }
 
   // Welcome ritual (6.4): the server picks the three steps; the client never chooses them.
@@ -352,6 +364,12 @@ export default {
     const moved = canonicalRedirect(url, env.PUBLIC_ORIGIN);
     if (moved) return moved;
     if(url.pathname==='/judge-entry-failed')return judgeEntryFailure();
+    if(url.pathname==='/judge'){
+      if(!['GET','HEAD'].includes(request.method))return json({error:'method_not_allowed'},405,{allow:'GET, HEAD'});
+      const home=new URL(request.url);home.pathname='/';home.search='';
+      const response=await serveCriticalAsset(new Request(home,request),env.ASSETS),headers=new Headers(response.headers);headers.set('cache-control','no-store');
+      return new Response(response.body,{status:response.status,headers});
+    }
     const jwks = /^\/\.well-known\/jwks\/([A-Za-z0-9_-]{20,64})\.json$/.exec(url.pathname);
     if (jwks) { const set = await world(env).jwks(jwks[1]); return set ? json(set, 200, {'cache-control': 'public, max-age=300'}) : json({error: 'unknown_key'}, 404); }
     // Musely MCP server (Streamable HTTP: 2026-07-28, and 2025-11-25/2025-06-18/2025-03-26 with initialize) for custom connectors; auth is a Musely agent key.

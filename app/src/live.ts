@@ -6,6 +6,7 @@ import {BLOCKED} from './ui/resource-state';
 import {verifyVisitor} from './ui/session-verification';
 
 export type SparkStatus = {
+  judgeAccess?:{open:boolean;until:number|null};
   model: {id: string; connected: boolean; live: boolean};
   budget: {day: string; capUsd: number; spentUsd: number; reservedUsd: number; liveCalls: number; remainingUsd: number};
   turnstile: {sitekey: string; configured: boolean};

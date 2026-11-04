@@ -19,12 +19,14 @@ createServer(async (req, res) => {
       return;
     }
     let path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^(\.\.[/\\])+/, '');
+    const judgeEntry=path==='/judge';
+    if(judgeEntry){if(!['GET','HEAD'].includes(req.method)){res.writeHead(405,{allow:'GET, HEAD','cache-control':'no-store'}).end();return;}path='/';}
     let file = join(root, path);
     if ((await stat(file).catch(() => null))?.isDirectory()) file = join(file, 'index.html');
     else if (!extname(file) && !(await stat(file).catch(() => null))) file += '.html';
     const info = await stat(file), key = file + ':' + info.mtimeMs;
     const body = await readFile(file), type = types[extname(file)] ?? 'application/octet-stream';
-    const headers = {'content-type': type, 'cache-control': 'no-cache'};
+    const headers = {'content-type': type, 'cache-control': judgeEntry?'no-store':'no-cache'};
     if (/^(text|application\/json)/.test(type) && /\bbr\b/.test(req.headers['accept-encoding'] ?? '')) {
       if (!cache.has(key)) cache.set(key, brotliCompressSync(body, {params: {[constants.BROTLI_PARAM_QUALITY]: 5}}));
       res.writeHead(200, {...headers, 'content-encoding': 'br'}).end(cache.get(key));
