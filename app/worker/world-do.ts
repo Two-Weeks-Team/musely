@@ -226,6 +226,7 @@ export class WorldDO extends DurableObject<Env> {
   personalLegacyApprove(binding:PersonalBinding,input:unknown){this.guardAdoptionBinding(binding);return this.personalLegacy.approve(binding,input);}
   personalAuthBegin(flow: PersonalFlow) { return this.personalAuth.begin(flow); }
   personalAuthConsume(binding: Pick<PersonalFlow, 'stateDigest' | 'browserDigest' | 'appId' | 'redirectUri'>, now: number) { return this.personalAuth.consume(binding, now); }
+  personalAuthFailure(binding: Parameters<PersonalAuthStore['fail']>[0], detail: Parameters<PersonalAuthStore['fail']>[1], now: number) { return this.personalAuth.fail(binding, detail, now); }
   personalAuthComplete(stateDigest: string, appId: string, subject: string, sidDigest: string, now: number) { return this.personalAuth.complete(stateDigest, appId, subject, sidDigest, now); }
   personalAuthActive(sidDigest: string, proof: PersonalSessionRow, appId: string, now: number) { return this.personalAuth.active(sidDigest, proof, appId, now); }
   personalAuthRevoke(sidDigest: string, proof: PersonalSessionRow, appId: string, now: number) { return this.personalAuth.revoke(sidDigest, proof, appId, now); }

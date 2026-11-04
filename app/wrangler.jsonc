@@ -41,7 +41,7 @@
     "ALLOWED_HOSTS": "musely.net,www.musely.net",
     "PUBLIC_ORIGIN": "https://musely.net"
   },
-  "observability": {"enabled": true},
+  "observability": {"enabled": true, "redact_query_string": true},
   "routes": [
     {"pattern": "musely.net", "custom_domain": true},
     {"pattern": "www.musely.net", "custom_domain": true}

@@ -4,7 +4,7 @@ import type {ActorProfile} from '../identity/participant.ts';
 
 export type PersonalEntryPhase = 'observer' | 'authenticated' | 'pending' | 'registered' | 'error';
 export type PersonalEntryState = {phase: PersonalEntryPhase; authenticated: boolean | null; profile: ActorProfile | null; busy: boolean; joined: false};
-export type PersonalEntryOptions = {connectionManaged?: boolean; onState?: (state: PersonalEntryState) => void; fetcher?: typeof fetch; navigate?: (url: string) => void | Promise<void>; newOperationId?: () => string; now?: () => number};
+export type PersonalEntryOptions = {authResult?: string;connectionManaged?: boolean; onState?: (state: PersonalEntryState) => void; fetcher?: typeof fetch; navigate?: (url: string) => void | Promise<void>; newOperationId?: () => string; now?: () => number};
 class Failure extends Error { readonly status: number; readonly invalid: boolean; constructor(status = 0, invalid = false) { super('personal_entry_unavailable'); this.status = status; this.invalid = invalid; } }
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const exact = (v: unknown, keys: string[]): v is Record<string, unknown> => object(v) && Object.keys(v).length === keys.length && keys.every(k => Object.hasOwn(v, k));
@@ -137,6 +137,10 @@ export function mountPersonalEntry(host: HTMLElement, options: PersonalEntryOpti
   root.replaceChildren(); root.dataset.state = phase; root.dataset.joined = 'false';
   const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; return n; };
   root.append(element('h2', '1 · 내 Muse의 이름과 모습 / Your Muse’s name and appearance'));
+  if (options.authResult === 'failed' || options.authResult === 'declined') {
+   const notice = element('p', options.authResult === 'failed' ? 'Threads 연결을 마치지 못했어요. 잠시 뒤 다시 시도하거나 계속 관람해 주세요. / We could not finish connecting Threads. Try again later, or keep watching.' : 'Threads 연결이 취소됐어요. 계속 관람하거나 준비되면 로그인해 주세요. / Threads sign-in was cancelled. Keep watching, or sign in when you are ready.');
+   notice.setAttribute('role', 'alert'); root.append(notice);
+  }
   const detail=element('details');detail.className='entry-advanced';detail.append(element('summary','이름·모습·로그인 관리 / Manage name, appearance and sign-in'));
   const translated:Record<string,string>={
    'Checking your profile…':'이름과 모습을 확인하고 있어요…',
