@@ -63,7 +63,7 @@ const kitLibrary=useKit?new MaterialLibrary('/character-kit/runtime/'):undefined
 let clock=makeClock(),lifeTime=0,last=performance.now(),selected=0,follow=false,tour=false,tourCamera=false,ownerDecision='pending',ready=false,lastUI=0;
 let mode:'story'|'world'=autoplay?'story':'world',storyResume=0,liveSelected='00-jolly';
 let liveViewAt:number|null=null,recordedFrame:RecordedFrame|null=null;
-let screenUI:ReturnType<typeof mountScreenUI>|undefined,personalMuseId:()=>string|null=()=>null;
+let screenUI:ReturnType<typeof mountScreenUI>|undefined,personalMuseId:()=>string|null=()=>null,updateSenderNames=()=>{};
 let liveScene:ReturnType<typeof makeLiveScene>|null=null,pendingLive:{world:LiveWorld;events:readonly LiveEvent[];observedAt:number}|null=null;
 const showingLive=()=>mode==='world'&&!cues.length&&!isolation.replay;
 const showingRecorded=()=>isolation.replay&&recordedFrame!==null;
@@ -168,7 +168,7 @@ setTimeout(()=>{if(!ready){$('loading').innerHTML=uiText('불러오는 중이에
 // ?perf=1: on-device frame rate and render cost; ?dpr= compares pixel-ratio caps on one phone.
 const perf=mountPerf(()=>({drawCalls,triangles,canvas:map.getCanvas()}),ratio);
 // Live world surface (task 6): map pins, spotlight chip, feed, highlights, evidence, P1, autonomy, identity, location.
-const worldPanel=mountWorldPanel(map,{onWorld:(w,events,observedAt)=>{pendingLive={world:w,events,observedAt};liveWants=Object.fromEntries(w.muses.filter(m=>m.wants?.goal).map(m=>[m.id,{goal:m.wants!.goal,source:String(m.wants!.source)}]));liveScene?.accept(w,events,observedAt);updateUI();},onReturnLive:()=>setMode('world'),onJudgeFollow:followJudge,onSelect:selectLive,isLive:()=>mode==='world',paused:()=>mode==='world'&&clock.paused&&!cues.length});
+const worldPanel=mountWorldPanel(map,{onWorld:(w,events,observedAt)=>{pendingLive={world:w,events,observedAt};liveWants=Object.fromEntries(w.muses.filter(m=>m.wants?.goal).map(m=>[m.id,{goal:m.wants!.goal,source:String(m.wants!.source)}]));liveScene?.accept(w,events,observedAt);updateSenderNames();updateUI();},onReturnLive:()=>setMode('world'),onJudgeFollow:followJudge,onSelect:selectLive,isLive:()=>mode==='world',paused:()=>mode==='world'&&clock.paused&&!cues.length});
 worldPanel.onReplayFrame(frame=>{recordedFrame=frame;liveScene?.setRecordedFrame(frame);updateUI();});
 // P-05: one continuous scene. Story (scripted) and live world are explicit modes you can switch between and back;
 // the selected Muse, its state and its source stay visible at every zoom; preview-flow item changes play on the
@@ -281,6 +281,7 @@ function followJudge(){if(!judgeMuseAccess.active()||isolation.replay||!liveScen
 const onboarding=mountOnboarding({
  onJudgeFollow:followJudge,
  onWatch:()=>{if(mode!=='world')setMode('world');},initial:entryParams,
+ getPublicWorld:()=>liveScene?.liveProjection.world??pendingLive?.world??null,
  getWorldId:()=>liveScene?.liveProjection.world?.worldId??pendingLive?.world.worldId??null,
  onPersonalEntry:entry=>{
   if(entry.state!=='joined'||!entry.actor||!entry.receipt||!showingLive())return;
@@ -291,5 +292,5 @@ const onboarding=mountOnboarding({
   focusedPersonalEntry=key;selectLive(entry.actor.id);
  },
 });
-personalMuseId=()=>onboarding.personalMuseId();
+personalMuseId=()=>onboarding.personalMuseId();updateSenderNames=()=>onboarding.refreshNames();updateSenderNames();
 window.__world={visuals:{getMetrics:()=>({settings:visualSettings,roof:roofVisual?.status()??null,campfire:world?.campfireVisual.getMetrics()??null,campfireDistanceM:campfireDistanceFromProjection(projection)}),disable:()=>{roofVisual?.disable();world?.campfireVisual.disable();},enable:()=>{if(visualSettings.roofs)roofVisual?.enable();if(visualSettings.campfire)return world?.campfireVisual.enable({distanceM:()=>campfireDistanceFromProjection(projection)});}},getMetrics:()=>({ready,live:liveScene?.getMetrics()??null,startup:{sceneReadyAtMs,onlineMapReadyAtMs,onlineMapAddedAtMs,detailReadyAtMs,overviewVisible:map.getZoom()<14},frame,zoom:map.getZoom(),center:map.getCenter().toArray(),pitch:map.getPitch(),bearing:map.getBearing(),elapsed:clock.elapsed,lifeTime,dialogue:conversationAt(Math.min(lifeTime,DURATION)),bubbles:bubbles?.getMetrics(),paused:clock.paused,tour,tourCamera,follow,selected,ownerDecision,drawCalls,triangles,fps,renderer:'WebGL2 shared map canvas',canvasCount:document.querySelectorAll('#map canvas').length,sceneId:world?.scene.uuid,museIds:world?.muses.map(m=>m.uuid),muses:ready?PEOPLE.map((p,i)=>({...p,position:world.muses[i].position.toArray(),floorY:surfaceHeightAt(world.muses[i].position.x,world.muses[i].position.z),bounds:museBounds(i)})):[],characterHeightM:world?.sourceHeight,characters:world?.actors?.map(a=>({variant:a.variant,rootId:a.root.uuid,lod:a.lod,wantedLod:a.wanted,loadedLods:[...a.loaded].sort(),attachment:a.attachmentLoaded,action:a.getMetrics().action,expression:a.getMetrics().expression,triangles:a.visibleTriangles()})),characterKit:!!world?.actors,characterUpgrade:world?{...world.upgradeTimes}:null,characterMaterials:(i:number)=>world?.actors?.[i]?.visibleMaterials(),errors,statuses,onlineMap:true,liveAgent:false,spark:spark?{connected:spark.model.connected,live:spark.model.live,model:spark.model.id}:null,dynamicLights:1}),script:LINES,map,startStory,seek:seekStory,visit,select,worldPanel,setMode,selectLive,get liveScene(){return liveScene;},previewCue,get mode(){return mode;},onboarding,perf,pixelRatio:ratio,actor:(i:number)=>world?.actors?.[i]??null,actionClips:ACTION_CLIPS,alignmentAt:(x:number,z:number)=>{const p=map.project(toGeo(x,z));return {geo:toGeo(x,z).toArray(),mapPixel:[p.x,p.y],modelPixel:projected(new T.Vector3(x,0,z))};},fixture:ROUNDS};

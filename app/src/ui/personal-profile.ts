@@ -27,3 +27,9 @@ export function withSnapshotProfiles<W extends {muses: readonly ProfileMuse[]}>(
  return {...world,muses:world.muses.map(m=>{const {profile:_current,...rest}=m;const raw=recorded.get(m.id);return raw?.profile!==undefined?{...rest,profile:readPublicProfile(m.id,raw.profile)}:rest;})} as W;
 }
 export const presentationIn = (id: string, world?: {muses: readonly ProfileMuse[]} | null) => resolveMuse(world?.muses.find(m=>m.id===id)??{id});
+
+/** Current public sender label only. The legacy owner's asset name is never a live fallback. */
+export function publicSenderName(id:string,world?:{muses:readonly ProfileMuse[]}|null,unknown='The Muse'):string {
+ const muse=world?.muses.find(m=>m.id===id);if(id==='00-jolly')return readPublicProfile(id,muse?.profile)?.displayName??unknown;
+ return resolveMuse(muse??{id}).name;
+}
