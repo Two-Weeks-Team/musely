@@ -13,7 +13,7 @@ test('say_hello discovery tells the client this is a strict public write', async
   assert.equal(hello.annotations.readOnlyHint, false);
   assert.equal(hello.inputSchema.additionalProperties, false);
   assert.deepEqual(hello.inputSchema.required, ['to']);
-  assert.ok(hello.inputSchema.properties.to.enum.includes(COPPER));
+  assert.equal(hello.inputSchema.properties.to.enum,undefined);assert.match(COPPER,new RegExp(hello.inputSchema.properties.to.pattern));
   assert.ok(hello.inputSchema.properties.command_id);
   assert.ok(hello.inputSchema.properties.expected_version);
 });

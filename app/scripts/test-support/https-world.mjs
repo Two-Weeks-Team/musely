@@ -40,7 +40,7 @@ export async function httpsWorld(test) {
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const origin='https://127.0.0.1:'+server.address().port;
   const pair=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
-  env={MODEL_ID:'muse-spark-1.3',MODEL_BASE:'https://api.meta.ai/v1',DAILY_BUDGET_USD:'1',TURNSTILE_SITEKEY:'x',ALLOWED_HOSTS:new URL(origin).host,PUBLIC_ORIGIN:origin,SESSION_SECRET:'i03b-test-session-secret',OWNER_CONTROL_TOKEN:OWNER_TOKEN,DEMO_PEER_CONTROL_TOKEN:PEER_TOKEN,OWNER_ROOT_JWK:JSON.stringify(await crypto.subtle.exportKey('jwk',pair.privateKey))};
+  env={LOCAL_PERCEPTION_MODE:'local-v1',MODEL_ID:'muse-spark-1.3',MODEL_BASE:'https://api.meta.ai/v1',DAILY_BUDGET_USD:'1',TURNSTILE_SITEKEY:'x',ALLOWED_HOSTS:new URL(origin).host,PUBLIC_ORIGIN:origin,SESSION_SECRET:'i03b-test-session-secret',OWNER_CONTROL_TOKEN:OWNER_TOKEN,DEMO_PEER_CONTROL_TOKEN:PEER_TOKEN,OWNER_ROOT_JWK:JSON.stringify(await crypto.subtle.exportKey('jwk',pair.privateKey))};
   const t={sql,db,env,ctx,wire,origin,server};
   t.restart=async()=>{t.dobj=new WorldDO(ctx,env);await ready;env.WORLD={idFromName:()=> 'id',get:()=>t.dobj};};await t.restart();env.ASSETS={fetch:async()=>new Response('asset')};
   t.go=(method,path,body,headers={})=>new Promise((resolve,reject)=>{

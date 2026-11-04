@@ -10,7 +10,7 @@ import {encounterOpportunities,startIntroduction,encounterNotices} from '../work
 globalThis.fetch=async()=>{throw Error('network disabled in personal-boundary test');};
 const NOW=Date.parse('2026-11-03T20:00:00Z');
 const decision={muse:'01-sunny',freedom:'where',source:'live',output:{decision:'walk',target_place:'Garden',target_agent:'',offer_item:'',want_item:'',public_reason:'Synthetic fixture',line:''}};
-function addPersonal(s,id='pm_synthetic'){const m=structuredClone(s.muses[1]);m.id=id;m.controlMode='personal';m.travel=null;m.beat=null;m.intent=null;s.muses.push(m);return m;}
+function addPersonal(s,id='pm_synthetic'){const m=structuredClone(s.muses[1]);m.id=id;m.controlMode='personal';m.profile={actorId:id,displayName:'Visiting Muse',appearanceId:'01-sunny',revision:1};m.travel=null;m.beat=null;m.intent=null;s.muses.push(m);return m;}
 test('unknown display has no persona, resident alias, role or authority fallback',()=>{
  assert.equal(actorLabel('01-sunny'),'Sunny');assert.equal(actorLabel('pm_synthetic'),'Visiting Muse');assert.equal(actorRole('pm_synthetic'),null);
  assert.equal(knownActorNamed('Visiting Muse'),null);assert.equal(knownActorNamed('Sunny'),'01-sunny');
@@ -18,7 +18,7 @@ test('unknown display has no persona, resident alias, role or authority fallback
 test('encounter observations and explicit introduction tolerate distinct personal IDs',()=>{
  const s=createWorld('personal-display',NOW),a=addPersonal(s),b=addPersonal(s,'pm_other');
  const opportunities=encounterOpportunities(s,'01-sunny',NOW).new_muses.filter(m=>m.id.startsWith('pm_'));
- assert.deepEqual(opportunities.map(m=>m.id).sort(),[a.id,b.id].sort());assert.ok(opportunities.every(m=>m.name==='Visiting Muse'&&m.role===null));
+ assert.deepEqual(opportunities.map(m=>m.id).sort(),[a.id,b.id].sort());assert.ok(opportunities.every(m=>m.name==='Visiting Muse'&&m.role==='Personal Muse'));
  tick(s,{now:NOW});assert.doesNotThrow(()=>encounterNotices(s,a.id));
  startIntroduction(s,a.id,'01-sunny',NOW);assert.ok(s.muses[1].memory.some(m=>m.includes('Visiting Muse')));
  assert.equal(a.controlMode,'personal');assert.equal(a.travel,null);assert.equal(a.intent,null);

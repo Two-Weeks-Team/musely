@@ -147,12 +147,21 @@ export function outputFields(o: unknown): Record<string, unknown> | null {
 }
 /** The code of a fallback or discard reason ("input_invalid: …" → "input_invalid"); the text after it is not kept. */
 export const reasonCode = (r: unknown) => (typeof r === 'string' && r ? (r.split(':')[0].trim().replace(/\s+/g, '_').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 48) || 'other') : null);
-/** Model evidence kept in an input row: model and ids only (a replay keeps the recorded request's ids). */
+const tokenCounts=(input:unknown,output:unknown):{inputTokens:number;outputTokens:number}|null=>
+  typeof input==='number'&&Number.isSafeInteger(input)&&input>=0&&typeof output==='number'&&Number.isSafeInteger(output)&&output>=0?{inputTokens:input,outputTokens:output}:null;
+/** Provider-reported counts only. Missing/invalid usage stays unmeasured; no text or extras survive. */
+export function providerUsageEvidence(usage:unknown):{inputTokens:number;outputTokens:number}|null {
+  if(!usage||typeof usage!=='object')return null;
+  const u=usage as Record<string,unknown>;return tokenCounts(u.prompt_tokens,u.completion_tokens);
+}
+/** Model ids and optional numeric usage, never provider bodies or private prompt text. */
 export function evidenceIds(ev: unknown): Record<string, unknown> | null {
   if (!ev || typeof ev !== 'object') return null;
   const e = ev as Record<string, unknown>, r = e.replayOf;
   const rep = typeof r === 'string' ? {requestId: r} : r && typeof r === 'object' ? {requestId: (r as Record<string, unknown>).requestId ?? null, responseId: (r as Record<string, unknown>).responseId ?? null, model: (r as Record<string, unknown>).model ?? null} : null;
-  return {model: e.model ?? null, requestId: e.requestId ?? null, responseId: e.responseId ?? null, ...(e.reservationId ? {reservationId: e.reservationId} : {}), ...(rep ? {replayOf: rep} : {})};
+  const usage=e.providerUsage&&typeof e.providerUsage==='object'?e.providerUsage as Record<string,unknown>:null;
+  const counts=usage?tokenCounts(usage.inputTokens,usage.outputTokens):null;
+  return {model: e.model ?? null, requestId: e.requestId ?? null, responseId: e.responseId ?? null, ...(e.reservationId ? {reservationId: e.reservationId} : {}), ...(rep ? {replayOf: rep} : {}),...(counts?{providerUsage:counts}:{}),...(e.perceptionMode==='off'||e.perceptionMode==='local-v1'?{perceptionMode:e.perceptionMode}:{})};
 }
 
 const RUN_COLS = 'run_id, world_id, n, schema_version, engine_version, harness_version, catalog_version, seed, snapshot_hash, snapshot, started_at, origin, prev_run_id, legacy';

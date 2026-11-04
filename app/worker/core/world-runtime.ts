@@ -1,5 +1,7 @@
 import {compactResidentContext} from './resident-recovery-context.ts';
 import {residentCallJitterMs} from './resident-call-jitter.ts';
+import {withinConversationRange} from '../../src/engine/speech.ts';
+import {perceptionView,perceptionHistory,derivedPerceptionEvents,bindPerceptionInput,observedActorId,type PerceptionPolicy} from './local-perception-runtime.ts';
 import {finalizeResidentSpeech} from '../../src/engine/world.ts';
 import type {PublicUtterance} from '../../src/engine/resident-utterance.ts';
 import {setResidentFrozen} from '../../src/engine/world.ts';
@@ -34,7 +36,7 @@ import {COMMANDS_TABLE, type CommandResult} from './commands.ts';
 import {syncTasks} from './tasks.ts';
 import {withMessageHooks} from './messages.ts';
 import type {Ledger, Sql} from './ledger.ts';
-import {RunLog, evidenceIds, commandFields, outputFields, reasonCode, type InputKind, type CommitRecord} from './run-log.ts';
+import {RunLog, evidenceIds, providerUsageEvidence, commandFields, outputFields, reasonCode, type InputKind, type CommitRecord} from './run-log.ts';
 import {ResidentLifeStore, residentProposalForWorld, rememberCommittedResidentEvents, knownResident, type ResidentOwnershipKind} from './resident-life-adapter.ts';
 import {enrollResidentRoster} from './resident-roster.ts';
 import {residentContextForWorld, withResidentContext, type ResidentContext} from './resident-life-context.ts';
@@ -67,6 +69,7 @@ export type SpotlightOrigin = 'visitor' | 'judge' | 'connected';
 export type SpotlightRequestResult = {ok: true; muse: string; position: number; already: boolean; eventIds: string[]} | {ok: false; reason: 'unknown_muse' | 'paused' | 'queue_full' | 'hourly_limit' | 'self_directed' | 'model_unavailable'};
 
 export type RuntimeOptions = {
+  perception?:PerceptionPolicy;
   residentValuesEnabled?:boolean;
   residentReflection?:{enabled:boolean;persona:(id:string)=>string};
   residentActions?:{enabled:boolean;maxConcurrent?:number;jitterMs?:number;fallbackRecovery?:boolean};
@@ -166,7 +169,7 @@ export class WorldRuntime {
   private engineHooks(now?:number):Hooks {
     const h=this.opts.hooks??{},p=this.opts.residentGoals;
     if(p?.enabled===true&&!this.ownsResidentGoalStore(p.goals))throw Error('resident goal storage mismatch');
-    return {...h,...(now!==undefined&&this.opts.socialStatus?{conversationHistory:this.conversationHistory(now)}:{}),...(this.opts.residentActions?.fallbackRecovery?{residentFallbackRecovery:true}:{}),...(this.residentSpeechEnabled()?{residentValuesEnabled:true,...(now!==undefined?{residentSpeechHistory:this.residentSpeechHistory(now)}:{})}:{}),canProposeTrade:(s,a,b,g,w,at)=>{
+    return {...h,...(this.opts.perception?.enabled===true?{localPerceptionEnabled:true,observationAt:Math.max(now??0,(this.opts.publicationNow??Date.now)())}:{}),...(now!==undefined&&this.opts.socialStatus?{conversationHistory:this.conversationHistory(now)}:{}),...(this.opts.residentActions?.fallbackRecovery?{residentFallbackRecovery:true}:{}),...(this.residentSpeechEnabled()?{residentValuesEnabled:true,...(now!==undefined?{residentSpeechHistory:this.residentSpeechHistory(now)}:{})}:{}),canProposeTrade:(s,a,b,g,w,at)=>{
       // This main pending-claim constraint applies even with Life mode disabled.
       // A trusted current-claim hook must explicitly authorize personal participation.
       // Prefix alone neither grants authority nor permanently rejects a verified claim.
@@ -245,6 +248,15 @@ export class WorldRuntime {
     if(JSON.stringify(next)!==JSON.stringify(before))this.commit(now,'resident-roster-policy',()=>{},changed=>changed,'external',()=>({action:'resident_roster_policy',frozen:this.frozenResidents(next)}));
   }
 
+  /** Shared public AOI over a trusted caller's single snapshot. Reads never create events or model calls. */
+  perceptionFor(actorId:string,now:number,snapshot:WorldState=this.state()){
+    if(snapshot.worldId!==this.worldId)return null;
+    return perceptionView(snapshot,actorId,now,this.opts.perception,this.opts.socialStatus);
+  }
+  perceptionNotices(actorId:string,sinceSeq=0,limit=20){
+    if(this.opts.perception?.enabled!==true||!this.state().muses.some(m=>m.id===actorId))return [];
+    return perceptionHistory(this.sql,this.worldId,actorId,sinceSeq,limit);
+  }
   private raw() { return String(this.sql.exec('SELECT state FROM world WHERE id = 1').toArray()[0].state); }
   state(): WorldState { return JSON.parse(this.raw()); }
   /** Inserts a commit's events with their run and input row (C08); a repeated id is ignored (the log keeps the first). */
@@ -263,6 +275,7 @@ export class WorldRuntime {
     const publishedAt = Math.max(c.at, (this.opts.publicationNow ?? Date.now)());
     for (const e of c.events) e.data = {...e.data, publishedAt};
     const p = this.runLog.prepare(c);
+    if(p)c.events.push(...derivedPerceptionEvents(this.sql,c,p,publishedAt,this.opts.perception,this.opts.socialStatus));
     const inserted = this.insertEvents(c.events, p);
     if (p) this.runLog.append(p, inserted);
   }
@@ -480,7 +493,7 @@ export class WorldRuntime {
           const output=chosen.decision.output as ResidentActivityOutput;
           return{id,reason:null,turn:{decision:chosen.decision,stayMinutes:output.duration_minutes}};
         }
-        const out=await this.modelCall('spotlight',input,`${this.worldId}:${before.day}:${before.tick}:activity:${id}`,context(projected,id),true);
+        const out=await this.modelCall('spotlight',input,`${this.worldId}:${before.day}:${before.tick}:activity:${id}`,context(projected,id),true,{world:projected,at:now});
         if(!out.ok)return{id,reason:out.reason,turn:null};
         const output=out.output as ResidentActivityOutput;
         return{id,reason:null,turn:{decision:{muse:id,freedom:output.freedom,source:'live' as const,output,evidence:out.evidence},stayMinutes:output.duration_minutes}};
@@ -497,10 +510,11 @@ export class WorldRuntime {
       const rule=(reason:string):ResidentReaction=>({triggerId:candidate.triggerId,kind:candidate.kind,reply:{...base,source:'rule',output:null,reason}});
       if(candidate.kind==='wave')return rule('passing_wave');
       const m=reacting.muses.find(m=>m.id===candidate.muse)!,peer=reacting.muses.find(m=>m.id===candidate.other)!;
+      if(this.opts.perception?.enabled===true&&!withinConversationRange(m,peer,now))return{...rule('outside_conversation_range'),kind:'wave' as const};
       if(canMeet&&!canMeet(reacting,m,peer,placeById(m.place),now).ok)return rule('meeting_not_verified');
       try{
         const input=validate('encounter',encounterInput(reacting,m.id,peer.id,m.place,candidate.incoming,now),this.trustedPersonalPeers(reacting));
-        const out=await this.modelCall('encounter',input,`${this.worldId}:${before.day}:${before.tick}:reaction:${m.id}:${candidate.triggerId}`,context(reacting,m.id));
+        const out=await this.modelCall('encounter',input,`${this.worldId}:${before.day}:${before.tick}:reaction:${m.id}:${candidate.triggerId}`,context(reacting,m.id),false,{world:reacting,at:now});
         return out.ok?{triggerId:candidate.triggerId,kind:'reply' as const,reply:{...base,source:'live' as const,output:out.output as EncounterReply['output'],evidence:out.evidence}}:rule(out.reason);
       }catch{return rule('input_invalid');}
     }));
@@ -666,7 +680,7 @@ export class WorldRuntime {
     // A connected Muse thinks in its owner's runtime (8.8): the team key never decides for it.
     if (!this.opts.model?.key) return fallback('not_connected');
     const context=residentContextForWorld(this.lifeStore?.load(this.worldId) ?? null,s,muse,now,activity&&this.opts.residentLife?{...this.opts.residentLife,ownershipKind:this.actionOwnership,includeOperatingResidents:true,includeRelationships:this.opts.residentReflection?.enabled===true}:{...this.opts.residentLife!,includeRelationships:this.opts.residentReflection?.enabled===true});
-    const call = await this.modelCall('spotlight', input, this.reservationId(s),context,activity);
+    const call = await this.modelCall('spotlight', input, this.reservationId(s),context,activity,{world:s,at:now});
     if (!call.ok) return fallback(call.reason);
     return {decision: {muse, freedom:activity?(call.output as ResidentActivityOutput).freedom:freedom, source: 'live', output: call.output as Decision['output'], evidence: call.evidence}, info: {source: 'live', requestId: call.evidence.requestId as string | null}};
   }
@@ -676,7 +690,7 @@ export class WorldRuntime {
    * (an alarm retry cannot reserve twice), the 8-second model deadline, then the real cost settled whatever the
    * answer was. The slot is released in every path, including a throw.
    */
-  private async modelCall(action: 'spotlight' | 'encounter', input: Record<string, unknown>, id: string, residentContext:ResidentContext|null=null, activity=false): Promise<{ok: true; output: unknown; evidence: Record<string, unknown>} | {ok: false; reason: string}> {
+  private async modelCall(action: 'spotlight' | 'encounter', input: Record<string, unknown>, id: string, residentContext:ResidentContext|null=null, activity=false,observation?:{world:WorldState;at:number}): Promise<{ok: true; output: unknown; evidence: Record<string, unknown>} | {ok: false; reason: string}> {
     const model = this.opts.model;
     if (!model?.key) return {ok: false, reason: 'not_connected'};
     const release = this.modelSlot();
@@ -688,8 +702,13 @@ export class WorldRuntime {
         if(this.opts.residentActions?.enabled!==true||this.modelPriorityBlock(current,String(input.muse),at)||current.paused?.[String(input.muse)]||this.opts.delegationValid?.(String(input.muse))===false)return{ok:false,reason:'authority_changed_during_jitter'};
       }
       const signalWorld=activity&&this.opts.socialStatus?this.state():null,signalAt=signalWorld?(this.opts.publicationNow??Date.now)():0;
-      const signalledInput=signalWorld?{...input,public_availability:signalWorld.muses.map(m=>({actor_id:m.id,status:this.statusOf(signalWorld,m.id,signalAt)}))}:input;
-      const modelInput=this.opts.residentValuesEnabled===true?{...signalledInput,residentValuesEnabled:true}:signalledInput;
+      const signalledInput=signalWorld&&this.opts.perception?.enabled!==true?{...input,public_availability:signalWorld.muses.map(m=>({actor_id:m.id,status:this.statusOf(signalWorld,m.id,signalAt)}))}:input;
+      const brandedInput=this.opts.residentValuesEnabled===true?{...signalledInput,residentValuesEnabled:true}:signalledInput;
+      const frame=observation??{world:this.state(),at:(this.opts.publicationNow??Date.now)()};
+      const packet=this.opts.perception?.enabled===true?this.perceptionFor(String(input.muse),frame.at,frame.world):null;
+      if(this.opts.perception?.enabled===true&&!packet)return{ok:false,reason:'perception_unavailable'};
+      const modelInput=packet?bindPerceptionInput(brandedInput,packet,this.perceptionNotices(String(input.muse)),activity):brandedInput;
+      if(packet&&action==='encounter'&&!observedActorId(modelInput,input.other))return{ok:false,reason:'recipient_not_observed'};
       const selectedContext=this.opts.residentActions?.fallbackRecovery?compactResidentContext(residentContext):residentContext;
       const messages = activity?activityMessages(modelInput,selectedContext):withResidentContext(buildMessages(action, modelInput),selectedContext);
       const personalPeer=action==='encounter'&&(input.other==='00-jolly'||typeof input.other==='string'&&this.opts.residentLife?.ownershipKind(input.other)==='personal');
@@ -704,10 +723,11 @@ export class WorldRuntime {
       if(!result.ok&&result.kind==='timeout')health.timeouts++;
       if(Number.isFinite(result.latencyMs)){health.latencies.push(result.latencyMs);if(health.latencies.length>128)health.latencies.shift();}
       if (!result.ok) { this.opts.ledger.settle(id, failureCostUsd(result), result.kind === 'timeout' ? 'timeout' : 'error'); return {ok: false, reason: result.kind}; }
-      const problem = activity?checkActivityOutput(input,result.output):checkOutput(action, input, result.output);
+      const problem = activity?checkActivityOutput(modelInput,result.output):checkOutput(action, modelInput, result.output);
       this.opts.ledger.settle(id, actualCostUsd(result.usage), problem ? 'rejected' : 'live');
       if (problem) return {ok: false, reason: 'output_rejected:' + problem};
-      return {ok: true, output: result.output, evidence: {model: model.model, requestId: result.requestId, responseId: result.responseId, latencyMs: result.latencyMs, reservationId: id, ...(residentContext ? {residentLifeRevision:residentContext.revision} : {})}};
+      const usage=providerUsageEvidence(result.usage);
+      return {ok: true, output: result.output, evidence: {model: model.model, requestId: result.requestId, responseId: result.responseId, latencyMs: result.latencyMs, reservationId: id,perceptionMode:packet?'local-v1':'off',...(usage?{providerUsage:usage}:{}), ...(residentContext ? {residentLifeRevision:residentContext.revision} : {})}};
     } finally {
       release();
     }
@@ -740,7 +760,7 @@ export class WorldRuntime {
       let input;
       try { input = validate('encounter', encounterInput(s, muse, other, place, greeting, now),this.trustedPersonalPeers(s)); } catch (err) { return rule('input_invalid: ' + String((err as Error).message).slice(0, 80)); }
       const context=residentContextForWorld(this.lifeStore?.load(this.worldId) ?? null,s,muse,now,this.opts.residentLife);
-      return this.modelCall('encounter', input, `${this.opts.worldId}:${s.day}:${s.tick}:encounter:${muse}>${other}`,context)
+      return this.modelCall('encounter', input, `${this.opts.worldId}:${s.day}:${s.tick}:encounter:${muse}>${other}`,context,false,{world:s,at:now})
         .then((c): EncounterReply => { this.noteEncounterCall(c.ok ? 'ok' : c.reason, now); return c.ok ? {...base, source: 'live', output: c.output as EncounterReply['output'], evidence: {...c.evidence, encounterId: meeting}} : rule(c.reason); })
         .catch((err): EncounterReply => { console.error('encounter answer failed', err); return rule('error'); });
     }));

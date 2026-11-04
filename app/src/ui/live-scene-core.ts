@@ -175,6 +175,7 @@ type Part = {clip: string; line?: boolean; item?: 'give' | 'want' | 'item'; effe
 type Phase = {seconds: number; muse: Part; other?: Part; face?: boolean; contact?: boolean; handoff?: 'muse' | 'other'};
 export type Projection = {phases: Phase[]; visual: 'complete' | 'fallback'; note: string; when?: (e: LiveEvent) => boolean};
 export const EVENT_PROJECTION: Readonly<Record<string, Projection>> = {
+  wave: {phases: [{seconds: 3, muse: {clip: 'wave'}}], visual: 'complete', note: 'the authorized actor waves in place; no recipient response, trip or introduction is inferred'},
   resident_wave: {phases: [{seconds: 3, muse: {clip: 'wave'}}], visual: 'complete', note: 'a resident waves in place while continuing its authoritative activity; no peer response is inferred'},
   encounter: {phases: [{seconds: 2, muse: {clip: 'fist_bump'}, other: {clip: 'fist_bump'}, contact: true}], visual: 'complete', note: 'both turn to each other 0.9 m apart and touch fists at the clip contact frame'},
   cards_verified: {phases: [{seconds: 1.5, muse: {clip: 'nod'}, other: {clip: 'nod'}, face: true}], visual: 'complete', note: 'both nod after the Agent Card check'},
