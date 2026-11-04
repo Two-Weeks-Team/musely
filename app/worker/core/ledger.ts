@@ -1,3 +1,5 @@
+import {RESIDENT_PRIORITY_CUTOFFS} from './resident-budget-policy.ts';
+export {RESIDENT_PRIORITY_CUTOFFS} from './resident-budget-policy.ts';
 // Budget and quota ledger kept in the world Durable Object's SQLite storage (direction v2, 8.7 and 15).
 // A call first reserves its maximum cost atomically; the answer settles the real cost. Durable Object
 // methods run one at a time and the SQL API is synchronous, so reserve() cannot interleave and the
@@ -28,9 +30,6 @@ export const STALE_RESERVATION_MS = 60_000;
 const HOUR = 3_600_000;
 export const dayKey = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
-// Priority cutoffs are policy choices, applied to projected rolling-hour AND resident-day cost.
-// They reserve headroom, not calls: no call-count cap is introduced.
-export const RESIDENT_PRIORITY_CUTOFFS: Record<ResidentKind, number> = {action: .60, reflection: .60, chat: .80, trade: .95, personal: 1};
 const KST = 9 * HOUR, DAY = 24 * HOUR;
 const residentSQL = "(tier = 'world' AND action != 'challenge')";
 const costSQL = 'CASE WHEN settled IS NULL THEN amount ELSE coalesce(cost, amount) END';
