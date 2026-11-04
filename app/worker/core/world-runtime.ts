@@ -430,8 +430,13 @@ export class WorldRuntime {
     const life=this.activityLife(stored.state,before);
     const allowed=(s:WorldState,id:string)=>residentEligible(s,id,now,this.actionOwnership,control)&&(!this.opts.delegationValid||this.opts.delegationValid(id));
     const actors=before.muses.filter(m=>knownResident(m.id,this.actionOwnership,true)&&!m.profile&&m.controlMode!=='personal').map(m=>m.id);
-    const goalIdle=goals?.enabled===true?before.muses.filter(m=>goals.goals.activeFor(before.worldId,m.id).some(r=>r.goal.expiresAt>now)).map(m=>m.id):[];
-    const due=dueResidents(before,now,this.actionOwnership,control).filter(id=>allowed(before,id)&&!goalIdle.includes(id)&&!(serviceConsumed&&id===serviceSpot.muse))
+    // A missing-material goal is a continuing need, not an occupied activity. Actual
+    // beats/trips/Tasks remain protected by dueResidents; preserve a completing craft's
+    // original inventory/receipt tick before choosing its next activity on the next tick.
+    const finishingGoals=goals?.enabled===true?before.muses.filter(m=>{
+      const beat=m.beat;return beat&&beat.endsAt<=now&&goals.goals.activeFor(before.worldId,m.id).some(r=>r.goal.beat===beat.id&&r.goal.expiresAt>now);
+    }).map(m=>m.id):[];
+    const due=dueResidents(before,now,this.actionOwnership,control).filter(id=>allowed(before,id)&&!finishingGoals.includes(id)&&!(serviceConsumed&&id===serviceSpot.muse))
       .sort((a,b)=>(life.residents.find(r=>r.id===a)?.lastServedAt??0)-(life.residents.find(r=>r.id===b)?.lastServedAt??0)||a.localeCompare(b));
     const context=(s:WorldState,id:string)=>residentContextForWorld({revision:stored.revision,state:life},s,id,now,{...this.opts.residentLife!,ownershipKind:this.actionOwnership,includeOperatingResidents:true,includeRelationships:this.opts.residentReflection?.enabled===true});
     const planning=tick(before,{now,spot:{muse:serviceSpot.muse,priority:serviceSpot.priority},residentActors:actors,requirePriorityApplication:true,residentFrozen:this.frozenResidents(before)},{...this.engineHooks(),canMeet:()=>({ok:false,event:null})}).state;
@@ -478,8 +483,9 @@ export class WorldRuntime {
       if(current.tick!==before.tick||current.day!==before.day||this.sql.exec('SELECT 1 FROM ticks WHERE day=? AND tick=?',before.day,before.tick).toArray().length)return{status:'skipped_duplicate',tick:current.tick,events:0};
       const stale=current.version!==before.version||fresh.revision!==stored.revision||this.opts.residentActions?.enabled!==true;
       const late:Omit<WorldEvent,'id'|'tick'>[]=[];
+      const readyAtCommit=new Set(dueResidents(current,now,this.actionOwnership,control));
       const usable=plans.filter(p=>{
-        if(!stale&&allowed(current,p.decision.muse)&&this.choiceAvailable(current,p.decision,now))return true;
+        if(!stale&&readyAtCommit.has(p.decision.muse)&&allowed(current,p.decision.muse)&&this.choiceAvailable(current,p.decision,now))return true;
         late.push({at:now,source:p.decision.source,kind:'decision_discarded',muse:p.decision.muse,data:{reason:stale?'world_or_life_changed':'resident_authority_changed',evidence:p.decision.evidence??null},tags:[]});return false;
       });
       const usableReactions=reactions.filter(r=>{
@@ -487,7 +493,7 @@ export class WorldRuntime {
         if(r.reply.source==='live')late.push({at:now,source:'live',kind:'encounter_reply_discarded',muse:r.reply.muse,other:r.reply.other,data:{reason:stale?'world_or_life_changed':'resident_authority_changed',triggerId:r.triggerId,evidence:r.reply.evidence??null},tags:[]});return false;
       });
       const currentActors=current.muses.filter(m=>knownResident(m.id,this.actionOwnership,true)&&!m.profile&&m.controlMode!=='personal').map(m=>m.id);
-      const failures=[...fallback,...plans.filter(p=>!usable.includes(p)).map(p=>p.decision.muse)].filter(id=>allowed(current,id));
+      const failures=[...fallback,...plans.filter(p=>!usable.includes(p)).map(p=>p.decision.muse)].filter(id=>readyAtCommit.has(id)&&allowed(current,id));
       const {state,events}=tick(current,{now,spot:{muse:serviceSpot.muse,priority:serviceSpot.priority},residentActors:currentActors,residentTurns:usable,residentFallback:failures,residentReactions:usableReactions,requirePriorityApplication:true,residentFrozen:this.frozenResidents(current)},canMeet?{...this.engineHooks(),canMeet:this.dedupMeetings(canMeet)}:this.engineHooks());
       const activityApplied=(p:typeof plans[number])=>usable.includes(p)&&events.some(e=>e.muse===p.decision.muse&&e.source===p.decision.source&&['spotlight','beat','depart','trade_intent'].includes(e.kind));
       const reactionApplied=(r:ResidentReaction)=>usableReactions.includes(r)&&events.some(e=>e.muse===r.reply.muse&&e.data?.triggerId===r.triggerId&&(e.kind==='encounter_reply'||e.kind==='resident_wave'));
