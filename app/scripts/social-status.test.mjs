@@ -16,6 +16,7 @@ test('current movement/work is busy, rest and finished activity welcome; explici
  assert.equal(api.resolveSocialStatus(s,m.id,at,'welcoming'),'welcoming');assert.equal(api.resolveSocialStatus(s,m.id,at,'do_not_disturb'),'do_not_disturb');
  m.travel=null;m.beat={id:'repair',startedAt:at,endsAt:at+1e5,clip:'hammer',line:'PRIVATE_CANARY'};assert.equal(api.resolveSocialStatus(s,m.id,at),'busy');
  m.beat.id='campfire_sit';assert.equal(api.resolveSocialStatus(s,m.id,at),'welcoming');
+ m.beat.id='resident_stay';assert.equal(api.resolveSocialStatus(s,m.id,at),'welcoming');
  m.beat.id='unknown_work';assert.equal(api.resolveSocialStatus(s,m.id,at),'busy');
  m.beat.endsAt=at;assert.equal(api.resolveSocialStatus(s,m.id,at),'welcoming');
  assert.equal(api.resolveSocialStatus(s,m.id,at,'busy'),'busy');assert.equal(api.resolveSocialStatus(s,m.id,at,'auto'),'welcoming');

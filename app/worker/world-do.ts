@@ -81,10 +81,15 @@ export class WorldDO extends DurableObject<Env> {
     const socialMode=env.SOCIAL_STATUS_MODE;
     if(socialMode!==undefined&&socialMode!==''&&socialMode!=='off'&&socialMode!=='public-v1')throw Error('unsupported_SOCIAL_STATUS_MODE');
     const socialEnabled=socialMode==='public-v1';
+    const currentSocialStatus=(state:WorldState,actorId:string,now:number)=>{
+      try{return resolveSocialStatus(state,actorId,now,this.socialStatus?.override(actorId)??'do_not_disturb');}
+      catch{return 'do_not_disturb' as const;}
+    };
+    if(socialEnabled)hooks.socialStatus=currentSocialStatus;
     if(active())this.worldLife=new WorldLifeController(txSql,this.personalAuth.owners,this.trust,this.ledger,env.MODEL_API_KEY?{base:env.MODEL_BASE,key:env.MODEL_API_KEY,model:env.MODEL_ID,timeoutMs:8000}:null,muse=>this.personalWorld.ownerOf(muse),active);
     this.runtime = new WorldRuntime(txSql, {
       ...this.worldLife?.runtimeOptions(),
-      ...(socialEnabled?{socialStatus:(state:WorldState,actorId:string,now:number)=>resolveSocialStatus(state,actorId,now,this.socialStatus?.override(actorId)??'do_not_disturb')}:{}),
+      ...(socialEnabled?{socialStatus:currentSocialStatus}:{}),
       // Live decisions for a Muse whose delegation was revoked (and not re-issued) are discarded.
       delegationValid: museId => !this.trust.suspended(museId),
       // Every meeting: both Agent Cards and delegations are verified before any greeting or trade.

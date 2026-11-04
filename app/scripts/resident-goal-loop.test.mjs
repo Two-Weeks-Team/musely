@@ -50,3 +50,19 @@ test('main afterLog failure rolls goal observer and signed-command storage back 
 test('runtime proposal gate blocks pending-claim pair even with goals disabled, but preserves legacy',t=>{const x=setup(t);for(const enabled of [true,false]){x.loop.enabled=enabled;assert.equal(x.r.canResidentProposeTrade(x.r.state(),'02-moss','pm_11111111-1111-4111-8111-111111111111','tea','garden_pass',T),false);assert.equal(x.r.canResidentProposeTrade(x.r.state(),'02-moss','00-jolly','tea','garden_pass',T),true);}});
 import {hasResidentHarness,residentHarnessRole} from '../worker/core/resident-harness.ts';
 test('optional roster adapter cannot infer NPC authority from identity text or personal appearance',()=>{assert.equal(hasResidentHarness('02-moss'),true);assert.equal(residentHarnessRole('02-moss'),'02-moss');for(const id of ['pm_11111111-1111-4111-8111-111111111111','nr_unknown','invented']){assert.equal(hasResidentHarness(id),false);assert.equal(residentHarnessRole(id),null);}});
+
+test('new goal proposals require both current social labels welcoming without weakening authority gates',t=>{
+ for(const status of['busy','do_not_disturb','welcoming','throws'])for(const changed of['02-moss','05-bloom']){
+  const x=setup(t);x.r.commitExternal(T,'social need',s=>{const m=s.muses.find(m=>m.id==='02-moss'),p=s.muses.find(m=>m.id==='05-bloom');m.inventory=m.inventory.filter(i=>i!=='garden_pass');p.wants.items=['tea'];});
+  const hooks={socialStatus:(_s,id)=>{if(id!==changed)return 'welcoming';if(status==='throws')throw Error('fixture unavailable');return status;}};
+  const out=runResidentGoalTurn(x.r,x.loop,T,hooks);assert.equal(out.kind,status==='welcoming'?'proposed':'declared');
+  assert.equal(x.r.state().inbox.tasks.length,status==='welcoming'?1:0);assert.equal(x.calls(),0);
+ }
+});
+test('status of a new-proposal candidate never changes an existing pending Task or the global response guard',t=>{
+ const x=setup(t);x.r.commitExternal(T,'social need',s=>{const m=s.muses.find(m=>m.id==='02-moss'),p=s.muses.find(m=>m.id==='05-bloom');m.inventory=m.inventory.filter(i=>i!=='garden_pass');p.wants.items=['tea'];});
+ assert.equal(runResidentGoalTurn(x.r,x.loop,T).kind,'proposed');const tasks=x.r.state().inbox.tasks;
+ let reads=0;assert.equal(runResidentGoalTurn(x.r,x.loop,T,{socialStatus:()=>{reads++;return 'do_not_disturb';}}).reason,'turn_already_consumed');
+ x.r.commitExternal(T+1,'next',s=>s.tick++);assert.equal(runResidentGoalTurn(x.r,x.loop,T+1,{socialStatus:()=>{reads++;return 'do_not_disturb';}}).reason,'awaiting_trade');
+ assert.equal(reads,0);assert.deepEqual(x.r.state().inbox.tasks,tasks);assert.equal(x.r.canResidentProposeTrade(x.r.state(),'02-moss','05-bloom','tea','garden_pass',T+1),true);
+});

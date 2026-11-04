@@ -10,7 +10,7 @@ export const isSocialStatus=(v:unknown):v is SocialStatus=>typeof v==='string'&&
 export const isSocialMode=(v:unknown):v is SocialMode=>v==='auto'||isSocialStatus(v);
 // Existing catalog rest/social beats. Unknown future activities remain busy, never implicitly open.
 const REST = new Set(['cafe_drink','cafe_people_watch','cafe_save_seat','park_bench_rest','eat_together','eat_snack',
- 'listen_music','observe_sky','night_pass_stargaze','campfire_sit','look_around','welcome','reassure']);
+ 'resident_stay','listen_music','observe_sky','night_pass_stargaze','campfire_sit','look_around','welcome','reassure']);
 export function resolveSocialStatus(world:SocialWorld,actorId:string,now:number,override:unknown='auto'):SocialStatus {
  const actor=world.muses.find(m=>m.id===actorId);
  if(!actor||!Number.isSafeInteger(now)||now<0||!isSocialMode(override))return 'do_not_disturb';
@@ -25,6 +25,10 @@ export function publicAvailability(world:SocialWorld,actorId:string,now:number,o
 }
 /** A caller must still verify ownership, distance, stationary state, signatures and consent. */
 export const interactionPolicy=(status:unknown):'approach'|'wave'|'none'=>status==='welcoming'?'approach':status==='busy'?'wave':'none';
+/** Both sides retain control: an unavailable peer cannot be opened by the initiator's label. */
+export function pairInteractionPolicy(a:unknown,b:unknown):'approach'|'wave'|'none' {
+ const x=interactionPolicy(a),y=interactionPolicy(b);return x==='none'||y==='none'?'none':x==='wave'||y==='wave'?'wave':'approach';
+}
 /** Additional personal-peer approach weight, not an action, model response or authority decision. No clock gate. */
 export function personalApproachProbability(world:SocialWorld,actorId:string,peerId:string,now:number,peerStatus?:SocialStatus):number {
  const actor=world.muses.find(m=>m.id===actorId),peer=world.muses.find(m=>m.id===peerId);
