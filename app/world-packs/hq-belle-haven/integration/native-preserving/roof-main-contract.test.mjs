@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import {createRequire} from 'node:module';
 import {stripTypeScriptTypes} from 'node:module';
 import * as T from 'three';
 import {MercatorCoordinate} from 'maplibre-gl';
@@ -19,9 +20,10 @@ test('current checkout preserves native style, geography, place and dependency c
   assert.deepEqual(geography,JSON.parse(fs.readFileSync(new URL('../fixtures/app/assets/geography.json',import.meta.url),'utf8')));
   assert.equal(read('src/engine/places.ts'),fs.readFileSync(new URL('../fixtures/app/src/engine/places.ts',import.meta.url),'utf8'));
   assert.equal(JSON.parse(read('package.json')).dependencies['maplibre-gl'],'6.16.0');
-  assert.equal(JSON.parse(fs.readFileSync(new URL('../node_modules/maplibre-gl/package.json',import.meta.url),'utf8')).version,'6.16.0');
+  assert.equal(JSON.parse(fs.readFileSync(createRequire(import.meta.url).resolve('maplibre-gl/package.json'),'utf8')).version,'6.16.0');
   assert.ok(main.includes('map.triggerRepaint()'));
-  assert.ok(!main.includes('roof-controller')&&!main.includes('roof-runtime'),'roof detail must remain opt-in');
+  assert.ok(main.includes('if(visualSettings.roofs)roofVisual=createNativeRoofDetails(map,{enabled:true,radius:500})'),'product explicitly enables native-only roof details behind its maintenance kill setting');
+  assert.ok(!main.includes('createNativePreservingStyle')&&!main.includes('mountWorldPack'),'archival regional GLB and color replacement are not product entry paths');
 });
 test('actual main coordinates and entry camera match the roof diagnostic including subdivision maxZoom',()=>{
   const declarations=main.split('\n').filter(l=>/^const (anchor=|gridYaw=|toGeo=|localMatrix=)/.test(l)).join('\n');

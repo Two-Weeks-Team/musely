@@ -10,7 +10,7 @@ const readFile=(path,...args)=>sourceRead(join(fixture,path),...args);
 before(async()=>{
  fixture=await mkdtemp(join(tmpdir(),'musely-transport-build-'));
  await mkdir(join(fixture,'scripts'));await mkdir(join(fixture,'character-kit'));
- for(const dir of ['src','assets','fixtures','static','world-packs/campfire'])await cp(dir,join(fixture,dir),{recursive:true});
+ for(const dir of ['src','assets','fixtures','static','world-packs'])await cp(dir,join(fixture,dir),{recursive:true});
  await cp('character-kit/runtime',join(fixture,'character-kit/runtime'),{recursive:true});await copyFile('character-kit/manifest.json',join(fixture,'character-kit/manifest.json'));
  for(const file of ['build.mjs','prepare-assets.mjs','embedding.mjs','asset-files.mjs','asset-representations.mjs','device-metrics.mjs','clips-glb.mjs'])await copyFile('scripts/'+file,join(fixture,'scripts',file));
  await symlink(resolve('node_modules'),join(fixture,'node_modules'),'dir');

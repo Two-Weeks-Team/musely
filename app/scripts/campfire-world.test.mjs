@@ -18,7 +18,7 @@ async function fixture(t,fetchAsset){
  GLTFLoader.prototype.loadAsync=async function(url){assert.equal(url,'fixture:legacy-character');legacyLoads++;return parser.parseAsync(legacy.buffer.slice(legacy.byteOffset,legacy.byteOffset+legacy.byteLength),'');};
  globalThis.fetch=fetchAsset;
  t.after(async()=>{globalThis.document=documentBefore;globalThis.fetch=fetchBefore;GLTFLoader.prototype.loadAsync=loadBefore;await rm(file,{force:true});});
- return{makeWorld:(await import(file.href)).makeWorld,get legacyLoads(){return legacyLoads;}};
+ return{...(await import(file.href)),get legacyLoads(){return legacyLoads;}};
 }
 test('complete makeWorld default-OFF path retains original fire and never requests campfire bytes',async t=>{
  let requests=0;const f=await fixture(t,async()=>{requests++;throw Error('OFF must not fetch');});
@@ -41,4 +41,18 @@ test('complete makeWorld starts before optional HTTP completes, then swaps only 
   assert.ok(meshes.every(m=>!/^seat_|^stone_|^log_|^coal_/.test(m.name)),'pack architecture never duplicates the authored scene');
  }
  assert.deepEqual(commons.children.map(m=>m.geometry.uuid),staticIds);world.campfireVisual.disable();assert.equal(fire.visible,true);assert.equal(originalDisposals,0);world.campfireVisual.dispose();
+});
+
+test('product visual defaults ON with explicit maintenance kill settings and real projection distance',async t=>{
+ const f=await fixture(t,async()=>new Response(asset));
+ assert.equal(typeof f.worldVisualSettings,'function');
+ assert.deepEqual(f.worldVisualSettings(''),{roofs:true,campfire:true});
+ assert.deepEqual(f.worldVisualSettings('?worldVisuals=0'),{roofs:false,campfire:false});
+ assert.deepEqual(f.worldVisualSettings('?roofs=0'),{roofs:false,campfire:true});
+ assert.deepEqual(f.worldVisualSettings('?campfire=0'),{roofs:true,campfire:false});
+ const T=await import('three'),camera=new T.PerspectiveCamera(50,1,.1,1000);
+ camera.position.set(0,12,18);camera.lookAt(0,0,2);camera.updateMatrixWorld(true);
+ const vp=new T.Matrix4().multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);
+ assert.ok(Math.abs(f.campfireDistanceFromProjection(vp)-20)<1e-7);
+ assert.equal(f.campfireDistanceFromProjection(new T.Matrix4().set(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0)),Infinity);
 });
