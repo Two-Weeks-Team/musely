@@ -11,9 +11,12 @@ import {
 } from './owner-session.ts';
 import {OWNER_MUSE} from '../../src/engine/world.ts';
 import type {DecisionInput, DecisionOutcome} from './tasks.ts';
+import {isSocialMode} from '../../src/engine/social-status.ts';
 
 type MaybePromise<T> = T | Promise<T>;
 export interface ConnectedStub {
+  ownerSocialStatusGet?(owner:LegacyOwnerProof,muse:string):MaybePromise<unknown>;
+  ownerSocialStatusSet?(owner:LegacyOwnerProof,muse:string,input:unknown):MaybePromise<unknown>;
   legacyProfileGet(owner:LegacyOwnerProof):MaybePromise<unknown>;
   legacyProfilePatch(owner:LegacyOwnerProof,input:unknown):MaybePromise<unknown>;
   ownerLocation(): MaybePromise<unknown>;
@@ -54,6 +57,17 @@ async function profileBody(request: Request): Promise<unknown> {
   finally {if(timer!==undefined)clearTimeout(timer);void reader.cancel().catch(()=>{});}
 }
 
+async function socialBody(request:Request):Promise<{mode:unknown;expectedRevision:number}> {
+ if(!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')||!request.body)throw Error('invalid_social_status');
+ const reader=request.body.getReader(),bytes:number[]=[];let timer:ReturnType<typeof setTimeout>|undefined;
+ const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('invalid_social_status')),1000);});
+ try{
+  for(let n=0;n<513;n++){const p=await Promise.race([reader.read(),deadline]);if(p.done){const x=JSON.parse(new TextDecoder('utf-8',{fatal:true,ignoreBOM:false}).decode(new Uint8Array(bytes)));if(!x||typeof x!=='object'||Array.isArray(x)||Object.keys(x).sort().join(',')!=='expectedRevision,mode'||!isSocialMode(x.mode)||!Number.isSafeInteger(x.expectedRevision)||x.expectedRevision<0||x.expectedRevision>=Number.MAX_SAFE_INTEGER)throw Error('invalid_social_status');return x;}
+   if(bytes.length+p.value.byteLength>512)throw Error('invalid_social_status');for(const b of p.value)bytes.push(b);
+  }throw Error('invalid_social_status');
+ }finally{if(timer!==undefined)clearTimeout(timer);void reader.cancel().catch(()=>{});}
+}
+
 /**
  * The owner gate. `write` adds the CSRF Origin check. With `muse`, the session's principal must own that Muse: another
  * principal's session is refused (not_your_muse), so two owners can never approve or revoke for each other.
@@ -68,6 +82,26 @@ export function requireOwner(request: Request, auth: OwnerAuth, cfg: Pick<OwnerC
 export async function connectedRoutes(request: Request, url: URL, auth: OwnerAuth, stub: ConnectedStub, cfg: OwnerConfig): Promise<Response | null> {
   const p = url.pathname, method = request.method;
   const gate = (opts: {write: boolean; muse?: string}) => requireOwner(request, auth, cfg, opts);
+
+  if(p==='/api/owner/social-status'){
+    if(method!=='GET'&&method!=='PATCH')return json({error:'method_not_allowed'},405,{allow:'GET, PATCH'});
+    if([...url.searchParams.keys()].some(k=>k!=='muse')||url.searchParams.getAll('muse').length!==1)return json({error:'invalid_social_status'},400);
+    const muse=url.searchParams.get('muse')!;
+    if(!MUSE_ID.test(muse))return json({error:'invalid_social_status'},400);
+    const owner=gate({write:method==='PATCH',muse});if(owner instanceof Response)return owner;
+    if(!Number.isSafeInteger(owner.exp)||owner.exp<=Date.now())return json({error:'owner_session_required'},401);
+    let input:unknown;if(method==='PATCH'){try{input=await socialBody(request);}catch{return json({error:'invalid_social_status'},400);}}
+    if(owner.exp<=Date.now())return json({error:'owner_session_required'},401);
+    const proof:LegacyOwnerProof={principal:owner.principal,ownerId:owner.ownerId,exp:owner.exp};
+    try{
+      if(method==='GET'){if(!stub.ownerSocialStatusGet)return json({error:'social_status_unavailable'},503);return json(await stub.ownerSocialStatusGet(proof,muse));}
+      if(!stub.ownerSocialStatusSet)return json({error:'social_status_unavailable'},503);return json(await stub.ownerSocialStatusSet(proof,muse,input));
+    }catch(e){
+      let code:unknown;try{if(e&&typeof e==='object'&&'name'in e&&e.name==='SocialStatusError'&&'code'in e)code=e.code;}catch{}
+      const status=code==='social_status_forbidden'?403:code==='invalid_social_status'?400:code==='social_status_conflict'?409:503;
+      return json({error:status===503?'social_status_unavailable':code},status);
+    }
+  }
 
   if(p==='/api/owner/profile'){
     if(!['GET','PATCH'].includes(method))return json({error:'method_not_allowed'},405,{allow:'GET, PATCH'});

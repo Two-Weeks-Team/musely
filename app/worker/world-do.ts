@@ -29,6 +29,11 @@ import {initRetention, pruneCommands, RETENTION_CHECK_MS} from './core/data-rete
 import {migrateTaskStore, type DecisionInput} from './core/tasks.ts';
 import {PersonalAuthStore, type PersonalFlow, type PersonalSessionRow} from './core/personal-session.ts';
 import {PersonalRegistration, type PersonalBinding} from './core/personal-registration.ts';
+import {SocialStatusStore,SocialStatusError} from './core/social-status.ts';
+import {resolveSocialStatus} from '../src/engine/social-status.ts';
+import type {WorldState} from '../src/engine/world.ts';
+import {PRINCIPALS} from './core/owner-session.ts';
+type SocialBinding={kind:'legacy';proof:LegacyOwnerProof}|{kind:'personal';binding:PersonalBinding};
 
 export class WorldDO extends DurableObject<Env> {
   private ledger: Ledger;
@@ -40,6 +45,7 @@ export class WorldDO extends DurableObject<Env> {
   private personalRegistration: PersonalRegistration;
   private personalWorld: PersonalWorld;
   private personalClaims:PersonalClaims;
+  private socialStatus:SocialStatusStore<SocialBinding>|null=null;
   private runtime: WorldRuntime;
   private worldLife: WorldLifeController|null=null;
   private trust: Trust;
@@ -72,9 +78,13 @@ export class WorldDO extends DurableObject<Env> {
     // The runtime commits inside the storage transaction; every other store shares the same SQL handle.
     const txSql = {exec: (q: string, ...b: unknown[]) => ctx.storage.sql.exec(q, ...b), transactionSync: <T>(fn: () => T) => ctx.storage.transactionSync(fn)};
     const active=()=>worldLifeEnabled(env.WORLD_LIFE_MODE);
+    const socialMode=env.SOCIAL_STATUS_MODE;
+    if(socialMode!==undefined&&socialMode!==''&&socialMode!=='off'&&socialMode!=='public-v1')throw Error('unsupported_SOCIAL_STATUS_MODE');
+    const socialEnabled=socialMode==='public-v1';
     if(active())this.worldLife=new WorldLifeController(txSql,this.personalAuth.owners,this.trust,this.ledger,env.MODEL_API_KEY?{base:env.MODEL_BASE,key:env.MODEL_API_KEY,model:env.MODEL_ID,timeoutMs:8000}:null,muse=>this.personalWorld.ownerOf(muse),active);
     this.runtime = new WorldRuntime(txSql, {
       ...this.worldLife?.runtimeOptions(),
+      ...(socialEnabled?{socialStatus:(state:WorldState,actorId:string,now:number)=>resolveSocialStatus(state,actorId,now,this.socialStatus?.override(actorId)??'do_not_disturb')}:{}),
       // Live decisions for a Muse whose delegation was revoked (and not re-issued) are discarded.
       delegationValid: museId => !this.trust.suspended(museId),
       // Every meeting: both Agent Cards and delegations are verified before any greeting or trade.
@@ -97,6 +107,7 @@ export class WorldDO extends DurableObject<Env> {
       commitProfile:(owner,input)=>{const profile=this.legacyProfile.patch(owner,input),commit=this.runtime.runLog.lastInput();if(!commit)throw new PersonalRegistryError('adoption_unavailable');const event=ctx.storage.sql.exec("SELECT seq,id FROM events WHERE run_id=? AND input_seq=? AND kind='legacy_profile_updated' AND muse=? ORDER BY seq DESC LIMIT 1",commit.runId,commit.seq,OWNER_SLOT).toArray()[0];if(!event)throw new PersonalRegistryError('adoption_unavailable');if(!commit.afterSnapshot&&commit.afterSnapshotError==='replay_storage_limit')this.receiptSnapshots.put({kind:'legacy_adoption',actorId:OWNER_SLOT,worldId:this.runtime.worldId,runId:commit.runId,inputSeq:commit.seq,eventId:String(event.id),afterHash:commit.afterHash},this.runtime.state());return{profile,commit:{worldId:this.runtime.worldId,runId:commit.runId,inputSeq:commit.seq,eventSeq:Number(event.seq),eventId:String(event.id),afterHash:commit.afterHash}};},
     });
     this.personalLegacy=new PersonalLegacy({storage:ctx.storage,auth:this.personalAuth,adoption:this.personalAdoption,runtime:this.runtime,trust:this.trust,connected:this.connected,legacyProfile:this.legacyProfile});
+    if(socialEnabled)this.socialStatus=new SocialStatusStore(ctx.storage,{world:()=>this.runtime.state(),authorize:(binding,muse,now)=>this.authorizeSocialStatus(binding,muse,now)});
     ctx.blockConcurrencyWhile(async () => {
       this.ledger.init();
       this.personalAuth.init();
@@ -114,6 +125,7 @@ export class WorldDO extends DurableObject<Env> {
       this.trust.init();
       this.personalWorld.init();
       this.personalClaims.init();
+      this.socialStatus?.init();
       this.legacyProfile.init();
       this.connected.init();
       this.ritual.init();
@@ -128,6 +140,21 @@ export class WorldDO extends DurableObject<Env> {
   // Private auth RPCs. Login tokens stay in memory; explicit claim tokens are stored only as private ciphertext, never in world commits.
   legacyProfileGet(owner:LegacyOwnerProof){return this.legacyProfile.get(owner);}
   legacyProfilePatch(owner:LegacyOwnerProof,input:unknown){return this.legacyProfile.patch(owner,input);}
+  private socialStore(){if(!this.socialStatus)throw new SocialStatusError('social_status_unavailable');return this.socialStatus;}
+  private authorizeSocialStatus(binding:SocialBinding,muse:string,now:number):boolean {
+    try{
+      if(binding.kind==='legacy'){
+        const p=binding.proof,principal=p&&PRINCIPALS[p.principal];
+        return !!principal&&p.ownerId===principal.ownerId&&Number.isSafeInteger(p.exp)&&p.exp>now&&principal.muses.includes(muse);
+      }
+      if(binding.kind!=='personal')return false;
+      return this.personalProfileRead(binding.binding)?.actorId===muse;
+    }catch{return false;}
+  }
+  ownerSocialStatusGet(owner:LegacyOwnerProof,muse:string){return this.socialStore().get({kind:'legacy',proof:owner},muse);}
+  ownerSocialStatusSet(owner:LegacyOwnerProof,muse:string,input:unknown){return this.socialStore().set({kind:'legacy',proof:owner},muse,input);}
+  personalSocialStatusGet(binding:PersonalBinding){const store=this.socialStore(),profile=this.personalProfileRead(binding);if(!profile)throw new SocialStatusError('social_status_forbidden');return store.get({kind:'personal',binding},profile.actorId);}
+  personalSocialStatusSet(binding:PersonalBinding,input:unknown){const store=this.socialStore(),profile=this.personalProfileRead(binding);if(!profile)throw new SocialStatusError('social_status_forbidden');return store.set({kind:'personal',binding},profile.actorId,input);}
   personalLocation(binding:PersonalBinding){return this.personalWorld.location(binding);}
   personalLocationSet(binding:PersonalBinding,input:unknown){return this.personalWorld.setLocation(binding,input);}
   personalClaimRead(binding:PersonalBinding){return this.personalClaims.describe(binding);}
@@ -199,7 +226,7 @@ export class WorldDO extends DurableObject<Env> {
     // A unique label: two rituals judged in the same millisecond must not share an event id (the second would be dropped).
     return this.runtime.commitExternal(Date.now(), 'ritual-' + Math.random().toString(36).slice(2, 10), (_s, emit) => emit({at: Date.now(), source: rec.requestId ? 'live' : 'replay', kind: 'ritual_judged', muse: null, line: rec.passed ? 'Welcome ritual passed' : 'Welcome ritual not passed', data: {passed: rec.passed, results: rec.results, evidence: rec.requestId ? {model: rec.model, requestId: rec.requestId} : null, who: byOwner ? 'owner (owner session)' : rec.tier === 'judge' ? 'judge link ' + sessionTag : 'visitor ' + sessionTag, framesStored: false, ...(byOwner ? {actor: 'owner'} : {actorOrigin: 'trial'})}, tags: ['ritual']}));
   }
-  worldView() { return this.runtime.view(Date.now()); }
+  worldView() { const view=this.runtime.view(Date.now());return this.socialStatus?{...view,muses:view.muses.map(m=>({...m,availability:this.socialStatus!.public(m.id)}))}:view; }
   worldLifeView() { return worldLifeEnabled(this.env.WORLD_LIFE_MODE)?this.worldLife?.view()??null:null; }
   /** A visitor's priority spotlight request (8.2); the Worker route checks the session and passes an opaque requester id. */
   requestSpotlight(muse: string, origin: 'visitor' | 'judge', requester: string) {

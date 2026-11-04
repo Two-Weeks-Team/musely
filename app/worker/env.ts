@@ -13,6 +13,8 @@ export interface Env {
   PUBLIC_ORIGIN: string;
   /** Default absent/off. Server-only experimental installation; never set by a browser. */
   WORLD_LIFE_MODE?: string;
+  /** Public label only; absent/off retains the legacy world and private routes. */
+  SOCIAL_STATUS_MODE?: string;
   /** Trusted model-budget policy. No browser or Muse can modify these limits. */
   RESIDENT_BUDGET_MODE?: string;
   RESIDENT_MODEL_ENABLED?: string;

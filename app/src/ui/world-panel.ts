@@ -22,6 +22,7 @@ import {makeHooks} from '../engine/rules';
 import {ensureSession, sparkStatus} from '../live';
 import {ritualCard} from './ritual';
 import {ownerControlCard, p0Text} from './identity';
+import {mountSocialStatus} from './social-status.ts';
 import {ownerInboxCard} from './owner-inbox';
 import {renderFlows, flowState, selectFlow} from './preview-flows';
 import {fetchJson, newHealth, track, resState, stateText, loadLog, BLOCKED, type Health} from './resource-state';
@@ -242,6 +243,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   let observation: WorldObservation<WorldView> | null = null;
   let world: WorldView | null = null, events: Ev[] = [], tab = 'feed', hf: Filter = {...EMPTY_FILTER};
   let ownerInboxView: ReturnType<typeof ownerInboxCard> | null = null;
+  let ownerSocialView:ReturnType<typeof mountSocialStatus>|null=null;
   const pins = museMarkers(map, live.onSelect ?? (() => {}), live.isLive ?? (() => true));
 
   const stateCard = (heading: string, detail: string, retry: () => void) => {
@@ -363,7 +365,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     showEvidence: (e: ReplayEvent | RecordedEvent, trigger: HTMLElement) => openEvidence(e, trigger),
     sourceLabel: (e: ReplayEvent | RecordedEvent) => sourceLabel(e), describe: (e: ReplayEvent | RecordedEvent) => describe(e), museName, placeName, at,
   };
-  panel.addEventListener('toggle', ev => { if ((ev as ToggleEvent).newState === 'closed') leaveReplay(); });
+  panel.addEventListener('toggle', ev => { if ((ev as ToggleEvent).newState === 'closed') {ownerSocialView?.setVisible(false);leaveReplay();} });
 
   /** Highlights: find a moment by period, tag, Muse, place or time of day. Tag, Muse, place and time of day narrow the loaded
    *  list without a request; the period asks the server again, and "Load older moments" reads the next page. */
@@ -433,7 +435,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     tabs.querySelectorAll('button').forEach(b => { const on = (b as HTMLElement).dataset.tab === tab; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
     if (tab !== 'replay') leaveReplay();
     else if (replayView && body.querySelector('.replay-view')) return; // already on screen: keep playing
-    ownerInboxView?.dispose(); ownerInboxView = null;
+    ownerInboxView?.dispose(); ownerInboxView = null;ownerSocialView?.dispose();ownerSocialView=null;
     body.replaceChildren();
     if (tab === 'feed') {
       const evH = health.get('events'), s = resState(evH, events.length > 0);
@@ -532,7 +534,11 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     actions.append(run('Try an impostor', '/api/demo/impostor'), run('Try an instruction injection', '/api/demo/injection'), run('Run P0 step (judge link or owner)', '/api/p0/run', p0Text));
     const inbox = ownerInboxCard(() => void refresh(), (u, i) => fetch(u, i), () => !stale() && !isolation.replay && panel.matches(':popover-open'), shortName);
     ownerInboxView = inbox;
-    body.append(card, ownerControlCard(() => void refresh(),shortName, owner => inbox.setOwnerSession(owner)), inbox, ritualCard(() => void refresh()), el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it. P0 is two runs: the first commits a signed trade, then the owner revokes (owner control above), then the second run re-sends the same job and is refused. P0 itself never revokes or delegates again.'), actions, result);
+    const socialDetails=el('details'),socialHost=el('div');socialDetails.id='owner-social-status';socialDetails.hidden=true;socialDetails.append(el('summary','','내 Muse 상태 / My Muse status'),socialHost);
+    const social=mountSocialStatus(socialHost,{onSessionLost:()=>{inbox.setOwnerSession(null);socialDetails.hidden=true;}});ownerSocialView=social;social.setVisible(false);
+    socialDetails.addEventListener('toggle',()=>social.setVisible(socialDetails.open&&!stale()&&!isolation.replay&&panel.matches(':popover-open')));
+    const control=ownerControlCard(()=>void refresh(),shortName,owner=>{inbox.setOwnerSession(owner);if(stale())return;socialDetails.hidden=!owner;social.setVisible(!!owner&&socialDetails.open&&!isolation.replay&&panel.matches(':popover-open'));void social.syncOwner({authenticated:!!owner,muse:owner?.muses[0]??null});});
+    body.append(card, control, socialDetails, inbox, ritualCard(() => void refresh()), el('h4', '', 'Real checks you can trigger'), el('p', 'muted', 'These run the same verification code as the world. The event records that a button triggered it. P0 is two runs: the first commits a signed trade, then the owner revokes (owner control above), then the second run re-sends the same job and is refused. P0 itself never revokes or delegates again.'), actions, result);
   }
 
   // The Location tab is drawn again after a move and on every poll while it is open: an unsent preset/verify choice and the last
