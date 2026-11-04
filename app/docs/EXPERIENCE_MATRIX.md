@@ -536,3 +536,10 @@ EXP-COMMS/EXP-REWARD/EXP-MEETUP/AUTONOMY may reuse the [final MCP integration ac
 
 
 Technical projection evidence may be reused during upstream verification, but it does not replace C01's full original predecessor acceptance for ready/done status. The earlier narrower I-13 projection interpretation used to close I-09 is withdrawn. Full I-13 handoff precedes I-03B and I-09 final closure; I-09 precedes I-11. The existing evidence remains valid within its recorded scope, and issue histories retain the premature closure/reopening and subsequent actual handoff times.
+
+
+## Activated living-world scope (2026-11-04)
+
+The [activation checkpoint](RELEASE_ACCEPTANCE.md#world-life-activation-and-evidence-limits-2026-11-04) records135→137→138→139→140 merged/deployed and165ON:24NPCs within27total actors. Existing role/appearance reuse keeps actor identities distinct; legacy00/04/09 and personal control remain separate. Rule/model NPC events are not ComBba's own decisions or personal-Muse completion.
+
+The short activity observation is in progress, not a completed living-world acceptance. #51 personal proposal/explicit rejection and D01/D02/D04 closure remain pending. The stopped incomplete a8584h, uncalibrated12433ms first ready and old-build PSS evidence are preserved with their limits; no final-build C11/PSS/four-hour PASS is asserted.

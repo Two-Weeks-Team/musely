@@ -66,3 +66,12 @@ See the [a858 S3 candidate and remaining acceptance](../RELEASE_ACCEPTANCE.md#cu
 | `c11-first-arrival-personal-d452-actual-1/a858-final-c11-1104-1-*` and current preparation topic | Readable3948.5ms controlled client; desktop120FPS/p959.9ms accepted with separate34asset after-audit. Original desktop sourceAfter timeout/FAIL remains unchanged. Final S23 comparison awaits a new coordinated resource window. |
 
 No merge/deploy before13:04; required fixes remain on branches/PRs during observation. A later product deployment requires its own new full4h, latest start11-05 06:00KST. C3 actual account alias binding is explicitly on hold, main Chrome untouched, and not a D01 gate. D01/D02/D03/D04 remain open; D05/video and D06/competition submission remain team-owned and outside this engineering execution scope. No new human confirmation is requested by this index.
+
+
+## Post-world-integration evidence boundary (2026-11-04)
+
+The [later activation checkpoint](../RELEASE_ACCEPTANCE.md#world-life-activation-and-evidence-limits-2026-11-04) supersedes the old a858 run/deployment scheduling statements without retagging its raw files.135→137→138→139→140 merged/deployed;165ON/main3f969a3 now has24NPC/27total actors, preserving personal control. The a8584h stopped incomplete; a new final-build4h remains necessary.
+
+New calibrated C11 and final-build S23/PSS acceptance are not yet measured here; activated-build12433ms first ready is non-C11. #51 choice/response and D01/D02/D04 remain unclosed. Existing `personal-muse-runtime-plan-1103/resident-activity.jsonl` contains the bounded activation observation, not a full four-hour or personal-choice PASS. No new artifact custody, human gate, Threads action or team video/submission work is created by this index.
+
+The activated world's [30-minute actual per-Muse C10](https://github.com/Two-Weeks-Team/musely/issues/134#issuecomment-6621237188) and [166 controlled C11 correction/pass](https://github.com/Two-Weeks-Team/musely/pull/166#issuecomment-6621314847) are later supplements, with the earlier165 FAIL preserved. Both retain their measurement boundaries and do not close D01, the actual-personal choice gaps, final phone PSS or the new final four-hour run.

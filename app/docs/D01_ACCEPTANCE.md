@@ -98,3 +98,10 @@ This is the watch/select/reconnect portion, not whole D01. Actual ComBba/Copper 
 Actual camera execution and location allow/deny are finished: no repeat user request. The camera's retained LIVE3false/`productPassed:false` is not changed into identity PASS. Direct temporary-key200→revoke→401/public-state-invariant evidence remains a direct MCP test, not a second Muse-app connector completion. The observer's historical13humanChecks flags remain metadata limitations, not a fresh request list. D01 stays open for the original whole-path evidence/prerequisite judgment; four-hour observation is still incomplete at this checkpoint.
 
 External artifacts: `final-d01-anonymous-observer/a858-final-1104-1-results.json` (SHA256`f9ff06ea458afed1d4bd24e4e63946583badf5d787a2497cc2262dc112df9096`) and uniquely prefixed screenshots in its existing `output/`; `human-ritual-living-final-actual-v7-ready-1/progress.jsonl`; `personal-muse-runtime-plan-1103/post-context-three-slots-1104.jsonl`; original `production-owner-flows/`. No camera frames, credentials or private conditions are copied into this index.
+
+
+## Activated-world path limit (2026-11-04)
+
+The [later activation checkpoint](RELEASE_ACCEPTANCE.md#world-life-activation-and-evidence-limits-2026-11-04) records merged/deployed135→137→138→139→140 and165ON:24NPCs/27total actors, with ComBba's permanent identity/key/schedule preserved and no personal decisions delegated to NPC policy. The earlier a858 anonymous25/25 remains evidence for that source; activation does not establish the new build's complete personal path.
+
+D01 remains open, including the remaining #51 choice/response evidence; NPC actions or Task expiry are not ComBba's proposal/rejection. The a858 four-hour run stopped incomplete; the old13:04 freeze is historical, and a new final-build four-hour result is still needed. Camera/location outcomes above are retained without another human request. C3 account adoption remains on hold, not a D01 prerequisite.
