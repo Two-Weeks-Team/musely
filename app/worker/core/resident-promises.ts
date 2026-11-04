@@ -15,7 +15,7 @@ const promiseId = (inv:CampfireInvite,id:string) => `invite:${sha256Hex(JSON.str
 const terminal = (inv:CampfireInvite) => inv.status==='gathered'||inv.status==='expired'||inv.status==='cancelled';
 
 export function projectResidentPromises(life:LifeState, world:WorldState, events:readonly WorldEvent[], now:number,
-  allowed:(id:string)=>boolean):LifeState {
+  allowed:(id:string)=>boolean,before?:WorldState):LifeState {
   let next=restoreLife(saveLife(life));
   if(!time(now))return next;
   const eligible=(id:string)=>allowed(id)&&world.muses.some(m=>m.id===id&&!m.profile&&m.controlMode!=='personal')
@@ -23,7 +23,25 @@ export function projectResidentPromises(life:LifeState, world:WorldState, events
   const invites=(world.inbox?.invites??[]).filter(inv=>validRef(inv.id)&&validRef(inv.from)&&validRef(inv.place)
     &&time(inv.at)&&time(inv.expiresAt)&&inv.at<=now&&inv.expiresAt>inv.at);
   const committed=events.filter(e=>time(e.at)&&e.at<=now&&Number.isSafeInteger(e.tick)&&e.tick<=world.tick&&typeof e.id==='string');
-
+  // The inbox's closed-retention cap can remove an older invitation in the very commit
+  // that closes it. A before snapshot alone never proves closure: require its actual
+  // terminal event from this same transaction, and never infer attendance from positions.
+  if(before?.worldId===world.worldId&&before.version<world.version)for(const old of before.inbox?.invites??[]){
+    if(old.status!=='open'||invites.some(i=>i.id===old.id)||!validRef(old.id)||!validRef(old.from)||!validRef(old.place)||!time(old.at)||!time(old.expiresAt)||old.expiresAt<=old.at)continue;
+    const e=committed.find(e=>e.source==='rule'&&['campfire_gathering','campfire_invite_expired','campfire_invite_cancelled'].includes(e.kind)&&e.at===now&&e.at>=old.at&&e.muse===old.from&&e.place===old.place&&e.data?.invite_id===old.id);
+    if(!e)continue;
+    const restored={...structuredClone(old),note:null,status:e.kind==='campfire_gathering'?'gathered' as const:e.kind==='campfire_invite_expired'?'expired' as const:'cancelled' as const,closedAt:e.at};
+    if(restored.status==='expired'&&e.at<old.expiresAt)continue;
+    if(restored.status==='gathered'){
+      const ids=e.data?.muses;
+      if(!Array.isArray(ids)||ids.length<3||new Set(ids).size!==ids.length||!ids.includes(old.from)||e.at>=old.expiresAt||ids.some(id=>typeof id!=='string'||![old.from,...old.to].includes(id)))continue;
+      const via=e.data?.answers_via as Record<string,unknown>|undefined;
+      if(ids.some(id=>id!==old.from&&via?.[id]!=='live'&&via?.[id]!=='rule'))continue;
+      restored.gathered=[...ids];
+      for(const id of ids.filter(id=>id!==old.from))restored.answers[id]={answer:'accept',via:via![id] as 'live'|'rule',at:e.at};
+    }
+    invites.push(restored);
+  }
 
   const reconcile=()=>{
   // Reconcile retained terminal invitations too: OFF may have skipped their closing events.

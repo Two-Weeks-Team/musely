@@ -1,3 +1,4 @@
+import {isInstalledResidentId} from './core/world-life-controller.ts';
 import {serveCriticalAsset} from './asset-encoding.ts';
 // Musely main product Worker (musely.net): static assets plus the /api surface (direction v2, 15 and 20.2).
 import {handleMuse} from './core/proxy.ts';
@@ -104,6 +105,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
 
   // Shared world (direction v2, 8): read-only views for every visitor.
   if (url.pathname === '/api/world' && request.method === 'GET') return json(await world(env).worldView());
+  if (url.pathname === '/api/world/life' && request.method === 'GET') {const view=await world(env).worldLifeView();return view?json(view):json({error:'not_found'},404);}
   if (url.pathname === '/api/world/events' && request.method === 'GET') return json(await world(env).worldEvents(Number(url.searchParams.get('since')) || 0, Number(url.searchParams.get('limit')) || 200, {runId: url.searchParams.get('runId') ?? undefined, day: url.searchParams.get('day') ?? undefined, tail: Number(url.searchParams.get('tail')) || undefined}));
   // Visitor priority (8.2): a session asks for a Muse's next spotlight turn, ahead of the rotation (3 per hour for visitors).
   if (url.pathname === '/api/world/spotlight' && request.method === 'POST') {
@@ -131,7 +133,8 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
   if (RUN_LOG_PATHS.has(url.pathname) && request.method === 'GET') return cachedRead(request, env, ip, () => runLogRead(env, url));
 
   // Identity (direction v2, 6): signed A2A Agent Cards and the P0 / demo checks.
-  const cardMatch = /^\/api\/agents\/(0\d-[a-z]+|pm_[a-f0-9-]{36})\/card$/.exec(url.pathname);
+  const candidateCard = /^\/api\/agents\/([^/]+)\/card$/.exec(url.pathname);
+  const cardMatch=candidateCard && (/^(0\d-[a-z]+|pm_[a-f0-9-]{36})$/.test(candidateCard[1])||isInstalledResidentId(candidateCard[1]))?candidateCard:null;
   if (cardMatch && request.method === 'GET') { const card = await world(env).agentCard(cardMatch[1]); return card ? json(card) : json({error: 'unknown_agent'}, 404); }
   // P0 demonstration (judge link or the owner). It never revokes or delegates: those are the owner's own actions.
   if (url.pathname === '/api/p0/run' && request.method === 'POST') {
