@@ -1,3 +1,4 @@
+import {bubbleOffsets} from './ui/bubble-layout.ts';
 import {activityStatus} from './ui/i18n.ts';
 import type {Map as LibreMap} from 'maplibre-gl';
 import {conversationAt,hubStories,stateAt} from './story';
@@ -19,7 +20,7 @@ export function makeBubbles(map:LibreMap,headAt:(person:number)=>P){
  const rect=(el:Element):R=>{const r=el.getBoundingClientRect();return{x:r.x,y:r.y,w:r.width,h:r.height};};
  function show(el:HTMLElement,l:SVGPathElement,anchor:P,placed:R[],kind:string,force=false){
   el.style.display='block';el.style.visibility='hidden';const key=el.textContent+'|'+innerWidth;let size=sizes.get(el);if(!size||size.key!==key){size={key,w:el.offsetWidth,h:el.offsetHeight};sizes.set(el,size);}const {w,h}=size;
-  const candidates=kind==='hub'?[[0,-h-18],[-w*.85,-h-18],[w*.35,-h-18],[0,18],[-w*.85,28],[w*.35,28],[0,-h-90]]:[[-w/2,-h-16],[-w/2-20,-h-16],[-w/2+20,-h-16],[-w/2-36,-h-16],[-w-22,-h/2],[22,-h/2],[-w/2,-h-28],[-w/2,-h-40],[-w/2,-h-54],[-w/2,-h-68],[-w/2,-h-92],[-w-20,-h-30],[20,-h-30]];
+  const candidates=bubbleOffsets(w,h,kind);
   const previous=placements.get(el),order=[...(previous?.key===key?[previous.index]:[]),...candidates.map((_,i)=>i)].filter((v,i,a)=>a.indexOf(v)===i);let bestSoft=Infinity;let r:R|undefined;for(const ci of order){const [dx,dy]=candidates[ci];const p={x:anchor.x+dx,y:anchor.y+dy,w,h};if(p.x<8||p.y<8||p.x+w>innerWidth-8||p.y+h>innerHeight-25)continue;if([...cachedReserved,...placed].some(b=>overlap(p,b)))continue;const score=softHeads.filter(b=>overlap(p,b)).length;if(score<bestSoft){bestSoft=score;r=p;placements.set(el,{key,index:ci});}if(score===0)break;}
   if(!r&&force){const top=Math.max(110,...cachedReserved.filter(b=>b.y<160).map(b=>b.y+b.h+10));const p={x:Math.max(8,Math.min(innerWidth-w-8,anchor.x-w/2)),y:Math.min(innerHeight-h-140,top),w,h};if(![...cachedReserved,...placed].some(b=>overlap(p,b)))r=p;}
   if(!r){el.style.display='none';l.style.display='none';return null;}

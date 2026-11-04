@@ -3,7 +3,13 @@ import {BEATS} from '../engine/beats.ts';
 import {KO_UI} from './ui-strings.ts';
 export type UILanguage='ko'|'en';
 export const languageOf=(value?:string):UILanguage=>typeof value==='string'&&/^ko(?:-|$)/i.test(value)?'ko':'en';
-export const uiLanguage=():UILanguage=>languageOf(typeof navigator==='undefined'?undefined:navigator.language);
+export type LanguagePreference='en'|'ko'|'auto';
+export const LANGUAGE_KEY='musely.ui.language';
+let storageFailed=false,cachedPreference:LanguagePreference|undefined;
+export function languagePreference():LanguagePreference {try{if(storageFailed)return 'en';if(cachedPreference)return cachedPreference;if(typeof localStorage==='undefined')return 'en';const choice=localStorage.getItem(LANGUAGE_KEY);cachedPreference=choice==='ko'||choice==='auto'?choice:'en';return cachedPreference;}catch{return 'en';}}
+export function setLanguagePreference(choice:LanguagePreference):boolean {try{localStorage.setItem(LANGUAGE_KEY,choice);storageFailed=false;cachedPreference=choice;return true;}catch{storageFailed=true;cachedPreference='en';return false;}}
+export const uiLanguage=():UILanguage=>{const choice=languagePreference();return choice==='auto'?languageOf(typeof navigator==='undefined'?undefined:navigator.language):choice;};
+export const uiLocale=()=>uiLanguage()==='ko'?'ko-KR':'en-US';
 function bilingual(key:string,language:UILanguage):string|null{
  for(const separator of [' / ',' · ']){let at=key.indexOf(separator);while(at>=0){const ko=key.slice(0,at),en=key.slice(at+separator.length);if(/[가-힣]/.test(ko)&&!/[가-힣]/.test(en)&&/[A-Za-z]/.test(en))return language==='ko'?ko:en;if(!/[가-힣]/.test(ko)&&/[A-Za-z]/.test(ko)&&/[가-힣]/.test(en))return language==='ko'?en:ko;at=key.indexOf(separator,at+separator.length);}}
  return null;

@@ -1,3 +1,4 @@
+import './ui-language-fixture.mjs';
 // Offline DOM/fetch stand-ins only; no owner login, permissions, location or real HTTP.
 import test from 'node:test';import assert from 'node:assert/strict';
 const api=await import('../src/ui/social-status.ts').catch(e=>{if(e.code!=='ERR_MODULE_NOT_FOUND')throw e;return {};});

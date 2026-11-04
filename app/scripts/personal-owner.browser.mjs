@@ -1,3 +1,4 @@
+// Bilingual regressions explicitly select Auto; default-English behavior has its own screen-bundle runner.
 // Exact built UI + isolated profiles + synthetic API contracts only. Never reaches an account, model or production API.
 // PLAYWRIGHT_MODULE points to an already installed playwright-core index.mjs.
 import fs from 'node:fs';import path from 'node:path';import assert from 'node:assert/strict';import {areaById,PRESETS} from '../src/engine/location.ts';
@@ -14,6 +15,7 @@ try{for(const locale of['en-US','ko-KR'])for(const mobile of[false,true]){
  const ownerAnswer=()=>({owner:owner(),delegation:[{muse:'00-jolly',status:'active',version:1,paused:null,pendingTasks:0}]});
  const inbox=()=>({owner:{label:f.name,demo:false},demo_limits:null,approvals:[{task_id:'task_fixture',kind:'meetup',muse:'00-jolly',other:'01-sunny',other_side:'Sunny',status:'input-required',stage:'owner_approval',revision:1,content_hash:'a'.repeat(64),deadline:Date.now()+1800000,deadline_iso:new Date(Date.now()+1800000).toISOString(),candidates:[{id:'candidate_1',time:'19:00',place:'Commons Cafe',place_id:'commons:cafe',public_basis:'Public place'}],yours:null,theirs:null,confirmed:null}],recent:[],notifications:[],approval_window_min:30});
  const hold=(kind,r,status,value)=>new Promise(resolve=>pending.push({kind,release:async()=>{await r.fulfill({status,json:value});resolve();}}));
+ await ctx.addInitScript(()=>localStorage.setItem('musely.ui.language','auto'));
  await ctx.route('**/*',async r=>{const q=r.request(),u=new URL(q.url()),method=q.method();if(u.protocol==='blob:')return r.continue();if(u.origin!=='http://localhost')return r.abort();if(u.pathname.startsWith('/api/')){
    calls.push({path:u.pathname,method,audience:q.headers()['x-musely-audience']??null});let value,status=200;
    if(u.pathname==='/api/status')value={model:{id:'fixture',connected:false,live:false},budget:{},turnstile:{configured:false},session:f.judge?{tier:'judge',expiresAt:Date.now()+3600000,quota:{perHour:120,usedThisHour:0}}:null,owner:{claimed:true}};

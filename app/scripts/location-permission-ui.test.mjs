@@ -1,3 +1,4 @@
+import './ui-language-fixture.mjs';
 // Offline permission/UI fixtures only. No real location, permission prompt or network.
 import {uiText,catalogText} from '../src/ui/i18n.ts';
 import {test} from 'node:test';import assert from 'node:assert/strict';import {build} from 'esbuild';import {readFile} from 'node:fs/promises';

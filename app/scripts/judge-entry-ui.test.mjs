@@ -1,3 +1,4 @@
+import './ui-language-fixture.mjs';
 // Render-only judge session proof; no account/provider/camera activity.
 import {test} from 'node:test';import assert from 'node:assert/strict';import {build} from 'esbuild';
 const code=(await build({entryPoints:['src/ui/judge-entry.ts'],bundle:true,platform:'node',format:'esm',write:false,plugins:[{name:'fake-bootstrap',setup(b){b.onResolve({filter:/\.\.\/live\.ts$/},()=>({path:'live',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:'export const beginJudgeSession=()=>globalThis.judgeFixture;'}));}}]})).outputFiles[0].text;

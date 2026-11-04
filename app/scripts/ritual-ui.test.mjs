@@ -1,3 +1,4 @@
+import './ui-language-fixture.mjs';
 // Offline card fixtures: synthetic frames only; no browser, camera, session or model calls.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';

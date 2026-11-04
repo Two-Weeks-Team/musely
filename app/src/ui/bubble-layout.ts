@@ -1,0 +1,5 @@
+// The same candidate offsets used by the authored preview bubbles and public live overlays.
+export function bubbleOffsets(w:number,h:number,kind='status'):number[][] {return kind==='hub'?[[0,-h-18],[-w*.85,-h-18],[w*.35,-h-18],[0,18],[-w*.85,28],[w*.35,28],[0,-h-90]]:[[-w/2,-h-16],[-w/2-20,-h-16],[-w/2+20,-h-16],[-w/2-36,-h-16],[-w-22,-h/2],[22,-h/2],[-w/2,-h-28],[-w/2,-h-40],[-w/2,-h-54],[-w/2,-h-68],[-w/2,-h-92],[-w-20,-h-30],[20,-h-30]];}
+export type ScreenBox={left:number;top:number;width:number;height:number};
+export const boxesOverlap=(a:ScreenBox,b:ScreenBox,pad=5)=>a.left<b.left+b.width+pad&&a.left+a.width+pad>b.left&&a.top<b.top+b.height+pad&&a.top+a.height+pad>b.top;
+export function placeLiveBubble(anchor:{x:number;y:number},size:{width:number;height:number},bounds:{width:number;height:number},obstacles:readonly ScreenBox[]):ScreenBox|null {for(const [dx,dy]of bubbleOffsets(size.width,size.height)){const b={left:anchor.x+dx,top:anchor.y+dy,...size};if(b.left<8||b.top<8||b.left+b.width>bounds.width-8||b.top+b.height>bounds.height-24||obstacles.some(o=>boxesOverlap(b,o)))continue;return b;}return null;}

@@ -1,4 +1,4 @@
-import {uiText,localizeStaticUI,provenanceLabel,uiLanguage,activityStatus,catalogText,inventoryText} from './ui/i18n.ts';
+import {uiText,localizeStaticUI,provenanceLabel,uiLanguage,uiLocale,activityStatus,catalogText,inventoryText} from './ui/i18n.ts';
 import {Map as LibreMap,MercatorCoordinate,Marker,setWorkerUrl,setWorkerCount,type CustomLayerInterface,type StyleSpecification} from 'maplibre-gl';
 import * as T from 'three';
 import {RoomEnvironment} from 'three/addons/environments/RoomEnvironment.js';
@@ -20,6 +20,8 @@ import type {RecordedFrame} from './replay/player';
 import {mountWorldPanel} from './ui/world-panel';
 import {isolation} from './ui/isolation';
 import {mountJudgeEntry} from './ui/judge-entry.ts';
+import {mountScreenUI} from './ui/screen-ui.ts';
+import {liveActivity,destinationLine,recentLiveSpeech,speechDisplay} from './ui/live-display.ts';
 import {mountOnboarding} from './ui/onboarding';
 import {paintAvailabilityLabel} from './ui/social-status';
 import {setFlowCue} from './ui/preview-flows';
@@ -29,7 +31,7 @@ import {RESIDENT_VARIANTS,MUSE_VARIANTS} from './character-kit/catalog';
 import {makeLiveScene} from './ui/live-scene';
 import {resolveMuse,presentationIn} from './ui/personal-profile';
 import {publicLocationName} from './ui/location-state.ts';
-import {museName,ownerOf,inventorySummary,type LiveWorld,type LiveEvent} from './ui/live-scene-core';
+import {museName,ownerOf,inventorySummary,liveFrames,type LiveWorld,type LiveEvent} from './ui/live-scene-core';
 import style from '../assets/map-style.json';
 import geography from '../assets/geography.json';
 import {mountArrivalOverview} from './arrival-overview';
@@ -55,6 +57,7 @@ const kitLibrary=useKit?new MaterialLibrary('/character-kit/runtime/'):undefined
 let clock=makeClock(),lifeTime=0,last=performance.now(),selected=0,follow=false,tour=false,tourCamera=false,ownerDecision='pending',ready=false,lastUI=0;
 let mode:'story'|'world'=autoplay?'story':'world',storyResume=0,liveSelected='00-jolly';
 let liveViewAt:number|null=null,recordedFrame:RecordedFrame|null=null;
+let screenUI:ReturnType<typeof mountScreenUI>|undefined,personalMuseId:()=>string|null=()=>null;
 let liveScene:ReturnType<typeof makeLiveScene>|null=null,pendingLive:{world:LiveWorld;events:readonly LiveEvent[];observedAt:number}|null=null;
 const showingLive=()=>mode==='world'&&!cues.length&&!isolation.replay;
 const showingRecorded=()=>isolation.replay&&recordedFrame!==null;
@@ -119,7 +122,7 @@ let liveWants:Record<string,{goal:string;source:string}>={};
 const wantsLine=(i:number)=>{const id=RESIDENT_VARIANTS[i]??'00-jolly',g=(liveWants[id]?.goal||harnessById(id).wants.goal).trim();return uiText('Wants: ')+g.charAt(0).toLowerCase()+g.slice(1)+(/[.!?]$/.test(g)?'':'.');};
 async function refreshWants(){if(isolation.replay)return;try{const r=await fetch('/api/world',{cache:'no-store'});if(!r.ok)return;const w=await r.json();liveWants=Object.fromEntries((w.muses??[]).filter((m:any)=>m?.wants?.goal).map((m:any)=>[m.id,{goal:String(m.wants.goal),source:String(m.wants.source)}]));}catch{}}
 void refreshWants();setInterval(refreshWants,60_000);
-function updateUI(){syncProfilePortraits(showingScene()?displayedWorld():null);($('story-scrubber') as HTMLInputElement).value=String(clock.elapsed);const p=PEOPLE[selected],t=Math.min(lifeTime,DURATION),chapter=chapterAt(t),turn=conversationAt(t);$('muse-name').textContent=p.name;$('muse-role').textContent=(selected===0?uiText('YOUR MUSE'):uiText('A FAMILIAR FACE'))+' · '+activityStatus(stateAt(selected,lifeTime));$('avatar-large').style.setProperty('--muse',p.color);$('activity-title').textContent=catalogText(chapter.title);$('muse-want-text').textContent=wantsLine(selected);$('activity-detail').textContent=turn?PEOPLE[turn.person].name+': '+turn.text:t<14?uiText('Little stories are already unfolding around the Bay.'):uiText('Your Muse can connect. The next commitment is still yours.');$('meetup').hidden=selected!==0;$('muse-card').hidden=map.getZoom()<20.35;$('decision-state').textContent=ownerDecision==='approved'?uiText('Local preview · approved'):ownerDecision==='declined'?uiText('Local preview · declined'):uiText('Your confirmation comes first');portraits.querySelectorAll('button').forEach((b,i)=>{b.classList.toggle('selected',i===selected);b.setAttribute('aria-pressed',String(i===selected));});$('welcome').hidden=!entryPreview||document.body.classList.contains('story-mode')||map.getZoom()>20.5;$('place-line').textContent=map.getZoom()<14?uiText('LITTLE STORIES AROUND THE BAY'):map.getZoom()<20?uiText('MENLO PARK · CALIFORNIA'):uiText('HQ · THE LITTLE COMMONS');pin.hidden=map.getZoom()>20.2||map.getZoom()<18.3;
+function updateUI(){syncProfilePortraits(showingScene()?displayedWorld():null);screenUI?.update(displayedWorld(),liveScene?.frames,liveSelected,personalMuseId(),showingScene());($('story-scrubber') as HTMLInputElement).value=String(clock.elapsed);const p=PEOPLE[selected],t=Math.min(lifeTime,DURATION),chapter=chapterAt(t),turn=conversationAt(t);$('muse-name').textContent=p.name;$('muse-role').textContent=(selected===0?uiText('YOUR MUSE'):uiText('A FAMILIAR FACE'))+' · '+activityStatus(stateAt(selected,lifeTime));$('avatar-large').style.setProperty('--muse',p.color);$('activity-title').textContent=catalogText(chapter.title);$('muse-want-text').textContent=wantsLine(selected);$('activity-detail').textContent=turn?PEOPLE[turn.person].name+': '+turn.text:t<14?uiText('Little stories are already unfolding around the Bay.'):uiText('Your Muse can connect. The next commitment is still yours.');$('meetup').hidden=selected!==0;$('muse-card').hidden=map.getZoom()<20.35;$('decision-state').textContent=ownerDecision==='approved'?uiText('Local preview · approved'):ownerDecision==='declined'?uiText('Local preview · declined'):uiText('Your confirmation comes first');portraits.querySelectorAll('button').forEach((b,i)=>{b.classList.toggle('selected',i===selected);b.setAttribute('aria-pressed',String(i===selected));});$('welcome').hidden=!entryPreview||document.body.classList.contains('story-mode')||map.getZoom()>20.5;$('place-line').textContent=map.getZoom()<14?uiText('LITTLE STORIES AROUND THE BAY'):map.getZoom()<20?uiText('MENLO PARK · CALIFORNIA'):uiText('HQ · THE LITTLE COMMONS');pin.hidden=map.getZoom()>20.2||map.getZoom()<18.3;
 $('story-title').textContent=catalogText(chapter.title);$('story-speaker').textContent=turn?PEOPLE[turn.person].name:uiText('Around the Bay');const candidate=$('story-candidate');candidate.hidden=turn?.round===undefined;if(turn?.round!==undefined){const r=ROUNDS[turn.round];candidate.textContent=uiText`${r.time} · ${r.place}    Jimin ${r.jimin?uiText('✓ yes'):uiText('✕ no')} · Sora ✓ yes`;}$('card-candidate').hidden=candidate.hidden;$('card-candidate').textContent=candidate.textContent;
 updateContinuity();syncCardScroll();
 }
@@ -135,7 +138,7 @@ const layer:CustomLayerInterface={id:'musely-world',type:'custom',renderingMode:
   map.jumpTo({center,zoom:c.zoom,pitch:54,bearing:BEARING});
  }else if(follow&&!map.isMoving()){const p=showingScene()?liveScene?.frames.get(liveSelected):positionAt(selected,lifeTime);if(p)map.setCenter(toGeo(p.x,p.z));}
  if(tour&&clock.tourFinished){tour=false;tourCamera=false;$('tour').textContent=uiText('Replay story · 3:30');$('tour').classList.remove('active');}
- if(liveScene){liveScene.setActive(showingScene());if(showingScene()){const at=recordedFrame?.recordedAt??(clock.paused?(liveViewAt??=Date.now()):(liveViewAt=null,Date.now()));liveScene.update(at,liveSelected);}else world.update(lifeTime,selected);}else world.update(lifeTime,selected);
+ if(liveScene){liveScene.setActive(showingScene());if(showingScene()){const at=recordedFrame?.recordedAt??(clock.paused?(liveViewAt??=Date.now()):(liveViewAt=null,Date.now()));liveScene.update(at,liveSelected,personalMuseId());}else world.update(lifeTime,selected);}else world.update(lifeTime,selected);
  const matrix=args.defaultProjectionData.mainMatrix;projection.fromArray(matrix as number[]).multiply(localMatrix);camera.projectionMatrix.copy(projection);camera.projectionMatrixInverse.copy(projection).invert();
  if(world.actors&&!showingScene()){const turn=conversationAt(Math.min(lifeTime,DURATION));world.setLods(world.muses.map((_,i)=>museBounds(i).height),[selected,...(turn?[turn.person,turn.listener]:[])]);}
  renderer.resetState();renderer.setViewport(0,0,gl.drawingBufferWidth,gl.drawingBufferHeight);renderer.render(world.scene,camera);drawCalls=renderer.info.render.calls;triangles=renderer.info.render.triangles;renderer.resetState();frame++;fpsFrames++;
@@ -154,8 +157,8 @@ map.on('mousemove',e=>{if(!ready)return;if(showingScene()){map.getCanvas().style
 bubbles=makeBubbles(map,i=>world?projected(world.muses[i].position.clone().add(new T.Vector3(0,.93,0))):{x:-100,y:-100});
 map.on('render',()=>{if(!ready)bubbles.update(0);if(!onlineMapReadyAtMs&&map.getSource('openmaptiles')&&map.isSourceLoaded('openmaptiles')&&map.queryRenderedFeatures().some(f=>f.source==='openmaptiles')){onlineMapReadyAtMs=performance.now();}});
 map.once('style.load',()=>{void Promise.race([kitLight,new Promise(r=>setTimeout(r,4000))]).then(addOnlineMap);});
-map.once('style.load',async()=>{try{world=await makeWorld(assetData.glb,assetData.sigils,useKit?'/character-kit/runtime/':null,kitLibrary,assetData.sourceHeight,{enabled:visualSettings.campfire,distanceM:()=>campfireDistanceFromProjection(projection)});liveScene=makeLiveScene(world,projected);if(pendingLive)liveScene.accept(pendingLive.world,pendingLive.events,pendingLive.observedAt);if(recordedFrame)liveScene.setRecordedFrame(recordedFrame);map.addLayer(layer);statuses.push(uiText('assets parsed'));void world.upgradeCharacters().then(()=>statuses.push(uiText('characters full detail')));}catch(e){console.error(e);errors.push(String(e));$('loading').textContent=uiText('The commons could not load. Please reopen this preview.');}});
-setTimeout(()=>{if(!ready){$('loading').innerHTML=uiText('Your Muse is taking a little longer…<small>Please reopen this preview if the scene does not appear.</small>'); }},12000);
+map.once('style.load',async()=>{try{world=await makeWorld(assetData.glb,assetData.sigils,useKit?'/character-kit/runtime/':null,kitLibrary,assetData.sourceHeight,{enabled:visualSettings.campfire,distanceM:()=>campfireDistanceFromProjection(projection)});liveScene=makeLiveScene(world,projected);if(pendingLive)liveScene.accept(pendingLive.world,pendingLive.events,pendingLive.observedAt);if(recordedFrame)liveScene.setRecordedFrame(recordedFrame);map.addLayer(layer);statuses.push(uiText('assets parsed'));void world.upgradeCharacters().then(()=>statuses.push(uiText('characters full detail')));}catch(e){console.error(e);errors.push(String(e));$('loading').textContent=uiText('마을을 불러오지 못했어요. 이 페이지를 다시 열어 주세요. / The commons could not load. Please reopen this page.');}});
+setTimeout(()=>{if(!ready){$('loading').innerHTML=uiText('불러오는 중이에요. 필요하면 이 페이지를 다시 열어 주세요. / World loading slowly. Reopen this page if needed.'); }},12000);
 // ?perf=1: on-device frame rate and render cost; ?dpr= compares pixel-ratio caps on one phone.
 const perf=mountPerf(()=>({drawCalls,triangles,canvas:map.getCanvas()}),ratio);
 // Live world surface (task 6): map pins, spotlight chip, feed, highlights, evidence, P1, autonomy, identity, location.
@@ -182,17 +185,18 @@ $('tour').onclick=()=>setMode('story');
 const selectedLine=document.createElement('p');selectedLine.id='selected-line';selectedLine.className='selected-line';document.querySelector('.neighbors')!.append(selectedLine);
 const museSource=document.createElement('span');museSource.id='muse-source';museSource.className='src src-scripted';document.querySelector('#muse-card .muse-heading > div:nth-child(2)')!.prepend(museSource);
 const activitySource=document.createElement('small');activitySource.id='activity-source';activitySource.className='action-source';$('activity-detail').after(activitySource);
+const destination=document.createElement('p');destination.id='muse-destination';$('activity-title').after(destination);
 const museAvailability=document.createElement('span');museAvailability.id='muse-availability';museAvailability.className='src';museAvailability.hidden=true;museSource.after(museAvailability);
 function updateContinuity(){
  if(showingScene()){
-  const shown=displayedWorld(),m=shown?.muses.find(m=>m.id===liveSelected),f=liveScene?.frames.get(liveSelected),p=presentationIn(liveSelected,shown),displayName=showingLive()&&liveSelected==='00-jolly'?publicLocationName(liveSelected,shown):p.name;
-  paintAvailabilityLabel(museAvailability,(m as (typeof m & {availability?:unknown}))?.availability,navigator.language.startsWith('ko')?'ko':'en');
+  const shown=displayedWorld(),m=shown?.muses.find(m=>m.id===liveSelected),f=liveScene?.frames.get(liveSelected)??(showingLive()&&pendingLive?liveFrames(pendingLive.world,[],Date.now()).get(liveSelected):undefined),p=presentationIn(liveSelected,shown),displayName=showingLive()&&liveSelected==='00-jolly'?publicLocationName(liveSelected,shown):p.name;
+  paintAvailabilityLabel(museAvailability,(m as (typeof m & {availability?:unknown}))?.availability,uiLanguage()==='ko'?'ko':'en');
   const source=liveScene?.getMetrics().muses.find(m=>m.id===liveSelected)?.source?.toUpperCase()??'CONNECTING';
-  museSource.textContent=sceneModeLabel(showingRecorded(),navigator.language);museSource.className='src scene-mode';
+  museSource.textContent=sceneModeLabel(showingRecorded(),uiLocale());museSource.className='src scene-mode';
   const events=liveScene?.projection.events??[],proof=actorProvenance({actorId:liveSelected,world:shown,frame:f,events})??recentConnectedAction(liveSelected,events,showingRecorded()?recordedFrame!.recordedAt:Date.now());
   const note=provenanceLabel(proof,uiLanguage(),showingRecorded());activitySource.hidden=!note;activitySource.textContent=note??'';activitySource.dataset.source=proof?.source??'';
   $('muse-name').textContent=displayName;$('muse-role').textContent=p.kind==='unknown'?uiText('Profile unavailable'):catalogText(ownerOf(liveSelected,m).label);$('avatar-large').style.setProperty('--muse',p.color);
-  $('activity-title').textContent=f?activityStatus(f.status):uiText('Waiting for the shared world');paintFrameSpeech($('activity-detail'),f,shown,liveScene?.projection.events??[],m?inventoryText(m.inventory):uiText('The world has not answered yet.'));
+  $('activity-title').textContent=f?liveActivity(f):uiText('Waiting for the shared world');const trip=destinationLine(f);destination.hidden=!trip;destination.textContent=trip??'';const recent=showingLive()?recentLiveSpeech(liveScene?.projection.events??[],shown,Date.now(),liveSelected,personalMuseId(),50).find(e=>e.muse===liveSelected):null;if(recent){const speech=speechDisplay(recent,shown);$('activity-detail').textContent=(speech.recipient?'→ '+speech.recipient+': ':'')+'“'+speech.line+'”';activitySource.textContent=provenanceLabel(recentConnectedAction(liveSelected,[recent]),uiLanguage())??speech.source;activitySource.hidden=false;}else paintFrameSpeech($('activity-detail'),f,shown,liveScene?.projection.events??[],uiText('아직 최근 공개 대사가 없어요. / No recent public speech.'));const itemNode=document.getElementById('muse-items');if(itemNode)itemNode.textContent=m?inventoryText(m.inventory):uiText('The world has not answered yet.');
   $('muse-want-text').textContent=showingRecorded()?uiText('Private or hashed goal unavailable in recording'):m?.wants?.goal?uiText('Wants: ')+m.wants.goal:p.kind==='legacy'?uiText('Wants: ')+catalogText(harnessById(liveSelected).wants.goal):uiText('Public wants unavailable');
   $('meetup').hidden=true;$('card-candidate').hidden=true;$('decision-state').textContent=p.kind==='unknown'?uiText('This actor has no valid public profile. Its identity and 3D appearance are unavailable.'):(f?.fallback?activityStatus(f.fallback):undefined)??(liveScene?.getMetrics().muses.find(row=>row.id===liveSelected)?.rendered===false?uiText('3D characters are unavailable or loading. The map and card still show shared state.'):showingRecorded()?uiText('Recorded public state only. No action or reward is re-executed.'):uiText('Actions follow the shared world. Commitments still need the owners.'));
   $('muse-card').dataset.museId=liveSelected;$('muse-card').dataset.version=String(liveScene?.projection.world?.version??'');$('muse-card').dataset.inventory=JSON.stringify(m?.inventory??[]);
@@ -200,13 +204,14 @@ function updateContinuity(){
   portraits.querySelectorAll<HTMLButtonElement>('button').forEach(b=>{const chosen=b.dataset.museId===liveSelected;b.classList.toggle('selected',chosen);b.setAttribute('aria-pressed',String(chosen));});
   return;
  }
- paintAvailabilityLabel(museAvailability,undefined);
+ destination.hidden=true;paintAvailabilityLabel(museAvailability,undefined);
  $('muse-card').removeAttribute('data-muse-id');$('muse-card').removeAttribute('data-version');$('muse-card').removeAttribute('data-inventory');
  const name=PEOPLE[selected].name,state=activityStatus(stateAt(selected,lifeTime)),cue=cues.find(c=>c.index===selected);
- museSource.textContent=navigator.language.startsWith('ko')?uiText('이야기'):uiText('Story');museSource.className='src scene-mode';activitySource.hidden=false;activitySource.textContent=actionSourceLabel('scripted',false,navigator.language);activitySource.dataset.source='scripted';
+ museSource.textContent=uiLanguage()==='ko'?uiText('이야기'):uiText('Story');museSource.className='src scene-mode';activitySource.hidden=false;activitySource.textContent=actionSourceLabel('scripted',false,uiLocale());activitySource.dataset.source='scripted';
  selectedLine.textContent=`${name} · ${state} · ${cue?uiText('preview flow'):uiText('scripted story')}`;
  selectedLine.hidden=map.getZoom()>=20.35;
 }
+screenUI=mountScreenUI({project:f=>map.project(toGeo(f.x,f.z))});
 // All display controls exist for the first paint; public state can repaint them before 3D assets finish or fail.
 updateUI();
 // Preview cues from Preview flows (P-03 scenes): played by the commons character of the same harness variant.
@@ -278,4 +283,5 @@ const onboarding=mountOnboarding({
   focusedPersonalEntry=key;selectLive(entry.actor.id);
  },
 });
+personalMuseId=()=>onboarding.personalMuseId();
 window.__world={visuals:{getMetrics:()=>({settings:visualSettings,roof:roofVisual?.status()??null,campfire:world?.campfireVisual.getMetrics()??null,campfireDistanceM:campfireDistanceFromProjection(projection)}),disable:()=>{roofVisual?.disable();world?.campfireVisual.disable();},enable:()=>{if(visualSettings.roofs)roofVisual?.enable();if(visualSettings.campfire)return world?.campfireVisual.enable({distanceM:()=>campfireDistanceFromProjection(projection)});}},getMetrics:()=>({ready,live:liveScene?.getMetrics()??null,startup:{sceneReadyAtMs,onlineMapReadyAtMs,onlineMapAddedAtMs,detailReadyAtMs,overviewVisible:map.getZoom()<14},frame,zoom:map.getZoom(),center:map.getCenter().toArray(),pitch:map.getPitch(),bearing:map.getBearing(),elapsed:clock.elapsed,lifeTime,dialogue:conversationAt(Math.min(lifeTime,DURATION)),bubbles:bubbles?.getMetrics(),paused:clock.paused,tour,tourCamera,follow,selected,ownerDecision,drawCalls,triangles,fps,renderer:'WebGL2 shared map canvas',canvasCount:document.querySelectorAll('#map canvas').length,sceneId:world?.scene.uuid,museIds:world?.muses.map(m=>m.uuid),muses:ready?PEOPLE.map((p,i)=>({...p,position:world.muses[i].position.toArray(),floorY:surfaceHeightAt(world.muses[i].position.x,world.muses[i].position.z),bounds:museBounds(i)})):[],characterHeightM:world?.sourceHeight,characters:world?.actors?.map(a=>({variant:a.variant,rootId:a.root.uuid,lod:a.lod,wantedLod:a.wanted,loadedLods:[...a.loaded].sort(),attachment:a.attachmentLoaded,action:a.getMetrics().action,expression:a.getMetrics().expression,triangles:a.visibleTriangles()})),characterKit:!!world?.actors,characterUpgrade:world?{...world.upgradeTimes}:null,characterMaterials:(i:number)=>world?.actors?.[i]?.visibleMaterials(),errors,statuses,onlineMap:true,liveAgent:false,spark:spark?{connected:spark.model.connected,live:spark.model.live,model:spark.model.id}:null,dynamicLights:1}),script:LINES,map,startStory,seek:seekStory,visit,select,worldPanel,setMode,selectLive,get liveScene(){return liveScene;},previewCue,get mode(){return mode;},onboarding,perf,pixelRatio:ratio,actor:(i:number)=>world?.actors?.[i]??null,actionClips:ACTION_CLIPS,alignmentAt:(x:number,z:number)=>{const p=map.project(toGeo(x,z));return {geo:toGeo(x,z).toArray(),mapPixel:[p.x,p.y],modelPixel:projected(new T.Vector3(x,0,z))};},fixture:ROUNDS};

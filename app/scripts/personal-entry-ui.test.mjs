@@ -1,3 +1,4 @@
+import './ui-language-fixture.mjs';
 // Real component handlers in an offline DOM stand-in. Not a browser/Muse/account acceptance test.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';

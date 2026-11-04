@@ -297,5 +297,5 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   else if (entry === 'choose') open('choose');
   else if (entry === 'watch') { state.path = 'watch'; updateChip(); opts.onWatch(); }
 
-  return {state,open,close,dispose(){if(disposed)return;disposed=true;stopOwnerSession();stopTimer();personal?.social.dispose();personal?.adoption.dispose();personal?.claim.dispose();personal?.connection.dispose();personal?.profile.dispose();document.removeEventListener('keydown',onKey);panel.removeEventListener('toggle',onToggle);enter?.removeEventListener('click',onEnter);chip.remove();panel.remove();}};
+  return {state,open,close,personalMuseId(){const s=personal?.profile.state();return s?.authenticated===true?s.profile?.actorId??null:null;},dispose(){if(disposed)return;disposed=true;stopOwnerSession();stopTimer();personal?.social.dispose();personal?.adoption.dispose();personal?.claim.dispose();personal?.connection.dispose();personal?.profile.dispose();document.removeEventListener('keydown',onKey);panel.removeEventListener('toggle',onToggle);enter?.removeEventListener('click',onEnter);chip.remove();panel.remove();}};
 }

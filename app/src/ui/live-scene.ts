@@ -6,6 +6,8 @@ import * as T from 'three';
 import type {RecordedFrame} from '../replay/player.ts';
 import {SceneProjection, frameSource} from './recorded-scene.ts';
 import {layoutLiveLabels,type LabelCandidate,type LabelBox} from './live-label-layout.ts';
+import {liveActivity,recentLiveSpeech,speechDisplay} from './live-display.ts';
+import {placeLiveBubble,type ScreenBox} from './bubble-layout.ts';
 import {frameSpeech} from './speech-recipient.ts';
 import {loadMuseLight, type MaterialLibrary} from '../character-kit/MaterialLibrary.ts';
 import type {MuseActor} from '../character-kit/MuseActor.ts';
@@ -32,6 +34,8 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
   let lods = MUSE_VARIANTS.map(() => 2 as 0 | 1 | 2);
   const root = typeof document === 'undefined' ? null : document.createElement('div');
   if (root) {root.id = 'live-muse-labels'; root.setAttribute('aria-hidden', 'true'); document.body.append(root);}
+  const speechRoot=typeof document==='undefined'?null:document.createElement('div');if(speechRoot){speechRoot.id='live-speech-cards';document.body.append(speechRoot);}
+  const speechCards=Array.from({length:2},()=>{if(!speechRoot)return null;const card=document.createElement('div');card.className='speech-bubble live-speech-card';card.hidden=true;const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),leader=document.createElementNS(svg.namespaceURI,'path');svg.classList.add('live-speech-leader');svg.append(leader);speechRoot.append(svg,card);return {card,svg,leader};});
   const labelSizes=new WeakMap<HTMLElement,{key:string;width:number;height:number}>();
   function add(actor: MuseActor, shadow: T.Mesh, extra: boolean, id: string = actor.variant, isPersonal = false) {
     let label: HTMLElement | null = null;
@@ -113,7 +117,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
     active = value;
     if(!value) host.campfireVisual?.setWorld(null);
     if (!host.actors?.length) {for (const node of host.muses) node.visible = !value;for (const shadow of host.shadows) {shadow.userData.instanceHidden = value;if (!shadow.userData.instanced) shadow.visible = !value;}}
-    if (root) root.hidden = !value;
+    if (root) root.hidden = !value;if(speechRoot)speechRoot.hidden=!value;
     for (const e of allEntries()) {
       const overridden = entries.get(e.id) === e && personal.has(e.id);
       const visible = value ? !overridden && !!projection.world?.muses.some(m => m.id === e.id) : !e.extra; e.actor.root.visible = visible; shadowVisible(e, visible);
@@ -128,7 +132,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
   }
   function setRecordedFrame(frame: RecordedFrame | null) {if (disposed) return; store.setRecordedFrame(frame); projection = store.projection; if(frame&&projection.world)projection.world=withSnapshotProfiles(projection.world,frame.publicState);reconcile(); if (root) root.dataset.replay = String(store.replay);}
   const sourceOf = (id: string) => frameSource(projection, frames.get(id), id);
-  function update(at: number, selectedId = selected) {
+  function update(at: number, selectedId = selected, ownId:string|null=null) {
     now = at; selected = selectedId;
     if (disposed || !active) return;
     if (!projection.world) {
@@ -136,11 +140,11 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
       frames.clear();host.campfireVisual?.setWorld(null);host.selection.visible=false;
       for(const e of allEntries()){e.actor.root.visible=false;shadowVisible(e,false);if(e.label)e.label.hidden=true;}
       for(const mesh of effects.values()){mesh.visible=false;mesh.count=0;}
-      host.ambient(at / 1000);return;
+      for(const speech of speechCards)if(speech){speech.card.hidden=true;speech.svg.style.display='none';}host.ambient(at / 1000);return;
     }
     host.campfireVisual?.setWorld(projection.world, store.replay ? store.recordedAt ?? at : liveObservedAt);
     frames = projection.frames(at);
-    const labelCandidates:LabelCandidate[]=[],labelNodes=new Map<string,HTMLElement>();
+    const labelCandidates:LabelCandidate[]=[],labelNodes=new Map<string,HTMLElement>(),heads=new Map<string,Point>();
     const groupSizes=new Map<string,number>();
     for(const f of frames.values())if(!f.travel)groupSizes.set(f.place,(groupSizes.get(f.place)??0)+1);
     for (const e of allEntries()) {
@@ -158,13 +162,14 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
       if (e.label) {
         const p = project(new T.Vector3(f.x, y + 1.12, f.z));
         const foot = project(new T.Vector3(f.x, y, f.z));
-        e.label.hidden = (e.id!==selectedId&&Math.abs(foot.y-p.y)<20)||p.x<0||p.y<0||p.x>innerWidth||p.y>innerHeight;
+        heads.set(e.id,p);e.label.hidden = Math.abs(foot.y-p.y)<20||p.x<0||p.y<0||p.x>innerWidth||p.y>innerHeight;
         e.label.dataset.selected=String(e.id===selectedId);
         e.label.dataset.clustered=String(!f.travel&&(groupSizes.get(f.place)??0)>1);
         e.label.dataset.clusterCount='';
         const speech=frameSpeech(f,projection.world,projection.events);
-        const text=`${museName(f.id,projection.world)}${speech ? (speech.recipient?' ':': ')+speech.text : f.card ? ' · ' + activityStatus(f.card) : ''}`;
-        if(e.label.textContent!==text)e.label.textContent=text;
+        const text=museName(f.id,projection.world)+'\n'+liveActivity(f);
+        e.label.className='live-muse-label live-status-bubble';
+        if(e.label.dataset.displayKey!==text){e.label.dataset.displayKey=text;const name=document.createElement('strong'),status=document.createElement('small');name.textContent=museName(f.id,projection.world);status.textContent=liveActivity(f);e.label.replaceChildren(name,status);}
         if(!e.label.hidden){
           labelNodes.set(e.id,e.label);
           labelCandidates.push({id:e.id,group:f.travel?'travel:'+e.id:f.place,groupSize:f.travel?1:groupSizes.get(f.place),x:p.x,y:p.y,width:0,height:0,selected:e.id===selectedId,speaking:!!speech});
@@ -182,8 +187,13 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
       let size=labelSizes.get(node);if(size?.key!==key){const rect=node.getBoundingClientRect?.();size={key,width:rect?.width||Math.min(240,innerWidth-24),height:rect?.height||36};labelSizes.set(node,size);}c.width=size.width;c.height=size.height;
     }
     const obstacles:LabelBox[]=[];
-    for(const selector of ['header','footer','#muse-card','.map-tools']){const node=document.querySelector?.<HTMLElement>(selector);if(!node||node.hidden)continue;const r=node.getBoundingClientRect();if(r.width&&r.height)obstacles.push({left:r.left,top:r.top,width:r.width,height:r.height});}
-    for(const p of layoutLiveLabels(labelCandidates,{left:12,right:innerWidth-12,top:70,bottom:innerHeight-32},obstacles)){
+    for(const selector of ['header','footer','#muse-card','.map-tools','#loading','#network-note','#judge-entry']){const node=document.querySelector?.<HTMLElement>(selector);if(!node||node.hidden)continue;const r=node.getBoundingClientRect();if(r.width&&r.height)obstacles.push({left:r.left,top:r.top,width:r.width,height:r.height});}
+    // Live speech uses the preview's candidate offsets and stays literal, including its public recipient.
+    const cards=store.replay?[]:recentLiveSpeech(projection.events,projection.world,at,selectedId,ownId,50).filter(e=>labelCandidates.some(c=>c.id===e.muse)).slice(0,innerWidth<700?1:2);
+    for(const [i,s]of speechCards.entries()){if(!s)continue;const event=cards[i],anchor=event?heads.get(event.muse!):null;s.card.hidden=true;s.svg.style.display='none';if(!event||!anchor)continue;const value=speechDisplay(event,projection.world),key=event.id+'|'+value.name+'|'+value.recipient+'|'+innerWidth;if(s.card.dataset.contentKey!==key){const speaker=document.createElement('span'),line=document.createElement('p'),source=document.createElement('small');speaker.className='bubble-speaker';speaker.style.color=resolveMuse(projection.world!.muses.find(m=>m.id===event.muse)!).color;speaker.textContent=value.name+(value.recipient?' → '+value.recipient:'');line.textContent=value.line;source.textContent=value.source;s.card.replaceChildren(speaker,line,source);s.card.dataset.contentKey=key;delete s.card.dataset.width;}s.card.hidden=false;s.card.style.visibility='hidden';const rect=s.card.getBoundingClientRect?.()??{width:230,height:96},box=placeLiveBubble(anchor,{width:rect.width||230,height:rect.height||96},{width:innerWidth,height:innerHeight},obstacles);if(!box){s.card.hidden=true;continue;}s.card.dataset.museId=event.muse!;s.card.dataset.source=event.source!;s.card.style.left=box.left+'px';s.card.style.top=box.top+'px';s.card.style.visibility='visible';s.svg.style.display='block';s.svg.setAttribute('viewBox',`0 0 ${innerWidth} ${innerHeight}`);s.leader.setAttribute('d',`M ${box.left+box.width/2} ${box.top+box.height} L ${anchor.x} ${anchor.y}`);obstacles.push(box);}
+    const ranked=[...labelCandidates].sort((a,b)=>Number(b.id===selectedId)-Number(a.id===selectedId)||Number(b.id===ownId)-Number(a.id===ownId)||Math.hypot(a.x-innerWidth/2,a.y-innerHeight/2)-Math.hypot(b.x-innerWidth/2,b.y-innerHeight/2));
+    const detailed=new Set(ranked.slice(0,8).map(c=>c.id));for(const c of ranked)if(!detailed.has(c.id)){const node=labelNodes.get(c.id)!;node.className='live-muse-dot';node.textContent='';delete node.dataset.displayKey;node.hidden=false;node.style.transform=`translate(${Math.round(c.x)}px,${Math.round(c.y)}px)`;}
+    for(const p of layoutLiveLabels(labelCandidates.filter(c=>detailed.has(c.id)),{left:12,right:innerWidth-12,top:70,bottom:innerHeight-32},obstacles)){
       const node=labelNodes.get(p.id)!;node.hidden=p.hidden;node.dataset.clusterCount=p.count?`+${p.count}`:'';
       node.style.transform=`translate(${Math.round(p.left)}px,${Math.round(p.top)}px)`;
     }
@@ -213,7 +223,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
         source: sourceOf(m.id), frame: f ?? null, rendered: !!e?.actor.root.visible, lod: e?.actor.lod ?? null, loadedLods: e ? [...e.actor.loaded].sort() : [], propsLoaded: e?.actor.propsLoaded ?? false, carryShown: e?.actor.carryShown() ?? false};})};
   }
   function dispose() {
-    if(disposed)return;setActive(false); disposed = true; loading.clear(); root?.remove();
+    if(disposed)return;setActive(false); disposed = true; loading.clear(); root?.remove();speechRoot?.remove();
     try {host.campfireVisual?.disable();}
     finally {
       for(const id of [...personal.keys()])releasePersonal(id);

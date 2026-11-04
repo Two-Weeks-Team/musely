@@ -1,4 +1,4 @@
-import {uiText,catalogText,inventoryText,activityStatus,activityLabel} from './i18n.ts';
+import {uiLanguage,uiText,catalogText,inventoryText,activityStatus,activityLabel} from './i18n.ts';
 import {observeWorld, type WorldObservation} from './world-observation.ts';
 import {presentationIn, resolveMuse, withSnapshotProfiles} from './personal-profile.ts';
 import {recordedSceneFrame} from './recorded-scene.ts';
@@ -639,7 +639,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
       const stalled = !wr.ok;
       const recipient=last?speechRecipient(last,displayWorld()):null;
       spot.textContent = uiText`Spotlight · ${shortName(world.nextSpotlight.muse)} next${world.nextSpotlight.priority ? uiText(' (priority)') : ''} · ${world.nextSpotlight.freedom}${stalled ? uiText(' · not updating') : ''}`;
-      if(last){const note=document.createElement('small');note.className='spot-last-action';note.textContent=`${navigator.language.startsWith('ko')?uiText('지난 차례'):uiText('Last turn')} · ${shortName(last.muse)}${recipient?' → '+recipient.name:''} · ${last.source.toUpperCase()}`;spot.append(note);}
+      if(last){const note=document.createElement('small');note.className='spot-last-action';note.textContent=`${uiLanguage()==='ko'?uiText('지난 차례'):uiText('Last turn')} · ${shortName(last.muse)}${recipient?' → '+recipient.name:''} · ${last.source.toUpperCase()}`;spot.append(note);}
       spot.dataset.state = stalled ? 'stale' : 'other';
       spot.title = stalled ? uiText`The world did not answer (${wr.error}); this is the last data we received.` : last ? describe(last) : '';
       document.body.dataset.worldReady = '1';

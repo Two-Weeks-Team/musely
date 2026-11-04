@@ -1,3 +1,4 @@
+import './ui-language-fixture.mjs';
 // I-08 (#55): the owner's destination cell, the Muse's own current cell, trips and the verified teleport (direction v2, 11, 13, 13.1;
 // contracts C03, C07). One block per acceptance criterion:
 //   AC1 a new owner location does not move the Muse's current cell at once

@@ -1,3 +1,4 @@
+import './ui-language-fixture.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';
 const api=await import('../src/ui/i18n.ts').catch(e=>{if(e.code!=='ERR_MODULE_NOT_FOUND')throw e;return {};});
 test('Korean browser language uses Korean UI; other browser languages use English',()=>{assert.equal(api.languageOf('ko-KR'),'ko');assert.equal(api.languageOf('ko'),'ko');for(const s of['en-US','fr','',undefined])assert.equal(api.languageOf(s),'en');});
