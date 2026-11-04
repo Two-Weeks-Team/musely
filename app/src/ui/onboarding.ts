@@ -138,10 +138,10 @@ export function mountOnboarding(opts: {onJudgeFollow?:()=>void;onWatch: () => vo
     const help=el('details','entry-advanced');help.append(el('summary','',uiText('연결 도움말 / Connection help')),el('p','muted',uiText('초대받았다면 Threads 설정 → 계정 → 웹사이트 권한 → 초대에서 수락해 주세요. / If you were invited, accept in Threads Settings → Account → Website permissions → Invites.')),text,copy,copyStatus);
     body.append(help,button(uiText('계속 둘러보기 / Keep watching'),'link-button',()=>{state.path='watch';close();opts.onWatch();},'entry-watch'));
     const socialDetails=el('details','entry-social-status'),socialHost=el('div');socialDetails.id='entry-social-status';socialDetails.append(el('summary','',uiText('내 Muse 상태 / My Muse status')),socialHost);socialDetails.hidden=true;body.append(socialDetails);
-    let connectionBusy=false,claimBusy=false,adoptionBusy=false,socialBusy=false,socialExpanded=false,applying=false;
+    let connectionBusy=false,claimBusy=false,adoptionBusy=false,socialBusy=false,socialExpanded=false,applying=false,connectionManage=false;
     let social:ReturnType<typeof mountSocialStatus>|null=null,pause:ReturnType<typeof mountPersonalPause>|null=null;
     let connection:ReturnType<typeof mountPersonalConnection>|null=null,claim:ReturnType<typeof mountPersonalClaim>|null=null,adoption:ReturnType<typeof mountPersonalAdoption>|null=null;
-    let studioRouted=false;
+    let studioRouted=false,awayGuide:HTMLElement|null=null;
     let latest:ReturnType<ReturnType<typeof mountPersonalEntry>['state']>|null=null,connectionVisible:boolean|null=null,claimVisible:boolean|null=null;
     const maybeStudio=()=>{if(studioRouted||!state.open||latest?.authenticated!==true||latest.busy||latest.profile)return;const a=adoption?.state();if(a?.mode!=='new'||a.blocksSetup)return;studioRouted=true;const navigate=opts.personal?.navigate??(url=>window.location.assign(url));void navigate('/characters/?onboarding=1');};
     const blocked=()=>!!adoption?.state().blocksSetup||latest?.profile?.actorId==='00-jolly';
@@ -151,19 +151,21 @@ export function mountOnboarding(opts: {onJudgeFollow?:()=>void;onWatch: () => vo
         const member=!!latest.profile&&(!!adoption?.state().data?.adopted||!!personalEntry?.receipt&&personalEntry.actor?.id===latest.profile.actorId),available=state.open&&latest.authenticated===true&&member;
         if(!available){socialExpanded=false;socialDetails.open=false;}socialDetails.hidden=!available;
         const block=blocked(),form=profileHost.querySelector('form');
+        const guided=!!latest.profile&&!block;socialDetails.hidden=!available||guided&&!connectionManage;
+        profileHost.hidden=guided&&!connectionManage;profileHost.style.display=profileHost.hidden?'none':'';
         const hide=(node:HTMLElement,value:boolean)=>{node.hidden=value;if(node.style)node.style.display=value?'none':'';};
-        if(form)hide(form,block||socialExpanded);hide(help,block||socialExpanded);hide(adoptionHost,socialExpanded);hide(claimHost,block||socialExpanded);hide(connectionHost,block||socialExpanded);
+        if(form)hide(form,block||socialExpanded);hide(help,block||socialExpanded||guided);hide(adoptionHost,socialExpanded);hide(claimHost,block||socialExpanded||guided&&!connectionManage);hide(connectionHost,block||socialExpanded);
         const showClaim=state.open&&!block&&!socialExpanded,showConnection=state.open&&!block&&!socialExpanded;
         if(claim&&claimVisible!==showClaim){claimVisible=showClaim;claim.setVisible(showClaim);}
         if(connection&&connectionVisible!==showConnection){connectionVisible=showConnection;connection.setVisible(showConnection);}
         const current=block||socialExpanded?{authenticated:null,profile:null,busy:true}:latest;
         void connection?.syncProfile(current);void claim?.syncProfile(current);
         void social?.syncOwner({authenticated:latest.authenticated,muse:latest.profile?.actorId??null,busy:latest.busy||connectionBusy||claimBusy||adoptionBusy});
-        social?.setVisible(available&&socialExpanded);pause?.setVisible(state.open);void pause?.syncOwner({authenticated:latest.authenticated,muse:latest.profile?.actorId??null,busy:latest.busy||connectionBusy||claimBusy||adoptionBusy||socialBusy});
+        social?.setVisible(available&&socialExpanded);pause?.setVisible(state.open&&(!guided||connectionManage));if(awayGuide)awayGuide.hidden=guided;void pause?.syncOwner({authenticated:latest.authenticated,muse:latest.profile?.actorId??null,busy:latest.busy||connectionBusy||claimBusy||adoptionBusy||socialBusy});
       }finally{applying=false;}maybeStudio();
     }
     const p=mountPersonalEntry(profileHost,{...opts.personal,advancedContent:claimHost,fetcher:personalFetch,connectionManaged:true,authResult:personalAuthResult(opts.initial),onWatch:()=>{state.path='watch';close();opts.onWatch();},onState:s=>{latest=s;personalOwnerAccess.syncPersonal(s);void adoption?.syncProfile(s);applyFlow();}});
-    connection=mountPersonalConnection(connectionHost,{fetcher:personalFetch,newOperationId:opts.personal?.newOperationId,now:opts.personal?.now,clipboard:opts.personal?.clipboard,getWorldId:opts.getWorldId,
+    connection=mountPersonalConnection(connectionHost,{fetcher:personalFetch,newOperationId:opts.personal?.newOperationId,now:opts.personal?.now,clipboard:opts.personal?.clipboard,getWorldId:opts.getWorldId,sessionCurrent:p.sessionCurrent,sessionExpiresAt:p.sessionExpiresAt,onChoose:()=>{const navigate=opts.personal?.navigate??(url=>window.location.assign(url));void navigate('/characters/?onboarding=1');},onManageChange:open=>{connectionManage=open;if(!open){socialExpanded=false;socialDetails.open=false;}applyFlow();},
       onWatch:()=>{state.path='watch';close();opts.onWatch();},onWriteBusy:value=>{connectionBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy||personalOwnerAccess.isLoggingOut());claim?.setExternalBusy(value||adoptionBusy);adoption?.setExternalBusy(value||claimBusy);},onSessionLost:()=>p.markSessionLost(),onEntry:entry=>{if(disposed||blocked()||socialExpanded)return;personalEntry=structuredClone(entry);updateChip();applyFlow();try{opts.onPersonalEntry?.(structuredClone(entry));}catch{}}});
     claim=mountPersonalClaim(claimHost,{autoExpand:opts.initial?.get('personal')!=='prepared',fetcher:personalFetch,navigate:opts.personal?.navigate,clipboard:opts.personal?.clipboard,
       onExpanded:()=>applyFlow(),onWriteBusy:value=>{claimBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy||personalOwnerAccess.isLoggingOut());adoption?.setExternalBusy(value||connectionBusy);},onSessionLost:()=>p.markSessionLost()});
@@ -171,7 +173,7 @@ export function mountOnboarding(opts: {onJudgeFollow?:()=>void;onWatch: () => vo
       onState:a=>{if(disposed)return;if(a.blocksSetup){personalEntry=a.data?.adopted?a.data.entry:null;updateChip();}else if(latest?.authenticated===false){personalEntry=null;updateChip();}applyFlow();},
       onWriteBusy:value=>{adoptionBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy||personalOwnerAccess.isLoggingOut());claim?.setExternalBusy(value||connectionBusy);},onSessionLost:()=>p.markSessionLost(),onAdopted:()=>p.refresh(),onWatch:()=>{state.path='watch';close();opts.onWatch();}});
     social=mountSocialStatus(socialHost,{fetcher:personalFetch,endpoint:()=>'/api/personal/social-status',onSessionLost:()=>p.markSessionLost(),onWriteBusy:value=>{socialBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy||personalOwnerAccess.isLoggingOut());claim?.setExternalBusy(value||connectionBusy||adoptionBusy);adoption?.setExternalBusy(value||connectionBusy||claimBusy);}});social.setVisible(false);
-    const pauseHost=el('div','entry-personal-pause');body.append(pauseHost);pause=mountPersonalPause(pauseHost,{fetcher:personalFetch,now:opts.personal?.now,sessionCurrent:p.sessionCurrent,sessionExpiresAt:p.sessionExpiresAt,onSessionLost:()=>p.markSessionLost()});appendAwayGuide(body);
+    const pauseHost=el('div','entry-personal-pause');body.append(pauseHost);pause=mountPersonalPause(pauseHost,{fetcher:personalFetch,now:opts.personal?.now,sessionCurrent:p.sessionCurrent,sessionExpiresAt:p.sessionExpiresAt,onSessionLost:()=>p.markSessionLost()});awayGuide=appendAwayGuide(body);
     socialDetails.addEventListener('toggle',()=>{socialExpanded=socialDetails.open;applyFlow();});
     personal={profile:p,connection,claim,adoption,social,pause,apply:applyFlow};latest=p.state();void adoption.syncProfile(latest);applyFlow();
   }

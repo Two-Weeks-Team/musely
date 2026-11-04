@@ -6,7 +6,7 @@ import type {CampfireScenePort} from '../../world-packs/campfire/scene-port.mjs'
 import * as T from 'three';
 import type {RecordedFrame} from '../replay/player.ts';
 import {SceneProjection, frameSource} from './recorded-scene.ts';
-import {layoutLiveLabels,type LabelCandidate,type LabelBox} from './live-label-layout.ts';
+import {layoutLiveLabels,budgetMobileLabels,type LabelCandidate,type LabelBox} from './live-label-layout.ts';
 import {liveActivity,recentLiveSpeech,speechDisplay} from './live-display.ts';
 import {placeLiveBubble,type ScreenBox} from './bubble-layout.ts';
 import {frameSpeech} from './speech-recipient.ts';
@@ -168,9 +168,10 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
         e.label.dataset.clustered=String(!f.travel&&(groupSizes.get(f.place)??0)>1);
         e.label.dataset.clusterCount='';
         const speech=frameSpeech(f,projection.world,projection.events);
-        const text=museName(f.id,projection.world)+'\n'+liveActivity(f);
+        const showActivity=innerWidth>=700||e.id===selectedId||!!speech;
+        const text=museName(f.id,projection.world)+(showActivity?'\n'+liveActivity(f):'');
         e.label.className='live-muse-label live-status-bubble';
-        if(e.label.dataset.displayKey!==text){e.label.dataset.displayKey=text;const name=document.createElement('strong'),status=document.createElement('small');name.textContent=museName(f.id,projection.world);status.textContent=liveActivity(f);e.label.replaceChildren(name,status);}
+        if(e.label.dataset.displayKey!==text){e.label.dataset.displayKey=text;const name=document.createElement('strong'),status=document.createElement('small');name.textContent=museName(f.id,projection.world);status.textContent=liveActivity(f);e.label.replaceChildren(...(showActivity?[name,status]:[name]));}
         if(!e.label.hidden){
           labelNodes.set(e.id,e.label);
           labelCandidates.push({id:e.id,group:f.travel?'travel:'+e.id:f.place,groupSize:f.travel?1:groupSizes.get(f.place),x:p.x,y:p.y,width:0,height:0,selected:e.id===selectedId,speaking:!!speech});
@@ -185,17 +186,25 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
     if(root){
     // Measure only when text/viewport/priority changes, then place all boxes together.
     for(const c of labelCandidates){const node=labelNodes.get(c.id)!,key=`${innerWidth}:${node.textContent}:${node.dataset.clustered}:${node.dataset.selected}`;
-      let size=labelSizes.get(node);if(size?.key!==key){const rect=node.getBoundingClientRect?.();size={key,width:rect?.width||Math.min(240,innerWidth-24),height:rect?.height||36};labelSizes.set(node,size);}c.width=size.width;c.height=size.height;
+      let size=labelSizes.get(node);if(size?.key!==key){if(innerWidth<700)node.style.setProperty('--label-badge-space','0px');const rect=node.getBoundingClientRect?.();size={key,width:rect?.width||Math.min(240,innerWidth-24),height:rect?.height||36};labelSizes.set(node,size);}c.width=size.width;c.height=size.height;
     }
     const obstacles:LabelBox[]=[];
-    for(const selector of ['header','footer','#muse-card','.map-tools','#loading','#network-note','#judge-entry']){const node=document.querySelector?.<HTMLElement>(selector);if(!node||node.hidden)continue;const r=node.getBoundingClientRect();if(r.width&&r.height)obstacles.push({left:r.left,top:r.top,width:r.width,height:r.height});}
+    for(const selector of ['header','footer','#muse-card','.map-tools','#loading','#network-note','#judge-entry','#first-visit-hint']){const node=document.querySelector?.<HTMLElement>(selector);if(!node||node.hidden)continue;const r=node.getBoundingClientRect();if(r.width&&r.height)obstacles.push({left:r.left,top:r.top,width:r.width,height:r.height});}
+    const speechBoxes:LabelBox[]=[],shownSpeakers=new Set<string>();
     // Live speech uses the preview's candidate offsets and stays literal, including its public recipient.
     const cards=store.replay?[]:recentLiveSpeech(projection.events,projection.world,at,selectedId,ownId,50).filter(e=>labelCandidates.some(c=>c.id===e.muse)).slice(0,innerWidth<700?1:2);
-    for(const [i,s]of speechCards.entries()){if(!s)continue;const event=cards[i],anchor=event?heads.get(event.muse!):null;s.card.hidden=true;s.svg.style.display='none';if(!event||!anchor)continue;const value=speechDisplay(event,projection.world),key=event.id+'|'+value.name+'|'+value.recipient+'|'+innerWidth;if(s.card.dataset.contentKey!==key){const speaker=document.createElement('span'),line=document.createElement('p'),source=document.createElement('small');speaker.className='bubble-speaker';speaker.style.color=resolveMuse(projection.world!.muses.find(m=>m.id===event.muse)!).color;speaker.textContent=value.name+(value.recipient?' → '+value.recipient:'');line.textContent=value.line;source.textContent=value.source;s.card.replaceChildren(speaker,line,source);s.card.dataset.contentKey=key;delete s.card.dataset.width;}s.card.hidden=false;s.card.style.visibility='hidden';const rect=s.card.getBoundingClientRect?.()??{width:230,height:96},box=placeLiveBubble(anchor,{width:rect.width||230,height:rect.height||96},{width:innerWidth,height:innerHeight},obstacles);if(!box){s.card.hidden=true;continue;}s.card.dataset.museId=event.muse!;s.card.dataset.source=event.source!;s.card.style.left=box.left+'px';s.card.style.top=box.top+'px';s.card.style.visibility='visible';s.svg.style.display='block';s.svg.setAttribute('viewBox',`0 0 ${innerWidth} ${innerHeight}`);s.leader.setAttribute('d',`M ${box.left+box.width/2} ${box.top+box.height} L ${anchor.x} ${anchor.y}`);obstacles.push(box);}
+    for(const [i,s]of speechCards.entries()){if(!s)continue;const event=cards[i],anchor=event?heads.get(event.muse!):null;s.card.hidden=true;s.svg.style.display='none';if(!event||!anchor)continue;const value=speechDisplay(event,projection.world),key=event.id+'|'+value.name+'|'+value.recipient+'|'+innerWidth;if(s.card.dataset.contentKey!==key){const speaker=document.createElement('span'),line=document.createElement('p'),source=document.createElement('small');speaker.className='bubble-speaker';speaker.style.color=resolveMuse(projection.world!.muses.find(m=>m.id===event.muse)!).color;speaker.textContent=value.name+(value.recipient?' → '+value.recipient:'');line.textContent=value.line;source.textContent=value.source;s.card.replaceChildren(speaker,line,source);s.card.dataset.contentKey=key;delete s.card.dataset.width;}s.card.hidden=false;s.card.style.visibility='hidden';const rect=s.card.getBoundingClientRect?.()??{width:230,height:96},box=placeLiveBubble(anchor,{width:rect.width||230,height:rect.height||96},{width:innerWidth,height:innerHeight},obstacles);if(!box){s.card.hidden=true;continue;}s.card.dataset.museId=event.muse!;s.card.dataset.source=event.source!;s.card.style.left=box.left+'px';s.card.style.top=box.top+'px';s.card.style.visibility='visible';s.svg.style.display='block';s.svg.setAttribute('viewBox',`0 0 ${innerWidth} ${innerHeight}`);s.leader.setAttribute('d',`M ${box.left+box.width/2} ${box.top+box.height} L ${anchor.x} ${anchor.y}`);obstacles.push(box);speechBoxes.push(box);shownSpeakers.add(event.muse!);}
     const ranked=[...labelCandidates].sort((a,b)=>Number(b.id===selectedId)-Number(a.id===selectedId)||Number(b.id===ownId)-Number(a.id===ownId)||Math.hypot(a.x-innerWidth/2,a.y-innerHeight/2)-Math.hypot(b.x-innerWidth/2,b.y-innerHeight/2));
-    const detailed=new Set(ranked.slice(0,8).map(c=>c.id));for(const c of ranked)if(!detailed.has(c.id)){const node=labelNodes.get(c.id)!;node.className='live-muse-dot';node.textContent='';delete node.dataset.displayKey;node.hidden=false;node.style.transform=`translate(${Math.round(c.x)}px,${Math.round(c.y)}px)`;}
-    for(const p of layoutLiveLabels(labelCandidates.filter(c=>detailed.has(c.id)),{left:12,right:innerWidth-12,top:70,bottom:innerHeight-32},obstacles)){
-      const node=labelNodes.get(p.id)!;node.hidden=p.hidden;node.dataset.clusterCount=p.count?`+${p.count}`:'';
+    const bounds={left:12,right:innerWidth-12,top:70,bottom:innerHeight-32};
+    let placements:ReturnType<typeof layoutLiveLabels>,dotIds:Set<string>;
+    if(innerWidth<700){
+      // Read only known opaque UI surfaces. Transparent header/main wrappers are not coverage.
+      const opaque=[...speechBoxes];for(const selector of ['header>.brand','#entry-open','#header-more','#first-visit-hint','.neighbors','#muse-card','.map-tools','#loading','#network-note','#judge-entry','.attribution']){const node=document.querySelector<HTMLElement>(selector);if(!node||node.hidden)continue;const r=node.getBoundingClientRect();if(r.width&&r.height)opaque.push({left:r.left,top:r.top,width:r.width,height:r.height});}
+      const current=ranked.map((c,priority)=>({...c,priority,speaking:c.speaking||shownSpeakers.has(c.id)})),budget=budgetMobileLabels(current,bounds,obstacles,opaque,{width:innerWidth,height:innerHeight});placements=budget.placements;dotIds=new Set(budget.dots);root.dataset.protectedOverlayOverBudget=String(budget.protectedOverBudget);
+    }else{const detailed=new Set(ranked.slice(0,8).map(c=>c.id));dotIds=new Set(ranked.filter(c=>!detailed.has(c.id)).map(c=>c.id));placements=layoutLiveLabels(labelCandidates.filter(c=>detailed.has(c.id)),bounds,obstacles);delete root.dataset.protectedOverlayOverBudget;}
+    for(const c of ranked)if(dotIds.has(c.id)){const node=labelNodes.get(c.id)!;node.className='live-muse-dot';node.textContent='';delete node.dataset.displayKey;node.hidden=false;node.style.transform=`translate(${Math.round(c.x)}px,${Math.round(c.y)}px)`;}
+    for(const p of placements){
+      const node=labelNodes.get(p.id)!;node.hidden=p.hidden;node.dataset.clusterCount=p.count?`+${p.count}`:'';if(innerWidth<700)node.style.setProperty('--label-badge-space',p.count?'28px':'0px');
       node.style.transform=`translate(${Math.round(p.left)}px,${Math.round(p.top)}px)`;
     }
     }

@@ -153,6 +153,7 @@ export function mountPersonalEntry(host: HTMLElement, options: PersonalEntryOpti
   if (disposed) return;
   root.replaceChildren(); root.dataset.state = phase; root.dataset.joined = 'false';
   const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; return n; };
+  if(authenticated!==true||!profile)root.append(element('p',authenticated===true?uiText('7단계 중 2단계 / Step 2 of 7'):uiText('7단계 중 1단계 / Step 1 of 7')));
   root.append(element('h2', authenticated === true ? uiText('2 · 내 Muse 선택 / 2 · Choose your Muse') : uiText('1 · Threads로 로그인 / 1 · Sign in with Threads')));
   if (authenticated !== true) root.append(element('p', uiText('로그인 → 이름과 모습 선택 → 내 Muse가 세계에 입장 / Sign in → pick a name and look → your Muse joins the world')));
   if (options.authResult === 'failed' || options.authResult === 'declined') {

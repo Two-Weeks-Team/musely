@@ -76,15 +76,15 @@ function describeBody(e: Ev,w?: LiveWorld | null): string {
   const d = e.data ?? {};
   switch (e.kind) {
     case 'spotlight': return d.live === false ? uiText`${a} holds the spotlight (${d.freedom}); the scenario decides` : uiText`${a} decides (${d.freedom}): ${d.decision ?? ''}${d.target ? ' → ' + placeName(d.target) : ''}`;
-    case 'spotlight_fallback': return uiText`${a}'s turn fell back (${d.reason})`;
-    case 'decision_rejected': return uiText`${a}'s decision was refused: ${d.reason}`;
-    case 'decision_discarded': return uiText`${a}'s late answer was discarded: ${d.reason}`;
+    case 'spotlight_fallback': return uiText`${a}의 조용한 차례예요 / ${a} is taking a quiet turn`;
+    case 'decision_rejected': return uiText`${a}의 다음 행동을 다시 확인해요 / ${a}'s next action is being checked`;
+    case 'decision_discarded': return uiText`${a}의 다음 차례를 기다려요 / Waiting for ${a}'s next turn`;
     case 'depart': return uiText`${a} heads to ${placeName(d.to)} (${d.speed}, ${Math.round((d.distanceM ?? 0))} m)`;
     case 'arrive': return uiText`${a} arrives at ${placeName(e.place)}${d.speed === 'taxi' ? uiText(' by teleport') : ''}`;
     case 'beat': return uiText`${a} at ${placeName(e.place)}: ${activityLabel(String(d.beat ?? ''))}`;
     case 'encounter': return uiText`${a} meets ${b} at ${placeName(e.place)}`;
-    case 'encounter_reply': return e.source === 'rule' ? uiText`${a} answers ${b} by rule (${String(d.reason ?? uiText('no model answer')).replace(/_/g, ' ')})` : uiText`${a} answers ${b}: ${e.line ?? d.intent ?? ''}`;
-    case 'encounter_reply_discarded': return uiText`${a}'s late answer to ${b} was discarded: ${d.reason}`;
+    case 'encounter_reply': return e.source === 'rule' ? uiText`${a}가 ${b}에게 규칙 대사로 답해요 / ${a} answers ${b} with a rule line` : uiText`${a} answers ${b}: ${e.line ?? d.intent ?? ''}`;
+    case 'encounter_reply_discarded': return uiText`${a}와 ${b}의 다음 대화를 기다려요 / Waiting for ${a} and ${b}'s next conversation`;
     case 'spotlight_cancelled': if(d.reason==='unknown_muse')return uiText`${a}: This Muse is no longer available. Watch current activity in the Feed.`; return uiText`${a}: This Muse chooses for itself. Watch its activity in the Feed.`;
     case 'spotlight_requested': return uiText`${a} asked for the next spotlight turn (${d.origin === 'connected' ? uiText('your Muse') : uiText('visitor')}, #${d.position} in line)`;
     case 'cards_verified': return uiText`${a} and ${b} verified each other's Agent Card`;
@@ -96,7 +96,7 @@ function describeBody(e: Ev,w?: LiveWorld | null): string {
     case 'trade_rejected': return uiText`${a} declined (no reason shared)`;
     case 'gathering': return uiText`${d.count} Muses gathered at the campfire`;
     case 'a2a_verified': return uiText`${a}'s signed request passed every check`;
-    case 'a2a_refused': return uiText`${a}'s request was refused at ${d.step}: ${String(d.reason).replace(/_/g, ' ')}`;
+    case 'a2a_refused': return uiText`${a}의 요청을 지금 완료할 수 없어요 / ${a}'s request could not be completed now`;
     case 'delegation_revoked': return uiText`Owner revoked ${a}'s delegation`;
     case 'delegation_issued': return uiText`Owner delegated ${a} again`;
     case 'muse_paused': return uiText`${a} is paused until the owner delegates again`;
@@ -649,7 +649,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
       spot.textContent = uiText`Spotlight · ${shortName(world.nextSpotlight.muse)} next${world.nextSpotlight.priority ? uiText(' (priority)') : ''} · ${world.nextSpotlight.freedom}${stalled ? uiText(' · not updating') : ''}`;
       if(last){const note=document.createElement('small');note.className='spot-last-action';note.textContent=`${uiLanguage()==='ko'?uiText('지난 차례'):uiText('Last turn')} · ${shortName(last.muse)}${recipient?' → '+recipient.name:''} · ${last.source.toUpperCase()}`;spot.append(note);}
       spot.dataset.state = stalled ? 'stale' : 'other';
-      spot.title = stalled ? uiText`The world did not answer (${wr.error}); this is the last data we received.` : last ? describe(last) : '';
+      spot.title = stalled ? uiText('최근 세계 상태를 보여드려요. 새 소식을 기다리고 있어요. / Showing the last world update while we wait for news.') : last ? describe(last) : '';
       document.body.dataset.worldReady = '1';
     } else spot.textContent = uiText('Spotlight · world offline');
     paintConn();
