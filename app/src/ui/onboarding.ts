@@ -132,7 +132,9 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
     let connectionBusy=false,claimBusy=false,adoptionBusy=false,socialBusy=false,socialExpanded=false,applying=false;
     let social:ReturnType<typeof mountSocialStatus>|null=null;
     let connection:ReturnType<typeof mountPersonalConnection>|null=null,claim:ReturnType<typeof mountPersonalClaim>|null=null,adoption:ReturnType<typeof mountPersonalAdoption>|null=null;
+    let studioRouted=false;
     let latest:ReturnType<ReturnType<typeof mountPersonalEntry>['state']>|null=null,connectionVisible:boolean|null=null,claimVisible:boolean|null=null;
+    const maybeStudio=()=>{if(studioRouted||!state.open||latest?.authenticated!==true||latest.busy||latest.profile)return;const a=adoption?.state();if(a?.mode!=='new'||a.blocksSetup)return;studioRouted=true;const navigate=opts.personal?.navigate??(url=>window.location.assign(url));void navigate('/characters/?onboarding=1');};
     const blocked=()=>!!adoption?.state().blocksSetup||latest?.profile?.actorId==='00-jolly';
     function applyFlow(){
       if(applying||!latest)return;applying=true;
@@ -149,12 +151,12 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
         void connection?.syncProfile(current);void claim?.syncProfile(current);
         void social?.syncOwner({authenticated:latest.authenticated,muse:latest.profile?.actorId??null,busy:latest.busy||connectionBusy||claimBusy||adoptionBusy});
         social?.setVisible(available&&socialExpanded);
-      }finally{applying=false;}
+      }finally{applying=false;}maybeStudio();
     }
     const p=mountPersonalEntry(profileHost,{...opts.personal,fetcher:personalFetch,connectionManaged:true,authResult:personalAuthResult(opts.initial),onWatch:()=>{state.path='watch';close();opts.onWatch();},onState:s=>{latest=s;personalOwnerAccess.syncPersonal(s);void adoption?.syncProfile(s);applyFlow();}});
     connection=mountPersonalConnection(connectionHost,{fetcher:personalFetch,newOperationId:opts.personal?.newOperationId,now:opts.personal?.now,clipboard:opts.personal?.clipboard,getWorldId:opts.getWorldId,
       onWatch:()=>{state.path='watch';close();opts.onWatch();},onWriteBusy:value=>{connectionBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy||personalOwnerAccess.isLoggingOut());claim?.setExternalBusy(value||adoptionBusy);adoption?.setExternalBusy(value||claimBusy);},onSessionLost:()=>p.markSessionLost(),onEntry:entry=>{if(disposed||blocked()||socialExpanded)return;personalEntry=structuredClone(entry);updateChip();applyFlow();try{opts.onPersonalEntry?.(structuredClone(entry));}catch{}}});
-    claim=mountPersonalClaim(claimHost,{fetcher:personalFetch,navigate:opts.personal?.navigate,clipboard:opts.personal?.clipboard,
+    claim=mountPersonalClaim(claimHost,{autoExpand:opts.initial?.get('personal')!=='prepared',fetcher:personalFetch,navigate:opts.personal?.navigate,clipboard:opts.personal?.clipboard,
       onExpanded:()=>applyFlow(),onWriteBusy:value=>{claimBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy||personalOwnerAccess.isLoggingOut());adoption?.setExternalBusy(value||connectionBusy);},onSessionLost:()=>p.markSessionLost()});
     adoption=mountPersonalAdoption(adoptionHost,{fetcher:personalFetch,newOperationId:opts.personal?.newOperationId,getWorldId:opts.getWorldId,
       onState:a=>{if(disposed)return;if(a.blocksSetup){personalEntry=a.data?.adopted?a.data.entry:null;updateChip();}else if(latest?.authenticated===false){personalEntry=null;updateChip();}applyFlow();},
@@ -290,7 +292,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
 
   // ?entry=choose|watch|trial|connect (&harness=09-copper) opens a path directly, for walkthrough recordings.
   const entry = preview ? opts.initial?.get('entry') : null;
-  if(!preview&&['failed','declined'].includes(personalAuthResult(opts.initial)??''))open('connect');
+  if(!preview&&(['failed','declined','authenticated'].includes(personalAuthResult(opts.initial)??'')||opts.initial?.get('personal')==='prepared'))open('connect');
   if(!preview&&['claimed','failed','declined','not_found'].includes(opts.initial?.get('personalClaim')??''))open('connect');
   if (entry === 'trial') { const h = harness(opts.initial!.get('harness')); state.viewing = h?.id ?? null; open(h ? 'trial-card' : 'trial-pick'); }
   else if (entry === 'connect') open('connect');

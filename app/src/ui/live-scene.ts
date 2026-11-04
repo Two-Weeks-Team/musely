@@ -1,3 +1,4 @@
+import {appearanceKey,resolveAppearance,type AppearanceId} from '../character-kit/appearance.ts';
 import {uiText,catalogText,inventoryText,activityStatus} from './i18n.ts';
 import type {CampfireScenePort} from '../../world-packs/campfire/scene-port.mjs';
 // I-09: read-only server snapshot/event → existing rig, props, labels and four small effects.
@@ -29,7 +30,7 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
   // Receipt time comes from the successful HTTP read, including cached startup/pause hand-offs.
   let liveObservedAt: number | undefined;
   const entries = new Map<string, Entry>(), personal = new Map<string, Entry>(), errors: string[] = [];
-  const loading = new Map<string, {variant: MuseVariantId; token: object; promise: Promise<void>}>();
+  const loading = new Map<string, {variant: MuseVariantId; key:string; token: object; promise: Promise<void>}>();
   let active = false, disposed = false, frames = new Map<string, ActorFrame>(), now = 0, selected = '00-jolly';
   let lods = MUSE_VARIANTS.map(() => 2 as 0 | 1 | 2);
   const root = typeof document === 'undefined' ? null : document.createElement('div');
@@ -71,16 +72,16 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
     personal.delete(id); e.label?.remove(); e.actor.dispose(); e.shadow.removeFromParent();
     e.shadow.geometry.dispose(); (e.shadow.material as T.Material).dispose();
   }
-  function wanted(id: string, variant: MuseVariantId) {
+  function wanted(id: string, variant: MuseVariantId,key?:string) {
     const m = projection.world?.muses.find(m => m.id === id), p = m ? resolveMuse(m) : null;
-    return !disposed && (p?.kind === 'personal'||p?.kind === 'resident') && p.appearanceId === variant && entries.get(id)?.actor.variant !== variant;
+    return !disposed && (p?.kind === 'personal'||p?.kind === 'resident') && p.appearanceId === variant && (entries.get(id)?.actor.variant !== variant||typeof p?.profile?.appearanceId==='object')&&(key===undefined||appearanceKey(p?.appearance??variant)===key);
   }
   async function upgradeEntry(e: Entry, variant: MuseVariantId, current: () => boolean) {
     if (!host.library) return;
     // The library owns shared geometry/materials. Apply each late resource only to the still-current instance.
     for (const step of ['attachment', 1, 0, 'props'] as const) {
       try {
-        const url = step === 'attachment' ? attachmentUrl(variant,host.library.base) : step === 'props' ? propsUrl(host.library.base) : lodUrl(step,host.library.base);
+        const deco=resolveAppearance(e.actor.appearance).deco;const url = step === 'attachment' ? (deco==='none'?null:attachmentUrl(deco,host.library.base)) : step === 'props' ? propsUrl(host.library.base) : lodUrl(step,host.library.base);
         if (!url || !current()) continue;
         const gltf = await host.library.load(url); if (!current()) return;
         if (step === 'attachment') e.actor.addAttachment(gltf); else if (step === 'props') e.actor.addProps(gltf); else e.actor.addLod(gltf,step);
@@ -89,25 +90,25 @@ export function makeLiveScene(host: Host, project: (p: T.Vector3) => Point = () 
   }
   function reconcile() {
     if (disposed) return;
-    for (const [id,e] of personal) if (!wanted(id,e.actor.variant)) releasePersonal(id);
-    for (const [id,p] of loading) if (!wanted(id,p.variant)) loading.delete(id);
+    for (const [id,e] of personal) if (!wanted(id,e.actor.variant,appearanceKey(e.actor.appearance))) releasePersonal(id);
+    for (const [id,p] of loading) if (!wanted(id,p.variant,p.key)) loading.delete(id);
     for (const m of projection.world?.muses ?? []) {
       const p = resolveMuse(m), variant = p.appearanceId;
-      if (!variant || !wanted(m.id,variant) || personal.get(m.id)?.actor.variant === variant || loading.get(m.id)?.variant === variant) continue;
+      const appearance=p.appearance??variant,key=appearance?appearanceKey(appearance):'';if (!variant||!appearance||!wanted(m.id,variant)||personal.get(m.id)?.actor.variant===variant&&appearanceKey(personal.get(m.id)!.actor.appearance)===appearanceKey(appearance)||loading.get(m.id)?.key===key)continue;
       if (personal.has(m.id)) releasePersonal(m.id);
       if (!host.library) continue; // Honest card/pin projection still works when the kit is unavailable.
       const token = {}, id = m.id;
       const promise = (async () => {
         try {
-          const loaded = await loadMuseLight(variant,host.library!);
-          if (loading.get(id)?.token !== token || !wanted(id,variant)) {loaded.actor.dispose(); return;}
+          const loaded = await loadMuseLight(variant,host.library!,appearance);
+          if (loading.get(id)?.token !== token || !wanted(id,variant,key)) {loaded.actor.dispose(); return;}
           const shadow = new T.Mesh(new T.PlaneGeometry(1,.8), new T.MeshBasicMaterial({map:host.shadowTexture,transparent:true,depthWrite:false}));
           shadow.rotation.x = -Math.PI/2; add(loaded.actor,shadow,true,id,true);
-          const e=personal.get(id)!;await upgradeEntry(e,variant,()=>wanted(id,variant)&&personal.get(id)===e);
-        } catch {if (loading.get(id)?.token === token && wanted(id,variant)) errors.push(id + uiText(': character kit unavailable'));}
+          const e=personal.get(id)!;await upgradeEntry(e,variant,()=>wanted(id,variant,key)&&personal.get(id)===e);
+        } catch {if (loading.get(id)?.token === token && wanted(id,variant,key)) errors.push(id + uiText(': character kit unavailable'));}
         finally {if (loading.get(id)?.token === token) loading.delete(id);}
       })();
-      loading.set(id,{variant,token,promise});
+      loading.set(id,{variant,key,token,promise});
     }
   }
   const shadowVisible = (e: Entry, visible: boolean) => {e.shadow.userData.instanceHidden = !visible;if (!e.shadow.userData.instanced) e.shadow.visible = visible;};

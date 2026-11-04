@@ -40,8 +40,8 @@ test('exact historical goal/resident/combined and engine5/4/3/2 tuples play snap
  }
 });
 
-test('wave and clock engine18 preserves its separate actor catalog', () => {
- assert.deepEqual(currentVersions(), {schemaVersion:'run-log-2',engineVersion:'engine-18',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-d42ba8247057'});
+test('custom appearance engine19 versions its separate actor catalog', () => {
+ assert.deepEqual(currentVersions(), {schemaVersion:'run-log-2',engineVersion:'engine-19',harnessVersion:'harness-c0c69e98b5e8',catalogVersion:'catalog-5b6f4849a214'});
  const r=record();r.engineVersion='engine-6';rejects(r,'incompatible_record');
 });
 

@@ -78,6 +78,8 @@ async function bootstrapJSON(request:Request,limit=4096):Promise<unknown>{
  try{let reads=0;for(;;){if(++reads>limit+1)throw Error('invalid_entry');const p=await Promise.race([reader.read(),timeout]);if(p.done)break;if(parts.length+p.value.length>limit)throw Error('invalid_entry');for(const b of p.value)parts.push(b);}return JSON.parse(new TextDecoder('utf-8',{fatal:true,ignoreBOM:false}).decode(new Uint8Array(parts)));}finally{if(timer!==undefined)clearTimeout(timer);void reader.cancel().catch(()=>{});}
 }
 export async function personalRoutes(request: Request, url: URL, cfg: PersonalConfig, stub: PersonalAuthStub): Promise<Response> {
+  // A start may fail before a flow exists. Record only a fixed enum, never request/provider values.
+  const startFailure=(reason:'request_invalid'|'origin_not_allowed'|'not_configured'|'rate_limited'|'flow_capacity'|'unavailable',error:string,status:number)=>{if(url.pathname===START)console.warn(JSON.stringify({event:'personal_auth_start_failed',reason}));return failure(error,status);};
   try {
     if(url.pathname.startsWith(BASE+'/owner/'))return personalOwnerRoutes(request,url,cfg,stub);
     const now = cfg.now ?? Date.now;
@@ -85,12 +87,12 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
     const bootstrap=url.pathname===BASE+'/legacy-muse'?['GET','POST']:url.pathname===BASE+'/inbox'?['GET']:url.pathname===BASE+'/approvals'?['POST']:bootstrapMethods(url.pathname);
     const method = routes.get(url.pathname)??(bootstrap?.includes(request.method)?request.method:bootstrap?.[0]);
     if (!method) return failure('not_found', 404);
-    if (request.method !== method) { const r = failure('method_not_allowed', 405); r.headers.set('allow', bootstrap?bootstrap.join(', '):url.pathname === BASE + '/profile' ? 'GET, PATCH' : method); return r; }
-    if (method !== 'GET' && !originAllowed(request, [cfg.origin])) return failure('origin_not_allowed', 403);
+    if (request.method !== method) { const r = startFailure('request_invalid','method_not_allowed',405); r.headers.set('allow', bootstrap?bootstrap.join(', '):url.pathname === BASE + '/profile' ? 'GET, PATCH' : method); return r; }
+    if (method !== 'GET' && !originAllowed(request, [cfg.origin])) return startFailure('origin_not_allowed','origin_not_allowed',403);
     const profileWrite = url.pathname === BASE + '/draft' || (url.pathname === BASE + '/profile' && request.method === 'PATCH');
     const bootstrapWrite=!!bootstrap&&(request.method==='POST'||url.pathname===BASE+'/social-status'&&request.method==='PATCH'||([BASE+'/authority',BASE+'/claim'].includes(url.pathname)&&request.method==='DELETE'));
-    if (method !== 'GET' && !profileWrite && !bootstrapWrite && !await emptyWriteBody(request)) return failure('body_not_allowed', 400);
-    if (url.pathname !== PERSONAL_CALLBACK && url.search) return failure('bad_query', 400);
+    if (method !== 'GET' && !profileWrite && !bootstrapWrite && !await emptyWriteBody(request)) return startFailure('request_invalid','body_not_allowed',400);
+    if (url.pathname !== PERSONAL_CALLBACK && url.search) return startFailure('request_invalid','bad_query',400);
     const sessionReady = !!cfg.secret && typeof cfg.appId === 'string' && /^[0-9]{1,32}$/.test(cfg.appId);
     const ready = sessionReady && !!cfg.appSecret;
     const providerCfg = (): PersonalThreadsConfig => ({appId: cfg.appId!, appSecret: cfg.appSecret!, redirectUri: cfg.origin + PERSONAL_CALLBACK, fetcher: cfg.fetcher});
@@ -191,12 +193,12 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
       if (p) await stub.personalAuthRevoke(await personalDigest('sid', p.sid), p, cfg.appId!, now());
       return json({authenticated: false, ...VIEWING}, 200, clearPersonalCookie);
     }
-    if (!ready) return failure('personal_auth_not_configured', 503);
+    if (!ready) return startFailure('not_configured','personal_auth_not_configured',503);
     if (url.pathname === START) {
-      if (cfg.rateLimit && !await cfg.rateLimit()) return failure('slow_down', 429);
+      if (cfg.rateLimit && !await cfg.rateLimit()) return startFailure('rate_limited','slow_down',429);
       const state = PERSONAL_STATE_PREFIX + personalNonce(), verifier = personalNonce(), createdAt = now();
       const flow = {stateDigest: await personalDigest('state', state), browserDigest: await personalDigest('browser', verifier), appId: cfg.appId!, redirectUri: providerCfg().redirectUri, createdAt, expiresAt: createdAt + PERSONAL_FLOW_TTL_MS};
-      if (!await stub.personalAuthBegin(flow)) return failure('auth_flow_unavailable', 429);
+      if (!await stub.personalAuthBegin(flow)) return startFailure('flow_capacity','auth_flow_unavailable',429);
       return json({authorizationUrl: personalAuthorizeUrl(providerCfg(), state)}, 200, flowCookie(verifier));
     }
     const q = url.searchParams;
@@ -247,5 +249,5 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
       await record(detail);
       return redirect('failed');
     }
-  } catch { return failure('personal_auth_unavailable', 503); }
+  } catch { return startFailure('unavailable','personal_auth_unavailable',503); }
 }

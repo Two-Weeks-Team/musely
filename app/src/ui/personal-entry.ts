@@ -1,3 +1,4 @@
+import {isAppearance,normalizeAppearance,appearanceLook,appearanceKey,type AppearanceId} from '../character-kit/appearance.ts';
 import {apiFetcher} from './api-fetch.ts';
 import {uiText,catalogText,inventoryText,activityStatus} from './i18n.ts';
 // Profile preparation only: never proves world entry and is not mounted by the live door yet.
@@ -12,6 +13,13 @@ export function personalAuthResult(query?:URLSearchParams):string|undefined {
  if(query?.has('error')||query?.has('error_reason'))return 'failed';
  const result=query?.get('personal');return ['authenticated','failed','declined'].includes(result??'')?result!:undefined;
 }
+export function signInStartFailure(status:number,invalid=false):string {
+ if(status===429)return uiText('로그인 요청이 많아요. 잠시 기다린 뒤 다시 시도해 주세요. / Too many sign-in requests. Please wait a moment and try again.');
+ if(status===403)return uiText('이 주소에서는 로그인을 열 수 없어요. https://musely.net을 직접 열어 주세요. / Sign-in cannot open from this address. Open https://musely.net directly.');
+ if(status>=500)return uiText('로그인 서버에 잠시 문제가 있어요. 잠시 뒤 다시 시도해 주세요. / The sign-in server is temporarily unavailable. Please try again later.');
+ if(invalid||status>=400)return uiText('로그인 응답을 확인하지 못했어요. 잠시 뒤 다시 시도해 주세요. / The sign-in response could not be confirmed. Please try again later.');
+ return uiText('네트워크 연결을 확인하고 다시 시도해 주세요. / Check your network connection and try again.');
+}
 class Failure extends Error { readonly status: number; readonly invalid: boolean; constructor(status = 0, invalid = false) { super('personal_entry_unavailable'); this.status = status; this.invalid = invalid; } }
 const object = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const exact = (v: unknown, keys: string[]): v is Record<string, unknown> => object(v) && Object.keys(v).length === keys.length && keys.every(k => Object.hasOwn(v, k));
@@ -20,8 +28,8 @@ const publicName = (v: unknown): v is string => typeof v === 'string' && !!v.tri
 const appearance = (v: unknown) => MUSE_VARIANTS.find(x => x.id === v);
 function parseProfile(v: unknown): ActorProfile {
  if (!exact(v, ['actorId', 'displayName', 'appearanceId', 'revision']) || typeof v.actorId !== 'string' || !(/^pm_[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(v.actorId) || appearance(v.actorId)) || !publicName(v.displayName) || v.displayName !== v.displayName.trim() || !Number.isSafeInteger(v.revision) || Number(v.revision) < 1) throw new Failure(0, true);
- const variant = appearance(v.appearanceId); if (!variant) throw new Failure(0, true);
- return {actorId: v.actorId, displayName: v.displayName, appearanceId: variant.id, revision: Number(v.revision)};
+ if (!isAppearance(v.appearanceId)) throw new Failure(0, true);
+ return {actorId: v.actorId, displayName: v.displayName, appearanceId:normalizeAppearance(v.appearanceId),revision:Number(v.revision)};
 }
 function parseProfileAnswer(v: unknown): ActorProfile | null {
  if (!exact(v, ['profile', 'entry'])) throw new Failure(0, true);
@@ -44,11 +52,11 @@ export function mountPersonalEntry(host: HTMLElement, options: PersonalEntryOpti
  let phase: PersonalEntryPhase = 'pending', authenticated: boolean | null = null, profile: ActorProfile | null = null, expiresAt = 0;
  let logoutPending = false, externalBusy = false;
  let busy = false, disposed = false, generation = 0, controller: AbortController | null = null, actorBinding: string | null = null, needsRefresh = false;
- let message = uiText('Checking your profile…'), draft = {displayName: '', appearanceId: MUSE_VARIANTS[0].id as string};
+ let message = uiText('Checking your profile…'), draft = {displayName: '', appearanceId: MUSE_VARIANTS[0].id as AppearanceId};
  let pendingDraft: {intent: string; operationId: string} | null = null;
  type Context = {generation: number; controller: AbortController};
  const current = (c: Context) => !disposed && generation === c.generation && !c.controller.signal.aborted;
- const state = (): PersonalEntryState => ({phase, authenticated, profile: profile ? {...profile} : null, busy, joined: false});
+ const state = (): PersonalEntryState => ({phase, authenticated, profile:profile?structuredClone(profile):null, busy, joined: false});
  const resetProfile = (keepOperation = false) => { profile = null; draft = {displayName: '', appearanceId: MUSE_VARIANTS[0].id}; if (!keepOperation) pendingDraft = null; };
  const signedOut = (text = uiText('Keep watching, or sign in to prepare your own Muse.')) => { authenticated = false; expiresAt = 0; actorBinding = null; resetProfile(); needsRefresh = false; phase = 'observer'; busy = false; message = text; };
  const usable = () => { if (authenticated === true && expiresAt > now()) return true; signedOut(uiText('Your session ended. You can keep watching or sign in again.')); render(); return false; };
@@ -104,27 +112,27 @@ export function mountPersonalEntry(host: HTMLElement, options: PersonalEntryOpti
    const url = authorization(answer); await navigate(url); if (!current(c)) return;
    // Navigation is pending, not authentication/entry success. Refresh on return/remount, never a timer.
    message = uiText('Continue in Threads, then return here to check your profile.'); render();
-  } catch (e) { fail(e, c, uiText('Could not open sign-in. Try again when you are ready.')); }
+  } catch (e) { fail(e,c,signInStartFailure(e instanceof Failure?e.status:0,e instanceof Failure&&e.invalid)); }
  }
- async function save(nameInput: string, appearanceInput: string) {
+ async function save(nameInput: string, appearanceInput: AppearanceId) {
   if (disposed || busy || externalBusy || needsRefresh || !usable()) return;
   draft = {displayName: nameInput, appearanceId: appearanceInput};
-  if (!publicName(nameInput) || !appearance(appearanceInput)) { phase = 'error'; message = uiText('Use a public name of 1–40 characters and choose an appearance.'); render(); return; }
-  const name = nameInput.trim(), variant = appearance(appearanceInput)!;
+  if (!publicName(nameInput) || !isAppearance(appearanceInput)) { phase = 'error'; message = uiText('Use a public name of 1–40 characters and choose an appearance.'); render(); return; }
+  const name=nameInput.trim(),selectedAppearance=normalizeAppearance(appearanceInput);
   const previous = profile ? {...profile} : null;
-  const intent = JSON.stringify([name, variant.id]);
+  const intent = JSON.stringify([name,appearanceKey(selectedAppearance)]);
   if (!previous && pendingDraft?.intent !== intent) {
    try { const id = operationId(); if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(id) || id.startsWith('msly_')) throw new Failure(); pendingDraft = {intent, operationId: id}; }
    catch { phase = 'error'; message = uiText('Could not prepare your profile. Please try again.'); render(); return; }
   }
-  const body = previous ? {expectedRevision: previous.revision, displayName: name, ...(previous.appearanceId === variant.id ? {} : {appearanceId: variant.id})} : {operationId: pendingDraft!.operationId, displayName: name, appearanceId: variant.id};
+  const body = previous ? {expectedRevision: previous.revision, displayName: name, ...(appearanceKey(previous.appearanceId)===appearanceKey(selectedAppearance) ? {} : {appearanceId:selectedAppearance})} : {operationId: pendingDraft!.operationId, displayName: name, appearanceId:selectedAppearance};
   const c = begin(previous ? uiText('Saving your profile…') : uiText('Registering your profile…')); if (!c) return;
   try {
    const answer = await request(previous ? '/api/personal/profile' : '/api/personal/draft', previous ? 'PATCH' : 'POST', c, body); if (!current(c)) return;
    if (!usable()) return;
    const p = parseProfileAnswer(answer);
    // A repeated draft operation returns the server's current profile, including later edits in another window.
-   if (!p || previous && (p.actorId !== previous.actorId || p.revision !== previous.revision + 1 || p.displayName !== name || p.appearanceId !== variant.id)) throw new Failure(0, true);
+   if (!p || previous && (p.actorId !== previous.actorId || p.revision !== previous.revision + 1 || p.displayName !== name || appearanceKey(p.appearanceId)!==appearanceKey(selectedAppearance))) throw new Failure(0, true);
    accept(p); pendingDraft = null; phase = 'registered'; busy = false; message = ''; render();
   } catch (e) { fail(e, c, uiText('Could not confirm the profile change. Try again or refresh.')); }
  }
@@ -143,7 +151,7 @@ export function mountPersonalEntry(host: HTMLElement, options: PersonalEntryOpti
   if (disposed) return;
   root.replaceChildren(); root.dataset.state = phase; root.dataset.joined = 'false';
   const element = <K extends keyof HTMLElementTagNameMap>(tag: K, text?: string) => { const n = document.createElement(tag); if (text !== undefined) n.textContent = text; return n; };
-  root.append(element('h2', authenticated === true ? uiText('1 · 내 Muse의 이름과 모습 / Your Muse’s name and appearance') : uiText('1 · Threads로 로그인 / 1 · Sign in with Threads')));
+  root.append(element('h2', authenticated === true ? uiText('2 · 내 Muse 선택 / 2 · Choose your Muse') : uiText('1 · Threads로 로그인 / 1 · Sign in with Threads')));
   if (authenticated !== true) root.append(element('p', uiText('로그인 → 이름과 모습 선택 → 내 Muse가 세계에 입장 / Sign in → pick a name and look → your Muse joins the world')));
   if (options.authResult === 'failed' || options.authResult === 'declined') {
    const notice = element('p', uiText(options.authResult === 'failed' ? 'Threads 연결을 마치지 못했어요. 잠시 뒤 다시 시도하거나 계속 관람해 주세요. / We could not finish connecting Threads. Try again later, or keep watching.' : 'Threads 연결이 취소됐어요. 계속 관람하거나 준비되면 로그인해 주세요. / Threads sign-in was cancelled. Keep watching, or sign in when you are ready.'));
@@ -160,9 +168,9 @@ export function mountPersonalEntry(host: HTMLElement, options: PersonalEntryOpti
    const f = element('form'), label = element('label', uiText('공개할 Muse 이름 / Public Muse name')), input = element('input'); input.type = 'text'; input.name = 'displayName'; input.value = draft.displayName; input.maxLength = 80; input.disabled = busy || externalBusy; input.setAttribute('aria-label', uiText('공개할 Muse 이름 / Public Muse name')); label.append(input);
    const appearanceLabel = element('label', uiText('모습 / Appearance')), select = element('select'); select.name = 'appearanceId'; select.setAttribute('aria-label', uiText('모습 / Appearance')); select.disabled = busy || externalBusy;
    for (const v of MUSE_VARIANTS) { const option = element('option', v.name); option.value = v.id; select.append(option); }
-   select.value = draft.appearanceId; appearanceLabel.append(select);
+   select.value=appearanceLook(draft.appearanceId); appearanceLabel.append(select);
    const submit = element('button', profile ? uiText('이름·모습 저장 / Save name and appearance') : uiText('내 Muse 만들기 / Create my Muse')); submit.type = 'submit'; submit.className = profile?'secondary':'primary'; submit.disabled = busy || externalBusy;
-   f.onsubmit = async event => { event.preventDefault(); await save(input.value, select.value); }; f.append(label, appearanceLabel, submit);(profile?detail:root).append(f);
+   f.onsubmit = async event => { event.preventDefault();const selected=MUSE_VARIANTS.find(v=>v.id===select.value);if(!selected){phase='error';message=uiText('Use a public name of 1–40 characters and choose an appearance.');render();return;}await save(input.value,appearanceLook(draft.appearanceId)===selected.id?draft.appearanceId:selected.id); }; f.append(label, appearanceLabel, submit);(profile?detail:root).append(f);
   }
   const refreshButton=button('refresh',uiText('다시 확인 / Check again'),refresh);refreshButton.disabled=logoutPending||externalBusy;
   if(needsRefresh||authenticated===null&&phase==='error'){refreshButton.className='primary';root.append(refreshButton);}else detail.append(refreshButton);
@@ -172,5 +180,5 @@ export function mountPersonalEntry(host: HTMLElement, options: PersonalEntryOpti
  }
 
  const ready = refresh();
- return {ready, refresh, state, markSessionLost() { if (disposed) return; generation++; controller?.abort(); signedOut(uiText('Your session ended. Sign in again when you are ready.')); render(); }, setExternalBusy(value: boolean) { if (disposed || externalBusy === value) return; externalBusy = value; render(); }, dispose() { if (disposed) return; disposed = true; generation++; controller?.abort(); resetProfile(); authenticated = false; busy = false; actorBinding = null; try { options.onState?.(state()); } catch {} root.remove(); }};
+ return {ready,refresh,save,state,markSessionLost() { if (disposed) return; generation++; controller?.abort(); signedOut(uiText('Your session ended. Sign in again when you are ready.')); render(); }, setExternalBusy(value: boolean) { if (disposed || externalBusy === value) return; externalBusy = value; render(); }, dispose() { if (disposed) return; disposed = true; generation++; controller?.abort(); resetProfile(); authenticated = false; busy = false; actorBinding = null; try { options.onState?.(state()); } catch {} root.remove(); }};
 }
