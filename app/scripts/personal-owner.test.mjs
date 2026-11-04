@@ -123,3 +123,19 @@ for(const [path,body] of [['/profile',{expectedRevision:1,displayName:'Changed'}
  const x=await boot(t),b=await x.bind();await x.adopt(b);let controller;const stream=new ReadableStream({start(c){controller=c;}}),pending=x.go('PATCH',BASE+path,b.cookie,stream);
  await new Promise(r=>setTimeout(r,20));await x.go('DELETE',BASE+'/session',b.cookie);controller.enqueue(new TextEncoder().encode(JSON.stringify(body)));controller.close();const r=await pending;assert.equal(r.status,401);assert.deepEqual(r.body,{error:'personal_session_required'});assert.equal(x.world.legacyProfile.view().displayName,'ComBba');
 });
+
+async function entered(gate){let timer;try{await Promise.race([gate.entered,new Promise((_,reject)=>timer=setTimeout(()=>reject(Error('synthetic gate not reached')),3000))]);}finally{clearTimeout(timer);}}
+async function ownerMutationSnapshot(x){const {createHash}=await import('node:crypto'),hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');return{privateKeys:x.db.prepare('SELECT count(*) n FROM private_keys').get().n,executors:x.db.prepare('SELECT count(*) n FROM executors').get().n,events:x.db.prepare('SELECT count(*) n FROM events').get().n,nonces:x.db.prepare('SELECT count(*) n FROM nonces').get().n,rowHashes:Object.fromEntries(['private_keys','executors','events','nonces'].map(table=>[table,hash(x.db.prepare('SELECT * FROM '+table+' ORDER BY rowid').all())])),stateHash:hash(x.world.runtime.state())};}
+test('special status response cannot restore owner identity after logout during visitor quota await',async t=>{
+ const x=await boot(t),b=await x.bind();await x.adopt(b);const {issueSession,sessionCookie}=await import('../worker/core/session.ts'),visitor=sessionCookie((await issueSession(x.env.SESSION_SECRET,'visitor')).token).split(';')[0],gate=barrier(),quota=x.world.quota.bind(x.world);
+ x.world.quota=async(...args)=>{gate.enter();await gate.wait;return quota(...args);};const before=await ownerMutationSnapshot(x),pending=x.go('GET',BASE+'/status',b.cookie+'; '+visitor);await entered(gate);assert.equal((await x.go('DELETE',BASE+'/session',b.cookie)).status,200);gate.release();const result=await pending;assert.equal(result.status,401);assert.deepEqual(result.body,{error:'personal_session_required'});assert.deepEqual((await x.go('GET',BASE+'/session',b.cookie)).body,{owner:null});assert.deepEqual(await ownerMutationSnapshot(x),before);
+});
+
+test('actual P0 peer-card crypto completion after logout stores no peer credential, refusal event or nonce',async t=>{
+ const x=await boot(t),b=await x.bind();await x.adopt(b);x.world.setClaim('owner-muse',{status:'claimed',path:'synthetic',fingerprint:'synthetic-only'});const {grantItem}=await import('../src/engine/items.ts');
+ x.world.runtime.commitExternal(Date.now(),'synthetic-peer-p0',s=>{const owner=s.muses.find(m=>m.id==='00-jolly'),peer=s.muses.find(m=>m.id==='02-moss');for(const m of[owner,peer]){m.place='commons:cafe';m.travel=null;m.beat=null;}grantItem(s.items,owner,'coffee',Date.now(),owner.place,'craft');grantItem(s.items,peer,'fruit',Date.now(),peer.place,'craft');});
+ await x.world.trust.executor('00-jolly','server_custodial',JSON.parse(x.env.OWNER_ROOT_JWK));
+ const gate=barrier(),sign=crypto.subtle.sign.bind(crypto.subtle);let ecdsa=0;
+ crypto.subtle.sign=async(algorithm,...args)=>{if((typeof algorithm==='string'?algorithm:algorithm?.name)==='ECDSA'&&++ecdsa===2){gate.enter();await gate.wait;}return sign(algorithm,...args);};t.after(()=>crypto.subtle.sign=sign);
+ const before=await ownerMutationSnapshot(x),pending=x.go('POST',BASE+'/p0/run',b.cookie);await entered(gate);assert.equal((await x.go('DELETE',BASE+'/session',b.cookie)).status,200);gate.release();const result=await pending;assert.equal(result.status,401);assert.deepEqual(result.body,{error:'personal_session_required'});assert.deepEqual(await ownerMutationSnapshot(x),before);
+});

@@ -35,19 +35,23 @@ export async function personalOwnerRoutes(request:Request,url:URL,cfg:PersonalOw
   if(!stub.personalOwnerSession||!stub.personalOwnerCall)return json({error:'owner_unavailable'},503);
   const identity=await stub.personalOwnerSession(active);
   if(!identity)return path==='/session'&&request.method==='GET'?json({owner:null}):json({error:'adoption_required'},403);
-  if(['/p0/run','/claim/permalink','/ritual/start','/ritual/record','/muse','/status'].includes(path))return cfg.ownerSpecial?await cfg.ownerSpecial(request,path,active):json({error:'owner_unavailable'},503);
-  if(path==='/session'&&url.search)return json({error:'bad_query'},400);
-  const target=path.startsWith('/agent-keys')?'/api'+path:'/api/owner'+path;
-  const allowed=/^\/api\/owner\/(session|social-status|profile|revoke|redelegate|reset|approvals|inbox|location|notifications)$/.test(target)||/^\/api\/agent-keys(?:\/ak_[A-Za-z0-9_-]{6,20})?$/.test(target);
-  if(!allowed)return json({error:'not_found'},404);
-  const wrapped=Object.fromEntries(methods.map(operation=>[operation,(...args:unknown[])=>stub.personalOwnerCall!(active,operation,args)])) as unknown as ConnectedStub;
-  const translated=new URL(url);translated.pathname=target;
-  const response=await connectedRoutes(request,translated,{owner:identity.session},wrapped,{secret:'',tokens:{},origins:[cfg.origin]});
-  // Legacy profile/social routes catch their own service errors. Recheck the personal
-  // binding so a logout during body/RPC awaits is still a 401, never a stale owner view.
+  const special=['/p0/run','/claim/permalink','/ritual/start','/ritual/record','/muse','/status'].includes(path);
+  let response:Response|null;
+  if(special)response=cfg.ownerSpecial?await cfg.ownerSpecial(request,path,active):json({error:'owner_unavailable'},503);
+  else{
+    if(path==='/session'&&url.search)return json({error:'bad_query'},400);
+    const target=path.startsWith('/agent-keys')?'/api'+path:'/api/owner'+path;
+    const allowed=/^\/api\/owner\/(session|social-status|profile|revoke|redelegate|reset|approvals|inbox|location|notifications)$/.test(target)||/^\/api\/agent-keys(?:\/ak_[A-Za-z0-9_-]{6,20})?$/.test(target);
+    if(!allowed)return json({error:'not_found'},404);
+    const wrapped=Object.fromEntries(methods.map(operation=>[operation,(...args:unknown[])=>stub.personalOwnerCall!(active,operation,args)])) as unknown as ConnectedStub;
+    const translated=new URL(url);translated.pathname=target;
+    response=await connectedRoutes(request,translated,{owner:identity.session},wrapped,{secret:'',tokens:{},origins:[cfg.origin]});
+  }
+  // Both reused and special routes can await. The same final personal check prevents
+  // stale owner responses and preserves 401 after legacy handlers catch service errors.
   if(!await stub.personalOwnerSession(active))return json({error:'adoption_required'},403);
   if(!response)return json({error:'not_found'},404);
-  if(!response.ok)return response;
+  if(special||!response.ok)return response;
   const body=await response.json() as {owner?:{label:string}};if(body.owner)body.owner.label=identity.displayName+' · owner';
   return json(body,response.status);
  }catch(e){const code=e&&typeof e==='object'&&'code'in e&&typeof e.code==='string'?e.code:null;
