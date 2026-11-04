@@ -34,6 +34,7 @@ import {resolveSocialStatus} from '../src/engine/social-status.ts';
 import type {WorldState} from '../src/engine/world.ts';
 import {PRINCIPALS} from './core/owner-session.ts';
 type SocialBinding={kind:'legacy';proof:LegacyOwnerProof}|{kind:'personal';binding:PersonalBinding};
+import {CONNECTED_MS} from '../src/engine/inbox.ts';
 
 export class WorldDO extends DurableObject<Env> {
   private ledger: Ledger;
@@ -86,10 +87,16 @@ export class WorldDO extends DurableObject<Env> {
       catch{return 'do_not_disturb' as const;}
     };
     if(socialEnabled)hooks.socialStatus=currentSocialStatus;
+    const actionMode=env.RESIDENT_ACTIONS_MODE;
+    if(actionMode!==undefined&&actionMode!==''&&actionMode!=='off'&&actionMode!=='action-v1')throw Error('unsupported_RESIDENT_ACTIONS_MODE');
+    const actionsEnabled=actionMode==='action-v1',actionConcurrency=Number(env.RESIDENT_ACTION_MAX_CONCURRENT??'4');
+    if(actionsEnabled&&(!active()||!residentBudget))throw Error('resident_actions_require_world_life_and_split_budget');
+    if(actionsEnabled&&(!Number.isSafeInteger(actionConcurrency)||actionConcurrency<1||actionConcurrency>8))throw Error('invalid_RESIDENT_ACTION_MAX_CONCURRENT');
     if(active())this.worldLife=new WorldLifeController(txSql,this.personalAuth.owners,this.trust,this.ledger,env.MODEL_API_KEY?{base:env.MODEL_BASE,key:env.MODEL_API_KEY,model:env.MODEL_ID,timeoutMs:8000}:null,muse=>this.personalWorld.ownerOf(muse),active);
     this.runtime = new WorldRuntime(txSql, {
       ...this.worldLife?.runtimeOptions(),
       ...(socialEnabled?{socialStatus:currentSocialStatus}:{}),
+      ...(actionsEnabled?{residentActions:{enabled:true,maxConcurrent:actionConcurrency},operatingResidentControl:(id:string,now:number)=>this.operatingResidentControl(id,now)}:{}),
       // Live decisions for a Muse whose delegation was revoked (and not re-issued) are discarded.
       delegationValid: museId => !this.trust.suspended(museId),
       // Every meeting: both Agent Cards and delegations are verified before any greeting or trade.
@@ -141,6 +148,18 @@ export class WorldDO extends DurableObject<Env> {
       const owner = this.runtime.state().muses.find(m => m.id === OWNER_SLOT);
       if (owner && owner.inventory.length === 0) this.runtime.commitExternal(Date.now(), 'welcome', (st, emit) => { st.muses.find(m => m.id === OWNER_SLOT)!.inventory.push('coffee', 'postage_stamp'); emit({at: Date.now(), source: 'rule', kind: 'welcome_gift', muse: OWNER_SLOT, line: 'Welcome gift: Coffee and a Postage Stamp', data: {items: ['coffee', 'postage_stamp']}, tags: []}); });
     });
+  }
+  /** Read-only handoff for the two operator-owned residents. Ownership, signing and grants never change. */
+  private operatingResidentControl(id:string,now:number):'resident'|'connected'|'unknown' {
+    try{
+      if(!['04-ember','09-copper'].includes(id)||!Number.isSafeInteger(now)||now<0)return 'unknown';
+      const actor=this.runtime.state().muses.find(m=>m.id===id),agent=this.trust.agentByMuse(id);
+      if(!actor||actor.profile||actor.controlMode==='personal'||this.runtime.state().paused?.[id]||agent?.kind!=='resident'||this.trust.suspended(id))return 'unknown';
+      const last=this.connected.keys.lastActiveUse(id);
+      if(last===null)return 'resident';
+      if(!Number.isSafeInteger(last)||last<0||last>now)return 'unknown';
+      return now-last<CONNECTED_MS?'connected':'resident';
+    }catch{return 'unknown';}
   }
   // Private auth RPCs. Login tokens stay in memory; explicit claim tokens are stored only as private ciphertext, never in world commits.
   legacyProfileGet(owner:LegacyOwnerProof){return this.legacyProfile.get(owner);}

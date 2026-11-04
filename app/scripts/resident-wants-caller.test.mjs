@@ -41,3 +41,4 @@ test('visitor turns queued during resident negotiation retain FIFO order for lat
  const second=await r.heartbeat(T+120_000);assert.equal(second.spotlight.muse,'00-jolly');assert.equal(second.spotlight.priority,true);
  assert.deepEqual(r.state().spotlight.visitorQueue,[]);assert.equal(x.calls(),1);
 });
+test('Life03 completion scheduler retains the actual model Task answer service and does not choose a second activity',async t=>{const x=fixture(t);const {r}=scheduled(x,{residentActions:{enabled:true,maxConcurrent:4},residentBudgetEnabled:true});await r.heartbeat(T);assert.equal(r.state().inbox.tasks[0].status,'completed');assert.equal(x.calls(),1);assert.equal(x.sql.exec('SELECT count(*) n FROM resident_wants_decisions').toArray()[0].n,1);assert.ok(r.events(0,1000).some(e=>e.kind==='trade_completed'&&e.data.decisionSource==='resident_model'));assert.equal(r.runLog.lastInput().input.residentActions.turns.some(v=>v.muse==='02-moss'),false);});

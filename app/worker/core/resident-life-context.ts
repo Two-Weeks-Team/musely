@@ -11,7 +11,7 @@ export type ResidentContext = {
   executedMemories: {id:string;at:number;subject:string;publicSummary:string;source:string;evidenceId:string}[];
 };
 export type ResidentContextPolicy = {
-  enabled:boolean; allowedPlaceIds:readonly string[];
+  enabled:boolean; includeOperatingResidents?:boolean; allowedPlaceIds:readonly string[];
   ownershipKind:(id:string)=>ResidentOwnershipKind;
 };
 
@@ -22,7 +22,7 @@ export type ResidentContextPolicy = {
 export function residentContextForWorld(stored:{revision:number;state:LifeState}|null, world:WorldState,
   muse:string, now:number, policy:ResidentContextPolicy|undefined):ResidentContext|null {
   if(!stored || policy?.enabled!==true || !Number.isSafeInteger(stored.revision) || stored.revision<0
-    || !Number.isFinite(now) || now<0 || !knownResident(muse,policy.ownershipKind)
+    || !Number.isFinite(now) || now<0 || !knownResident(muse,policy.ownershipKind,policy.includeOperatingResidents)
     || !world.muses.some(m=>m.id===muse) || world.paused?.[muse] || isRuntimeControlled(world,muse,now)) return null;
   const resident=restoreLife(saveLife(stored.state)).residents.find(r=>r.id===muse);
   if(!resident)return null;
