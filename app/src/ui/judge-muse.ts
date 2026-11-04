@@ -1,0 +1,37 @@
+import {judgeMuseAccess,type createJudgeMuseAccess} from './judge-muse-access.ts';
+import {mountSocialStatus} from './social-status.ts';
+import {uiText,inventoryText} from './i18n.ts';
+type Greeting={id:string;at:number;from:string;kind:'greet'|'encounter_reply';line:string;source:'live'|'rule'|'scripted'|'replay'};
+type Proposal={id:string;kind:'trade'|'meetup'|'help';from:string;status:'pending'|'completed'|'rejected'|'expired'|'failed'|'cancelled';createdAt:number;deadline:number;offer:{give:string;want:string}|null};
+type Notice={id:string;kind:'meetup_candidate'|'trade_completed'|'blocked';at:number;line:string;other:string|null;ref:string|null};
+const exact=(x:unknown,keys:string[]):x is Record<string,unknown>=>!!x&&typeof x==='object'&&!Array.isArray(x)&&Object.keys(x).sort().join(',')===[...keys].sort().join(',');
+const text=(v:unknown):v is string=>typeof v==='string';const ms=(v:unknown)=>Number.isSafeInteger(v)&&Number(v)>=0;
+export function parseJudgeInbox(v:unknown):{greetings:Greeting[];proposals:Proposal[]}|null {
+ if(!exact(v,['muse','greetings','proposals','limit'])||v.muse!=='10-judge'||v.limit!==50||!Array.isArray(v.greetings)||!Array.isArray(v.proposals)||v.greetings.length>50||v.proposals.length>50)return null;
+ if(!v.greetings.every(g=>exact(g,['id','at','from','kind','line','source'])&&text(g.id)&&ms(g.at)&&text(g.from)&&['greet','encounter_reply'].includes(String(g.kind))&&text(g.line)&&['live','rule','scripted','replay'].includes(String(g.source))))return null;
+ if(!v.proposals.every(p=>exact(p,['id','kind','from','status','createdAt','deadline','offer'])&&text(p.id)&&['trade','meetup','help'].includes(String(p.kind))&&text(p.from)&&['pending','completed','rejected','expired','failed','cancelled'].includes(String(p.status))&&ms(p.createdAt)&&ms(p.deadline)&&(p.offer===null||exact(p.offer,['give','want'])&&text(p.offer.give)&&text(p.offer.want))))return null;
+ return{greetings:v.greetings as Greeting[],proposals:v.proposals as Proposal[]};
+}
+export function parseJudgeNotifications(v:unknown):Notice[]|null {
+ if(!exact(v,['muse','notifications','limit'])||v.muse!=='10-judge'||v.limit!==50||!Array.isArray(v.notifications)||v.notifications.length>50||!v.notifications.every(n=>exact(n,['id','kind','at','line','other','ref'])&&text(n.id)&&['meetup_candidate','trade_completed','blocked'].includes(String(n.kind))&&ms(n.at)&&text(n.line)&&(n.other===null||text(n.other))&&(n.ref===null||text(n.ref))))return null;
+ return v.notifications as Notice[];
+}
+const el=<K extends keyof HTMLElementTagNameMap>(tag:K,text?:string)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
+/** Private, read-only received items and one explicit CAS status control; never issues keys or acts for the Muse. */
+export function mountJudgeMuse(host:HTMLElement,options:{access?:ReturnType<typeof createJudgeMuseAccess>;follow:()=>void;isActive?:()=>boolean;name?:(id:string)=>string}) {
+ const access=options.access??judgeMuseAccess,root=el('section');root.className='judge-muse-view';host.append(root);let disposed=false,visible=true,generation=0,social:ReturnType<typeof mountSocialStatus>|null=null;
+ const eligible=()=>!disposed&&visible&&access.active()&&(options.isActive?.()??true);
+ const name=(id:string)=>options.name?.(id)??id;
+ async function load(received:HTMLElement){const mine=++generation;if(!eligible())return;received.textContent=uiText('받은 소식을 확인하고 있어요. / Checking received updates…');const [a,b]=await Promise.all([access.fetch('/api/judge/inbox'),access.fetch('/api/judge/notifications')]);const [x,y]=await Promise.all([a.json().catch(()=>null),b.json().catch(()=>null)]);if(mine!==generation||!eligible())return;const inbox=a.ok?parseJudgeInbox(x):null,notes=b.ok?parseJudgeNotifications(y):null;received.replaceChildren();if(!inbox||!notes){received.append(el('p',uiText('소식을 확인하지 못했어요. 다시 확인해 주세요. / Could not read updates. Please check again.')));return;}
+  received.append(el('h4',uiText('받은 인사 / Received greetings')));for(const g of inbox.greetings){const p=el('p');p.append(el('strong',name(g.from)+' · '),el('span',g.line),el('small',' · '+g.source.toUpperCase()));received.append(p);}if(!inbox.greetings.length)received.append(el('p',uiText('아직 받은 인사가 없어요. / No received greetings yet.')));
+  received.append(el('h4',uiText('받은 제안 / Received proposals')));for(const p of inbox.proposals)received.append(el('p',name(p.from)+' · '+({trade:uiText('거래 / Trade'),meetup:uiText('만남 / Meetup'),help:uiText('도움 / Help')}[p.kind])+' · '+({pending:uiText('대기 중 / Pending'),completed:uiText('완료 / Completed'),rejected:uiText('거절 / Rejected'),expired:uiText('만료 / Expired'),failed:uiText('실패 / Failed'),cancelled:uiText('취소 / Cancelled')}[p.status])+(p.offer?' · '+inventoryText([p.offer.give])+' → '+inventoryText([p.offer.want]):'')));if(!inbox.proposals.length)received.append(el('p',uiText('아직 받은 제안이 없어요. / No received proposals yet.')));
+  received.append(el('h4',uiText('알림 / Notifications')));for(const n of notes)received.append(el('p',({meetup_candidate:uiText('만남 제안이 기다리고 있어요. / A meetup proposal is waiting.'),trade_completed:uiText('거래가 완료됐어요. / A trade completed.'),blocked:uiText('요청이 거절됐어요. / A request was blocked.')}[n.kind])));if(!notes.length)received.append(el('p',uiText('아직 알림이 없어요. / No notifications yet.')));
+ }
+ function render(){if(disposed)return;generation++;social?.dispose();social=null;root.replaceChildren();const state=access.state();root.hidden=!visible;root.dataset.state=state.phase;root.append(el('h2',state.account?uiText('내 Muse (심사용 계정) / Your Muse (judge account)'):uiText('심사용 Muse / Judge Muse')),el('p',uiText('심사용 계정 · 팀이 제공 / Judge account · provided by the team')));
+  if(!state.account){root.append(el('p',state.phase==='loading'?uiText('심사용 Muse를 확인하고 있어요. / Checking the judge Muse…'):uiText('심사용 Muse를 사용할 수 없어요. 계속 관람할 수 있어요. / The judge Muse is unavailable. You can keep watching.')));const retry=el('button',uiText('다시 확인 / Check again'));retry.type='button';retry.className='secondary';retry.disabled=state.phase==='loading';retry.onclick=()=>void access.refresh();root.append(retry);return;}
+  root.append(el('h3',state.account.displayName));const follow=el('button',uiText('내 Muse 따라가기 / Follow my Muse'));follow.type='button';follow.className='primary';follow.dataset.action='judge-follow';follow.disabled=!eligible();follow.onclick=()=>{if(eligible())options.follow();};root.append(follow);
+  const status=el('div');root.append(status);social=mountSocialStatus(status,{fetcher:access.fetch,endpoint:()=>'/api/judge/social-status',onSessionLost:()=>access.clear()});social.setVisible(eligible());void social.syncOwner({authenticated:eligible(),muse:eligible()?'10-judge':null});
+  const updates=el('div');updates.className='judge-received';const refresh=el('button',uiText('받은 소식 다시 확인 / Refresh received updates'));refresh.type='button';refresh.className='secondary';refresh.dataset.action='judge-refresh';refresh.disabled=!eligible();refresh.onclick=()=>void load(updates);root.append(refresh,updates);if(eligible())void load(updates);
+ }
+ const stop=access.subscribe(render);render();return{refresh:render,setVisible(value:boolean){if(value===visible)return;visible=value;render();},dispose(){if(disposed)return;disposed=true;generation++;stop();social?.dispose();root.remove();}};
+}

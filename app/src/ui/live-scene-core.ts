@@ -25,7 +25,7 @@ export type LiveWorld = {worldId: string; day: string; tick: number; version?: n
 export type LiveEvent = {id: string; seq?: number; tick?: number; at: number; source?: string; kind: string; muse: string | null; other?: string | null; place?: string | null; line?: string | null; data?: any};
 
 // ---------- Who owns which Muse (worker/core/owner-session.ts PRINCIPALS; a test keeps the two equal) ----------
-export type OwnerKind = 'owner' | 'reviewer' | 'demo-peer' | 'resident' | 'personal' | 'unknown';
+export type OwnerKind = 'owner' | 'reviewer' | 'demo-peer' | 'resident' | 'personal' | 'judge' | 'unknown';
 export const OWNERSHIP: Readonly<Record<string, {kind: OwnerKind; label: string}>> = {
   [OWNER_MUSE]: {kind: 'owner', label: "Kim Sejun's Muse · owner"},
   '04-ember': {kind: 'reviewer', label: 'Reviewer Muse · directory review'},
@@ -33,6 +33,7 @@ export const OWNERSHIP: Readonly<Record<string, {kind: OwnerKind; label: string}
 };
 export const ownerOf = (id: string, muse?: LiveMuse) => {
   const owner=Object.hasOwn(OWNERSHIP,id)?OWNERSHIP[id]:undefined,p=muse?resolveMuse(muse):null;
+  if(p?.kind==='judge')return {kind:'judge' as const,label:p.role};
   if(p?.kind==='personal')return {kind:owner?.kind??'personal' as OwnerKind,label:'Personal Muse'+(owner?' · '+owner.kind:'')};
   return owner??(hasActorHarness(id)&&p?.kind!=='unknown'?{kind:'resident' as const,label:'Resident Muse'}:{kind:'unknown' as const,label:'Profile unavailable'});
 };
@@ -96,7 +97,7 @@ const overflowCache = new Map<string, ReadonlyMap<string, Slot>>();
  * Existing ten slots remain untouched. Exhaustion fails closed instead of putting an actor in furniture.
  */
 function extraSlots(participants: readonly LiveMuse[], placeId: string, museId: string): ReadonlyMap<string, Slot> {
-  const actors = [...new Map(participants.filter(m => !LEGACY_IDS.has(m.id) && ['personal', 'resident'].includes(resolveMuse(m).kind)).map(m => [m.id, m])).values()]
+  const actors = [...new Map(participants.filter(m => !LEGACY_IDS.has(m.id) && ['personal', 'resident', 'judge'].includes(resolveMuse(m).kind)).map(m => [m.id, m])).values()]
     .sort((a, b) => Number(resolveMuse(b).kind === 'resident') - Number(resolveMuse(a).kind === 'resident') || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   const targets = actors.map(m => ({id: m.id, place: m.id === museId ? placeId : m.place}));
   const key = JSON.stringify(targets), cached = overflowCache.get(key); if (cached) return cached;
@@ -267,7 +268,7 @@ export type Pose = {x: number; z: number; yaw: number; moving: boolean; progress
 /** Where the Muse is now: its slot at its place, or on the straight line between the two slots of its trip (server ETA). */
 export function musePose(v: LiveMuse, now: number, participants: readonly LiveMuse[] = [v]): Pose | null {
   if(resolveMuse(v).kind==='unknown')return null;
-  if(resolveMuse(v).kind==='resident'&&typeof v.residentFrozenAt==='number')now=v.residentFrozenAt;
+  if(['resident','judge'].includes(resolveMuse(v).kind)&&typeof v.residentFrozenAt==='number')now=v.residentFrozenAt;
   const a = slotAt(v.place, v.id, participants); if (!a) return null;
   if (!v.travel) return {...a, moving: false, progress: 0, travelled: 0, speed: null};
   const b = slotAt(v.travel.to, v.id, participants) ?? a;
@@ -298,7 +299,7 @@ const placeName = (id: string) => PLACE_BY_ID.get(id)?.name ?? id;
 const humanize = (s: string) => s.replace(/_/g, ' ');
 
 function baseFrame(v: LiveMuse, now: number, participants: readonly LiveMuse[]): ActorFrame | null {
-  const frozen=resolveMuse(v).kind==='resident'&&typeof v.residentFrozenAt==='number';
+  const frozen=['resident','judge'].includes(resolveMuse(v).kind)&&typeof v.residentFrozenAt==='number';
   if(frozen)now=v.residentFrozenAt!;
   const p = musePose(v, now, participants); if (!p) return null;
   const f: ActorFrame = {id: v.id, x: p.x, z: p.z, yaw: p.yaw, clip: 'idle_breathe', actionTime: now / 1000, upper: null, upperTime: 0, carry: null, card: null, seated: false, moving: p.moving,
@@ -329,7 +330,7 @@ export function liveFrames(world: LiveWorld, cues: readonly Cue[], now: number):
   const frames = new Map<string, ActorFrame>();
   for (const v of world.muses) { const f = baseFrame(v, now, world.muses); if (f) frames.set(v.id, f); }
   const homes = new Map([...frames].map(([id, f]) => [id, {x: f.x, z: f.z, yaw: f.yaw}]));
-  const frozenIds = new Set(world.muses.filter(v => resolveMuse(v).kind === 'resident' && typeof v.residentFrozenAt === 'number').map(v => v.id));
+  const frozenIds = new Set(world.muses.filter(v => ['resident','judge'].includes(resolveMuse(v).kind) && typeof v.residentFrozenAt === 'number').map(v => v.id));
   const active = cues.filter(c => c.start <= now && now < c.end && !frozenIds.has(c.muse));
   for (const c of active) {
     const f = frames.get(c.muse); if (!f || f.travel) continue; // a travelling Muse plays no cue; the feed still shows the event

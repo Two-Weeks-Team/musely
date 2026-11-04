@@ -1,4 +1,6 @@
 import {isAppearance,normalizeAppearance,appearanceLook,appearanceKey,type AppearanceId} from '../character-kit/appearance.ts';
+import {appearanceIconMark} from './appearance-icon.ts';
+import {resolveAppearance} from '../character-kit/appearance.ts';
 import {apiFetcher} from './api-fetch.ts';
 import {uiText,catalogText,inventoryText,activityStatus} from './i18n.ts';
 // Profile preparation only: never proves world entry and is not mounted by the live door yet.
@@ -7,7 +9,7 @@ import type {ActorProfile} from '../identity/participant.ts';
 
 export type PersonalEntryPhase = 'observer' | 'authenticated' | 'pending' | 'registered' | 'error';
 export type PersonalEntryState = {phase: PersonalEntryPhase; authenticated: boolean | null; profile: ActorProfile | null; busy: boolean; joined: false};
-export type PersonalEntryOptions = {authResult?: string;onWatch?:()=>void;connectionManaged?: boolean; onState?: (state: PersonalEntryState) => void; fetcher?: typeof fetch; navigate?: (url: string) => void | Promise<void>; newOperationId?: () => string; now?: () => number};
+export type PersonalEntryOptions = {advancedContent?:HTMLElement;authResult?: string;onWatch?:()=>void;connectionManaged?: boolean; onState?: (state: PersonalEntryState) => void; fetcher?: typeof fetch; navigate?: (url: string) => void | Promise<void>; newOperationId?: () => string; now?: () => number};
 // Only classify presence: provider query values never become UI text or diagnostics.
 export function personalAuthResult(query?:URLSearchParams):string|undefined {
  if(query?.has('error')||query?.has('error_reason'))return 'failed';
@@ -50,7 +52,7 @@ export function mountPersonalEntry(host: HTMLElement, options: PersonalEntryOpti
  const now = options.now ?? Date.now, operationId = options.newOperationId ?? (() => crypto.randomUUID());
  const root = document.createElement('section'); root.className = 'personal-entry'; host.append(root);
  let phase: PersonalEntryPhase = 'pending', authenticated: boolean | null = null, profile: ActorProfile | null = null, expiresAt = 0;
- let logoutPending = false, externalBusy = false;
+ let logoutPending = false, externalBusy = false,managementOpen=false;
  let busy = false, disposed = false, generation = 0, controller: AbortController | null = null, actorBinding: string | null = null, needsRefresh = false;
  let message = uiText('Checking your profile…'), draft = {displayName: '', appearanceId: MUSE_VARIANTS[0].id as AppearanceId};
  let pendingDraft: {intent: string; operationId: string} | null = null;
@@ -158,11 +160,11 @@ export function mountPersonalEntry(host: HTMLElement, options: PersonalEntryOpti
    notice.setAttribute('role', 'alert'); root.append(notice);
    const watch=element('button',uiText('계속 둘러보기 / Keep watching'));watch.type='button';watch.className='link-button';watch.dataset.action='watch';watch.onclick=()=>options.onWatch?.();root.append(watch);
   }
-  const detail=element('details');detail.className='entry-advanced';detail.append(element('summary',uiText('이름·모습·로그인 관리 / Manage name, appearance and sign-in')));
+  const detail=element('details');detail.className='entry-advanced';detail.open=managementOpen;detail.ontoggle=()=>{managementOpen=detail.open;};detail.append(element('summary',uiText('이름·모습·로그인 관리 / Manage name, appearance and sign-in')));
   const normal=profile?(options.connectionManaged?uiText('이름과 모습이 준비됐어요. 연결과 입장은 아래에서 확인해 주세요. / Your name and appearance are ready. Check connection and entry below.'):uiText('이름과 모습이 준비됐어요. 아직 세계 입장 완료는 아니에요. / Your name and appearance are ready. Your Muse has not entered the world yet.')):uiText('내 Muse의 공개 이름과 모습을 골라 주세요. 관람은 로그인 없이도 할 수 있어요. / Choose your Muse’s name and appearance. You can keep watching without signing in.');
   const status = element('p', message||normal); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); root.append(status);
   const button = (action: string, text: string, fn: () => Promise<void>) => { const b = element('button', text); b.type = 'button'; b.className = 'secondary'; b.dataset.action = action; b.disabled = busy || externalBusy; b.onclick = fn; return b; };
-  if (profile && authenticated) root.append(element('p', profile.displayName));
+  if(profile&&authenticated){const summary=element('p'),icon=element('span'),style=resolveAppearance(profile.appearanceId);summary.className='personal-profile-summary';icon.className='muse-icon';icon.setAttribute('aria-hidden','true');icon.setAttribute('style',`--muse:${style.bodyHex};--muse-accent:${style.accentHex}`);icon.append(element('i'));if(style.deco!=='none'){const mark=element('span',appearanceIconMark(style.deco));mark.className='cosmetic-deco';icon.append(mark);}summary.append(icon,element('span',profile.displayName));root.append(summary);}
   if (authenticated === false) {const beta=element('p',uiText('베타: 초대받은 분만 로그인할 수 있어요. 관람은 누구나 바로 할 수 있어요. / Beta: sign-in is open to invited testers. Watching is open to everyone.'));beta.className='muted personal-beta-notice';root.append(beta);const b=button('login',uiText('Threads로 로그인 / Sign in with Threads'),login);b.className='primary';root.append(b);}
   if (authenticated === true && !needsRefresh) {
    const f = element('form'), label = element('label', uiText('공개할 Muse 이름 / Public Muse name')), input = element('input'); input.type = 'text'; input.name = 'displayName'; input.value = draft.displayName; input.maxLength = 80; input.disabled = busy || externalBusy; input.setAttribute('aria-label', uiText('공개할 Muse 이름 / Public Muse name')); label.append(input);
@@ -175,6 +177,7 @@ export function mountPersonalEntry(host: HTMLElement, options: PersonalEntryOpti
   const refreshButton=button('refresh',uiText('다시 확인 / Check again'),refresh);refreshButton.disabled=logoutPending||externalBusy;
   if(needsRefresh||authenticated===null&&phase==='error'){refreshButton.className='primary';root.append(refreshButton);}else detail.append(refreshButton);
   if (authenticated === true) detail.append(button('logout', uiText('로그아웃 / Sign out'), logout));
+  if(options.advancedContent)detail.append(options.advancedContent);
   root.append(detail);
   try { options.onState?.(state()); } catch {}
  }

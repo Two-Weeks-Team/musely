@@ -6,6 +6,10 @@ import {mountPersonalConnection,type EntryProjection} from './personal-connectio
 import {mountPersonalClaim} from './personal-claim.ts';
 import {mountPersonalAdoption} from './personal-adoption.ts';
 import {mountSocialStatus} from './social-status.ts';
+import {judgeMuseAccess} from './judge-muse-access.ts';
+import {mountJudgeMuse} from './judge-muse.ts';
+import {isolation} from './isolation.ts';
+import {resolveMuse} from './personal-profile.ts';
 import {personalOwnerAccess} from './personal-owner.ts';
 import {HARNESSES, SCOPES, SCOPE_LABELS, type Harness, type ScopeLevel} from '../engine/harness';
 
@@ -49,7 +53,7 @@ export const firstSteps = (h: Harness): string[] => [
   uiText`Looks for ${h.wants.items.map(i => i.replace(/_/g, ' ')).join(uiText(' or '))}: ${h.wants.goal.charAt(0).toLowerCase() + h.wants.goal.slice(1)}`,
 ];
 
-export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchParams; getWorldId?:()=>string|null; onPersonalEntry?:(entry:EntryProjection)=>void; personal?:PersonalEntryOptions & {clipboard?:{writeText:(value:string)=>Promise<void>}}}) {
+export function mountOnboarding(opts: {onJudgeFollow?:()=>void;onWatch: () => void; initial?: URLSearchParams; getWorldId?:()=>string|null; onPersonalEntry?:(entry:EntryProjection)=>void; personal?:PersonalEntryOptions & {clipboard?:{writeText:(value:string)=>Promise<void>}}}) {
   const preview = opts.initial?.get('entryPreview') === '1';
   const personalFetch = opts.personal?.fetcher ?? personalOwnerAccess.fetch;
   const state: EntryState = {path: null, view: 'choose', open: false, viewing: null, trial: null, lastTrial: null, connect: 'unconnected', connectStep: 0, entries: 0, ownerClaim: 'none', liveTradeAllowed: false, liveWrites: 0};
@@ -79,7 +83,9 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
 
   let personal: {profile:ReturnType<typeof mountPersonalEntry>; connection:ReturnType<typeof mountPersonalConnection>; claim:ReturnType<typeof mountPersonalClaim>;adoption:ReturnType<typeof mountPersonalAdoption>;social:ReturnType<typeof mountSocialStatus>;apply:()=>void} | null = null;
   const stopOwnerSession = personalOwnerAccess.subscribe(reason=>{if(['logout','http401','expired'].includes(reason))personal?.profile.markSessionLost();if(reason==='logout'||reason==='logout_settled')personal?.profile.setExternalBusy(personalOwnerAccess.isLoggingOut());});
-  let personalEntry:EntryProjection|null=null,disposed=false;
+  let personalEntry:EntryProjection|null=null,disposed=false;let judgeView:ReturnType<typeof mountJudgeMuse>|null=null;
+  const disposePersonal=()=>{personal?.social.dispose();personal?.adoption.dispose();personal?.claim.dispose();personal?.connection.dispose();personal?.profile.dispose();personal=null;personalEntry=null;};
+  let judgeDoorShown=false;const stopJudge=judgeMuseAccess.subscribe(()=>{if(disposed)return;const judge=judgeMuseAccess.state();if(judge.mode&&personal)disposePersonal();updateChip();if(judge.mode&&judge.account&&!judgeDoorShown){judgeDoorShown=true;open('connect');}else if(state.open)render();});
   let timer = 0;
   const stopTimer = () => { if (timer) clearInterval(timer); timer = 0; };
   // The three paths are exclusive. Leaving a running connection always ends it as cancelled (never a frozen
@@ -90,6 +96,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
 
   function updateChip() {
     chip.setAttribute('aria-expanded', String(state.open));
+    if(!preview&&judgeMuseAccess.state().mode){const active=judgeMuseAccess.active();chipText.textContent=active?uiText('내 Muse (심사용 계정) / Your Muse (judge account)'):judgeMuseAccess.state().phase==='loading'?uiText('심사용 Muse 확인 중 / Checking judge Muse'):uiText('심사용 Muse 사용 불가 / Judge Muse unavailable');chip.setAttribute('aria-label',chipText.textContent);chip.title=uiText('심사용 계정 · 팀이 제공 / Judge account · provided by the team');chip.dataset.joinState=active?'judge':'viewing';chip.dataset.invitation=active?'complete':'active';return;}
     if (!preview) { const joined=personalEntry?.state==='joined';chipText.textContent=joined?uiText('내 Muse / Your Muse'):uiText('내 Muse 데려오기 / Bring your Muse');chip.setAttribute('aria-label',joined?uiText('Your Muse is in Musely'):uiText('Bring your Muse into Musely'));chip.title=joined?uiText('Your Muse is in Musely'):uiText('Bring your Muse');chip.dataset.joinState=personalEntry?.state??'viewing';chip.dataset.invitation=joined?'complete':'active';return; }
     const t = harness(state.trial);
     chipText.textContent = state.path === 'watch' ? uiText('Watching') : state.path === 'trial' && t ? uiText`Trial · ${t.name} · local` : state.path === 'connect' ? uiText`Connect · ${state.connect === 'connected_staged' ? 'staged' : state.connect.replace('_', ' ')}` : uiText('Enter');
@@ -111,7 +118,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
     panel.querySelector<HTMLButtonElement>('.close')?.focus();
   }
   function close() {
-    if(disposed)return;state.open=false;personal?.adoption.setVisible(false);personal?.apply();
+    if(disposed)return;state.open=false;judgeView?.setVisible(false);personal?.adoption.setVisible(false);personal?.apply();
     // Closing the panel mid-connection cancels the staged connection; nothing else changes.
     cancelConnect();
     state.open = false; panel.hidePopover(); updateChip(); chip.focus();
@@ -119,6 +126,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   function go(view: View) { state.view = view; render(); }
 
   function setupView() {
+    if(judgeMuseAccess.state().mode){judgeView=mountJudgeMuse(body,{follow:()=>{close();opts.onJudgeFollow?.();},name:id=>resolveMuse({id}).name,isActive:()=>state.open&&!isolation.replay});body.append(button(uiText('계속 둘러보기 / Keep watching'),'link-button',()=>{close();opts.onWatch();}));return;}
     body.append(el('span','eyebrow',uiText('YOUR MUSE · YOUR CHOICE')),el('h2','',uiText('내 Muse를 세계로 데려오세요 / Bring your Muse into the world')),
       el('p','world-sub',uiText('보던 세계는 그대로예요. 이름과 모습을 정하고 내 Muse를 연결해 보세요. / Keep watching while you prepare your own Muse. Sign-in and permissions are your choice.')));
     const adoptionHost=el('div','entry-legacy-muse'),profileHost=el('div','entry-profile'),claimHost=el('div','entry-account-claim'),connectionHost=el('div','entry-connection');body.append(adoptionHost,profileHost,claimHost,connectionHost);
@@ -143,8 +151,8 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
         if(!available){socialExpanded=false;socialDetails.open=false;}socialDetails.hidden=!available;
         const block=blocked(),form=profileHost.querySelector('form');
         const hide=(node:HTMLElement,value:boolean)=>{node.hidden=value;if(node.style)node.style.display=value?'none':'';};
-        if(form)hide(form,block||socialExpanded);hide(help,block||socialExpanded);hide(adoptionHost,socialExpanded);hide(claimHost,block||socialExpanded);hide(connectionHost,block||socialExpanded||!!claim?.isExpanded());
-        const showClaim=state.open&&!block&&!socialExpanded,showConnection=state.open&&!block&&!socialExpanded&&!claim?.isExpanded();
+        if(form)hide(form,block||socialExpanded);hide(help,block||socialExpanded);hide(adoptionHost,socialExpanded);hide(claimHost,block||socialExpanded);hide(connectionHost,block||socialExpanded);
+        const showClaim=state.open&&!block&&!socialExpanded,showConnection=state.open&&!block&&!socialExpanded;
         if(claim&&claimVisible!==showClaim){claimVisible=showClaim;claim.setVisible(showClaim);}
         if(connection&&connectionVisible!==showConnection){connectionVisible=showConnection;connection.setVisible(showConnection);}
         const current=block||socialExpanded?{authenticated:null,profile:null,busy:true}:latest;
@@ -153,7 +161,7 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
         social?.setVisible(available&&socialExpanded);
       }finally{applying=false;}maybeStudio();
     }
-    const p=mountPersonalEntry(profileHost,{...opts.personal,fetcher:personalFetch,connectionManaged:true,authResult:personalAuthResult(opts.initial),onWatch:()=>{state.path='watch';close();opts.onWatch();},onState:s=>{latest=s;personalOwnerAccess.syncPersonal(s);void adoption?.syncProfile(s);applyFlow();}});
+    const p=mountPersonalEntry(profileHost,{...opts.personal,advancedContent:claimHost,fetcher:personalFetch,connectionManaged:true,authResult:personalAuthResult(opts.initial),onWatch:()=>{state.path='watch';close();opts.onWatch();},onState:s=>{latest=s;personalOwnerAccess.syncPersonal(s);void adoption?.syncProfile(s);applyFlow();}});
     connection=mountPersonalConnection(connectionHost,{fetcher:personalFetch,newOperationId:opts.personal?.newOperationId,now:opts.personal?.now,clipboard:opts.personal?.clipboard,getWorldId:opts.getWorldId,
       onWatch:()=>{state.path='watch';close();opts.onWatch();},onWriteBusy:value=>{connectionBusy=value;p.setExternalBusy(connectionBusy||claimBusy||adoptionBusy||socialBusy||personalOwnerAccess.isLoggingOut());claim?.setExternalBusy(value||adoptionBusy);adoption?.setExternalBusy(value||claimBusy);},onSessionLost:()=>p.markSessionLost(),onEntry:entry=>{if(disposed||blocked()||socialExpanded)return;personalEntry=structuredClone(entry);updateChip();applyFlow();try{opts.onPersonalEntry?.(structuredClone(entry));}catch{}}});
     claim=mountPersonalClaim(claimHost,{autoExpand:opts.initial?.get('personal')!=='prepared',fetcher:personalFetch,navigate:opts.personal?.navigate,clipboard:opts.personal?.clipboard,
@@ -274,7 +282,8 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   }
 
   function render() {
-    if(!preview&&personal)return;
+    if(!preview&&personal&&!judgeMuseAccess.state().mode)return;
+    judgeView?.dispose();judgeView=null;
     body.replaceChildren();
     panel.dataset.view = state.view;
     if (!preview) setupView();
@@ -286,12 +295,13 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
 
   chip.onclick = () => panel.matches(':popover-open') ? close() : open();
   const onKey=(event:KeyboardEvent)=>{if(event.key==='Escape'&&state.open){event.preventDefault();close();}};document.addEventListener('keydown',onKey);
-  const onToggle=(event:Event)=>{ if ((event as ToggleEvent).newState === 'closed' && state.open) { cancelConnect(); state.open = false; updateChip(); chip.focus();personal?.adoption.setVisible(false);personal?.apply(); } };panel.addEventListener('toggle',onToggle);
+  const onToggle=(event:Event)=>{ if ((event as ToggleEvent).newState === 'closed' && state.open) { cancelConnect(); state.open = false; updateChip(); chip.focus();judgeView?.setVisible(false);personal?.adoption.setVisible(false);personal?.apply(); } };panel.addEventListener('toggle',onToggle);
   const enter=document.getElementById('enter'),onEnter=()=>open('choose');enter?.addEventListener('click',onEnter);
   updateChip();
 
   // ?entry=choose|watch|trial|connect (&harness=09-copper) opens a path directly, for walkthrough recordings.
   const entry = preview ? opts.initial?.get('entry') : null;
+  if(!preview&&judgeMuseAccess.state().mode){judgeDoorShown=judgeMuseAccess.active();open('connect');}
   if(!preview&&(['failed','declined','authenticated'].includes(personalAuthResult(opts.initial)??'')||opts.initial?.get('personal')==='prepared'))open('connect');
   if(!preview&&['claimed','failed','declined','not_found'].includes(opts.initial?.get('personalClaim')??''))open('connect');
   if (entry === 'trial') { const h = harness(opts.initial!.get('harness')); state.viewing = h?.id ?? null; open(h ? 'trial-card' : 'trial-pick'); }
@@ -299,5 +309,5 @@ export function mountOnboarding(opts: {onWatch: () => void; initial?: URLSearchP
   else if (entry === 'choose') open('choose');
   else if (entry === 'watch') { state.path = 'watch'; updateChip(); opts.onWatch(); }
 
-  return {state,open,close,personalMuseId(){const s=personal?.profile.state();return s?.authenticated===true?s.profile?.actorId??null:null;},dispose(){if(disposed)return;disposed=true;stopOwnerSession();stopTimer();personal?.social.dispose();personal?.adoption.dispose();personal?.claim.dispose();personal?.connection.dispose();personal?.profile.dispose();document.removeEventListener('keydown',onKey);panel.removeEventListener('toggle',onToggle);enter?.removeEventListener('click',onEnter);chip.remove();panel.remove();}};
+  return {state,open,close,personalMuseId(){if(judgeMuseAccess.state().mode)return judgeMuseAccess.active()?'10-judge':null;const s=personal?.profile.state();return s?.authenticated===true?s.profile?.actorId??null:null;},dispose(){if(disposed)return;disposed=true;stopOwnerSession();stopJudge();judgeView?.dispose();stopTimer();disposePersonal();document.removeEventListener('keydown',onKey);panel.removeEventListener('toggle',onToggle);enter?.removeEventListener('click',onEnter);chip.remove();panel.remove();}};
 }
