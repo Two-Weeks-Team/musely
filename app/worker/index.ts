@@ -118,7 +118,7 @@ async function api(request: Request, env: Env, url: URL): Promise<Response> {
     const requester = (await hashIp(env.SESSION_SECRET ?? 'unset', 'spotlight:' + session.sid)).slice(0, 16);
     const r = await world(env).requestSpotlight(body.muse, session.tier, requester);
     if (r.ok) return json({queued: true, muse: r.muse, position: r.position, already: r.already});
-    return json({error: r.reason}, r.reason === 'paused' ? 409 : r.reason === 'unknown_muse' ? 400 : 429);
+    return json({error: r.reason}, r.reason === 'paused' || r.reason === 'self_directed' ? 409 : r.reason === 'model_unavailable' ? 503 : r.reason === 'unknown_muse' ? 400 : 429);
   }
   // Highlights, one page at a time: `before` (cursor: the seq of the last row of the previous page) and the period `from`/`to` (ms).
   // A value that is not a non-negative integer, or from >= to, is a 400 (never silently ignored).
