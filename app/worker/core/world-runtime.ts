@@ -307,7 +307,7 @@ export class WorldRuntime {
       const committedIdle=this.residentIdleIds(freshLife?.state,current,now);
       const {state, events} = tick(current, {now, decision: usable, replies, spot: turn, residentMove:appliedMove,residentIdle:committedIdle,residentFrozen:this.frozenResidents(current),residentGoalIdle:committedGoalIdle}, canMeet ? {...this.engineHooks(), canMeet: this.dedupMeetings(canMeet)} : this.engineHooks());
       if(this.lifeStore && freshLife && this.opts.residentLife?.enabled===true){
-        let lifeNext=rememberCommittedResidentEvents(freshLife.state,state,events,now,id=>knownResident(id,this.opts.residentLife!.ownershipKind));
+        let lifeNext=rememberCommittedResidentEvents(freshLife.state,state,events,now,id=>knownResident(id,this.opts.residentLife!.ownershipKind),current);
         if(acceptedLife)lifeNext=noteServed(lifeNext,acceptedLife.residentId,now);
         this.lifeStore.saveInTransaction(this.worldId,freshLife.revision,lifeNext);
       }
@@ -580,7 +580,7 @@ export class WorldRuntime {
     // External signed/public commands contribute only factual receipts, in this same rollback boundary.
     if(this.lifeStore&&this.opts.residentLife?.enabled===true&&out.length){
       const life=this.lifeStore.load(this.worldId);
-      if(life){const next=rememberCommittedResidentEvents(life.state,s,out,now,id=>knownResident(id,this.opts.residentLife!.ownershipKind)&&!this.registryControls(id));
+      if(life){const next=rememberCommittedResidentEvents(life.state,s,out,now,id=>knownResident(id,this.opts.residentLife!.ownershipKind)&&!this.registryControls(id),JSON.parse(raw));
         if(saveLife(next)!==saveLife(life.state))this.lifeStore.saveInTransaction(this.worldId,life.revision,next);
       }
     }

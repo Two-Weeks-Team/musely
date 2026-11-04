@@ -9,6 +9,7 @@ import type {Trust} from './trust.ts';
 import type {Hooks} from '../../src/engine/world.ts';
 import {OWNER_MUSE} from '../../src/engine/world.ts';
 import {AgentKeys} from './agent-keys.ts';
+import type {CampfirePolicy} from './campfire-policy.ts';
 import {runTool, toolList, ownerView, InvalidParams, TOOLS, type ToolCtx} from './mcp-tools.ts';
 import {dispatch, type McpOutcome} from './mcp-server.ts';
 import {defaultOwner, nextOwnerLocation, ownerLabel, tagLocation, PRESETS} from '../../src/engine/location.ts';
@@ -19,6 +20,8 @@ import {purgeKeyData} from './data-retention.ts';
 import {decideApproval, ownerInbox, definedOwnerOf, type DecisionInput, type DecisionOutcome, type OwnerOf} from './tasks.ts';
 
 export type ConnectedDeps = {
+  /** Absent by default. Server configuration only; never inferred from tool arguments. */
+  campfires?:CampfirePolicy;
   personal?: PersonalWorld;
   sql: Sql; trust: Trust; runtime: WorldRuntime; hooks: Hooks; baseUrl: string;
   ownerRoot: () => JsonWebKey | null; ownerClaimed: () => boolean; now?: () => number;
@@ -154,7 +157,7 @@ export class ConnectedHost {
     // The Threads claim proves the real owner's Muse. The reviewer's Muse is a team-controlled resident whose Agent Card
     // already says owner_claimed (like every resident), so its own actions do not wait on the owner's claim. The real
     // claim value stays in ownerClaimed for Agent Cards and credential checks.
-    const ctx: ToolCtx = {trust: this.d.trust, runtime: this.d.runtime, hooks: this.d.hooks, ownerRoot: this.d.ownerRoot(), ownerClaimed: this.d.ownerClaimed(), ownerClaimedNow: () => this.d.ownerClaimed(), claimExempt: key.muse === REVIEWER_MUSE, baseUrl: this.d.baseUrl, key, now: () => this.now(), ownerOf: m => this.ownerOf(m), authorize: () => this.keys.byId(key.id)?.revokedAt === null ? null : 'agent_key_revoked'};
+    const ctx: ToolCtx = {campfires:()=>this.d.campfires,trust: this.d.trust, runtime: this.d.runtime, hooks: this.d.hooks, ownerRoot: this.d.ownerRoot(), ownerClaimed: this.d.ownerClaimed(), ownerClaimedNow: () => this.d.ownerClaimed(), claimExempt: key.muse === REVIEWER_MUSE, baseUrl: this.d.baseUrl, key, now: () => this.now(), ownerOf: m => this.ownerOf(m), authorize: () => this.keys.byId(key.id)?.revokedAt === null ? null : 'agent_key_revoked'};
     try {
       const out = await dispatch(method, params, {list:()=>toolList(this.d.runtime.state().muses.map(m=>m.id)), call: (n, a) => runTool(ctx, n, a), isInvalidParams: e => e instanceof InvalidParams});
       // A successful world action puts the Muse in the priority queue (deduplicated, 3 per hour); a revoked Muse never.
