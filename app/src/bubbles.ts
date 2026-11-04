@@ -1,3 +1,4 @@
+import {activityStatus} from './ui/i18n.ts';
 import type {Map as LibreMap} from 'maplibre-gl';
 import {conversationAt,hubStories,stateAt} from './story';
 import {PEOPLE} from './scene';
@@ -37,7 +38,7 @@ export function makeBubbles(map:LibreMap,headAt:(person:number)=>P){
   const turn=conversationAt(t),heads=PEOPLE.map((_,i)=>headAt(i));
   const hudReserved=cachedReserved;const protectedIds=[turn?.person,turn?.listener];const allHeads=heads.map((p,i)=>({person:i,x:p.x-13,y:p.y-2,w:26,h:30})).filter(p=>p.x>0&&p.x<innerWidth&&p.y>80&&p.y<innerHeight-50);cachedReserved=[...hudReserved,...allHeads.filter(p=>protectedIds.includes(p.person))];softHeads=allHeads.filter(p=>!protectedIds.includes(p.person));
   if(turn){const p=heads[turn.person];if(p.x>0&&p.x<innerWidth&&p.y>65&&p.y<innerHeight-90){speech.querySelector('span')!.textContent=PEOPLE[turn.person].name;speech.querySelector('span')!.style.color=PEOPLE[turn.person].color;speech.querySelector('p')!.textContent=turn.text;const box=show(speech,speechLine,p,placed,'speech',true);if(box)metrics.speech={person:turn.person,text:turn.text,...box};}}
-  const order=[turn?.listener??0,...PEOPLE.map((_,i)=>i)].filter((v,i,a)=>a.indexOf(v)===i);for(const i of order){if(i===turn?.person&&metrics.speech)continue;const p=heads[i];if(p.x<12||p.x>innerWidth-12||p.y<90||p.y>innerHeight-110)continue;const s=statuses[i];s.el.textContent=stateAt(i,t);const box=show(s.el,s.leader,p,placed,'status');if(box)metrics.statuses.push({person:i,state:s.el.textContent,...box});}
+  const order=[turn?.listener??0,...PEOPLE.map((_,i)=>i)].filter((v,i,a)=>a.indexOf(v)===i);for(const i of order){if(i===turn?.person&&metrics.speech)continue;const p=heads[i];if(p.x<12||p.x>innerWidth-12||p.y<90||p.y>innerHeight-110)continue;const s=statuses[i];s.el.textContent=activityStatus(stateAt(i,t));const box=show(s.el,s.leader,p,placed,'status');if(box)metrics.statuses.push({person:i,state:s.el.textContent,...box});}
   cachedReserved=hudReserved;
  }
  return {update,invalidate:()=>{reservedAt=0;},getMetrics:()=>metrics};
