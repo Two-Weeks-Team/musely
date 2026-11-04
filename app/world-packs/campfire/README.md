@@ -6,7 +6,7 @@ Related #131 / PR137. Default OFF, draft; scoped Mac functional checks are recor
 
 `makeWorld(..., sourceHeight, {enabled: true, distanceM: () => distanceInSceneMetres})` or `world.campfireVisual.enable({distanceM})` opts in. OFF fetches/parses no campfire asset. There is no customer-facing toggle and no guessed camera distance. The port requires a valid distance provider.
 
-The same-origin deferred asset is 120160 bytes at its SHA256-pinned URL. Build emission uses the existing asset pipeline; this is not an inline-base64 payload or a new deployment route. Fetch and response consumption have an eight-second abort bound. HTTP/hash/load failure keeps the original fire and permits retry. Optional loading does not block `makeWorld` startup.
+The same-origin deferred asset is 120160 bytes at its SHA256-pinned URL. Build emission uses the existing asset pipeline; this is not an inline-base64 payload or a new deployment route. Fetch and response consumption have a thirty-second abort bound. HTTP/hash/load failure keeps the original fire and permits retry. Optional loading does not block `makeWorld` startup.
 
 Only flames and sparks replace the existing `Fire` group. Existing batched stone ring, logs, benches, light and glow remain. Pack furniture is hidden, not laid on top of the original furniture. The replacement uses the existing Fire x/z and ground-centred Y-up metre coordinates with no second geographic transform. #130's map/roof overlap acceptance remains separate.
 
