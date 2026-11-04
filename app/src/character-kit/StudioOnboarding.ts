@@ -8,7 +8,7 @@ export function mountStudioOnboarding(options:{aside:HTMLElement;roster:HTMLElem
  const fetcher=apiFetcher(options.personal?.fetcher),navigate=options.navigate??(url=>location.assign(url));
  document.body.classList.add('onboarding-studio');for(const child of [...options.aside.children])if(!child.classList.contains('credit'))child.classList.add('studio-existing');
  const el=<K extends keyof HTMLElementTagNameMap>(tag:K,text?:string)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
- const root=el('section');root.className='studio-preparation';root.append(el('p',uiText('7단계 중 2단계 / Step 2 of 7')),el('h2',uiText('2 · 내 Muse 선택 / 2 · Choose your Muse')),el('p',uiText('이름과 외형을 저장한 뒤 Muse 앱에서 연결해 주세요. / Save a name and look, then connect in your Muse app.')));
+ const root=el('section');root.className='studio-preparation';root.append(el('p',uiText('7단계 중 2단계 / Step 2 of 7')),el('h1',uiText('2 · 내 Muse 선택 / 2 · Choose your Muse')),el('p',uiText('이름과 외형을 저장한 뒤 Muse 앱에서 연결해 주세요. / Save a name and look, then connect in your Muse app.')));
  const tabs=el('div');tabs.className='studio-tabs';tabs.setAttribute('role','tablist');const choices=el('div');choices.className='studio-choices';root.append(tabs,choices);
  let style:AppearanceSpec=defaultAppearance('00-jolly'),tab:'look'|'body'|'accent'|'deco'='look',selected=false,busy=false,legacyChecked=false,disposed=false,generation=0;
  const name=el('input');name.name='displayName';name.maxLength=80;name.setAttribute('aria-label',uiText('공개할 Muse 이름 / Public Muse name'));name.placeholder=uiText('공개할 Muse 이름 / Public Muse name');const label=el('label',uiText('공개할 Muse 이름 / Public Muse name'));label.append(name);

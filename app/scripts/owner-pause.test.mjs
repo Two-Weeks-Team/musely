@@ -33,7 +33,10 @@ test('only a current personal owner can control its own actor; Origin/query/body
  for(const body of[{paused:true,expectedRevision:0,muse:'00-jolly'},{paused:true,expectedRevision:0,actor:x.actor},{paused:'true',expectedRevision:0},{paused:true,expectedRevision:-1}])assert.equal((await x.go('PATCH',PATH,x.b.cookie,body)).status,400);
  for(const headers of[{origin:'https://evil.invalid'},{origin:''},{'sec-fetch-site':'cross-site'}])assert.equal((await x.go('PATCH',PATH,x.b.cookie,{paused:true,expectedRevision:0},headers)).status,403);
  assert.equal((await x.go('GET',PATH+'?muse=10-judge',x.b.cookie)).status,400);assert.equal((await x.go('PATCH',PATH,x.b.cookie,{paused:true,expectedRevision:0,padding:'x'.repeat(700)})).status,400);assert.equal(count(x,'owner_pause_controls'),0);
- const [a,b]=await Promise.all([x.pause(true,0),x.pause(false,0)]);assert.equal(a.status,200);assert.equal(b.status,409);assert.equal((await x.read()).body.revision,1);
+ const [a,b]=await Promise.all([x.pause(true,0),x.pause(false,0)]);assert.equal(a.status,200);assert.deepEqual(a.body,{muse:x.actor,paused:true,revision:1});
+ // The initial false no-op can linearize before true despite being submitted second.
+ if(b.status===200)assert.deepEqual(b.body,{muse:x.actor,paused:false,revision:0});else{assert.equal(b.status,409);assert.equal(b.body.error,'pause_conflict');}
+ const stale=await x.pause(false,0);assert.equal(stale.status,409);assert.equal(stale.body.error,'pause_conflict');assert.deepEqual((await x.read()).body,{muse:x.actor,paused:true,revision:1});
  await x.go('DELETE','/api/personal/session',x.b.cookie);assert.equal((await x.pause(false,1)).status,401);assert.equal(x.world.runtime.ownerPause(x.actor).paused,true);
 });
 test('Pause then immediate Resume during an awaited signed action rejects the old action without spending its nonce',async t=>{
