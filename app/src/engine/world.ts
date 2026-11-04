@@ -1,3 +1,4 @@
+import {withinConversationRange} from './speech.ts';
 import {ruleResidentUtterance,ruleResidentGreeting,filterResidentUtterance,type PublicUtterance} from './resident-utterance.ts';
 import {residentRhythm,residentPlaceWeight,residentStayMinutes,residentSociability,residentValues} from './resident-values.ts';
 import {participantName,participantLikes} from './participants.ts';
@@ -17,8 +18,8 @@ import {emptyLedger, type Ledger as ItemLedger} from './items.ts';
 import {defaultOwner, tagLocation, ownerArea, areaContains, sameArea, OWNER_MUSE, type OwnerLocation} from './location.ts';
 import {emptyInbox, expireTasks, deliverMessage, noteEncounter, isConnected, isRuntimeControlled, isResidentFrozen, CONNECTED_REFRESH_MS, type Inbox} from './inbox.ts';
 
-/** engine-14: wave-only contact never consumes conversation cooldown; preserves recorded engine13 snapshots. */
-export const ENGINE_VERSION = 'engine-14';
+/** engine-15: local public perception and fifty-metre social actions with conversation-only cooldown. */
+export const ENGINE_VERSION = 'engine-15';
 export const TICK_MS = 60_000;
 export const TIME_ZONE = 'America/Los_Angeles';
 export type Source = 'live' | 'rule' | 'scripted' | 'replay';
@@ -96,6 +97,10 @@ export type Hooks = {
   conversationHistory?:readonly ConversationReceipt[];
   /** Explicit short RULE recovery only for managed failed resident decisions; default preserves old behavior. */
   residentFallbackRecovery?:boolean;
+  /** Trusted in-game AOI policy only; no owner location or authority is derived from it. */
+  localPerceptionEnabled?:boolean;
+  /** Actual observation clock at final commit; action bookkeeping keeps its original logical time. */
+  observationAt?:number;
   /** Complete committed public speech window supplied by the host; never a private inbox or tail sample. */
   residentSpeechHistory?:readonly PublicUtterance[];
   /** New RULE greeting selector is explicit opt-in; old engine/checkpoint callers remain unchanged. */
@@ -527,6 +532,7 @@ export function tick(prev: WorldState, input: {now: number; decision?: Decision 
   for(const reaction of input.residentReactions??[]){
     const r=reaction.reply,m=s.muses.find(m=>m.id===r.muse),to=s.muses.find(m=>m.id===r.other),key=r.muse+'|'+reaction.triggerId;
     if(!m||!to||!managed(m)||paused(m.id)||paused(to.id)||isRuntimeControlled(s,m.id,now)||handled.has(key)||socialDistance(s,m.id,to.id,now)>100)continue;
+    if(hooks.localPerceptionEnabled===true&&reaction.kind==='reply'&&!withinConversationRange(m,to,hooks.observationAt??now))continue;
     const gate=hooks.canMeet?.(s,m,to,placeById(m.place),now);if(gate&&!gate.ok)continue;
     if(hooks.socialStatus){
       const policy=contactPolicy(s,m.id,to.id,now,hooks);
@@ -703,6 +709,7 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   if (freedom === 'who') {
     const other = findMuse(s, o.target_agent);
     if (!other || other.id === m.id) return reject('unknown Muse: ' + o.target_agent.slice(0, 40));
+    if(hooks.localPerceptionEnabled===true&&!withinConversationRange(m,other,hooks.observationAt??now))return reject('too_far');
     if(hooks.socialStatus&&contactPolicy(s,m.id,other.id,now,hooks)!=='approach')return reject('social contact unavailable');
     m.intent = {kind: 'greet', target: other.id};
     emit({...base, kind: 'spotlight', place: here.id, other: other.id, line: o.line || null, data: {...base.data, live: true, offScript: true}, tags: ['off_script']});
@@ -714,6 +721,7 @@ function applyDecision(s: WorldState, d: Decision, freedom: Freedom, now: number
   if (o.offer_item && !m.inventory.includes(o.offer_item)) return reject('offered item not held: ' + o.offer_item.slice(0, 40));
   const other = findMuse(s, o.target_agent);
   if (!other || other.id === m.id) return reject('offer needs another Muse');
+  if(hooks.localPerceptionEnabled===true&&!withinConversationRange(m,other,hooks.observationAt??now))return reject('too_far');
   const allowed=hooks.canProposeTrade?.(s,m.id,other.id,o.offer_item,o.want_item,now);
   if((m.id.startsWith('pm_')||other.id.startsWith('pm_'))&&allowed!==true)return reject('counterparty_pending_claim');
   if(allowed===false)return reject('trade proposal policy');

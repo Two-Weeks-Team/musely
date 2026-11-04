@@ -412,17 +412,17 @@ test('AC2 a Muse holding a pass does not find a second one (passes do not stack)
 });
 
 // ---- AC2: boundary values of the abuse limits ----
-test('AC2 boundaries: 10th find ok / 11th refused, one find per place, one trade per pair, 100 m, 2 counters', () => {
+test('AC2 boundaries: 10th find ok / 11th refused, one find per place, one trade per pair, 50 m, 2 counters', () => {
   const r = tenFinds([]);
   assert.equal(r.tenth.ok, true); assert.deepEqual(r.eleventh, {ok: false, reason: 'daily_limit'});
   const l = emptyLedger(), park = PLACES.find(p => p.zone === 'neighborhood' && p.kind === 'park');
   assert.equal(discover(l, DAY, '02-moss', park, [], rngFor('p'), 1).ok, true);
   assert.deepEqual(discover(l, DAY, '02-moss', park, [], rngFor('p'), 2), {ok: false, reason: 'place_limit'});
   assert.equal(discover(l, DAY, '01-sunny', park, [], rngFor('p'), 3).ok, true, 'the place limit is per Muse');
-  // 100 m: the closest real place pairs on each side of the boundary.
-  const near = ['osm:node/6614753529', 'osm:node/6614753530'], far = ['osm:way/123539752', 'osm:way/30027572'];
+  // Current conversation distance: real catalog places on each side of 50 m.
+  const near = ['osm:node/2340209821', 'osm:node/2611183815'], far = ['osm:node/5113884524', 'osm:node/5113886040'];
   const d = ids => Math.hypot(placeById(ids[0]).x - placeById(ids[1]).x, placeById(ids[0]).z - placeById(ids[1]).z);
-  assert.ok(d(near) <= 100 && d(near) > 99 && d(far) > 100 && d(far) < 101);
+  assert.ok(d(near) <= 50 && d(near) > 49 && d(far) > 50 && d(far) < 51);
   const t = emptyLedger(), give = 'transit_pass', want = 'clover_seed';
   assert.deepEqual(checkTrade(t, DAY, muse('03-ripple', near[0], [give]), muse('02-moss', near[1], [want]), give, want), {ok: true});
   assert.deepEqual(checkTrade(t, DAY, muse('03-ripple', far[0], [give]), muse('02-moss', far[1], [want]), give, want), {ok: false, reason: 'too_far'});

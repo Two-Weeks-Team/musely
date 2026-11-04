@@ -66,7 +66,7 @@ test('state/browser/TTL/app/redirect/purpose tampering and duplicate callback pa
 
 test('cancelled/failed provider flow is single-use with fixed safe errors and no raw canary logs',async t=>{
  const a=await boot(t);const logs=[],old=console.error;t.after(()=>console.error=old);console.error=(...x)=>logs.push(x);const calls=provider(t,{fetcher:()=>{throw Error('PRIVATE_PROVIDER_CANARY');}});
- const f=await start(a),r=await callback(a,f);assert.equal(r.status,303);assert.equal(r.headers.get('location'),'/?personal=failed');assert.doesNotMatch(await r.text(),/PRIVATE|synthetic-code/);assert.equal((await callback(a,f)).status,400);assert.equal(calls.length,1);assert.deepEqual(logs,[]);
+ const f=await start(a),r=await callback(a,f);assert.equal(r.status,303);assert.equal(new URL(r.headers.get('location'),ORIGIN).searchParams.get('personal'),'failed');assert.doesNotMatch(await r.text(),/PRIVATE|synthetic-code/);assert.equal((await callback(a,f)).status,400);assert.equal(calls.length,1);assert.doesNotMatch(JSON.stringify(logs),/PRIVATE|synthetic-code/);assert.ok(logs.length>=1);
  const c=await start(a),cancel=await a.go('GET',CALLBACK+'?'+new URLSearchParams({state:c.state,error:'access_denied',error_description:'PRIVATE_CANCEL'}),{cookie:c.c});assert.equal(cancel.status,303);assert.equal(cancel.headers.get('location'),'/?personal=declined');assert.equal((await callback(a,c)).status,400);assert.equal(calls.length,1);assert.equal(a.db.prepare('SELECT count(*) n FROM personal_principals').get().n,0);
 });
 
@@ -104,7 +104,7 @@ test('provider malformed/HTTP/redirect/oversize responses never create a princip
   if(u.pathname==='/oauth/access_token')return new Response('{"access_token":"SECRET_TOKEN_CANARY"}');
   return new Response(JSON.stringify({id:mode==='numeric-id'?9007199254740993:''}));
  }});
- for(mode of ['http','redirect','large','invalid-json','numeric-id','missing-id']){const n=calls.length,f=await start(a),r=await callback(a,f);assert.equal(r.headers.get('location'),'/?personal=failed',mode);assert.equal(calls.length-n,mode==='numeric-id'||mode==='missing-id'?2:1);}
+ for(mode of ['http','redirect','large','invalid-json','numeric-id','missing-id']){const n=calls.length,f=await start(a),r=await callback(a,f);assert.equal(new URL(r.headers.get('location'),ORIGIN).searchParams.get('personal'),'failed',mode);assert.equal(calls.length-n,mode==='numeric-id'||mode==='missing-id'?2:1);}
  assert.equal(a.db.prepare('SELECT count(*) n FROM personal_principals').get().n,0);assert.doesNotMatch(dbText(a.db),/PRIVATE_PROVIDER_ERR_CANARY|SECRET_TOKEN_CANARY|synthetic-code/);
 });
 
@@ -143,4 +143,63 @@ test('nonempty and errored HTTP streams fail closed before personal auth state c
 
 test('stalled empty-write stream is bounded and cancelled without a durable auth flow',{timeout:3000},async t=>{
  const a=await boot(t);let cancelled=false;const stream=new ReadableStream({cancel(){cancelled=true;}});const r=await a.go('POST',START,H,stream);assert.equal(r.status,400);assert.equal(cancelled,true);assert.equal(a.db.prepare('SELECT count(*) n FROM personal_auth_flows').get().n,0);
+});
+
+test('failed callback persists only bounded diagnostic categories and numeric Meta details, never private provider data',async t=>{
+ const a=await boot(t),logs=[];const old=console.error;t.after(()=>console.error=old);console.error=(...x)=>logs.push(x);
+ provider(t,{fetcher:()=>new Response(JSON.stringify({error:{message:'PRIVATE_DIAGNOSTIC_CANARY',code:100,error_subcode:10,fbtrace_id:'PRIVATE_TRACE_CANARY'}}),{status:400})});
+ const f=await start(a),r=await callback(a,f);
+ assert.equal(r.status,303);assert.equal(new URL(r.headers.get('location'),ORIGIN).searchParams.get('personal'),'failed');
+ const row=a.db.prepare('SELECT * FROM personal_auth_flows').get();
+ assert.equal(row.failure_reason,'token_exchange_http_4xx');assert.equal(row.failure_meta_code,100);assert.equal(row.failure_meta_subcode,10);assert.ok(row.failed_at>=row.consumed_at);
+ assert.ok(logs.some(x=>JSON.stringify(x).includes('token_exchange_http_4xx')));
+ assert.doesNotMatch(JSON.stringify(logs)+dbText(a.db),/PRIVATE_DIAGNOSTIC_CANARY|PRIVATE_TRACE_CANARY|synthetic-code|synthetic-private-provider-token/);
+ const before=JSON.stringify(row);assert.equal((await callback(a,f)).status,400);assert.equal(JSON.stringify(a.db.prepare('SELECT * FROM personal_auth_flows').get()),before,'replay cannot overwrite first failure');
+});
+
+test('me failure and session persistence failure remain distinguishable without authenticating or leaking',async t=>{
+ const a=await boot(t),logs=[];const old=console.error;t.after(()=>console.error=old);console.error=(...x)=>logs.push(x);
+ let mode='me';provider(t,{fetcher:u=>u.pathname==='/oauth/access_token'?new Response('{"access_token":"PRIVATE_TOKEN_CANARY"}'):mode==='me'?new Response('{"error":{"code":190,"message":"PRIVATE_ME_CANARY"}}',{status:400}):new Response('{"id":"42"}')});
+ let f=await start(a),r=await callback(a,f);assert.equal(r.status,303);assert.equal(a.db.prepare('SELECT failure_reason FROM personal_auth_flows WHERE state_digest=?').get(await (await import('../worker/core/personal-session.ts')).personalDigest('state',f.state)).failure_reason,'me_fetch_failed');
+ mode='store';const original=a.dobj.personalAuthComplete;a.dobj.personalAuthComplete=()=>{throw Error('PRIVATE_STORE_CANARY');};
+ f=await start(a);r=await callback(a,f);a.dobj.personalAuthComplete=original;assert.equal(r.status,303);
+ const rows=a.db.prepare('SELECT failure_reason FROM personal_auth_flows ORDER BY created_at').all();assert.deepEqual(rows.map(x=>x.failure_reason),['me_fetch_failed','session_store_failed']);
+ assert.equal(cookie(r,'musely_p'),undefined);assert.doesNotMatch(JSON.stringify(logs)+dbText(a.db),/PRIVATE_TOKEN_CANARY|PRIVATE_ME_CANARY|PRIVATE_STORE_CANARY/);
+});
+
+test('session signing failure and diagnostic SQL outage still return a safe failed redirect with no session cookie',async t=>{
+ const a=await boot(t),logs=[];const old=console.error;t.after(()=>console.error=old);console.error=(...x)=>logs.push(x);provider(t);
+ const complete=a.dobj.personalAuthComplete.bind(a.dobj);a.dobj.personalAuthComplete=(...args)=>({...complete(...args),issuedAt:-1});
+ let f=await start(a),r=await callback(a,f);assert.equal(r.status,303);assert.equal(cookie(r,'musely_p'),undefined);
+ assert.equal(a.db.prepare('SELECT failure_reason FROM personal_auth_flows').get().failure_reason,'session_sign_failed');
+ a.dobj.personalAuthFailure=()=>{throw Error('PRIVATE_DIAGNOSTIC_SQL_CANARY');};f=await start(a);r=await callback(a,f);assert.equal(r.status,303);assert.equal(cookie(r,'musely_p'),undefined);
+ assert.ok(JSON.stringify(logs).includes('personal_auth_diagnostic_store_failed'));assert.doesNotMatch(JSON.stringify(logs)+await r.text(),/PRIVATE_DIAGNOSTIC_SQL_CANARY|synthetic-code/);
+});
+
+test('provider HTTP 5xx and malformed numeric diagnostics stay bounded without retry',async t=>{
+ const a=await boot(t),logs=[];const old=console.error;t.after(()=>console.error=old);console.error=(...x)=>logs.push(x);
+ const calls=provider(t,{fetcher:()=>new Response('{"error":{"code":"PRIVATE_NUMBER_CANARY","error_subcode":2147483648}}',{status:503})});
+ const f=await start(a),r=await callback(a,f);assert.equal(r.status,303);assert.equal(calls.length,1);
+ const row=a.db.prepare('SELECT * FROM personal_auth_flows').get();assert.equal(row.failure_reason,'token_exchange_http_5xx');assert.equal(row.failure_meta_code,null);assert.equal(row.failure_meta_subcode,null);assert.doesNotMatch(JSON.stringify(logs)+dbText(a.db),/PRIVATE_NUMBER_CANARY/);
+});
+
+test('browser invalid callback shows a safe route back while keeping HTTP400 and zero provider calls',async t=>{
+ const a=await boot(t),calls=provider(t),r=await a.go('GET',CALLBACK+'?state=personal-v1.invalid&code=PRIVATE_URL_CANARY',{accept:'text/html'});
+ assert.equal(r.status,400);assert.match(r.headers.get('content-type'),/text\/html/);const html=await r.text();assert.match(html,/href="\/"/);assert.doesNotMatch(html,/PRIVATE_URL_CANARY|<script/);assert.equal(calls.length,0);
+});
+
+test('state consume RPC failure after a durable commit is logged and guided without re-exchange or auth cookie',async t=>{
+ const a=await boot(t),logs=[];const old=console.error;t.after(()=>console.error=old);console.error=(...x)=>logs.push(x);const calls=provider(t);
+ const consume=a.dobj.personalAuthConsume.bind(a.dobj);a.dobj.personalAuthConsume=(...args)=>{consume(...args);throw Error('PRIVATE_CONSUME_RPC_CANARY');};
+ const f=await start(a),r=await callback(a,f);assert.equal(r.status,303);assert.equal(r.headers.get('location'),'/?personal=failed');assert.equal(cookie(r,'musely_p'),undefined);assert.equal(calls.length,0);
+ const row=a.db.prepare('SELECT * FROM personal_auth_flows').get();assert.equal(row.failure_reason,null,'ambiguous ownership is logged without changing the flow');assert.match(JSON.stringify(logs),/state_store_failed/);assert.doesNotMatch(JSON.stringify(logs)+dbText(a.db),/PRIVATE_CONSUME_RPC_CANARY|synthetic-code/);
+});
+
+test('ambiguous replay consume RPC cannot mark the valid in-flight callback failed',async t=>{
+ const a=await boot(t),logs=[];const old=console.error;t.after(()=>console.error=old);console.error=(...x)=>logs.push(x);
+ let release,entered;const held=new Promise(r=>release=r),ready=new Promise(r=>entered=r);
+ provider(t,{fetcher:async u=>{if(u.pathname==='/oauth/access_token'){entered();await held;return new Response('{"access_token":"synthetic-private"}');}return new Response('{"id":"42"}');}});
+ const consume=a.dobj.personalAuthConsume.bind(a.dobj);a.dobj.personalAuthConsume=(...args)=>{const ok=consume(...args);if(!ok)throw Error('PRIVATE_REPLAY_RPC_CANARY');return ok;};
+ const f=await start(a),first=callback(a,f);await ready;const replay=await callback(a,f);release();const r=await first;
+ assert.equal(replay.status,303);assert.equal(r.status,303);assert.ok(cookie(r,'musely_p'));assert.equal(a.db.prepare('SELECT * FROM personal_auth_flows').get().failed_at,null);assert.equal(a.db.prepare('SELECT count(*) n FROM personal_auth_sessions').get().n,1);assert.doesNotMatch(JSON.stringify(logs),/PRIVATE_REPLAY_RPC_CANARY/);
 });

@@ -170,7 +170,7 @@ test('a missing or invalid REVIEWER_CONTROL_TOKEN turns off only the reviewer (5
 });
 
 test('reviewer key: every /mcp write tool acts as the reviewer Muse, without waiting on the owner\'s Threads claim', async () => {
-  const t = await boot();
+  const t = await boot({LOCAL_PERCEPTION_MODE:'local-v1'});
   assert.equal(t.dobj.getClaim('owner-muse'), null, 'the owner claim is still pending');
   const rev = await t.login(REVIEWER_TOKEN);
   assert.equal((await t.go('POST', '/api/owner/reset', {}, h(rev))).status, 200);
@@ -193,6 +193,7 @@ test('reviewer key: every /mcp write tool acts as the reviewer Muse, without wai
   const calls = [
     ['greet', {text: 'Hello from the review', to: '01-sunny'}],
     ['say_hello', {to: '01-sunny'}],
+    ['wave', {toward:'commons:cafe'}],
     ['answer_campfire', {invite_id: 'invite_r1', answer: 'decline'}],
     ['update_wants', {goal: 'Find a story for tonight', items: ['pastry']}],
     ['discover', {}],

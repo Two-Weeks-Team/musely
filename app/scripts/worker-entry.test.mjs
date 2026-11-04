@@ -51,7 +51,7 @@ test('Worker entry: /api/agent-keys → /mcp handshake and tools → owner locat
   assert.equal(init.body.result.protocolVersion, '2025-06-18');
   assert.equal((await go('POST', '/mcp', {jsonrpc: '2.0', method: 'notifications/initialized'}, v)).status, 202);
   const tools = (await go('POST', '/mcp', {jsonrpc: '2.0', id: 2, method: 'tools/list'}, v)).body.result.tools;
-  assert.equal(tools.length, 22, 'the existing twenty tools plus first meeting and explicit campfire response');
+  assert.equal(tools.length, 23, 'the existing twenty tools plus first meeting, explicit campfire response and in-place wave');
   assert.ok(tools.some(tool => tool.name === 'say_hello' && tool.annotations.readOnlyHint === false));
   assert.ok(tools.some(tool => tool.name === 'answer_campfire' && tool.annotations.readOnlyHint === false));
   const g = await go('POST', '/mcp', {jsonrpc: '2.0', id: 3, method: 'tools/call', params: {name: 'greet', arguments: {text: 'Hello from the Worker entry'}}}, v);

@@ -1,10 +1,11 @@
+import {personalAuthFailure, type PersonalAuthFailure, type PersonalAuthReason} from './personal-auth-failure.ts';
 // Personal authentication route adapter only. A valid login never creates an actor or inherits legacy owner powers.
 import {originAllowed,OWNER_COOKIE} from './owner-session.ts';
 import type {DecisionOutcome} from './tasks.ts';
 import type {PersonalBinding} from './personal-registration.ts';
 import type {ActorProfile} from '../../src/identity/participant.ts';
 import {isSocialMode} from '../../src/engine/social-status.ts';
-import {personalAuthorizeUrl, personalThreadsIdentity, type PersonalThreadsConfig} from './threads.ts';
+import {personalAuthorizeUrl, personalThreadsIdentity, ThreadsLoginError, type PersonalThreadsConfig} from './threads.ts';
 import {
   PERSONAL_CLAIM_FLOW_COOKIE,PERSONAL_CLAIM_STATE_PREFIX,claimFlowCookie,clearClaimFlowCookie,
   PERSONAL_COOKIE, PERSONAL_FLOW_COOKIE, PERSONAL_CALLBACK, PERSONAL_STATE_PREFIX, PERSONAL_FLOW_TTL_MS,
@@ -41,6 +42,7 @@ export interface PersonalAuthStub {
   personalProfilePatch(binding: PersonalBinding, input: unknown): MaybePromise<ActorProfile>;
   personalAuthBegin(flow: PersonalFlow): MaybePromise<boolean>;
   personalAuthConsume(binding: Pick<PersonalFlow, 'stateDigest' | 'browserDigest' | 'appId' | 'redirectUri'>, now: number): MaybePromise<boolean>;
+  personalAuthFailure(binding: Pick<PersonalFlow, 'stateDigest' | 'browserDigest' | 'appId' | 'redirectUri'>, detail: PersonalAuthFailure, now: number): MaybePromise<boolean>;
   personalAuthComplete(stateDigest: string, appId: string, subject: string, sidDigest: string, now: number): MaybePromise<PersonalSessionRow | null>;
   personalAuthActive(sidDigest: string, proof: PersonalSessionRow, appId: string, now: number): MaybePromise<boolean>;
   personalAuthRevoke(sidDigest: string, proof: PersonalSessionRow, appId: string, now: number): MaybePromise<boolean>;
@@ -216,20 +218,41 @@ export async function personalRoutes(request: Request, url: URL, cfg: PersonalCo
       const safe=['claimed','declined','not_found','failed'].includes(result)?result:'failed',h=headers();h.set('location','/?personalClaim='+safe);h.append('set-cookie',clearClaimFlowCookie);return new Response(null,{status:303,headers:h});
     }
 
-    if ([...q.keys()].some(k => !['state', 'code', 'error', 'error_reason', 'error_description'].includes(k)) || q.getAll('state').length !== 1 || q.getAll('code').length > 1 || q.getAll('error').length > 1 || (q.has('code') && q.has('error'))) return failure('auth_flow_invalid', 400, true);
+    const logFailure = (detail: PersonalAuthFailure) => console.error(JSON.stringify({event: 'personal_auth_failed', ...personalAuthFailure(detail.reason, detail.metaCode, detail.metaSubcode)}));
+    const callbackFailure = (reason: 'state_invalid' | 'auth_code_invalid' = 'state_invalid') => {
+      if (!(request.headers.get('accept') ?? '').includes('text/html')) return failure(reason === 'state_invalid' ? 'auth_flow_invalid' : reason, 400, true);
+      const h = headers(); h.set('content-type', 'text/html; charset=utf-8'); h.set('content-security-policy', "default-src 'none'; base-uri 'none'; frame-ancestors 'none'"); h.append('set-cookie', clearFlowCookie);
+      return new Response('<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Threads 연결 확인 / Check Threads connection</title><body><h1>연결을 확인하지 못했어요 / Could not verify sign-in</h1><p>연결 요청이 만료됐거나 이미 사용됐어요. 관람으로 돌아가 준비되면 다시 로그인해 주세요. / This sign-in request expired or was already used. Return to the world and sign in when you are ready.</p><a href="/">관람으로 돌아가기 / Return to world</a></body></html>', {status:400, headers:h});
+    };
+    const invalid = () => { logFailure({reason:'state_invalid'}); return callbackFailure(); };
+    if ([...q.keys()].some(k => !['state', 'code', 'error', 'error_reason', 'error_description'].includes(k)) || q.getAll('state').length !== 1 || q.getAll('code').length > 1 || q.getAll('error').length > 1 || (q.has('code') && q.has('error'))) return invalid();
     const state = q.get('state'), verifier = personalCookieValue(request, PERSONAL_FLOW_COOKIE);
-    if (!state?.startsWith(PERSONAL_STATE_PREFIX) || !nonceValid(state.slice(PERSONAL_STATE_PREFIX.length)) || !nonceValid(verifier)) return failure('auth_flow_invalid', 400, true);
+    if (!state?.startsWith(PERSONAL_STATE_PREFIX) || !nonceValid(state.slice(PERSONAL_STATE_PREFIX.length)) || !nonceValid(verifier)) return invalid();
     const stateDigest = await personalDigest('state', state);
-    if (!await stub.personalAuthConsume({stateDigest, browserDigest: await personalDigest('browser', verifier), appId: cfg.appId!, redirectUri: providerCfg().redirectUri}, now())) return failure('auth_flow_invalid', 400, true);
-    if (q.has('error')) return redirect('declined');
+    const binding = {stateDigest, browserDigest: await personalDigest('browser', verifier), appId: cfg.appId!, redirectUri: providerCfg().redirectUri};
+    const record = async (detail: PersonalAuthFailure) => {
+      logFailure(detail);
+      try { if (!await stub.personalAuthFailure(binding, detail, now())) console.error(JSON.stringify({event:'personal_auth_diagnostic_store_failed',hint:'flow_ineligible_or_missing'})); } catch { console.error(JSON.stringify({event: 'personal_auth_diagnostic_store_failed'})); }
+    };
+    try { if (!await stub.personalAuthConsume(binding, now())) return invalid(); }
+    // An RPC error does not prove this invocation consumed the flow; a replay must not poison its owner.
+    catch { logFailure({reason:'state_store_failed'}); return redirect('failed'); }
+    if (q.has('error')) { await record({reason:'provider_declined'}); return redirect('declined'); }
     const code = q.get('code');
-    if (!code || code.length > 4096 || /[\u0000-\u001f\u007f]/.test(code)) return failure('auth_code_invalid', 400, true);
+    if (!code || code.length > 4096 || /[\u0000-\u001f\u007f]/.test(code)) { await record({reason:'auth_code_invalid'}); return callbackFailure('auth_code_invalid'); }
+    let stage: PersonalAuthReason = 'token_exchange_failed';
     try {
       const {subject} = await personalThreadsIdentity(providerCfg(), code);
+      stage = 'session_store_failed';
       const sid = personalNonce(), row = await stub.personalAuthComplete(stateDigest, cfg.appId!, subject, await personalDigest('sid', sid), now());
-      if (!row) return failure('auth_flow_invalid', 400, true);
+      if (!row) { await record({reason:'state_invalid'}); return callbackFailure(); }
+      stage = 'session_sign_failed';
       const token = await signPersonalSession(cfg.secret, {v: 1, sid, ...row}, now());
       return redirect('authenticated', token);
-    } catch { return redirect('failed'); }
+    } catch (e) {
+      const detail = e instanceof ThreadsLoginError ? e.diagnostic : personalAuthFailure(stage);
+      await record(detail);
+      return redirect('failed');
+    }
   } catch { return failure('personal_auth_unavailable', 503); }
 }

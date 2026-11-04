@@ -1,3 +1,4 @@
+import {personalAuthFailure, type PersonalAuthFailure, type PersonalAuthReason} from './personal-auth-failure.ts';
 // Threads owner claim (direction v2, 6.3). Default path: the Worker exchanges the OAuth code with the
 // app secret (a Worker secret), publishes the owner-approved claim text and reads the post back to match
 // the fingerprint. The secret and tokens never reach the bundle or the repository.
@@ -135,21 +136,24 @@ export function personalAuthorizeUrl(cfg: Pick<PersonalThreadsConfig, 'appId' | 
   return 'https://threads.com/oauth/authorize?' + q({client_id: cfg.appId, redirect_uri: cfg.redirectUri, scope: 'threads_basic', response_type: 'code', state});
 }
 export class ThreadsLoginError extends Error {
-  constructor() { super('threads_login_failed'); this.name = 'ThreadsLoginError'; }
+  readonly diagnostic: PersonalAuthFailure;
+  constructor(reason: PersonalAuthReason = 'token_exchange_failed', code?: unknown, subcode?: unknown) { super('threads_login_failed'); this.name = 'ThreadsLoginError'; this.diagnostic = personalAuthFailure(reason, code, subcode); }
 }
 /** One total bounded deadline for the short exchange + app-scoped me read. All raw data dies in this call. */
 export async function personalThreadsIdentity(cfg: PersonalThreadsConfig, code: string): Promise<{subject: string}> {
+  let stage: 'token' | 'me' = 'token';
+  const generic = () => new ThreadsLoginError(stage === 'me' ? 'me_fetch_failed' : 'token_exchange_failed');
   const controller = new AbortController();
   const timeout = cfg.timeoutMs ?? 10_000;
-  if (!Number.isInteger(timeout) || timeout < 1 || timeout > 10_000 || typeof code !== 'string' || !code || code.length > 4096 || /[\u0000-\u001f\u007f]/.test(code)) throw new ThreadsLoginError();
+  if (!Number.isInteger(timeout) || timeout < 1 || timeout > 10_000 || typeof code !== 'string' || !code || code.length > 4096 || /[\u0000-\u001f\u007f]/.test(code)) throw generic();
   const deadline = Date.now() + timeout;
   const timer = setTimeout(() => controller.abort(), timeout);
   const signal = controller.signal;
   const checkDeadline = () => { if (Date.now() >= deadline) controller.abort(); signal.throwIfAborted(); };
-  const bounded = <T>(promise: Promise<T>): Promise<T> => new Promise((resolve, reject) => {
-    const abort = () => reject(new ThreadsLoginError());
+  const bounded = <T>(promise: Promise<T>, reason?: PersonalAuthReason): Promise<T> => new Promise((resolve, reject) => {
+    const abort = () => reject(reason ? new ThreadsLoginError(reason) : generic());
     // Attach both handlers even when already expired: late fetch/read rejection must not become unhandled.
-    promise.then(value => { signal.removeEventListener('abort', abort); resolve(value); }, () => { signal.removeEventListener('abort', abort); reject(new ThreadsLoginError()); });
+    promise.then(value => { signal.removeEventListener('abort', abort); resolve(value); }, () => { signal.removeEventListener('abort', abort); reject(reason ? new ThreadsLoginError(reason) : generic()); });
     if (Date.now() >= deadline) controller.abort();
     if (signal.aborted) { abort(); return; }
     signal.addEventListener('abort', abort, {once: true});
@@ -159,38 +163,44 @@ export async function personalThreadsIdentity(cfg: PersonalThreadsConfig, code: 
     // Workers have no ambient browser cookie jar; explicitly omit credentials in the shared fetch DI too.
     const options: RequestInit & {credentials: 'omit'} = {...init, credentials: 'omit', redirect: 'manual', cache: 'no-store', signal};
     const pending = (cfg.fetcher ?? fetch)('https://graph.threads.com' + path, options).then(res => {
-      try { checkDeadline(); } catch { void res.body?.cancel().catch(() => {}); throw new ThreadsLoginError(); }
+      try { checkDeadline(); } catch { void res.body?.cancel().catch(() => {}); throw generic(); }
       return res;
     });
     const res = await bounded(pending);
-    try { checkDeadline(); } catch { void res.body?.cancel().catch(() => {}); throw new ThreadsLoginError(); }
-    if (res.status !== 200 || res.redirected || !res.body) { void res.body?.cancel().catch(() => {}); throw new ThreadsLoginError(); }
+    try { checkDeadline(); } catch { void res.body?.cancel().catch(() => {}); throw generic(); }
+    const reason: PersonalAuthReason = stage === 'me' ? 'me_fetch_failed' : res.status >= 400 && res.status < 500 ? 'token_exchange_http_4xx' : res.status >= 500 ? 'token_exchange_http_5xx' : 'token_exchange_failed';
+    if (res.redirected || res.status >= 300 && res.status < 400 || !res.body) { void res.body?.cancel().catch(() => {}); throw new ThreadsLoginError(reason); }
     const reader = res.body.getReader(), chunks: Uint8Array[] = [];
     let length = 0, done = false;
     try {
       for (;;) {
-        const part = await bounded(reader.read());
+        const part = await bounded(reader.read(), reason);
         checkDeadline();
         if (part.done) { done = true; break; }
         length += part.value.byteLength;
-        if (length > 65_536) throw new ThreadsLoginError();
+        if (length > 65_536) throw new ThreadsLoginError(reason);
         chunks.push(part.value);
       }
       checkDeadline();
       const bytes = new Uint8Array(length); let offset = 0;
       for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
       const value = JSON.parse(new TextDecoder('utf-8', {fatal: true, ignoreBOM: false}).decode(bytes)) as Record<string, unknown>;
-      if (!value || typeof value !== 'object' || Array.isArray(value) || value.error) throw new ThreadsLoginError();
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ThreadsLoginError(reason);
+      if (res.status !== 200 || value.error) {
+        const error = value.error && typeof value.error === 'object' && !Array.isArray(value.error) ? value.error as Record<string, unknown> : {};
+        throw new ThreadsLoginError(reason, error.code, error.error_subcode);
+      }
       return value;
-    } finally { if (!done) void reader.cancel().catch(() => {}); }
+    } catch (e) { throw e instanceof ThreadsLoginError ? e : new ThreadsLoginError(reason); } finally { if (!done) void reader.cancel().catch(() => {}); }
   }
   try {
     const token = await json('/oauth/access_token', {method: 'POST', headers: {'content-type': 'application/x-www-form-urlencoded'}, body: q({client_id: cfg.appId, client_secret: cfg.appSecret, code, grant_type: 'authorization_code', redirect_uri: cfg.redirectUri})});
-    if (typeof token.access_token !== 'string' || !token.access_token || token.access_token.length > 8192 || (token.token_type !== undefined && token.token_type !== 'bearer')) throw new ThreadsLoginError();
+    if (typeof token.access_token !== 'string' || !token.access_token || token.access_token.length > 8192 || (token.token_type !== undefined && token.token_type !== 'bearer')) throw generic();
+    stage = 'me';
     const who = await json('/v1.0/me?' + q({fields: 'id', access_token: token.access_token}), {method: 'GET'});
-    if (typeof who.id !== 'string' || !/^[0-9]{1,128}$/.test(who.id)) throw new ThreadsLoginError();
+    if (typeof who.id !== 'string' || !/^[0-9]{1,128}$/.test(who.id)) throw generic();
     checkDeadline();
     return {subject: who.id};
-  } catch { throw new ThreadsLoginError(); }
+  } catch (e) { throw e instanceof ThreadsLoginError ? e : generic(); }
   finally { clearTimeout(timer); controller.abort(); }
 }
