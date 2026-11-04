@@ -1,5 +1,7 @@
 # Musely 문서 안내
 
+> **English:** [Build timeline — made from scratch during the hackathon](BUILD_TIMELINE.md) · product docs in [`app/docs`](../app/docs) · start at the [repository README](../README.md).
+
 진행 단계는 **프리뷰 → 구현 → 데모(개발 완료) → GTM**이다. 단계별 목적·범위·완료 게이트와 에픽·태스크은 [4단계 로드맵](roadmap/2026-11-01-four-stage-roadmap.md)을 먼저 읽는다. 이 단계 구분은 기존 방향 v2의 “2단계” 및 “프리뷰 데모” 혼합 표현보다 우선한다.
 
 제품 세부 요구사항은 `musely-direction-v2-2026-11-01.md`가 기준이다. 아래 기존 기획/상태표에는 과거 구현 시점과 단계 표현이 남아 있다. 현재 구현 여부는 소스·PR·검증 기록으로 확인하고, 해당 표를 최신 완료 판정으로 사용하지 않는다. 프리뷰의 실제 커넥터 연동은 완료 조건이 아니며, 실제 연동 구현은 S2, 통합 증명은 S3에서 수행한다.
