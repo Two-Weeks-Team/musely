@@ -15,6 +15,7 @@ import type {WorldState, Hooks} from '../../src/engine/world.ts';
 import {executeCommand, signCommand, quietRefusal, type PeerCheck} from './commands.ts';
 
 export type Ctx = {trust: Trust; runtime: WorldRuntime; ownerRoot: JsonWebKey | null; ownerClaimed: boolean; baseUrl: string; now?: () => number;
+  authorize?:()=>string|null;
   /** Who asked for a P0 run: a judge link session (C03 actorOrigin trial) or the owner (no C03 value; `data.actor` only). */
   requestedBy?: 'judge' | 'owner'};
 /** The actor fields of a request a session asked for (P0, demo checks); a resident's rule answer carries none (system). */
@@ -37,10 +38,12 @@ export function findOwnerTrade(s: WorldState, revoked: (museId: string) => boole
 
 /** Sends a signed trade proposal from the owner's Muse; it commits only through executeCommand. */
 export async function ownerTrade(c: Ctx, opts: {stale?: boolean; label: string; plan?: {partner: string; give: string; want: string}}) {
+  c.authorize?.();
   const s = c.runtime.state();
   const plan = opts.plan ?? findOwnerTrade(s, id => c.trust.suspended(id), nowOf(c));
   if (!plan) return {ok: false as const, reason: 'no_valid_trade_now'};
-  const exec = opts.stale ? await c.trust.storedExecutor(OWNER_SLOT, 'server_custodial') : await c.trust.executor(OWNER_SLOT, 'server_custodial', c.ownerRoot);
+  const exec = opts.stale ? await c.trust.storedExecutor(OWNER_SLOT, 'server_custodial') : await c.trust.executor(OWNER_SLOT, 'server_custodial', c.ownerRoot,()=>{c.authorize?.();});
+  c.authorize?.();
   const content = {kind: 'propose_trade', give: plan.give, want: plan.want, to: plan.partner};
   if (!exec) {
     // Revoked before any executor was issued: nothing can be signed, so the request is refused at the delegation step.

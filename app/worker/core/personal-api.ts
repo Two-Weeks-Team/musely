@@ -1,4 +1,5 @@
 import {personalAuthFailure, type PersonalAuthFailure, type PersonalAuthReason} from './personal-auth-failure.ts';
+import {personalOwnerRoutes,type PersonalOwnerStub,type PersonalOwnerConfig} from './personal-owner-api.ts';
 // Personal authentication route adapter only. A valid login never creates an actor or inherits legacy owner powers.
 import {originAllowed,OWNER_COOKIE} from './owner-session.ts';
 import type {DecisionOutcome} from './tasks.ts';
@@ -14,7 +15,7 @@ import {
 } from './personal-session.ts';
 
 type MaybePromise<T> = T | Promise<T>;
-export interface PersonalAuthStub {
+export interface PersonalAuthStub extends PersonalOwnerStub {
   personalSocialStatusGet?(binding:PersonalBinding):MaybePromise<unknown>;
   personalSocialStatusSet?(binding:PersonalBinding,input:unknown):MaybePromise<unknown>;
   personalLegacyView(binding:PersonalBinding,ownerCookie:string|null):MaybePromise<unknown>;
@@ -47,7 +48,7 @@ export interface PersonalAuthStub {
   personalAuthActive(sidDigest: string, proof: PersonalSessionRow, appId: string, now: number): MaybePromise<boolean>;
   personalAuthRevoke(sidDigest: string, proof: PersonalSessionRow, appId: string, now: number): MaybePromise<boolean>;
 }
-export type PersonalConfig = {secret: string; origin: string; appId?: string; appSecret?: string; rateLimit?: () => Promise<boolean>; fetcher?: typeof fetch; now?: () => number};
+export type PersonalConfig = PersonalOwnerConfig & {appSecret?: string; rateLimit?: () => Promise<boolean>; fetcher?: typeof fetch};
 const BASE = '/api/personal';
 const START = BASE + '/auth/threads/start';
 const VIEWING = {entry: {state: 'viewing'}};
@@ -86,6 +87,7 @@ async function bootstrapJSON(request:Request,limit=4096):Promise<unknown>{
 }
 export async function personalRoutes(request: Request, url: URL, cfg: PersonalConfig, stub: PersonalAuthStub): Promise<Response> {
   try {
+    if(url.pathname.startsWith(BASE+'/owner/'))return personalOwnerRoutes(request,url,cfg,stub);
     const now = cfg.now ?? Date.now;
     const routes = new Map([[START, 'POST'], [PERSONAL_CALLBACK, 'GET'], [BASE + '/me', 'GET'], [BASE + '/session', 'DELETE'], [BASE + '/draft', 'POST'], [BASE + '/profile', request.method === 'PATCH' ? 'PATCH' : 'GET']]);
     const bootstrap=url.pathname===BASE+'/legacy-muse'?['GET','POST']:url.pathname===BASE+'/inbox'?['GET']:url.pathname===BASE+'/approvals'?['POST']:bootstrapMethods(url.pathname);

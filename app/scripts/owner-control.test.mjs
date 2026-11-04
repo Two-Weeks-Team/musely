@@ -255,7 +255,7 @@ test('owner revocation: pending Tasks close as cancelled, the Muse stops all pub
   assert.ok(t.dobj.worldEvents(from2, 2000).some(e => e.muse === OWNER && ['spotlight', 'beat', 'depart'].includes(e.kind)), 'active again');
 });
 
-test('no automatic re-delegation: P0, heartbeats and a restart leave a revoked Muse revoked; only /api/owner/redelegate delegates', async () => {
+test('no automatic re-delegation: P0, heartbeats and a restart stay revoked; only explicit owner adapters delegate', async () => {
   const t = await boot();
   const judge = await t.session('judge'), owner = await t.login(OWNER_TOKEN);
   assert.equal((await t.go('POST', '/api/p0/run', undefined, {cookie: judge})).body.before, 'verified');
@@ -277,14 +277,15 @@ test('no automatic re-delegation: P0, heartbeats and a restart leave a revoked M
   assert.equal(t.events().filter(e => e.kind === 'delegation_issued').length, 1);
   assert.equal((await t.go('POST', '/api/p0/run', undefined, {cookie: judge})).body.phase, 'valid');
 
-  // Source check: the only call of Trust.redelegate is in owner-control.ts, reached only from POST /api/owner/redelegate.
+  // Trust.redelegate remains confined to owner-control. The personal adapter additionally
+  // reaches the same explicit action after current-session/adoption and Muse checks.
   const files = [];
   const walk = d => { for (const f of readdirSync(d, {withFileTypes: true})) { const p = join(d, f.name); if (f.isDirectory()) walk(p); else if (/\.ts$/.test(f.name) && !f.name.endsWith('.d.ts')) files.push(p); } };
   walk(new URL('../worker', import.meta.url).pathname);
   const callers = files.filter(f => /\.redelegate\(/.test(readFileSync(f, 'utf8'))).map(f => f.split('/worker/')[1]);
   assert.deepEqual(callers, ['core/owner-control.ts']);
   const routes = files.filter(f => /\.ownerRedelegate\(/.test(readFileSync(f, 'utf8'))).map(f => f.split('/worker/')[1]);
-  assert.deepEqual(routes, ['core/owner-api.ts']);
+  assert.deepEqual(routes, ['core/owner-api.ts','world-do.ts']);
   assert.ok(!/\.redelegate\(|redelegateMuse\(/.test(readFileSync(new URL('../worker/core/a2a.ts', import.meta.url), 'utf8').split('export async function runP0')[1].split('\n}\n')[0]), 'runP0 has no re-delegation');
 });
 
