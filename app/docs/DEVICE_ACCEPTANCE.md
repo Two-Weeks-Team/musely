@@ -1,5 +1,7 @@
 # D-04 device acceptance — approved reference and observed scoped results
 
+> Latest status: [M4 device handoff, 2026-11-05](#m4-device-handoff-2026-11-05). Historical numeric/physical evidence is retained; final-build and D01 judgments remain separate.
+
 The dated preparation protocol below is preserved. Later physical and client measurements satisfy the scoped C11 numeric gates recorded in the closeout below; whole D04 still awaits the original D01 acceptance output; the actual later I09 full handoff is recorded below. A physical client comparison, an emulated layout, an operating cold-entry measurement and a live ten-actor observation remain separate evidence layers. The original MacBook Air M1 requirement is historical; the approved MacBookPro18,2 amendment is explicit below.
 
 ## Approved reference amendment, 2026-11-02
@@ -106,3 +108,37 @@ Evidence IDs in the private C10 bundle: `final-desktop-acceptance-review.md`, `f
 Denied RUM attempts remain aborted, and exact stale public map/network observations remain in raw evidence. Application errors0 is not every network event0. Earlier DPR/query/sourceAfter failures remain failed/unknown and are not overwritten.
 
 Original issue64 requires D-01 and I-09 acceptance outputs. I09 technical C10 evidence remained valid during the23:30Z verification reopening. The earlier partial-I13-projection exception was withdrawn,not restored. Actual I13#57 full handoff closed at2026-11-02T23:39:44Z; I09#56's supplemental C10 and full handoff were then recorded and it reclosed at23:40:41Z(comment6591322898). I11#59 followed at23:41:10Z. These are actual later receipts,not backdated completions. Thus I09's original prerequisite is now satisfied,but D01's actual personal-Muse/webcam integrated output remains unverified. Whole D04 closure stays pending D01 and final documentation/handoff confirmation. An OPEN issue label alone is not evidence of a missing measurement, nor must a CLOSED label substitute for evidence. Competition submission, agreements, public repository/video publication are team handoff decisions outside the current engineering scope; they are not new D-04 gates.
+
+
+## Current candidate client evidence (2026-11-04)
+
+The [current S3 record](RELEASE_ACCEPTANCE.md#current-s3-candidate-and-remaining-acceptance-2026-11-04) fixes a858/appTreea6fd8f52/deploymentdb3261ea/Workerdebc3b90/config893a8e4f. Historical8b13/a906/494 measurements above keep their dates and environments. **Whole D04 remains open.**
+
+| Current candidate scope | Direct observation | Acceptance limit |
+|---|---|---|
+| First arrival, approved Pro18,2 |09:08:24.647–09:08:53.810KST,4Mbps/150ms/cache-disabled/SW-bypass calibrated; scene3932.2ms/readable3948.5ms;actual DPR cap/applied1.5 | Controlled client with newly recorded anonymous public GET data. `controlledClientPass:true`, `productionBackendPass:false`, `realAccountEntryPass:false`.52requests/20,798,898B include calibration and deferred work; not critical-path bytes. [C10](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6618823704). |
+| Desktop manual Story210s | Pro18,2/nativeDPR2/applied1.5/1440×1000;210003.6ms/25,132valid RAF intervals, median120FPS/p959.9ms, zero-frame seconds0/visibility changes0 | Numeric gate accepted with separate completed after-source proof. Original collector FAIL is preserved as explained below. [C10](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6619008504). |
+| Current layout |1440×1000 in the desktop result and separate390×844/nativeDPR2 read-only observation; overflow0;all8offered controls inside/hit-testable | Geometric accessibility, not eight new click-success proofs or physical-mobile performance. External analytics denial is explicit. [C10](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6619023526). |
+| Final S23 comparison | SM-S918N/Android16/Chrome156.0.8078.73 still connected; historical complete baseline SHA256`5b1d708bd83b6eb076aac868ffff759ffc62c28455a6248f63e4d01fafcaba7c` preserved | **Pending a new coordinated device window.** Old window was returned; Deck is foreground. Do not seize the device or alter its original target13929/forward58073. Recheck411×742/DPR1.5/manual210/cache context and approved peak/end max(20%,64MiB) plus raw trend/crash review. |
+
+Desktop attempt1 ended with a sourceAfter `TimeoutError`, `complete:false`/`measuredChecksPass:false`; exact failed URL/stage were not retained, cause **UNKNOWN**. Preserve result SHA256`d962db651fe0af076c3af502bc05417b77d8a3bf2650f2412d3bbdb0957c65d1`. A separate unchanged10s/no-retry source audit at09:17:58.210–09:18:38.261KST completed36GET/36HTTP200 and all34path/hash/byte triples plus HTML exactly matched the original before-audit and pin. Its SHA256 is `7903d7667a9207942e63add8c8e0aac7ec308c96bca6fce3f555d7dc2876abcd`. The continuously observed deployment/source/config/HTML stayed fixed. Root and independent i12 recalculated raw RAF/210bins and verified that binding, allowing separate desktop numeric acceptance without recreating the same frames. No original failure flag is rewritten, and the later audit does not establish the old timeout's cause or a network fix.
+
+The raw desktop record still contains eight benign stale public-map interception IDs and one aborted RUM attempt; continued/fatal writes0 and application errors0 do not mean every network event0. Own measurement context/CDP state/server were cleaned up; shared Chrome and main Chrome were preserved. No automatic benchmark retry occurred.
+
+External custody: `c11-first-arrival-personal-d452-actual-1/a858-final-c11-1104-1-{start,execution-pin,results}.json`; `c11-first-arrival-personal-release-preparation-1103/a858-final-c11-1104-1-{config,dataset}.json` and `a858-final-desktop-1104-1-{config,results,source-diagnostic}.json` and `a858-final-desktop-1104-1-end.png`; appended `human-ritual-living-final-actual-v7-ready-1/progress.jsonl`. The cold result SHA256 is `7fe7d91d66fbb29f14ad4e65b5b21db3458f7d7fc0cfb0f0206dadccc28bff0f`. No new evidence folder, GO or attestation procedure is required. Product changes after this candidate require impact review and a fresh final-build decision; this checkpoint does not close D01/D04 or the incomplete four-hour observation.
+
+
+## Activated-build device limit (2026-11-04)
+
+The [later activation checkpoint](RELEASE_ACCEPTANCE.md#world-life-activation-and-evidence-limits-2026-11-04) identifies main3f969a3/PR165ON after the five world PR deployments. Its first12433ms ready observation is uncalibrated, not C11 or an accepted8-second measurement. A new final-build controlled C11 result is not yet measured here.
+
+The a858 cold/desktop values and original FAIL remain unchanged. Historical physical S23/PSS measurements and prepared comparison inputs are not final-build PSS acceptance. D04 remains open pending its original evidence/prerequisite handoff;24NPC/27actor activation and the ongoing short activity observation are not device-performance proof. The old a8584h was stopped incomplete and needs a separate new final-build run.
+
+For the later166 product, the [unchanged controlled C11 runner passed](https://github.com/Two-Weeks-Team/musely/pull/166#issuecomment-6621314847): first scene3964.7ms/readable3978.3ms,4Mbps/150ms/no-cache/DPR1.5,27 actor projection, errors0. Source58492c0/appTreeb19534f9/Workere9a78682 are fixed in that C10. Result SHA256 `8f1ae05e2fcee6d47326e346c061d618fb898d8c03f24db85753b4d0c9bf0e1d`; custody `c11-first-arrival-personal-d452-actual-1/world-166-c11-1104-1-results.json`. The earlier165 numeric pass/overallFAIL is retained. This is controlled local-client performance with a recorded public GET fixture, not a live account/backend verdict or final phone PSS.
+
+
+## M4 device handoff (2026-11-05)
+
+[D04 #64](https://github.com/Two-Weeks-Team/musely/issues/64) is still OPEN. Preserve the earlier accepted Pro18,2/S23 physical/PSS scope and the explicit distinction between the original a858 desktop collector failure and its separate completed after-source proof. The [supplement](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6619008504) accepts only the scoped desktop numeric gate; it does not turn the original complete=false/measuredChecksPass=false into a successful rerun. The [390×844 supplement](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6619023526) establishes emulated geometry, not physical S23 FPS/PSS or completed clicks.
+
+The later controlled PR166 scene3964.7ms/readable3978.3ms belongs to that recorded source and GET-fixture client; preserve its 4Mbps/150ms/no-cache/DPR1.5 contract. Subsequent local-perception, entry and screen changes are not covered by relabelling that number. Recent non-controlled ready times, screenshots, test totals and HTML200 are not final C11 results. Final-build device/C11 impact judgment and the original D01 predecessor remain pending; this documentation runs no new benchmark or device check and requests no new human action. See [M4 handoff](RELEASE_ACCEPTANCE.md#m4-evidence-and-closeout-handoff-2026-11-05).

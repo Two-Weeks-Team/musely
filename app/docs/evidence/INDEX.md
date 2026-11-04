@@ -1,5 +1,7 @@
 # Release evidence index
 
+> Latest status: [M4 source map, 2026-11-05](#m4-source-map-2026-11-05). Original evidence is retained under its original source and scope.
+
 Both scopes retain their original evidence environment and pending acceptance boundaries. Preparation and local checks do not establish operational acceptance.
 
 ## D02 controlled proof and raw recount
@@ -50,3 +52,38 @@ Every receipt must name issueId, owner, commitSha, PR, environment, deployId, UR
 | s2-final-closeout-1103 / original6588006084 and later6591330425 I11 C10 | I11 technical data reused after actual root #57→#56→#59 full C01 handoff/reclosure; earlier premature closure/reopening retained. Does not replace D01's prerequisite. |
 
 Original8b13 operating receipts and current494 replay identities stay distinct, with unchanged backend/config and separately checked changed read-only loader/UI. Their exact hashes/times are in the handoff. No actual Muse/webcam/visitor/four-hour/physical/movie/whole-S3 acceptance is granted by this index, and no extra D02 operating test is invented. Final D02 C10/checklist/closure remains unexecuted until D01's full original acceptance. Hackathon Submit/terms/competition-publication remains a team handoff decision outside our execution scope; product494/collector3105/export235 and existing evidence stay frozen.
+
+
+## Current candidate evidence checkpoint (2026-11-04)
+
+See the [a858 S3 candidate and remaining acceptance](../RELEASE_ACCEPTANCE.md#current-s3-candidate-and-remaining-acceptance-2026-11-04), [D01 checkpoint](../D01_ACCEPTANCE.md#current-candidate-path-checkpoint-2026-11-04) and [current client evidence](../DEVICE_ACCEPTANCE.md#current-candidate-client-evidence-2026-11-04). Earlier pending/completed rows above keep their historical builds; this index does not retag their raw evidence.
+
+| Existing external custody under tasks/s3-execution-20261102/ | Current scope/status |
+|---|---|
+| `final-d01-anonymous-observer/a858-final-1104-1-results.json` | Actual current anonymous watch/select/reconnect25/25, original callback; whole D01 still open. |
+| `personal-muse-runtime-plan-1103/post-context-three-slots-1104.jsonl` | Actual connected ComBba choices/receipt links. Copper acceptance retained, own proposal/explicit rejection unobserved. Silence is not rejection. |
+| `human-ritual-living-final-actual-v7-ready-1/progress.jsonl` | Location allow/deny complete; camera LIVE3false, not identity PASS; temporary direct MCP revocation and later scoped layout/desktop acceptance annotations. |
+| `d03-cloud-1103/`, `d03-delayed-response-1103-v2/actual-fixed-delay-1/`, original operating boundaries | Historical isolated33/33/controlled reset15/15/5500ms revoke-await, local clock/alarm/tile and actual operating denial receipts with current component-impact supplements. Whole-backend identity is not claimed. |
+| `final-four-hour-area-a31/a858-final-1104-0905-*` | Separate actual fixed-a8584h started09:04:41.591KST; incomplete at this checkpoint, final sample needed at/after13:04:41.591. Old directory name does not change the new pin or turn old failures into PASS. |
+| `c11-first-arrival-personal-d452-actual-1/a858-final-c11-1104-1-*` and current preparation topic | Readable3948.5ms controlled client; desktop120FPS/p959.9ms accepted with separate34asset after-audit. Original desktop sourceAfter timeout/FAIL remains unchanged. Final S23 comparison awaits a new coordinated resource window. |
+
+No merge/deploy before13:04; required fixes remain on branches/PRs during observation. A later product deployment requires its own new full4h, latest start11-05 06:00KST. C3 actual account alias binding is explicitly on hold, main Chrome untouched, and not a D01 gate. D01/D02/D03/D04 remain open; D05/video and D06/competition submission remain team-owned and outside this engineering execution scope. No new human confirmation is requested by this index.
+
+
+## Post-world-integration evidence boundary (2026-11-04)
+
+The [later activation checkpoint](../RELEASE_ACCEPTANCE.md#world-life-activation-and-evidence-limits-2026-11-04) supersedes the old a858 run/deployment scheduling statements without retagging its raw files.135→137→138→139→140 merged/deployed;165ON/main3f969a3 now has24NPC/27total actors, preserving personal control. The a8584h stopped incomplete; a new final-build4h remains necessary.
+
+New calibrated C11 and final-build S23/PSS acceptance are not yet measured here; activated-build12433ms first ready is non-C11. #51 choice/response and D01/D02/D04 remain unclosed. Existing `personal-muse-runtime-plan-1103/resident-activity.jsonl` contains the bounded activation observation, not a full four-hour or personal-choice PASS. No new artifact custody, human gate, Threads action or team video/submission work is created by this index.
+
+The activated world's [30-minute actual per-Muse C10](https://github.com/Two-Weeks-Team/musely/issues/134#issuecomment-6621237188) and [166 controlled C11 correction/pass](https://github.com/Two-Weeks-Team/musely/pull/166#issuecomment-6621314847) are later supplements, with the earlier165 FAIL preserved. Both retain their measurement boundaries and do not close D01, the actual-personal choice gaps, final phone PSS or the new final four-hour run.
+
+
+## M4 source map (2026-11-05)
+
+- [D01 actual camera C10](https://github.com/Two-Weeks-Team/musely/issues/61#issuecomment-6627920486) records PR188/source6955722e, event18945/input3288/run14, three body-only LIVE passes and framesStored=false. Older failed camera results remain unchanged.
+- [D01 path update](../D01_ACCEPTANCE.md#m4-path-evidence-update-2026-11-05) records the later C3 reported success with its sanitized completed-flow/adoption and public-event correlation; event20239/input3433 is only the public corroboration, not sufficient proof by itself. No account subject, credential or private response is copied here.
+- [D02 technical handoff](https://github.com/Two-Weeks-Team/musely/issues/62#issuecomment-6591725010) retains P0 production/P1 simulation/P2 captured replay and the fixed C09 cohort; D01 remains the unclosed predecessor.
+- [D04 scoped desktop supplement](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6619008504), [emulated geometry](https://github.com/Two-Weeks-Team/musely/issues/64#issuecomment-6619023526) and [controlled166 C11](https://github.com/Two-Weeks-Team/musely/pull/166#issuecomment-6621314847) remain separate dated evidence; none is a new final-build S23/PSS test.
+
+The [M4 handoff](../RELEASE_ACCEPTANCE.md#m4-evidence-and-closeout-handoff-2026-11-05) owns the remaining closure distinctions. Original evidence bytes, failures and cohort units are preserved. M5 is supervisor-started after the final deployment; old fixed start/freeze times are superseded. [Judge-link examples](../SUBMISSION_DRAFT.md#three-entry-routes) contain only `<JUDGE_LINK_TOKEN>`; final operating verification stays pending. This index adds no evidence folder, harness, credential, GO or attestation procedure.

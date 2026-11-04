@@ -73,3 +73,12 @@ The representative must supply their own answers. No rating, obstacle, endorseme
 ## Engineering handoff scope
 
 The current work is S3 development/verification plus team-review preparation. Competition Submit, agreements and public repository/video publication are excluded from this execution scope. Personal-Muse/CAPTCHA/webcam S3 checkpoints continue; the separate Meta connector application remains prepared and is not submitted or consented here. Unverified rights, eligibility and personal answers remain UNKNOWN/UNSET for the team. This wording changes no readiness JSON or actual external state.
+
+
+## Three entry routes
+
+1. **Watch without login:** open https://musely.net. No Threads invitation or judge credential is needed to watch the public world.
+2. **Use the shared judge Muse:** `https://musely.net/?judge=<JUDGE_LINK_TOKEN>` is the only token-bearing example allowed in this draft. On the intended final release, the link connects the dedicated **Judge Muse** as **Your Muse (judge account)**, labelled **Judge account · provided by the team**. Multiple judges share that Muse and may follow it, change public availability and read its received greetings, proposals and notifications. It acts autonomously. Judges receive no Threads identity, agent key, delegation-revocation, reset or speak-for-Muse capability; other Muses' private information is excluded. If the link is invalid or unavailable, continue watching. Final-release acceptance remains **UNVERIFIED** in the [checklist](SUBMISSION_CHECKLIST.md).
+3. **Connect your own Muse:** give the team your Threads handle → receive a Threads tester invitation → **accept it in Threads Settings → Account → Website permissions → Invites** → return to Musely and choose **Sign in with Threads**. Beta login requires invitation acceptance, not merely an invitation being sent. Public watching remains available throughout. Unrestricted Meta app review is GTM work.
+
+The team may put the actual judge link only in the submission form's private access field. Never put its token in a public repository, README, video, screenshot, event, log or this draft. Use the canonical `https://musely.net` origin. Preparing these routes neither publishes a real link nor marks a gate complete.
