@@ -9,7 +9,7 @@ import {mountSocialStatus} from './social-status.ts';
 import {judgeMuseAccess} from './judge-muse-access.ts';
 import {mountJudgeMuse} from './judge-muse.ts';
 import {isolation} from './isolation.ts';
-import {resolveMuse} from './personal-profile.ts';
+import {publicSenderName,type ProfileMuse} from './personal-profile.ts';
 import {personalOwnerAccess} from './personal-owner.ts';
 import {HARNESSES, SCOPES, SCOPE_LABELS, type Harness, type ScopeLevel} from '../engine/harness';
 
@@ -53,7 +53,7 @@ export const firstSteps = (h: Harness): string[] => [
   uiText`Looks for ${h.wants.items.map(i => i.replace(/_/g, ' ')).join(uiText(' or '))}: ${h.wants.goal.charAt(0).toLowerCase() + h.wants.goal.slice(1)}`,
 ];
 
-export function mountOnboarding(opts: {onJudgeFollow?:()=>void;onWatch: () => void; initial?: URLSearchParams; getWorldId?:()=>string|null; onPersonalEntry?:(entry:EntryProjection)=>void; personal?:PersonalEntryOptions & {clipboard?:{writeText:(value:string)=>Promise<void>}}}) {
+export function mountOnboarding(opts: {onJudgeFollow?:()=>void;onWatch: () => void; initial?: URLSearchParams;getPublicWorld?:()=>{muses:readonly ProfileMuse[]}|null; getWorldId?:()=>string|null; onPersonalEntry?:(entry:EntryProjection)=>void; personal?:PersonalEntryOptions & {clipboard?:{writeText:(value:string)=>Promise<void>}}}) {
   const preview = opts.initial?.get('entryPreview') === '1';
   const personalFetch = opts.personal?.fetcher ?? personalOwnerAccess.fetch;
   const state: EntryState = {path: null, view: 'choose', open: false, viewing: null, trial: null, lastTrial: null, connect: 'unconnected', connectStep: 0, entries: 0, ownerClaim: 'none', liveTradeAllowed: false, liveWrites: 0};
@@ -126,7 +126,7 @@ export function mountOnboarding(opts: {onJudgeFollow?:()=>void;onWatch: () => vo
   function go(view: View) { state.view = view; render(); }
 
   function setupView() {
-    if(judgeMuseAccess.state().mode){judgeView=mountJudgeMuse(body,{follow:()=>{close();opts.onJudgeFollow?.();},name:id=>resolveMuse({id}).name,isActive:()=>state.open&&!isolation.replay});body.append(button(uiText('계속 둘러보기 / Keep watching'),'link-button',()=>{close();opts.onWatch();}));return;}
+    if(judgeMuseAccess.state().mode){judgeView=mountJudgeMuse(body,{follow:()=>{close();opts.onJudgeFollow?.();},name:id=>publicSenderName(id,opts.getPublicWorld?.(),uiText('The Muse')),isActive:()=>state.open&&!isolation.replay});body.append(button(uiText('계속 둘러보기 / Keep watching'),'link-button',()=>{close();opts.onWatch();}));return;}
     body.append(el('span','eyebrow',uiText('YOUR MUSE · YOUR CHOICE')),el('h2','',uiText('내 Muse를 세계로 데려오세요 / Bring your Muse into the world')),
       el('p','world-sub',uiText('보던 세계는 그대로예요. 이름과 모습을 정하고 내 Muse를 연결해 보세요. / Keep watching while you prepare your own Muse. Sign-in and permissions are your choice.')));
     const adoptionHost=el('div','entry-legacy-muse'),profileHost=el('div','entry-profile'),claimHost=el('div','entry-account-claim'),connectionHost=el('div','entry-connection');body.append(adoptionHost,profileHost,claimHost,connectionHost);
@@ -309,5 +309,5 @@ export function mountOnboarding(opts: {onJudgeFollow?:()=>void;onWatch: () => vo
   else if (entry === 'choose') open('choose');
   else if (entry === 'watch') { state.path = 'watch'; updateChip(); opts.onWatch(); }
 
-  return {state,open,close,personalMuseId(){if(judgeMuseAccess.state().mode)return judgeMuseAccess.active()?'10-judge':null;const s=personal?.profile.state();return s?.authenticated===true?s.profile?.actorId??null:null;},dispose(){if(disposed)return;disposed=true;stopOwnerSession();stopJudge();judgeView?.dispose();stopTimer();disposePersonal();document.removeEventListener('keydown',onKey);panel.removeEventListener('toggle',onToggle);enter?.removeEventListener('click',onEnter);chip.remove();panel.remove();}};
+  return {state,open,close,refreshNames(){judgeView?.refreshNames();},personalMuseId(){if(judgeMuseAccess.state().mode)return judgeMuseAccess.active()?'10-judge':null;const s=personal?.profile.state();return s?.authenticated===true?s.profile?.actorId??null:null;},dispose(){if(disposed)return;disposed=true;stopOwnerSession();stopJudge();judgeView?.dispose();stopTimer();disposePersonal();document.removeEventListener('keydown',onKey);panel.removeEventListener('toggle',onToggle);enter?.removeEventListener('click',onEnter);chip.remove();panel.remove();}};
 }

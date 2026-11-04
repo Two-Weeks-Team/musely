@@ -39,13 +39,12 @@ export function mountSocialStatus(host:HTMLElement,options:Options={}){
   if(['/api/personal/social-status','/api/judge/social-status'].includes(u.pathname)&&u.search)throw Error('invalid_social_endpoint');return p;
  };
  function render(){
-  if(disposed)return;root.hidden=!visible;root.replaceChildren(element('h4',t.title),element('p',t.detail));
+  if(disposed)return;root.hidden=!visible;root.replaceChildren(element('h4',data?t.title+' · '+socialStatusLabel(data.status,language):t.title),element('p',t.detail));
   const result=element('p');result.className='muted';result.setAttribute('role','status');result.setAttribute('aria-live','polite');
   if(owner.authenticated!==true||!owner.muse){result.textContent=t.signedout;root.append(result);return;}
-  if(data){const label=element('p',socialStatusLabel(data.status,language));label.className='src';root.append(label);
-   const field=element('label'),caption=element('span',t.title),select=element('select');select.dataset.action='mode';select.setAttribute('aria-label',t.title);select.setAttribute('style','display:block;max-width:100%;min-height:44px');
+  if(data){const field=element('label'),select=element('select');field.setAttribute('style','display:block');select.dataset.action='mode';select.setAttribute('aria-label',t.title);select.setAttribute('style','display:block;max-width:100%;min-height:44px');
    for(const mode of['auto','welcoming','busy','do_not_disturb'] as const){const option=element('option',t[mode]);option.value=mode;select.append(option);}select.value=selected;
-   select.disabled=phase==='reading'||phase==='writing'||!eligible();select.onchange=()=>{if(isSocialMode(select.value)){selected=select.value;render();}};field.append(caption,select);root.append(field);
+   select.disabled=phase==='reading'||phase==='writing'||!eligible();select.onchange=()=>{if(isSocialMode(select.value)){selected=select.value;render();}};field.append(select);root.append(field);
    const save=element('button',t.save);save.type='button';save.className='primary';save.dataset.action='save';save.setAttribute('style','min-height:44px');save.disabled=!eligible()||phase==='reading'||phase==='writing'||selected===data.mode;save.onclick=()=>saveSelected();root.append(save);
   }
   result.textContent=phase==='reading'?t.checking:phase==='writing'?t.saving:notice;root.append(result);

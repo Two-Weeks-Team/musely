@@ -1,6 +1,6 @@
 import {apiFetch,apiRequestInit} from './api-fetch.ts';
 import {uiText,catalogText,inventoryText,activityStatus} from './i18n.ts';
-import {resolveMuse} from './personal-profile.ts';
+import {publicSenderName} from './personal-profile.ts';
 // Owner inbox (contract C06, direction v2 12.3; I-07). Separate from the Muse's agent inbox (heartbeat_check): it shows
 // only the meetups waiting for this owner's decision, the recent decisions and the three owner notification kinds
 // (meetup candidate, completed trade, blocked attempt), for the owner session's own Muse.
@@ -95,7 +95,7 @@ export const decisionText = (r: {status: number; data: any}) => DECISION_REASONS
 // ---------- the card (DOM) ----------
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
 const at = (ms: number) => new Intl.DateTimeFormat(undefined, {hour: '2-digit', minute: '2-digit', hourCycle: 'h23'}).format(new Date(ms));
-const defaultName = (id: string) => resolveMuse({id}).name;
+const defaultName = (id: string) => publicSenderName(id,null,uiText('The Muse'));
 const KIND_LABEL: Record<Notification['kind'], string> = {meetup_candidate: uiText('Meetup candidate'), trade_completed: uiText('Trade completed'), blocked: uiText('Blocked attempt')};
 const COMMONS = PLACES.filter(p => p.zone === 'commons');
 
@@ -107,6 +107,7 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => ap
   let cond = loadConditions(store), request = 0, sessionGeneration = 0, disposed = false;
   let session: OwnerInboxSession | null | undefined; // undefined: one preflight; null: no automatic retries.
   let pending: Promise<void> | null = null;
+  const labels=new Map<HTMLElement,()=>string>();const bind=(node:HTMLElement,text:()=>string)=>{node.textContent=text();labels.set(node,text);return node;};
   let view: {owner: string; waiting: HTMLElement; approvals: HTMLElement; recent: HTMLElement; notifications: HTMLElement; status: HTMLElement} | null = null;
   const cards = new Map<string, {key: string; node: HTMLElement & {updateOther(side: Side): void;updateNames():void}}>();
   const refreshButton = () => { const b = el('button', 'secondary', uiText('Refresh owner inbox')); b.type = 'button'; b.onclick = () => void recheckSession(); return b; };
@@ -121,8 +122,8 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => ap
     const v = value as OwnerInboxSession;
     return typeof v.principal === 'string' && !!v.principal && typeof v.ownerId === 'string' && !!v.ownerId && Number.isSafeInteger(v.expiresAt) && v.expiresAt > Date.now() ? {principal:v.principal,ownerId:v.ownerId,expiresAt:v.expiresAt} : null;
   };
-  function signedOut(message = uiText('Start the owner session (owner control above) to see the meetups waiting for your approval.')) {
-    view = null; cards.clear(); result.textContent = '';
+  function signedOut(message = uiText('Start the owner session (owner control above) to see the meetups waiting for your approval.')) {labels.clear();
+    view = null;labels.clear(); cards.clear(); result.textContent = '';
     box.replaceChildren(el('span', 'eyebrow', uiText('OWNER INBOX · YOUR APPROVALS')), el('h4', '', uiText('Owner inbox')), el('p', 'muted', message), refreshButton(), result);
   }
   function setOwnerSession(value: unknown) {
@@ -190,14 +191,14 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => ap
     });
     for (const id of cards.keys()) if (!d.approvals.some(t => t.task_id === id)) cards.delete(id);
     reconcile(view.approvals, nodes.length ? nodes : [el('p', 'muted', uiText('Nothing is waiting for you.'))]);
-    view.recent.replaceChildren();
+    labels.clear();view.recent.replaceChildren();
     if (d.recent.length) {
       const ul = el('ul', 'ev-list');
-      for (const t of d.recent) ul.append(el('li', '', `${name(t.other)} · ${t.confirmed ? uiText`confirmed (${t.confirmed.candidate})` : t.status === 'input-required' ? uiText('approval window closed') : t.status}`));
+      for (const t of d.recent) ul.append(bind(el('li'),()=>`${name(t.other)} · ${t.confirmed ? uiText`confirmed (${t.confirmed.candidate})` : t.status === 'input-required' ? uiText('approval window closed') : t.status}`));
       view.recent.append(el('h4', '', uiText('Recent')), ul);
     }
     const nl = el('ul', 'ev-list');
-    for (const n of d.notifications.slice(0, 20)) nl.append(el('li', '', `${at(n.at)} · ${KIND_LABEL[n.kind]} · ${n.line}`));
+    for(const n of d.notifications.slice(0,20)){const {kind,other,at:when}=n;nl.append(bind(el('li'),()=>`${at(when)} · ${KIND_LABEL[kind]} · ${other?name(other)+' · ':''}${({meetup_candidate:uiText('만남 제안이 기다리고 있어요. / A meetup proposal is waiting.'),trade_completed:uiText('거래가 완료됐어요. / A trade completed.'),blocked:uiText('요청이 거절됐어요. / A request was blocked.')}[kind])}`));}
     view.notifications.replaceChildren(nl.childNodes.length ? nl : el('p', 'muted', uiText('No notifications yet.')));
   }
 
@@ -271,5 +272,5 @@ export function ownerInboxCard(onChange: () => void, f: FetchLike = (u, i) => ap
 
   box.append(el('span', 'eyebrow', uiText('OWNER INBOX · YOUR APPROVALS')), el('p', 'muted', uiText('Checking the owner inbox…')));
   void paint();
-  return Object.assign(box, {refresh: () => paint(), setOwnerSession, dispose() { if (disposed) return; disposed = true; sessionGeneration++; request++; pending = null; session = null; view = null; cards.clear(); result.textContent = ''; box.replaceChildren(); }});
+  return Object.assign(box, {refresh: () => paint(),refreshNames(){if(disposed||!active()||!session)return;if(session.expiresAt<=Date.now()){setOwnerSession(null);return;}for(const {node}of cards.values())node.updateNames();for(const [node,text]of labels){const next=text();if(node.textContent!==next)node.textContent=next;}}, setOwnerSession, dispose() { if (disposed) return; disposed = true; sessionGeneration++; request++; pending = null; session = null; view = null;labels.clear(); cards.clear(); result.textContent = ''; box.replaceChildren(); }});
 }

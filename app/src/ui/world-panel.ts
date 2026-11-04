@@ -1,6 +1,6 @@
 import {uiLanguage,uiText,catalogText,inventoryText,activityStatus,activityLabel} from './i18n.ts';
 import {observeWorld, type WorldObservation} from './world-observation.ts';
-import {presentationIn, resolveMuse, withSnapshotProfiles} from './personal-profile.ts';
+import {publicSenderName,presentationIn, resolveMuse, withSnapshotProfiles} from './personal-profile.ts';
 import {recordedSceneFrame} from './recorded-scene.ts';
 import {speechRecipient} from './speech-recipient.ts';
 import type {RecordedFrame, RecordedEvidence, RecordedEvent} from '../replay/player.ts';
@@ -217,6 +217,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   const displayWorld=()=>currentRecorded?withSnapshotProfiles(recordedSceneFrame(currentRecorded).world,currentRecorded.publicState):world;
   const museName=(id:string|null|undefined)=>publicMuseName(id,displayWorld());
   const shortName=(id:string|null|undefined)=>publicShortName(id,displayWorld());
+  const senderName=(id:string)=>publicSenderName(id,world,uiText('The Muse'));
   const describe=(e:Ev)=>describeEvent(e,(e as EvidenceEv).fixture?null:displayWorld());
   const header = document.querySelector('header')!;
   const open = el('button', 'quiet world-open'); open.type = 'button'; open.id = 'world-open';
@@ -536,7 +537,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
   }
 
   async function renderIdentity(stale: () => boolean) {
-    if(judgeMuseAccess.state().mode){const host=el('div');body.append(host);judgeView=mountJudgeMuse(host,{follow:()=>live.onJudgeFollow?.(),isActive:()=>!stale()&&!isolation.replay&&panel.matches(':popover-open'),name:shortName});const demos=el('div','id-actions');for(const [title,path]of [[uiText('Try an impostor'),'/api/demo/impostor'],[uiText('Try an instruction injection'),'/api/demo/injection'],[uiText('Run P0 step (judge link or owner)'),'/api/p0/run']]){const b=el('button','secondary',title);b.type='button';const result=el('p','muted');b.onclick=async()=>{if(stale()||isolation.replay)return;b.disabled=true;try{const status=await sparkStatus();if(status)await ensureSession(status);const r=await visitorFetch(path,{method:'POST'}),j=await r.json();if(!stale())result.textContent=r.ok?(path==='/api/p0/run'?p0Text(j):uiText('Done. The result is in the Feed and Highlights.')):uiText('Could not run: ')+String(r.status);}catch{if(!stale())result.textContent=uiText('Could not run: ')+uiText('network error');}finally{b.disabled=false;}};demos.append(b,result);}body.append(ritualCard(()=>void refresh(),{active:()=>!stale()&&!isolation.replay}),demos);return;}
+    if(judgeMuseAccess.state().mode){const host=el('div');body.append(host);judgeView=mountJudgeMuse(host,{follow:()=>live.onJudgeFollow?.(),isActive:()=>!stale()&&!isolation.replay&&panel.matches(':popover-open'),name:senderName});const demos=el('div','id-actions');for(const [title,path]of [[uiText('Try an impostor'),'/api/demo/impostor'],[uiText('Try an instruction injection'),'/api/demo/injection'],[uiText('Run P0 step (judge link or owner)'),'/api/p0/run']]){const b=el('button','secondary',title);b.type='button';const result=el('p','muted');b.onclick=async()=>{if(stale()||isolation.replay)return;b.disabled=true;try{const status=await sparkStatus();if(status)await ensureSession(status);const r=await visitorFetch(path,{method:'POST'}),j=await r.json();if(!stale())result.textContent=r.ok?(path==='/api/p0/run'?p0Text(j):uiText('Done. The result is in the Feed and Highlights.')):uiText('Could not run: ')+String(r.status);}catch{if(!stale())result.textContent=uiText('Could not run: ')+uiText('network error');}finally{b.disabled=false;}};demos.append(b,result);}body.append(ritualCard(()=>void refresh(),{active:()=>!stale()&&!isolation.replay}),demos);return;}
 
     const r = await load<any>('claim', '/api/claim/owner-muse');
     if (stale()) return;
@@ -562,7 +563,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
       b.disabled = false; }; return b; };
     actions.append(run(uiText('Run P0 step (judge link or owner)'),'/api/p0/run',p0Text),run(uiText('Try an impostor'), '/api/demo/impostor'), run(uiText('Try an instruction injection'), '/api/demo/injection'));
     const ownerChecks=el('div','id-actions');ownerChecks.append(run(uiText('Run P0 step (judge link or owner)'),'/api/p0/run',p0Text,personalOwnerAccess.fetch));
-    const inbox = ownerInboxCard(() => void refresh(), (u, i) => personalOwnerAccess.fetch(u, i), () => !stale() && !isolation.replay && panel.matches(':popover-open'), shortName);
+    const inbox = ownerInboxCard(() => void refresh(), (u, i) => personalOwnerAccess.fetch(u, i), () => !stale() && !isolation.replay && panel.matches(':popover-open'), senderName);
     ownerInboxView = inbox;
     const socialDetails=el('details'),socialHost=el('div');socialDetails.id='owner-social-status';socialDetails.hidden=true;socialDetails.append(el('summary','',uiText('내 Muse 상태 / My Muse status')),socialHost);
     const social=mountSocialStatus(socialHost,{fetcher:personalOwnerAccess.fetch,endpoint:muse=>'/api/personal/owner/social-status?muse='+encodeURIComponent(muse),onSessionLost:()=>{inbox.setOwnerSession(null);socialDetails.hidden=true;}});ownerSocialView=social;social.setVisible(false);
@@ -638,7 +639,7 @@ export function mountWorldPanel(map: LibreMap, live: {onWorld?: (world: LiveWorl
     const [wr, er] = await Promise.all([load<WorldView>('world', '/api/world'), load<Ev[]>('events', lastSeq ? `/api/world/events?since=${lastSeq}&limit=500` : '/api/world/events?tail=200')]);
     if (isolation.replay || (!wr.ok && wr.error === BLOCKED) || (!er.ok && er.error === BLOCKED)) return; // asked before the replay opened: not applied; the next refresh fetches it again
     observation = observeWorld(observation, wr);
-    if(observation)world=observation.world;
+    if(observation)world=observation.world;judgeView?.refreshNames();ownerInboxView?.refreshNames();
     if (er.ok && er.data.length) { events.push(...er.data); events = events.slice(-1500); lastSeq = er.data[er.data.length - 1].seq; }
     if (!live.paused?.()) {pins.update(world, events); if (world) live.onWorld?.(world, events, observation!.observedAt);}
     const last = [...events].reverse().find(e => e.kind === 'spotlight' || e.kind === 'spotlight_fallback');
